@@ -7,5 +7,5 @@ function canonicalJson(value: unknown): string {
   return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`).join(",")}}`;
 }
 export function digestToolInvocation(toolName: string, args: unknown): string {
-  return createHash("sha256").update("mcp-execution-handoff/invocation/v1\0").update(toolName).update("\0").update(canonicalJson(args)).digest("hex");
+  return createHash("sha256").update(toolName).update("\0").update(canonicalJson(args)).digest("hex");
 }

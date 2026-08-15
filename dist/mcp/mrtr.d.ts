@@ -3,7 +3,7 @@ import { type HandoffResumeStrategy } from "../core/index.js";
 export declare const HANDOFF_INPUT_KEY = "human_intervention";
 export declare const HANDOFF_STATE_TTL_SECONDS: number;
 export interface HandoffRequestState {
-    version: 1;
+    version: 2;
     phase: "awaiting_human";
     toolName: string;
     argsDigest: string;

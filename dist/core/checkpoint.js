@@ -17,7 +17,7 @@ function isCheckpoint(value) {
         typeof v.interventionId === "string" && v.interventionId.length > 0 && v.interventionId.length <= 160 &&
         ["awaiting_human", "human_active", "verifying", "ready_to_resume"].includes(v.status ?? "") && Number.isSafeInteger(v.epoch) && Number(v.epoch) >= 0 &&
         ["replay_safe", "revalidate", "confirm_before_execute", "never_replay"].includes(v.resumePolicy ?? "") &&
-        typeof v.principalBinding === "string" && v.principalBinding.length >= 3 && v.principalBinding.length <= 160 &&
+        typeof v.principalBinding === "string" && v.principalBinding.length >= 16 && v.principalBinding.length <= 160 &&
         (v.actionDigest === undefined || (typeof v.actionDigest === "string" && v.actionDigest.length >= 16 && v.actionDigest.length <= 160)) &&
         Number.isSafeInteger(v.updatedAt) && Number.isSafeInteger(v.expiresAt);
 }
