@@ -4,7 +4,7 @@
 
 A small, security-oriented TypeScript runtime for pausing an MCP-driven execution flow when a human must take temporary control, then resuming only after explicit verification and policy checks.
 
-**Status:** validated reusable upstream, intentionally unreleased. Maps and Japan Cinema now consume this repository as two real adapters. The npm-package flag remains `private: true`; no npm package or version tag has been published.
+**Status:** validated reusable upstream. `v0.1.0` is the first source release, validated by Maps and Japan Cinema as two real adapters. The npm-package flag remains `private: true`; this project is not published to npm.
 
 ## Why this exists
 
@@ -111,7 +111,7 @@ The two-real-adapter extraction gate is now satisfied:
 - authority, epoch, ownership, checkpoint, takeover-lease, capability, CSP, and replay invariants remain covered by deterministic tests.
 - both consumers pin an immutable commit from this repository and pass clean-install CI.
 
-This repository can now be treated as the upstream source of truth. **That does not imply a release.** `v0.1.0` and npm publication remain separate decisions and have not been performed.
+This repository is the upstream source of truth. `v0.1.0` is a **source release only**: it establishes the first versioned repository baseline after validation with two real adapters. npm publication is a separate decision and has not been performed; `private: true` remains in effect.
 
 ## License
 
