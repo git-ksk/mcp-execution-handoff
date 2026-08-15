@@ -3,6 +3,7 @@
 ## Contract / security impact
 
 - [ ] No Maps/Cinema/provider-specific concept was added to generic core.
+- [ ] Any new generic API is consistent with `docs/positioning.md` and `ROADMAP.md`, and does not duplicate an MCP-standard mechanism without justification.
 - [ ] Principal/invocation binding and resource-epoch fencing are preserved.
 - [ ] Browser takeover remains locator-only, short-lived, one-client, and memory-bound.
 - [ ] Human completion is not treated as approval for another action.

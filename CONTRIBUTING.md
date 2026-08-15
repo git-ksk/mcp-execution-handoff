@@ -16,3 +16,5 @@ Before opening a PR:
 8. never add secrets, tokens, private endpoints, credentials, OTP/MFA values, payment data, or challenge answers to fixtures/logs/docs.
 
 English documentation is canonical. Keep the major Japanese documents synchronized when security or architecture semantics change.
+
+Before proposing a new generic public API or widening project scope, review [Positioning](docs/positioning.md) and [Roadmap](ROADMAP.md). A proposal that duplicates an MCP-standard mechanism or exists for only one consumer should remain consumer-local until there is stronger evidence for a generic contract.
