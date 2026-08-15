@@ -1,0 +1,11 @@
+name: Dependency review
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  dependency-review:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@9902c3c14d292c8f5e1c8a57847d0ebbc944b57f # v4.8.1

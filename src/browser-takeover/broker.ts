@@ -94,7 +94,7 @@ function pageHtml(nonce: string): string {
 
 export class TakeoverBroker {
   private readonly sessions: TakeoverSessionManager;
-  private readonly publicOrigin?: string;
+  private readonly publicOrigin: string | undefined;
 
   constructor(
     private readonly browser: TakeoverBrowserAdapter,

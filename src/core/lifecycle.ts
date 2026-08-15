@@ -35,7 +35,7 @@ export class ExecutionHandoffError extends Error {
 
 export class ExecutionHandoffState<TAction, TReason extends string = string> {
   private epoch = 0;
-  private active?: ExecutionIntervention<TAction, TReason>;
+  private active: ExecutionIntervention<TAction, TReason> | undefined;
 
   constructor(private readonly now: () => number = Date.now, private readonly createId: () => string = randomUUID) {}
 

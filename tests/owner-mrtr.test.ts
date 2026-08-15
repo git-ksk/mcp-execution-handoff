@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { claimHandoffOwner, createHandoffOwner, digestToolInvocation, handoffOwnerMatches, type HandoffOwner } from "../src/core/index.js";
+import { createHandoffRequestState, handoffStateMatchesInvocation, interventionPrompt } from "../src/mcp/index.js";
+const ARGS={destination:"Tokyo Station",mode:"transit"};
+const owner=(principal:string):HandoffOwner=>createHandoffOwner(principal,"navigate",ARGS,"retry_original");
+test("invocation digest is canonical across object key order",()=>{ assert.equal(digestToolInvocation("x",{a:1,b:2}),digestToolInvocation("x",{b:2,a:1})); });
+test("handoff ownership binds principal invocation arguments and resume strategy",()=>{ const a=owner("principal-a"), same=owner("principal-a"), b=owner("principal-b"); assert.equal(handoffOwnerMatches(a,same),true); assert.equal(handoffOwnerMatches(a,b),false); const owners=new Map<string,HandoffOwner>(); assert.ok(claimHandoffOwner(owners,"i1","awaiting_human",a)); assert.equal(claimHandoffOwner(owners,"i1","human_active",b),undefined); assert.equal(claimHandoffOwner(new Map(),"i2","human_active",a),undefined); });
+test("MRTR requestState rejects principal invocation and args mismatches",()=>{ const state=createHandoffRequestState({toolName:"navigate",args:ARGS,interventionId:"i1",epoch:2,resumeStrategy:"retry_original",principalBinding:"principal-a"}); assert.equal(handoffStateMatchesInvocation(state,"navigate",ARGS,"principal-a"),true); assert.equal(handoffStateMatchesInvocation(state,"navigate",ARGS,"principal-b"),false); assert.equal(handoffStateMatchesInvocation(state,"navigate",{...ARGS,mode:"walk"},"principal-a"),false); assert.equal(handoffStateMatchesInvocation(state,"other",ARGS,"principal-a"),false); });
+test("generic MRTR prompt explicitly keeps secrets and challenge answers out of MCP",()=>{ const prompt=interventionPrompt({subject:"Cinema",instruction:"Complete the step in the dedicated Chrome window."}); assert.match(prompt,/passwords/i); assert.match(prompt,/OTP\/MFA/i); assert.match(prompt,/CAPTCHA answers/i); assert.match(prompt,/payment data/i); });
