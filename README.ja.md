@@ -4,7 +4,7 @@
 
 MCP駆動の実行中にHuman interventionが必要になった場合、Agent実行を安全に停止し、Humanへ一時的にauthorityを移し、検証後にpolicyに従ってのみ再開するための小さなTypeScript runtimeです。
 
-**Status:** 2つのreal adapterで再利用性を確認済みのupstreamですが、意図的に未releaseです。npm packageは引き続き `private: true` で、npm publish / version tagはまだ行いません。
+**Status:** 2つのreal adapterで再利用性を確認済みのupstreamです。`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npm publishは行っていません。
 
 ## 目的
 
@@ -75,7 +75,7 @@ npm audit --audit-level=moderate
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱える状態です。ただし、**upstream化とreleaseは別判断**です。`v0.1.0` / npm publishはまだ行っていません。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` は、2つのreal adapterでの検証後に確定した最初の **source release** です。npm publishは別判断のままで、`private: true` を維持しています。
 
 ## License
 
