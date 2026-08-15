@@ -8,7 +8,7 @@ A small, security-oriented TypeScript runtime for pausing an MCP-driven executio
 
 ## Why this exists
 
-The runtime originated in `git-ksk/maps-browser-mcp`. It is being extracted only after a second real adapter, `git-ksk/japan-cinema-browser-mcp`, can exercise the same contract without importing Maps-specific concepts.
+The runtime originated in `git-ksk/maps-browser-mcp`. It was extracted after a second real adapter, `git-ksk/japan-cinema-browser-mcp`, demonstrated the same contract without importing Maps-specific concepts.
 
 The public contract is deliberately narrow:
 
@@ -58,7 +58,7 @@ src/browser-takeover/
 - Completing Human takeover **does not approve another action**. Consequential actions require a separate explicit approval mechanism owned by the consumer.
 - Stateful/consequential actions must not be automatically replayed after handoff unless the consumer has independently established that replay is safe.
 
-See [Architecture](docs/architecture.md) and [Security Policy](SECURITY.md).
+See [Architecture](docs/architecture.md), [Positioning](docs/positioning.md), [Roadmap](ROADMAP.md), [Security Policy](SECURITY.md), and [Changelog](CHANGELOG.md).
 
 ## Resume policy
 

@@ -38,7 +38,7 @@ CAPTCHA solver、challenge bypass、credential relay、payment automation、gene
 - **Human takeover完了は別actionのapprovalではない。** consequential actionのapprovalはconsumer側の別経路で明示的に扱う。
 - stateful/consequential actionは、安全なreplayが別途成立しない限りhandoff後に自動replayしない。
 
-詳細は [Architecture 日本語版](docs/architecture.ja.md) と [Security Policy 日本語版](SECURITY.ja.md) を参照してください。
+詳細は [Architecture 日本語版](docs/architecture.ja.md)、[Positioning 日本語版](docs/positioning.ja.md)、[Roadmap 日本語版](ROADMAP.ja.md)、[Security Policy 日本語版](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
 
 ## Resume policy
 
