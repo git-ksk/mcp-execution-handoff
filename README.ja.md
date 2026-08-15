@@ -4,7 +4,7 @@
 
 MCP駆動の実行中にHuman interventionが必要になった場合、Agent実行を安全に停止し、Humanへ一時的にauthorityを移し、検証後にpolicyに従ってのみ再開するための小さなTypeScript runtimeです。
 
-**Status:** pre-releaseの抽出候補です。npm packageとしては意図的に `private: true` のままで、npm publish / releaseはまだ行いません。
+**Status:** 2つのreal adapterで再利用性を確認済みのupstreamですが、意図的に未releaseです。npm packageは引き続き `private: true` で、npm publish / version tagはまだ行いません。
 
 ## 目的
 
@@ -65,9 +65,17 @@ npm audit --audit-level=moderate
 
 テスト目的でlive CAPTCHA/challengeを意図的に発生させません。
 
-## Upstream readiness
+## Upstream検証結果
 
-Maps + Cinemaの両real consumerがgreenで、contractにMaps/Cinema固有概念が漏れていないことを確認するまで `v0.1.0` release / npm publishは行いません。
+2 real adapterによる抽出gateは満たしました。
+
+- `git-ksk/maps-browser-mcp` がfirst real consumerとしてgreen
+- `git-ksk/japan-cinema-browser-mcp` がsecond real consumerとしてgreen
+- generic `src/` contractにMaps / Google / Cinema / provider / Chrome / CDP固有概念なし
+- authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
+- 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
+
+このrepositoryをExecution Handoffのupstream source of truthとして扱える状態です。ただし、**upstream化とreleaseは別判断**です。`v0.1.0` / npm publishはまだ行っていません。
 
 ## License
 

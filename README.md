@@ -4,7 +4,7 @@
 
 A small, security-oriented TypeScript runtime for pausing an MCP-driven execution flow when a human must take temporary control, then resuming only after explicit verification and policy checks.
 
-**Status:** pre-release extraction candidate. The repository is intentionally `private: true` at the npm-package level. No npm package or release has been published.
+**Status:** validated reusable upstream, intentionally unreleased. Maps and Japan Cinema now consume this repository as two real adapters. The npm-package flag remains `private: true`; no npm package or version tag has been published.
 
 ## Why this exists
 
@@ -101,9 +101,17 @@ npm audit --audit-level=moderate
 
 The test suite is deterministic and must not intentionally trigger a live CAPTCHA/challenge.
 
-## Upstream readiness
+## Upstream validation result
 
-The extraction is considered ready for a first version only after both real consumers are green and the contract contains no Maps- or Cinema-specific concepts. Until then, there is no `v0.1.0` release and no npm publication.
+The two-real-adapter extraction gate is now satisfied:
+
+- `git-ksk/maps-browser-mcp` is green as the first real consumer.
+- `git-ksk/japan-cinema-browser-mcp` is green as the second real consumer.
+- the generic `src/` contract contains no Maps-, Google-, Cinema-, provider-, Chrome-, or CDP-specific concept.
+- authority, epoch, ownership, checkpoint, takeover-lease, capability, CSP, and replay invariants remain covered by deterministic tests.
+- both consumers pin an immutable commit from this repository and pass clean-install CI.
+
+This repository can now be treated as the upstream source of truth. **That does not imply a release.** `v0.1.0` and npm publication remain separate decisions and have not been performed.
 
 ## License
 
