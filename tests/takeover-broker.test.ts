@@ -96,6 +96,8 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.match(script, /crypto\.getRandomValues/);
   assert.match(script, /const clientBinding=randomClientBinding\(\)/);
   assert.match(script, /x-takeover-client/);
+  assert.match(script, /x-mcp-takeover-capability/);
+  assert.doesNotMatch(script, /authorization['"]?\s*:/i);
   assert.doesNotMatch(script, /sessionStorage|localStorage/);
 
   const scriptHead = await broker.handle(new Request(`http://localhost/takeover/client.js`, {
@@ -165,7 +167,7 @@ test("frame and bounded inputs require matching principal, client lease, capabil
   const { broker, calls, sessionId } = fixture();
   const capability = await bootstrap(broker, sessionId);
   const auth = {
-    authorization: `Takeover ${capability}`,
+    "x-mcp-takeover-capability": capability,
     "x-takeover-client": CLIENT_A
   };
 
@@ -179,7 +181,7 @@ test("frame and bounded inputs require matching principal, client lease, capabil
 
   const wrongClient = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
     headers: {
-      authorization: `Takeover ${capability}`,
+      "x-mcp-takeover-capability": capability,
       "x-takeover-client": CLIENT_B
     }
   }), PRINCIPAL_A);
@@ -207,11 +209,37 @@ test("frame and bounded inputs require matching principal, client lease, capabil
   assert.deepEqual(calls.at(-1), ["tap", "intervention-a", 7, 10, 20]);
 });
 
+test("dedicated takeover capability coexists with an outer Bearer Authorization header", async () => {
+  const { broker, calls, sessionId } = fixture();
+  const capability = await bootstrap(broker, sessionId);
+  const frame = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: {
+      authorization: "Bearer private-hop-service-credential",
+      "x-mcp-takeover-capability": capability,
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(frame.status, 200);
+  assert.deepEqual(calls.at(-1), ["frame", "intervention-a", 7]);
+});
+
+test("legacy Authorization Takeover capability remains accepted for compatibility", async () => {
+  const { broker, sessionId } = fixture();
+  const capability = await bootstrap(broker, sessionId);
+  const frame = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: {
+      authorization: `Takeover ${capability}`,
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(frame.status, 200);
+});
+
 test("done revokes remote capability and client lease without approving the MCP action", async () => {
   const { broker, sessionId } = fixture();
   const capability = await bootstrap(broker, sessionId);
   const auth = {
-    authorization: `Takeover ${capability}`,
+    "x-mcp-takeover-capability": capability,
     "x-takeover-client": CLIENT_A,
     origin: "https://takeover.example"
   };
@@ -224,7 +252,7 @@ test("done revokes remote capability and client lease without approving the MCP 
 
   const stale = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
     headers: {
-      authorization: `Takeover ${capability}`,
+      "x-mcp-takeover-capability": capability,
       "x-takeover-client": CLIENT_A
     }
   }), PRINCIPAL_A);
