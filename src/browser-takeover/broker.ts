@@ -54,7 +54,7 @@ function status(text){statusEl.textContent=text}
 function randomClientBinding(){const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);let binary='';for(let i=0;i<bytes.length;i+=1)binary+=String.fromCharCode(bytes[i]);return btoa(binary).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')}
 const clientBinding=randomClientBinding();
 async function bootstrap(){const response=await fetch('/takeover/api/bootstrap/'+encodeURIComponent(sessionId),{cache:'no-store',headers:{'x-takeover-client':clientBinding}});if(!response.ok)throw new Error('bootstrap unavailable');const data=await response.json();if(!data.capability)throw new Error('missing capability');cap=data.capability}
-async function api(path,options){const opts=options||{};const headers=Object.assign({},opts.headers||{}, {'authorization':'Takeover '+cap,'x-takeover-client':clientBinding});const response=await fetch('/takeover/api/'+path+'/'+encodeURIComponent(sessionId),Object.assign({},opts,{headers:headers,cache:'no-store'}));if(!response.ok)throw new Error('takeover unavailable');return response}
+async function api(path,options){const opts=options||{};const headers=Object.assign({},opts.headers||{}, {'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding});const response=await fetch('/takeover/api/'+path+'/'+encodeURIComponent(sessionId),Object.assign({},opts,{headers:headers,cache:'no-store'}));if(!response.ok)throw new Error('takeover unavailable');return response}
 async function refresh(){if(stopped)return;try{const r=await api('frame');viewport={width:Number(r.headers.get('x-takeover-width'))||1,height:Number(r.headers.get('x-takeover-height'))||1};const host=r.headers.get('x-takeover-host')||'Browser';const blob=await r.blob();const next=URL.createObjectURL(blob);frame.onload=function(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status(host+' · live')}catch(e){status('Session unavailable, expired, or already active elsewhere');stopped=true;return}setTimeout(refresh,700)}
 async function input(body){try{await api('input',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});setTimeout(refresh,100)}catch(e){status('Input rejected or session active elsewhere');stopped=true}}
 screen.addEventListener('click',function(event){const r=frame.getBoundingClientRect();if(!r.width||!r.height)return;const x=Math.max(0,Math.min(viewport.width,(event.clientX-r.left)*viewport.width/r.width));const y=Math.max(0,Math.min(viewport.height,(event.clientY-r.top)*viewport.height/r.height));void input({kind:'tap',x:x,y:y})});
@@ -177,7 +177,10 @@ export class TakeoverBroker {
       }
     }
 
-    const capability = this.readCapability(request.headers.get("authorization"));
+    const capability = this.readCapability(
+      request.headers.get("x-mcp-takeover-capability"),
+      request.headers.get("authorization")
+    );
     if (!capability) return json(404, { error: "takeover_unavailable" });
 
     let grant: ReturnType<TakeoverSessionManager["verify"]>;
@@ -231,9 +234,14 @@ export class TakeoverBroker {
     }
   }
 
-  private readCapability(value: string | null): string | undefined {
-    const match = /^Takeover ([A-Za-z0-9_-]{32,128})$/.exec(value ?? "");
-    return match?.[1];
+  private readCapability(
+    dedicatedValue: string | null,
+    legacyAuthorization: string | null
+  ): string | undefined {
+    const dedicated = /^([A-Za-z0-9_-]{32,128})$/.exec(dedicatedValue ?? "")?.[1];
+    if (dedicated) return dedicated;
+    const legacy = /^Takeover ([A-Za-z0-9_-]{32,128})$/.exec(legacyAuthorization ?? "")?.[1];
+    return legacy;
   }
 
   private readClientBinding(value: string | null): string | undefined {
