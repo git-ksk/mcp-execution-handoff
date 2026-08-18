@@ -4,6 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Allow browser-takeover adapters to return bounded PNG or JPEG frames so native/OS-level Human transports do not need lossy consumer-side conversion; existing adapters default to JPEG for compatibility.
 - Separate browser-takeover capability transport from outer HTTP authentication: new takeover clients send the short-lived capability in `X-MCP-Takeover-Capability`, allowing an authenticated reverse proxy/private hop to keep using `Authorization: Bearer ...`; legacy `Authorization: Takeover ...` remains accepted for compatibility.
 - Added a credential-safe external Human surface provider contract and coordinator, separate from automation-adjacent browser takeover.
 - Added principal + intervention + resource-epoch binding, one-active-session enforcement, bounded provider metadata retention, and mandatory external-session revocation before automation restoration.

@@ -123,6 +123,40 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.equal(crossSiteBootstrap.status, 403);
 });
 
+test("adapter may return PNG frames without browser-side conversion", async () => {
+  const browser: TakeoverBrowserAdapter = {
+    async captureHumanTakeoverFrame() {
+      return {
+        data: Buffer.from("png-bytes").toString("base64"),
+        width: 800,
+        height: 600,
+        hostname: "Normal Chrome",
+        mimeType: "image/png"
+      };
+    },
+    async tapHumanTakeover() {},
+    async scrollHumanTakeover() {},
+    async insertHumanTakeoverText() {},
+    async pressHumanTakeoverKey() {}
+  };
+  const broker = new TakeoverBroker(browser, { enabled: true, publicBaseUrl: "https://takeover.example", ttlMs: 60_000 });
+  const link = broker.createLink({ id: "png-intervention", epoch: 2 }, PRINCIPAL_A);
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1);
+  assert.ok(sessionId);
+  const capability = await bootstrap(broker, sessionId);
+  const response = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: {
+      "x-mcp-takeover-capability": capability,
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/png");
+  assert.equal(response.headers.get("x-takeover-width"), "800");
+  assert.equal(response.headers.get("x-takeover-height"), "600");
+});
+
 test("different or missing principal cannot open or bootstrap another takeover", async () => {
   const { broker, url, sessionId } = fixture();
   const wrongPage = await broker.handle(new Request(`http://localhost${url.pathname}`), PRINCIPAL_B);
