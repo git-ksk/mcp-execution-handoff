@@ -19,7 +19,8 @@ The public contract is deliberately narrow:
 - signed durable control-plane checkpoints,
 - MCP MRTR `input_required` request-state binding,
 - principal + invocation + canonical-arguments ownership binding,
-- optional browser takeover transport with short-lived capabilities and a one-client lease.
+- optional browser takeover transport with short-lived capabilities and a one-client lease,
+- credential-safe external Human surface coordination for providers that require a normal non-automated browser.
 
 It does **not** provide a CAPTCHA solver, challenge bypass, credential relay, payment automation, generic browser agent, DOM/network export, or automatic approval of consequential actions.
 
@@ -34,6 +35,7 @@ src/core/
   checkpoint.ts    signed durable control-plane metadata only
   runtime.ts       checkpoint/recovery coordinator
   audit.ts         bounded metadata audit contract
+  human-surface.ts credential-safe external Human provider contract
 
 src/mcp/
   mrtr.ts          requestState helpers + input_required schema/prompt
@@ -55,6 +57,8 @@ src/browser-takeover/
 - A capability is scoped to session + intervention + resource epoch + principal + remote-client binding + expiry.
 - One remote client owns a takeover lease. Reload/new-tab/new-device flows with a new in-memory binding cannot implicitly reclaim it.
 - Takeover responses use `no-store`, `no-referrer`, restrictive CSP with a nonce-bound client asset, and bounded input endpoints.
+- Credential-safe external Human control may start only while Human authority is already exclusive; the external session must be revoked before automation authority is restored.
+- External Human providers are narrowed to bounded control-plane fields (`providerKind`, intervention/epoch/principal binding, session id, operator locator, optional expiry). Arbitrary provider metadata is discarded.
 - Completing Human takeover **does not approve another action**. Consequential actions require a separate explicit approval mechanism owned by the consumer.
 - Stateful/consequential actions must not be automatically replayed after handoff unless the consumer has independently established that replay is safe.
 
@@ -75,6 +79,30 @@ The MCP bridge also records a call-site strategy:
 - `require_fresh_semantic_action`
 
 A consumer must apply the stricter effective result. In particular, `require_fresh_semantic_action` and `never_replay` never become automatic replay simply because a Human marked the manual step complete.
+
+## Credential-safe external Human surface
+
+Some identity providers reject or forbid credential entry in software-controlled or embedded browser contexts. In that case, consumers should not make the automation-adjacent `browser-takeover` transport more evasive. Instead, use the `CredentialSafeHumanSurfaceRuntime` with a pluggable external Human provider.
+
+The generic core deliberately does **not** implement remote desktop. A provider may point the operator to an existing remote-access product or another normal-browser Human surface. The consumer remains responsible for suspending its automation runtime completely before credential entry, launching the same dedicated non-default browser profile without CDP/remote-debugging/automation attachment, and refusing to restore automation until the external session is revoked and the profile is no longer owned by the normal browser process.
+
+A browser-backed consumer should follow this lifecycle:
+
+```text
+automation profile + CDP
+  -> identity-sensitive intervention
+  -> Human authority becomes exclusive
+  -> stop automation browser completely
+  -> open same dedicated profile in normal browser (no CDP)
+  -> Human authenticates through an external provider
+  -> revoke/close external provider session
+  -> close normal browser and verify profile lock release
+  -> relaunch automation browser
+  -> fresh readiness / semantic validation
+  -> never replay stale pre-auth state
+```
+
+`selectHumanSurface()` is a small policy helper for consumers to route configured reasons such as sign-in/consent to `credential_safe_external` while leaving other interventions on `automation_adjacent`. The core does not decide which reasons are identity-sensitive.
 
 ## Browser takeover
 

@@ -20,6 +20,8 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- consumer adapter: browser.cinema
    |
    +---- optional browser takeover transport
+   |
+   +---- credential-safe external Human provider coordinator
 ```
 
 ## Lifecycle
@@ -53,6 +55,18 @@ MRTR requestState binds:
 - authenticated logical-principal binding.
 
 The library does not decide how a consumer authenticates a user. The consumer must derive a stable non-secret binding and pass it explicitly.
+
+## Credential-safe external Human surface
+
+The external Human surface is a control-plane adapter, not a remote-desktop implementation. It exists for providers that require credential entry in a normal browser or otherwise reject automation-adjacent execution environments.
+
+A consumer first enters the normal handoff lifecycle and gives exclusive authority to the Human. Only then may `CredentialSafeHumanSurfaceRuntime.begin()` create an external operator session. The runtime binds that session to the active intervention id, resource epoch, and principal binding. Only one session may be active, and a duplicate begin is idempotent only for the same binding.
+
+Provider output is deliberately narrowed to bounded fields: provider kind, intervention id, epoch, principal binding, session id, operator locator, and optional expiry. Extra provider data is not retained. In particular, credentials, browser cookies, tokens, screenshots, DOM/network data, and provider-specific opaque metadata must not be used as continuity material.
+
+Before restoring automation, the consumer must revoke the external session and verify any consumer-specific execution boundary, such as closing a normal browser and releasing its dedicated profile lock. Human completion then advances through the existing `verifying -> ready_to_resume` lifecycle. Authentication success must be revalidated from fresh browser state, and stale pre-auth semantic actions must not be replayed.
+
+The package does not decide which intervention reasons need this surface. `selectHumanSurface()` lets each consumer configure its own identity-sensitive reason set without moving provider-specific policy into the generic core.
 
 ## Browser takeover
 

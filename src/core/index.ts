@@ -5,3 +5,4 @@ export * from "./owner.js";
 export * from "./audit.js";
 export * from "./checkpoint.js";
 export * from "./runtime.js";
+export * from "./human-surface.js";

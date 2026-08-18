@@ -20,6 +20,7 @@ public contractは以下に限定します。
 - MCP MRTR `input_required` requestState binding
 - principal + invocation + canonical argsのownership binding
 - short-lived capability + one-client leaseを持つoptional browser takeover transport
+- normal/non-automated browserを要求するprovider向けのcredential-safe external Human surface coordination
 
 CAPTCHA solver、challenge bypass、credential relay、payment automation、generic browser agent、DOM/network export、consequential actionの自動approvalは提供しません。
 
@@ -35,6 +36,8 @@ CAPTCHA solver、challenge bypass、credential relay、payment automation、gene
 - capabilityはsession / intervention / resource epoch / principal / remote client binding / expiryへbindする。
 - takeover leaseはremote client 1つだけ。reload/new tab/new deviceで新しいmemory-only bindingになった場合、active leaseを暗黙reclaimできない。
 - `no-store` / `no-referrer` / nonce-bound CSP client asset / bounded inputを維持する。
+- credential-safe external Human controlはHuman authorityが排他的にactiveな間だけ開始でき、automation authorityを戻す前にexternal sessionをrevokeする。
+- external Human providerから保持するのはbounded control-plane field（provider kind / intervention / epoch / principal binding / session id / operator locator / optional expiry）のみで、任意provider metadataは破棄する。
 - **Human takeover完了は別actionのapprovalではない。** consequential actionのapprovalはconsumer側の別経路で明示的に扱う。
 - stateful/consequential actionは、安全なreplayが別途成立しない限りhandoff後に自動replayしない。
 
@@ -45,6 +48,28 @@ CAPTCHA solver、challenge bypass、credential relay、payment automation、gene
 coreは `replay_safe` / `revalidate` / `confirm_before_execute` / `never_replay` を記録します。MCP bridgeはさらに `retry_original` / `require_fresh_semantic_action` のcall-site strategyを記録します。
 
 consumerは常に厳しい方を採用します。`require_fresh_semantic_action` や `never_replay` がHuman完了だけを理由にautomatic replayへ昇格することはありません。
+
+## Credential-safe external Human surface
+
+Identity providerによっては、software-controlled / embedded browser上でのcredential entry自体を拒否・禁止します。その場合、automation-adjacentな `browser-takeover` をstealth化するのではなく、`CredentialSafeHumanSurfaceRuntime` とpluggable external Human providerを使います。
+
+generic coreはremote desktopを実装しません。providerは既存remote-access製品やnormal-browser Human surfaceへのoperator locatorを返せます。consumerはcredential entry前にautomation runtimeを完全停止し、同じdedicated non-default profileをCDP / remote-debugging / automation attachmentなしのnormal browserで起動し、external sessionをrevokeしてnormal browserがprofileを解放するまでautomationを再開しない責任を持ちます。
+
+```text
+automation profile + CDP
+  -> identity-sensitive intervention
+  -> Human authority exclusive
+  -> automation browser完全停止
+  -> same dedicated profileをnormal browserで起動（CDPなし）
+  -> external provider経由でHuman認証
+  -> external provider session revoke/close
+  -> normal browser終了 + profile lock解放確認
+  -> automation browser再起動
+  -> fresh readiness / semantic validation
+  -> stale pre-auth stateをreplayしない
+```
+
+`selectHumanSurface()` は、consumerが設定したsign-in / consent等のreasonだけを `credential_safe_external` に振り分ける小さなpolicy helperです。どのreasonがidentity-sensitiveかをgeneric coreは決めません。
 
 ## Browser takeover
 
