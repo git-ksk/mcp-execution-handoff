@@ -15,11 +15,12 @@ Reports are especially useful for:
 - takeover capability leakage, replay, expiry, or revocation failures,
 - one-client lease bypass or implicit reload/tab/device transfer,
 - CSP / origin / cache / referrer boundary regressions,
-- any path where Human completion is interpreted as approval for a different consequential action.
+- any path where Human completion is interpreted as approval for a different consequential action,
+- external Human session overlap with restored Agent/automation authority, cross-principal/epoch reuse, or sensitive provider metadata retention.
 
 ## Non-goals that must remain non-goals
 
-Do not add or report a missing feature for CAPTCHA/challenge solving, anti-bot bypass, stealth/fingerprint spoofing, proxy rotation, credential/OTP/MFA/payment-data transport through MCP, raw CDP exposure, arbitrary browser automation, or automatic replay/approval of consequential actions.
+Do not add or report a missing feature for CAPTCHA/challenge solving, anti-bot bypass, stealth/fingerprint spoofing, proxy rotation, credential/OTP/MFA/payment-data transport through MCP, raw CDP exposure, arbitrary browser automation, or automatic replay/approval of consequential actions. Credential-safe external Human surfaces exist to leave an automation-incompatible credential surface, not to disguise automation as a supported login environment.
 
 ## Sensitive data
 

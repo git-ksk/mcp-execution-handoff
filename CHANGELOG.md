@@ -2,6 +2,13 @@
 
 All notable source releases are recorded here. npm publication, if introduced later, is a separate delivery channel and will be called out explicitly.
 
+## [Unreleased]
+
+- Added a credential-safe external Human surface provider contract and coordinator, separate from automation-adjacent browser takeover.
+- Added principal + intervention + resource-epoch binding, one-active-session enforcement, bounded provider metadata retention, and mandatory external-session revocation before automation restoration.
+- Added consumer policy selection for identity-sensitive intervention reasons without making provider-specific policy part of the generic core.
+- Documented the normal-browser credential lifecycle and the rule that automation/browser stealth must not be used to bypass provider login restrictions.
+
 ## [0.1.0] - 2026-08-15
 
 First source release.

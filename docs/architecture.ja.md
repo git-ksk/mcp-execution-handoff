@@ -20,6 +20,8 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- consumer adapter: browser.cinema
    |
    +---- optional browser takeover transport
+   |
+   +---- credential-safe external Human provider coordinator
 ```
 
 ## Lifecycle
@@ -46,6 +48,18 @@ raw argsやexecution contentは保存しません。recoveryは `reissue_and_rev
 MRTR requestStateはexact tool name、canonical args digest、intervention id、resource epoch、resume strategy、authenticated logical-principal bindingへbindします。
 
 authentication方式自体はlibraryの責務外です。consumerがstableかつnon-secretなprincipal bindingを作って明示的に渡します。
+
+## Credential-safe external Human surface
+
+external Human surfaceはcontrol-plane adapterであり、remote desktop実装ではありません。normal browserでのcredential entryを要求するproviderやautomation-adjacent execution environmentを拒否するprovider向けの境界です。
+
+consumerはまず通常handoff lifecycleへ入り、Humanへexclusive authorityを渡します。その後にだけ `CredentialSafeHumanSurfaceRuntime.begin()` でexternal operator sessionを作れます。sessionはactive intervention id / resource epoch / principal bindingへbindされ、同時activeは1つだけです。同じbindingでのduplicate beginだけidempotentです。
+
+provider出力から保持するのはprovider kind / intervention id / epoch / principal binding / session id / operator locator / optional expiryのbounded fieldのみです。追加provider dataは保持しません。credential、browser cookie、token、screenshot、DOM/network data、provider固有opaque metadataをcontinuity materialとして使ってはいけません。
+
+automationを戻す前にconsumerはexternal sessionをrevokeし、normal browser終了やdedicated profile lock解放などconsumer固有boundaryを確認します。その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。
+
+どのintervention reasonにこのsurfaceが必要かをpackageは決めません。`selectHumanSurface()` でconsumerごとのidentity-sensitive reason setを設定し、provider固有policyをgeneric coreへ持ち込みません。
 
 ## Browser takeover
 
