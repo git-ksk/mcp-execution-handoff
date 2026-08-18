@@ -8,6 +8,7 @@ export interface TakeoverBrowserAdapter {
         width: number;
         height: number;
         hostname: string;
+        mimeType?: "image/jpeg" | "image/png";
     }>;
     tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number): Promise<void>;
     scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void>;

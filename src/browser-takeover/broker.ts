@@ -12,6 +12,7 @@ export interface TakeoverBrowserAdapter {
     width: number;
     height: number;
     hostname: string;
+    mimeType?: "image/jpeg" | "image/png";
   }>;
   tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number): Promise<void>;
   scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void>;
@@ -197,7 +198,8 @@ export class TakeoverBroker {
         const frame = await this.browser.captureHumanTakeoverFrame(grant.interventionId, grant.epoch);
         const bytes = Buffer.from(frame.data, "base64");
         if (bytes.byteLength > 2_000_000) return json(503, { error: "frame_too_large" });
-        const headers = new Headers(privateHeaders("image/jpeg"));
+        const mimeType = frame.mimeType ?? "image/jpeg";
+        const headers = new Headers(privateHeaders(mimeType));
         headers.set("x-takeover-width", String(frame.width));
         headers.set("x-takeover-height", String(frame.height));
         headers.set("x-takeover-host", frame.hostname.slice(0, 120));
