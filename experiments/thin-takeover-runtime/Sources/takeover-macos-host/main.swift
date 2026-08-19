@@ -262,8 +262,6 @@ private final class EncodedFrameSender: @unchecked Sendable {
         frameIDLock.unlock()
 
         do {
-            // Encrypt once per encoded frame/config blob, then fragment the authenticated
-            // ciphertext. This keeps AEAD work O(frames), not O(datagrams).
             let sealed = try cipher.seal(
                 data,
                 sequence: id,
@@ -283,7 +281,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
                 try sender.send(header: slice.header, payload: sealed, payloadRange: slice.payloadRange)
             }
         } catch {
-            // Media is intentionally best-effort. Never fall back to unauthenticated output.
+            // Media is best-effort, but authentication is not. Never fall back to plaintext.
         }
     }
 }
@@ -320,10 +318,24 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
 struct MacHost {
     static func main() async throws {
         let host = CommandLine.arguments.dropFirst().first ?? "127.0.0.1"
-        let port = UInt16(CommandLine.arguments.dropFirst(2).first ?? "45555") ?? 45555
+        let videoPort = UInt16(CommandLine.arguments.dropFirst(2).first ?? "45555") ?? 45555
+        let defaultInputPort = videoPort == UInt16.max ? UInt16.max - 1 : videoPort + 1
+        let inputPort = UInt16(CommandLine.arguments.dropFirst(3).first ?? String(defaultInputPort)) ?? defaultInputPort
         let sessionConfiguration = try HostSessionConfiguration.load()
-        let sender = try DatagramSender(host: host, port: port)
+
+        let sender = try DatagramSender(host: host, port: videoPort)
         let frameSender = try EncodedFrameSender(sender: sender, configuration: sessionConfiguration)
+        let inputServer = try SecureInputServer(
+            bindHost: "0.0.0.0",
+            port: inputPort,
+            rootKey: sessionConfiguration.rootKey,
+            sessionHash: sessionConfiguration.sessionHash,
+            epoch: sessionConfiguration.epoch,
+            generation: sessionConfiguration.generation
+        )
+        _ = Task.detached(priority: .high) {
+            inputServer.run()
+        }
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else { fatalError("No display available") }
@@ -350,7 +362,8 @@ struct MacHost {
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
-        print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(host):\(port)")
+        print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(host):\(videoPort)")
+        print("accepting authenticated Human input on 0.0.0.0:\(inputPort)")
         print("session=\(String(sessionConfiguration.sessionHash, radix: 16)) epoch=\(sessionConfiguration.epoch) generation=\(sessionConfiguration.generation)")
         print("Press Ctrl-C to stop")
         while true { try await Task.sleep(for: .seconds(3600)) }
