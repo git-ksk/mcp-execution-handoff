@@ -2,6 +2,7 @@ import Foundation
 import TakeoverCore
 
 #if os(macOS)
+import CoreGraphics
 import CoreMedia
 import CoreVideo
 import ScreenCaptureKit
@@ -26,6 +27,7 @@ private struct HostSessionConfiguration {
     let generation: UInt32
     let expiresAtUnixMillis: UInt64
     let inputBindHost: String
+    let controlBindHost: String
 
     static func load() throws -> HostSessionConfiguration {
         let env = ProcessInfo.processInfo.environment
@@ -63,13 +65,18 @@ private struct HostSessionConfiguration {
         guard !inputBindHost.isEmpty else {
             throw HostConfigurationError.invalid("THIN_TAKEOVER_INPUT_BIND_HOST")
         }
+        let controlBindHost = env["THIN_TAKEOVER_CONTROL_BIND_HOST"] ?? "127.0.0.1"
+        guard !controlBindHost.isEmpty else {
+            throw HostConfigurationError.invalid("THIN_TAKEOVER_CONTROL_BIND_HOST")
+        }
         return HostSessionConfiguration(
             rootKey: rootKey,
             sessionHash: sessionHash,
             epoch: epoch,
             generation: generation,
             expiresAtUnixMillis: expiresAtUnixMillis,
-            inputBindHost: inputBindHost
+            inputBindHost: inputBindHost,
+            controlBindHost: controlBindHost
         )
     }
 
@@ -104,6 +111,17 @@ private func hexNibble(_ byte: UInt8) -> UInt8? {
     case 97...102: return byte - 87
     default: return nil
     }
+}
+
+private func adjacentPort(_ base: UInt16, offset: Int) -> UInt16 {
+    let upward = Int(base) + offset
+    if upward <= Int(UInt16.max) { return UInt16(upward) }
+    return UInt16(max(1, Int(base) - offset))
+}
+
+private func evenDimension(_ value: Double) -> Int {
+    let rounded = max(2, Int(value.rounded(.down)))
+    return rounded.isMultiple(of: 2) ? rounded : rounded - 1
 }
 
 private final class H264Encoder: @unchecked Sendable {
@@ -236,12 +254,19 @@ private final class EncodedFrameSender: @unchecked Sendable {
     private let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
     private let sender: DatagramSender
     private let cipher: TransportCipher
+    private let headerAuthenticator: VideoHeaderAuthenticator
     private let context: TransportCryptoContext
     private let lease: EphemeralSessionLease
 
     init(sender: DatagramSender, configuration: HostSessionConfiguration, lease: EphemeralSessionLease) throws {
         self.sender = sender
         self.cipher = try TransportCipher(rootKey: configuration.rootKey)
+        self.headerAuthenticator = try VideoHeaderAuthenticator(
+            rootKey: configuration.rootKey,
+            sessionHash: configuration.sessionHash,
+            epoch: configuration.epoch,
+            generation: configuration.generation
+        )
         self.context = TransportCryptoContext(
             sessionHash: configuration.sessionHash,
             epoch: configuration.epoch,
@@ -305,7 +330,8 @@ private final class EncodedFrameSender: @unchecked Sendable {
                 flags: flags
             ) { slice in
                 guard lease.isActive() else { return }
-                try sender.send(header: slice.header, payload: sealed, payloadRange: slice.payloadRange)
+                let authenticatedHeader = headerAuthenticator.authenticate(slice.header)
+                try sender.send(header: authenticatedHeader, payload: sealed, payloadRange: slice.payloadRange)
             }
         } catch {
             // Media is best-effort, but authentication is not. Never fall back to plaintext.
@@ -348,10 +374,36 @@ struct MacHost {
     static func main() async throws {
         let host = CommandLine.arguments.dropFirst().first ?? "127.0.0.1"
         let videoPort = UInt16(CommandLine.arguments.dropFirst(2).first ?? "45555") ?? 45555
-        let defaultInputPort = videoPort == UInt16.max ? UInt16.max - 1 : videoPort + 1
+        let defaultInputPort = adjacentPort(videoPort, offset: 1)
         let inputPort = UInt16(CommandLine.arguments.dropFirst(3).first ?? String(defaultInputPort)) ?? defaultInputPort
+        let defaultControlPort = adjacentPort(videoPort, offset: 2)
+        let controlPort = UInt16(CommandLine.arguments.dropFirst(4).first ?? String(defaultControlPort)) ?? defaultControlPort
+        guard videoPort != inputPort, videoPort != controlPort, inputPort != controlPort else {
+            throw HostConfigurationError.invalid("video/input/control ports must be distinct")
+        }
+
         let sessionConfiguration = try HostSessionConfiguration.load()
         let lease = try sessionConfiguration.makeLease()
+
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let mainDisplayID = CGMainDisplayID()
+        guard let display = content.displays.first(where: { $0.displayID == mainDisplayID }) ?? content.displays.first else {
+            fatalError("No display available")
+        }
+
+        let nativeWidth = Double(display.width)
+        let nativeHeight = Double(display.height)
+        let scale = min(1.0, min(1920.0 / nativeWidth, 1080.0 / nativeHeight))
+
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let config = SCStreamConfiguration()
+        config.width = evenDimension(nativeWidth * scale)
+        config.height = evenDimension(nativeHeight * scale)
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        config.queueDepth = 3
+        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        config.capturesAudio = false
+        config.showsCursor = false
 
         let sender = try DatagramSender(host: host, port: videoPort)
         let frameSender = try EncodedFrameSender(sender: sender, configuration: sessionConfiguration, lease: lease)
@@ -362,23 +414,20 @@ struct MacHost {
             sessionHash: sessionConfiguration.sessionHash,
             epoch: sessionConfiguration.epoch,
             generation: sessionConfiguration.generation,
+            displayID: display.displayID,
             lease: lease
         )
-        _ = Task.detached(priority: .high) {
-            inputServer.run()
-        }
-
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else { fatalError("No display available") }
-        let filter = SCContentFilter(display: display, excludingWindows: [])
-        let config = SCStreamConfiguration()
-        config.width = min(display.width, 1920)
-        config.height = min(display.height, 1080)
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        config.queueDepth = 3
-        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        config.capturesAudio = false
-        config.showsCursor = false
+        let controlServer = try SecureControlServer(
+            bindHost: sessionConfiguration.controlBindHost,
+            port: controlPort,
+            rootKey: sessionConfiguration.rootKey,
+            sessionHash: sessionConfiguration.sessionHash,
+            epoch: sessionConfiguration.epoch,
+            generation: sessionConfiguration.generation,
+            lease: lease
+        )
+        _ = Task.detached(priority: .high) { inputServer.run() }
+        _ = Task.detached(priority: .high) { controlServer.run() }
 
         let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { [frameSender] avccSample, codecConfig, capture, encodeDone, keyframe in
             frameSender.send(
@@ -394,17 +443,19 @@ struct MacHost {
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
         print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(host):\(videoPort)")
+        print("captured display=\(display.displayID) encoded=\(config.width)x\(config.height)")
         print("accepting authenticated Human input on \(sessionConfiguration.inputBindHost):\(inputPort)")
+        print("accepting authenticated revoke control on \(sessionConfiguration.controlBindHost):\(controlPort)")
         print("session=\(String(sessionConfiguration.sessionHash, radix: 16)) epoch=\(sessionConfiguration.epoch) generation=\(sessionConfiguration.generation)")
         print("transport expires_at_unix_ms=\(sessionConfiguration.expiresAtUnixMillis)")
         print("Press Ctrl-C to stop")
 
         while lease.isActive() {
-            try await Task.sleep(for: .milliseconds(200))
+            try await Task.sleep(for: .milliseconds(50))
         }
         lease.revoke()
         try? await stream.stopCapture()
-        print("takeover transport lease expired; capture/input revoked")
+        print("takeover transport revoked or expired; capture/input stopped")
     }
 }
 #else
