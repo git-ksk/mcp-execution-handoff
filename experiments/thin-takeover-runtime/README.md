@@ -1,6 +1,6 @@
 # Thin Takeover Runtime — v0.1 candidate
 
-> **Extraction-ready experiment.** This code currently lives under `mcp-execution-handoff/experiments` so it does not widen the parent package's public API. The runtime is designed to move to a standalone MIT-licensed repository once physical-device acceptance is complete.
+> **Extraction-ready OSS experiment.** This code currently lives under `mcp-execution-handoff/experiments` so it does not widen the parent package's public API. The subtree has its own MIT license, protocol, security model, benchmarks, and contribution rules and is designed to move to a standalone repository after physical-device acceptance.
 
 Thin Takeover Runtime is an ultra-low-latency media/input plane for **short-lived, authority-fenced Human Takeover**. It is deliberately not a permanent remote-desktop server.
 
@@ -9,7 +9,9 @@ Thin Takeover Runtime is an ultra-low-latency media/input plane for **short-live
 ```text
 Human authority from control plane
         │
-        ├─ short-lived session / epoch / generation / root key
+        ├─ session / epoch / generation
+        ├─ short-lived 32-byte root key
+        └─ absolute expiry
         │
 macOS ScreenCaptureKit
         ↓
@@ -31,7 +33,7 @@ bounded newest-frame reassembly
         ↓
 AEAD verify
         ↓
-VideoToolbox/native decoder adapter
+native decoder adapter
 
 Human input
         ↓
@@ -40,13 +42,14 @@ critical lane  ─ bounded retry + dedupe
         ↓
 per-event AEAD
         ↓
-bounded platform input adapter
+macOS bounded CoreGraphics input adapter
 ```
 
-The core currently includes:
+The core includes:
 
 - exclusive Agent/Human authority controller;
 - intervention / epoch / client-generation fencing primitives;
+- monotonic ephemeral session lease with explicit revoke and expiry;
 - frame admission (`maxInFlight=1`) to prevent stale encoder queues;
 - fixed-size MTU-aware video header and zero-copy-oriented packet descriptors;
 - non-blocking scatter/gather UDP send;
@@ -61,13 +64,33 @@ The core currently includes:
 The macOS host includes:
 
 - complete ScreenCaptureKit frame filtering;
-- 60 fps target and minimum capture queue;
+- 60 fps target and small capture queue;
 - VideoToolbox hardware H.264 request;
-- real-time mode, no B-frame reordering, zero frame delay request;
+- real-time mode, no B-frame reordering, zero frame-delay request;
 - speed-over-quality and zero-lookahead hints;
 - AVCC-native encoder output;
 - authenticated frame transport;
-- fail-closed startup if the control-plane session binding is absent.
+- authenticated realtime/critical Human input receiver;
+- bounded pointer/button/scroll/key/Unicode text injection;
+- fail-closed startup if session key, binding, or expiry is absent/invalid;
+- runtime media/input shutdown after lease expiry.
+
+## Validation
+
+The dedicated ARM64 macOS gate currently verifies **17/17 Swift tests**, release build, macOS host compile, frame AEAD, hardware H.264 encode/decode, packetization and UDP loss/buffer stress.
+
+Representative hosted-runner p50 results from the authenticated v0.1 baseline:
+
+| probe | p50 |
+|---|---:|
+| 32 KiB AEAD seal / open | 0.074 / 0.080 ms |
+| 128 KiB AEAD seal / open | 0.244 / 0.294 ms |
+| 720p hardware codec round trip | 7.667 ms |
+| 1080p hardware codec round trip | 12.474 ms |
+| 32 KiB complete localhost frame | 0.203 ms |
+| 128 KiB complete localhost frame, bounded 256 KiB receive buffer | 0.691 ms |
+
+These are synthetic hosted-runner probes, **not glass-to-glass claims**. See [BENCHMARKS.md](BENCHMARKS.md) for p95/p99, methodology and burst-loss results.
 
 ## Build and test
 
@@ -82,22 +105,28 @@ swift run -c release takeover-vt-bench 1280 720 180 20
 swift run -c release takeover-vt-codec-bench 1280 720 120 20
 ```
 
-See [BENCHMARKS.md](BENCHMARKS.md) for current numbers and methodology.
-
 ## macOS authenticated host
 
-The host intentionally has no insecure default session. A control plane must provide a short-lived binding:
+The host intentionally has no insecure default session. The authority/control plane must provide a short-lived binding. The example below is for development; production embeddings should inject and clear key material without putting it in command-line arguments or logs.
 
 ```bash
 export THIN_TAKEOVER_SESSION_KEY_HEX=<64 hex chars / 32 random bytes>
 export THIN_TAKEOVER_SESSION_HASH_HEX=<16 hex chars>
 export THIN_TAKEOVER_EPOCH=1
 export THIN_TAKEOVER_GENERATION=1
+export THIN_TAKEOVER_EXPIRES_AT_UNIX_MS=<future unix time in milliseconds>
 
-swift run -c release takeover-macos-host <client-ip> 45555
+# Safe default is loopback input binding. For a remote client, bind an explicitly approved local interface.
+export THIN_TAKEOVER_INPUT_BIND_HOST=192.0.2.10
+
+# args: <client-ip> [video-port] [input-port]
+# input-port defaults to video-port + 1
+swift run -c release takeover-macos-host <client-ip> 45555 45556
 ```
 
-Screen Recording permission is required. The root key must come from the authority/control plane and must not be persisted or logged.
+Screen Recording permission is required for capture, and macOS must permit the host process to inject the requested Human input. The root key must come from the authority/control plane and must not be persisted or logged.
+
+At expiry the local lease stops capture admission, frame transmission and Human input injection. Product-level Done/Cancel/revoke should still terminate or revoke the runtime immediately rather than waiting for expiry.
 
 ## Authority boundary
 
@@ -112,18 +141,18 @@ Human authority grant
   ↓
 short-lived authenticated media/input session
   ↓ Done / Cancel via control plane
-Human input revoke
+Human input revoke + local lease revoke
   ↓ epoch advance + old key invalidation
 fresh Agent attach
   ↓ fresh readiness / semantic verify
 Agent active
 ```
 
-Human completion is never authentication proof. Credential, MFA/OTP, passkey, cookie, token, typed text and framebuffer data must never be returned to MCP/model context or durable handoff state.
+Human completion is never authentication proof. Credential, MFA/OTP, passkey, cookie, token, typed secret text and framebuffer data must never be returned to MCP/model context or durable handoff state.
 
 Read [PROTOCOL.md](PROTOCOL.md) and [SECURITY.md](SECURITY.md) before integrating the runtime.
 
-## Performance direction
+## Performance policy
 
 The project optimizes for **freshness under bounded loss**, not perfect delivery:
 
@@ -133,16 +162,26 @@ The project optimizes for **freshness under bounded loss**, not perfect delivery
 - keyframe repair is short-deadline only;
 - realtime input is newest-wins;
 - critical input is deduplicated;
+- all media/input is bound to the active session generation and expiry;
 - control-plane authority stays reliable and separate from the media hot path.
 
-Current hosted ARM64 results show the UDP packet plane below the hardware codec cost. Physical Mac → native-client presentation measurements are still required before claiming glass-to-glass latency.
+## What remains before a physical v0.1 acceptance tag
 
-## Scope still intentionally outside v0.1 core
+The software/runtime contract is implemented and CI-gated. The remaining acceptance work requires a real operator path rather than more synthetic CI:
+
+1. physical Mac ScreenCaptureKit callback → encode timing;
+2. native client receive/reassembly/AEAD-open → hardware decode → actual presentation timing;
+3. physical network RTT/loss and input → OS injection → next-frame timing;
+4. mobile background/foreground/reconnect behavior through the existing handoff generation fencing.
+
+Those measurements determine transport tuning; they do not change the authority/security contract above.
+
+## Scope intentionally outside the core
 
 - signaling / NAT traversal / relay provider;
 - permanent remote access accounts;
 - audio, gamepad, HDR, virtual displays;
-- browser polling/screenshot transport;
+- browser screenshot polling;
 - CAPTCHA solving or credential automation;
 - authority issuance/authentication itself.
 
@@ -150,4 +189,4 @@ Browser and Windows/Linux capture/input adapters can reuse the same transport/se
 
 ## License and provenance
 
-This directory is covered by the parent repository's MIT license. Sunshine, Moonlight, Selkies, RustDesk and similar systems are architecture/performance references only; no source code is copied from them into this experiment.
+The subtree includes an MIT license. Sunshine, Moonlight, Selkies, RustDesk and similar systems are architecture/performance references only; no source code is copied from them into this runtime.
