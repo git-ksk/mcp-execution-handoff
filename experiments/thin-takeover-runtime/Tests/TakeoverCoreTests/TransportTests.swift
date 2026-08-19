@@ -14,7 +14,10 @@ import Testing
     let plaintext = Data("frame".utf8)
     let aad = Data([VideoPacketFlags.keyframe])
     let sealed = try cipher.seal(plaintext, sequence: 9, context: context, associatedData: aad)
+    let sealedAgain = try cipher.seal(plaintext, sequence: 9, context: context, associatedData: aad)
+    #expect(sealed != sealedAgain)
     #expect(try cipher.open(sealed, sequence: 9, context: context, associatedData: aad) == plaintext)
+    #expect(try cipher.open(sealedAgain, sequence: 9, context: context, associatedData: aad) == plaintext)
 
     let wrongEpoch = TransportCryptoContext(
         sessionHash: 11,
@@ -25,6 +28,9 @@ import Testing
     )
     #expect(throws: TransportCryptoError.authenticationFailed) {
         _ = try cipher.open(sealed, sequence: 9, context: wrongEpoch, associatedData: aad)
+    }
+    #expect(throws: TransportCryptoError.authenticationFailed) {
+        _ = try cipher.open(sealed, sequence: 10, context: context, associatedData: aad)
     }
 }
 
