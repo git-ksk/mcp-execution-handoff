@@ -19,7 +19,12 @@ struct LoopbackProbe {
         let frameCount = Int(CommandLine.arguments.dropFirst().first ?? "600") ?? 600
         let payloadBytes = Int(CommandLine.arguments.dropFirst(2).first ?? "32000") ?? 32_000
         let paceMillis = Int(CommandLine.arguments.dropFirst(3).first ?? "16") ?? 16
-        let receiver = try DatagramReceiver(port: port)
+        let receiveBufferBytes = Int(CommandLine.arguments.dropFirst(4).first ?? "262144") ?? 262_144
+        let receiver = try DatagramReceiver(
+            port: port,
+            receiveTimeoutMillis: 250,
+            receiveBufferBytes: receiveBufferBytes
+        )
         let sender = try DatagramSender(host: "127.0.0.1", port: port)
         let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
         let sessionHash: UInt64 = 0x12345678ABCDEF00
@@ -45,7 +50,7 @@ struct LoopbackProbe {
             var receivedPackets = 0
 
             while completeLatencies.count < frameCount {
-                guard let datagram = try receiver.receive(timeoutMillis: 250) else { break }
+                guard let datagram = try receiver.receiveOrTimeout() else { break }
                 receivedPackets += 1
                 let now = MonotonicClock.nowNanos()
                 let header = try VideoPacketHeader.decode(datagram)
@@ -101,7 +106,7 @@ struct LoopbackProbe {
         let packetDelivery = expectedPackets == 0 ? 1 : Double(result.receivedPackets) / Double(expectedPackets)
         let frameCompletion = frameCount == 0 ? 1 : Double(result.completeLatencies.count) / Double(frameCount)
 
-        print("frames_sent=\(frameCount) frames_complete=\(result.completeLatencies.count) payload_bytes=\(payloadBytes) pace_ms=\(paceMillis) elapsed_ms=\(String(format: "%.1f", elapsedMs))")
+        print("frames_sent=\(frameCount) frames_complete=\(result.completeLatencies.count) payload_bytes=\(payloadBytes) pace_ms=\(paceMillis) receive_buffer_bytes=\(receiveBufferBytes) elapsed_ms=\(String(format: "%.1f", elapsedMs))")
         print("packet_delivery_ratio=\(String(format: "%.5f", packetDelivery)) frame_completion_ratio=\(String(format: "%.5f", frameCompletion))")
         if let first = LatencySummary.summarize(samplesNanos: result.firstLatencies) {
             print("udp_first_packet_latency_ms p50=\(String(format: "%.3f", first.p50Millis)) p95=\(String(format: "%.3f", first.p95Millis)) p99=\(String(format: "%.3f", first.p99Millis)) max=\(String(format: "%.3f", first.maxMillis))")
