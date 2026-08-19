@@ -35,6 +35,8 @@ jobs:
       - name: Packetization benchmark
         run: swift run -c release takeover-packet-bench 2000 131072
       - name: Typical frame loopback
-        run: swift run -c release takeover-loopback 400 32000 1
-      - name: Keyframe burst stress
-        run: swift run -c release takeover-loopback 200 131072 16
+        run: swift run -c release takeover-loopback 400 32000 1 131072
+      - name: Keyframe constrained-buffer stress
+        run: swift run -c release takeover-loopback 200 131072 16 131072
+      - name: Keyframe one-frame-buffer stress
+        run: swift run -c release takeover-loopback 200 131072 16 262144
