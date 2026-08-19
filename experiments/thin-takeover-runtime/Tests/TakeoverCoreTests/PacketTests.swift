@@ -34,3 +34,44 @@ import Testing
     let first = try VideoPacketHeader.decode(packets[0])
     #expect(first.packetCount == UInt16(packets.count))
 }
+
+@Test func packetSlicesCoverPayloadWithoutOverlap() throws {
+    let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
+    let payloadBytes = 32_000
+    var slices: [VideoPacketSlice] = []
+    packetizer.forEachPacket(
+        payloadBytes: payloadBytes,
+        sessionHash: 1,
+        epoch: 2,
+        generation: 3,
+        frameID: 4,
+        captureNanos: 5,
+        encodeDoneNanos: 6,
+        keyframe: true
+    ) { slices.append($0) }
+
+    #expect(slices.first?.payloadRange.lowerBound == 0)
+    #expect(slices.last?.payloadRange.upperBound == payloadBytes)
+    for pair in zip(slices, slices.dropFirst()) {
+        #expect(pair.0.payloadRange.upperBound == pair.1.payloadRange.lowerBound)
+    }
+    #expect(slices.allSatisfy { $0.payloadRange.count + VideoPacketHeader.encodedSize <= 1200 })
+}
+
+@Test func frameAdmissionDropsInsteadOfQueueing() {
+    let gate = FrameAdmissionGate(maxInFlight: 1)
+    #expect(gate.tryAcquire())
+    #expect(!gate.tryAcquire())
+    var snapshot = gate.snapshot()
+    #expect(snapshot.accepted == 1)
+    #expect(snapshot.droppedBusy == 1)
+    #expect(snapshot.inFlight == 1)
+
+    gate.release()
+    #expect(gate.tryAcquire())
+    gate.release()
+    snapshot = gate.snapshot()
+    #expect(snapshot.accepted == 2)
+    #expect(snapshot.droppedBusy == 1)
+    #expect(snapshot.inFlight == 0)
+}

@@ -49,6 +49,45 @@ public final class DatagramSender: @unchecked Sendable {
         }
         guard sent == data.count else { throw DatagramSocketError.send(errno) }
     }
+
+    /// Sends one UDP datagram using two iovecs: the small protocol header and a slice of the
+    /// already-encoded video payload. This avoids allocating/copying a new payload Data for
+    /// every MTU-sized packet on the hot media path.
+    public func send(header: VideoPacketHeader, payload: Data, payloadRange: Range<Int>) throws {
+        precondition(payloadRange.lowerBound >= 0 && payloadRange.upperBound <= payload.count)
+        var dest = destination
+        let headerData = header.encode()
+
+        let sent: ssize_t = try headerData.withUnsafeBytes { headerRaw in
+            try payload.withUnsafeBytes { payloadRaw in
+                let payloadBase = payloadRaw.baseAddress?.advanced(by: payloadRange.lowerBound)
+                var vectors = [
+                    iovec(
+                        iov_base: UnsafeMutableRawPointer(mutating: headerRaw.baseAddress),
+                        iov_len: headerRaw.count
+                    ),
+                    iovec(
+                        iov_base: UnsafeMutableRawPointer(mutating: payloadBase),
+                        iov_len: payloadRange.count
+                    )
+                ]
+
+                return try vectors.withUnsafeMutableBufferPointer { vectorBuffer in
+                    try withUnsafePointer(to: &dest) { destPtr in
+                        var message = msghdr()
+                        message.msg_name = UnsafeMutableRawPointer(mutating: destPtr)
+                        message.msg_namelen = socklen_t(MemoryLayout<sockaddr_in>.size)
+                        message.msg_iov = vectorBuffer.baseAddress
+                        message.msg_iovlen = numericCast(vectorBuffer.count)
+                        let result = sendmsg(fd, &message, Int32(MSG_DONTWAIT))
+                        guard result >= 0 else { throw DatagramSocketError.send(errno) }
+                        return result
+                    }
+                }
+            }
+        }
+        guard sent == headerData.count + payloadRange.count else { throw DatagramSocketError.send(errno) }
+    }
 }
 
 public final class DatagramReceiver: @unchecked Sendable {
@@ -77,5 +116,16 @@ public final class DatagramReceiver: @unchecked Sendable {
         let count = recv(fd, &buffer, buffer.count, 0)
         guard count >= 0 else { throw DatagramSocketError.receive(errno) }
         return Data(buffer.prefix(Int(count)))
+    }
+
+    /// Returns nil when no datagram arrives before the deadline. Intended for bounded probes
+    /// and reconnect/liveness loops; the hot receiver can continue using blocking receive().
+    public func receive(maxBytes: Int = 2048, timeoutMillis: Int32) throws -> Data? {
+        precondition(timeoutMillis >= 0)
+        var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        let ready = poll(&descriptor, 1, timeoutMillis)
+        guard ready >= 0 else { throw DatagramSocketError.receive(errno) }
+        guard ready > 0 else { return nil }
+        return try receive(maxBytes: maxBytes)
     }
 }

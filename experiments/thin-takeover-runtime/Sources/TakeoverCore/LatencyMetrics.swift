@@ -6,6 +6,22 @@ public struct LatencySummary: Sendable, Equatable {
     public let p95Millis: Double
     public let p99Millis: Double
     public let maxMillis: Double
+
+    public static func summarize(samplesNanos: [UInt64]) -> LatencySummary? {
+        guard !samplesNanos.isEmpty else { return nil }
+        let sorted = samplesNanos.sorted()
+        func percentile(_ p: Double) -> Double {
+            let idx = min(sorted.count - 1, Int((Double(sorted.count - 1) * p).rounded()))
+            return Double(sorted[idx]) / 1_000_000.0
+        }
+        return LatencySummary(
+            count: sorted.count,
+            p50Millis: percentile(0.50),
+            p95Millis: percentile(0.95),
+            p99Millis: percentile(0.99),
+            maxMillis: Double(sorted.last!) / 1_000_000.0
+        )
+    }
 }
 
 public actor LatencyMetrics {
@@ -22,18 +38,6 @@ public actor LatencyMetrics {
     }
 
     public func summary() -> LatencySummary? {
-        guard !samplesNanos.isEmpty else { return nil }
-        let sorted = samplesNanos.sorted()
-        func percentile(_ p: Double) -> Double {
-            let idx = min(sorted.count - 1, Int((Double(sorted.count - 1) * p).rounded()))
-            return Double(sorted[idx]) / 1_000_000.0
-        }
-        return LatencySummary(
-            count: sorted.count,
-            p50Millis: percentile(0.50),
-            p95Millis: percentile(0.95),
-            p99Millis: percentile(0.99),
-            maxMillis: Double(sorted.last!) / 1_000_000.0
-        )
+        LatencySummary.summarize(samplesNanos: samplesNanos)
     }
 }

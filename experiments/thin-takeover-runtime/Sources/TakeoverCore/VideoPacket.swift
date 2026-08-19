@@ -86,6 +86,16 @@ public enum VideoPacketError: Error, Equatable {
     case invalidHeaderLength
 }
 
+public struct VideoPacketSlice: Sendable, Equatable {
+    public let header: VideoPacketHeader
+    public let payloadRange: Range<Int>
+
+    public init(header: VideoPacketHeader, payloadRange: Range<Int>) {
+        self.header = header
+        self.payloadRange = payloadRange
+    }
+}
+
 public struct VideoPacketizer: Sendable {
     public let maxDatagramBytes: Int
 
@@ -94,22 +104,25 @@ public struct VideoPacketizer: Sendable {
         self.maxDatagramBytes = maxDatagramBytes
     }
 
-    public func packetize(
-        payload: Data,
+    public func forEachPacket(
+        payloadBytes: Int,
         sessionHash: UInt64,
         epoch: UInt64,
         generation: UInt32,
         frameID: UInt64,
         captureNanos: UInt64,
         encodeDoneNanos: UInt64,
-        keyframe: Bool
-    ) -> [Data] {
+        keyframe: Bool,
+        _ body: (VideoPacketSlice) throws -> Void
+    ) rethrows {
+        precondition(payloadBytes >= 0)
         let maxPayload = maxDatagramBytes - VideoPacketHeader.encodedSize
-        let count = max(1, Int(ceil(Double(payload.count) / Double(maxPayload))))
+        let count = max(1, (payloadBytes + maxPayload - 1) / maxPayload)
         precondition(count <= Int(UInt16.max))
-        return (0..<count).map { index in
+
+        for index in 0..<count {
             let lower = index * maxPayload
-            let upper = min(payload.count, lower + maxPayload)
+            let upper = min(payloadBytes, lower + maxPayload)
             let header = VideoPacketHeader(
                 flags: keyframe ? 0x01 : 0,
                 sessionHash: sessionHash,
@@ -121,10 +134,40 @@ public struct VideoPacketizer: Sendable {
                 captureNanos: captureNanos,
                 encodeDoneNanos: encodeDoneNanos
             )
-            var datagram = header.encode()
-            if upper > lower { datagram.append(payload.subdata(in: lower..<upper)) }
-            return datagram
+            try body(VideoPacketSlice(header: header, payloadRange: lower..<upper))
         }
+    }
+
+    // Compatibility/reference path. The hot sender path should use forEachPacket + send(header:payload:range:)
+    // so encoded payload bytes are not copied once per UDP datagram.
+    public func packetize(
+        payload: Data,
+        sessionHash: UInt64,
+        epoch: UInt64,
+        generation: UInt32,
+        frameID: UInt64,
+        captureNanos: UInt64,
+        encodeDoneNanos: UInt64,
+        keyframe: Bool
+    ) -> [Data] {
+        var packets: [Data] = []
+        forEachPacket(
+            payloadBytes: payload.count,
+            sessionHash: sessionHash,
+            epoch: epoch,
+            generation: generation,
+            frameID: frameID,
+            captureNanos: captureNanos,
+            encodeDoneNanos: encodeDoneNanos,
+            keyframe: keyframe
+        ) { slice in
+            var datagram = slice.header.encode()
+            if !slice.payloadRange.isEmpty {
+                datagram.append(payload.subdata(in: slice.payloadRange))
+            }
+            packets.append(datagram)
+        }
+        return packets
     }
 }
 

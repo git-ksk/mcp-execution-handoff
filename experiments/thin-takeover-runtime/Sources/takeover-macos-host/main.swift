@@ -9,6 +9,7 @@ import VideoToolbox
 
 private final class H264Encoder: @unchecked Sendable {
     typealias Output = @Sendable (_ annexB: Data, _ captureNanos: UInt64, _ encodeDoneNanos: UInt64, _ keyframe: Bool) -> Void
+    typealias Completion = @Sendable () -> Void
 
     private var session: VTCompressionSession?
     private let output: Output
@@ -31,6 +32,7 @@ private final class H264Encoder: @unchecked Sendable {
             outputCallback: { refCon, sourceFrameRefCon, status, _, sampleBuffer in
                 guard let sourceFrameRefCon else { return }
                 let frameContext = Unmanaged<FrameContext>.fromOpaque(sourceFrameRefCon).takeRetainedValue()
+                frameContext.completion()
                 guard status == noErr, let refCon, let sampleBuffer else { return }
                 let encoder = Unmanaged<H264Encoder>.fromOpaque(refCon).takeUnretainedValue()
                 encoder.handle(sampleBuffer, captureNanos: frameContext.captureNanos)
@@ -44,6 +46,8 @@ private final class H264Encoder: @unchecked Sendable {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 0))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: NSNumber(value: fps))
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_SuggestedLookAheadFrameCount, value: NSNumber(value: 0))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: bitrate))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: fps * 2))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_Main_AutoLevel)
@@ -57,10 +61,10 @@ private final class H264Encoder: @unchecked Sendable {
         }
     }
 
-    func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime, captureNanos: UInt64) {
+    func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime, captureNanos: UInt64, completion: @escaping Completion) {
         guard let session else { return }
         var flags: VTEncodeInfoFlags = []
-        let context = Unmanaged.passRetained(FrameContext(captureNanos: captureNanos)).toOpaque()
+        let context = Unmanaged.passRetained(FrameContext(captureNanos: captureNanos, completion: completion)).toOpaque()
         let status = VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: pixelBuffer,
@@ -70,12 +74,19 @@ private final class H264Encoder: @unchecked Sendable {
             sourceFrameRefcon: context,
             infoFlagsOut: &flags
         )
-        if status != noErr { Unmanaged<FrameContext>.fromOpaque(context).release() }
+        if status != noErr {
+            Unmanaged<FrameContext>.fromOpaque(context).release()
+            completion()
+        }
     }
 
     private final class FrameContext {
         let captureNanos: UInt64
-        init(captureNanos: UInt64) { self.captureNanos = captureNanos }
+        let completion: Completion
+        init(captureNanos: UInt64, completion: @escaping Completion) {
+            self.captureNanos = captureNanos
+            self.completion = completion
+        }
     }
 
     private func handle(_ sampleBuffer: CMSampleBuffer, captureNanos: UInt64) {
@@ -132,9 +143,11 @@ private final class H264Encoder: @unchecked Sendable {
 private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable {
     let encoder: H264Encoder
     private var frameID: UInt64 = 0
+    private let frameIDLock = NSLock()
     private let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
     private let sender: DatagramSender
     private let sessionHash: UInt64
+    private let admission = FrameAdmissionGate(maxInFlight: 1)
 
     init(encoder: H264Encoder, sender: DatagramSender, sessionHash: UInt64) {
         self.encoder = encoder
@@ -144,15 +157,31 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        if let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+           let attachments = attachmentsArray.first,
+           let rawStatus = attachments[.status] as? Int,
+           let status = SCFrameStatus(rawValue: rawStatus),
+           status != .complete {
+            return
+        }
+        guard admission.tryAcquire() else { return }
         let captureNanos = MonotonicClock.nowNanos()
-        encoder.encode(pixel, pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer), captureNanos: captureNanos)
+        encoder.encode(
+            pixel,
+            pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+            captureNanos: captureNanos,
+            completion: { [admission] in admission.release() }
+        )
     }
 
     func sendEncoded(_ data: Data, captureNanos: UInt64, encodeDoneNanos: UInt64, keyframe: Bool) {
+        frameIDLock.lock()
         let id = frameID
         frameID &+= 1
-        let packets = packetizer.packetize(
-            payload: data,
+        frameIDLock.unlock()
+
+        try? packetizer.forEachPacket(
+            payloadBytes: data.count,
             sessionHash: sessionHash,
             epoch: 1,
             generation: 1,
@@ -160,8 +189,9 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
             captureNanos: captureNanos,
             encodeDoneNanos: encodeDoneNanos,
             keyframe: keyframe
-        )
-        for packet in packets { try? sender.send(packet) }
+        ) { slice in
+            try sender.send(header: slice.header, payload: data, payloadRange: slice.payloadRange)
+        }
     }
 }
 
