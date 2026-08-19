@@ -50,15 +50,13 @@ public final class DatagramSender: @unchecked Sendable {
         guard sent == data.count else { throw DatagramSocketError.send(errno) }
     }
 
-    /// Sends one UDP datagram using two iovecs: the small protocol header and a slice of the
-    /// already-encoded video payload. This avoids allocating/copying a new payload Data for
-    /// every MTU-sized packet on the hot media path.
+    /// Sends one UDP datagram using stack-backed header bytes plus a slice of the already-
+    /// encoded video payload. The payload and protocol header are not heap-copied per packet.
     public func send(header: VideoPacketHeader, payload: Data, payloadRange: Range<Int>) throws {
         precondition(payloadRange.lowerBound >= 0 && payloadRange.upperBound <= payload.count)
         var dest = destination
-        let headerData = header.encode()
 
-        let sent: ssize_t = try headerData.withUnsafeBytes { headerRaw in
+        let sent: ssize_t = try header.withEncodedBytes { headerRaw in
             try payload.withUnsafeBytes { payloadRaw in
                 let payloadBase = payloadRaw.baseAddress?.advanced(by: payloadRange.lowerBound)
                 var vectors = [
@@ -86,7 +84,7 @@ public final class DatagramSender: @unchecked Sendable {
                 }
             }
         }
-        guard sent == headerData.count + payloadRange.count else { throw DatagramSocketError.send(errno) }
+        guard sent == VideoPacketHeader.encodedSize + payloadRange.count else { throw DatagramSocketError.send(errno) }
     }
 }
 
@@ -140,8 +138,18 @@ public final class DatagramReceiver: @unchecked Sendable {
         return Data(buffer.prefix(Int(count)))
     }
 
-    /// Uses a socket-level receive deadline configured at init, keeping the common receive
-    /// path to one `recv` syscall per datagram instead of `poll` + `recv` for every packet.
+    /// Allocation-free receive primitive for a caller-owned reusable packet buffer.
+    public func receiveOrTimeout(into buffer: UnsafeMutableRawBufferPointer) throws -> Int? {
+        let count = recv(fd, buffer.baseAddress, buffer.count, 0)
+        if count < 0 {
+            if errno == EAGAIN || errno == EWOULDBLOCK { return nil }
+            throw DatagramSocketError.receive(errno)
+        }
+        return Int(count)
+    }
+
+    /// Data-returning convenience path. Latency-critical loops should reuse caller-owned
+    /// storage through `receiveOrTimeout(into:)`.
     public func receiveOrTimeout(maxBytes: Int = 2048) throws -> Data? {
         var buffer = [UInt8](repeating: 0, count: maxBytes)
         let count = recv(fd, &buffer, buffer.count, 0)
