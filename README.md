@@ -123,6 +123,8 @@ The provider/consumer must not expose credential material, MFA/OTP values, passk
 
 `browser-takeover` is optional. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
 
+Adapters may additionally expose a bounded frame stream. When present, the browser surface uses one authenticated streaming HTTP response to push frames and keeps input on the existing authenticated request path; the capability remains in headers and never moves into a WebSocket URL. If streaming is unavailable, the legacy polling frame path remains a compatibility fallback. The broker does not prescribe CDP, WebRTC, or any provider-specific capture transport.
+
 For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.
 
 Consumers remain responsible for:

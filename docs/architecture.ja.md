@@ -67,6 +67,8 @@ automationを戻す前にconsumerはexternal Human surfaceをrevokeし、consume
 
 optional brokerはtransport/sessionだけを担当します。public locatorにcapabilityは含めません。同一origin bootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneはcapability + principal binding + client binding一致が必須です。
 
+低遅延adapterでは、認証済みHTTP streaming response上のbounded frame streamを任意で使えます。変わるのはframe deliveryだけで、input、principal binding、epoch fencing、client generation、expiry、revocationの意味論は維持します。capture/backpressure policyはbrowser adapterの責務で、CDP / WebRTC / provider lifecycleはgeneric brokerの外です。
+
 新しいbindingは既存leaseを暗黙reclaimできません。native clientは明示的なclaim/reconnect APIを利用できます。reconnectにはsame authenticated principal、generation-bound reconnect handle、旧leaseがidleであることが必要です。成功時はclient generationをincrementし、capabilityとreconnect handleを両方rotateするため、旧client generationは即時fenceされます。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credential materialは含めません。
 
 brokerはtakeover可能surfaceを拡張できません。consumer browser adapterが自身のallowlistとcurrent epochで各操作を検証します。

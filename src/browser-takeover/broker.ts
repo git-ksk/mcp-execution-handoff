@@ -6,14 +6,21 @@ export interface TakeoverInterventionRef {
   epoch: number;
 }
 
+export interface TakeoverFrame {
+  data: string;
+  width: number;
+  height: number;
+  hostname: string;
+  mimeType?: "image/jpeg" | "image/png";
+}
+
 export interface TakeoverBrowserAdapter {
-  captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<{
-    data: string;
-    width: number;
-    height: number;
-    hostname: string;
-    mimeType?: "image/jpeg" | "image/png";
-  }>;
+  captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<TakeoverFrame>;
+  streamHumanTakeoverFrames?(
+    interventionId: string,
+    epoch: number,
+    signal: AbortSignal
+  ): AsyncIterable<TakeoverFrame> | undefined;
   tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number): Promise<void>;
   scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void>;
   insertHumanTakeoverText(interventionId: string, epoch: number, text: string): Promise<void>;
@@ -51,20 +58,23 @@ const parts=location.pathname.split('/').filter(Boolean);const sessionId=parts.l
 const statusEl=document.querySelector('#status');
 const frame=document.querySelector('#frame');
 const screen=document.querySelector('#screen');
-let cap='';let viewport={width:1,height:1};let stopped=false;let objectUrl='';
+let cap='';let viewport={width:1,height:1};let stopped=false;let objectUrl='';let streaming=false;
 function status(text){statusEl.textContent=text}
 function randomClientBinding(){const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);let binary='';for(let i=0;i<bytes.length;i+=1)binary+=String.fromCharCode(bytes[i]);return btoa(binary).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')}
 const clientBinding=randomClientBinding();
 async function bootstrap(){const response=await fetch('/takeover/api/bootstrap/'+encodeURIComponent(sessionId),{cache:'no-store',headers:{'x-takeover-client':clientBinding}});if(!response.ok)throw new Error('bootstrap unavailable');const data=await response.json();if(!data.capability)throw new Error('missing capability');cap=data.capability}
 async function api(path,options){const opts=options||{};const headers=Object.assign({},opts.headers||{}, {'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding});const response=await fetch('/takeover/api/'+path+'/'+encodeURIComponent(sessionId),Object.assign({},opts,{headers:headers,cache:'no-store'}));if(!response.ok)throw new Error('takeover unavailable');return response}
-async function refresh(){if(stopped)return;try{const r=await api('frame');viewport={width:Number(r.headers.get('x-takeover-width'))||1,height:Number(r.headers.get('x-takeover-height'))||1};const host=r.headers.get('x-takeover-host')||'Browser';const blob=await r.blob();const next=URL.createObjectURL(blob);frame.onload=function(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status(host+' · live')}catch(e){status('Session unavailable, expired, or already active elsewhere');stopped=true;return}setTimeout(refresh,700)}
-async function input(body){try{await api('input',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});setTimeout(refresh,100)}catch(e){status('Input rejected or session active elsewhere');stopped=true}}
+function showFrame(bytes,meta){viewport={width:Number(meta.width)||1,height:Number(meta.height)||1};const next=URL.createObjectURL(new Blob([bytes],{type:meta.mimeType||'image/jpeg'}));frame.onload=function(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status((meta.hostname||'Browser')+' · live')}
+async function refresh(){if(stopped||streaming)return;try{const r=await api('frame');viewport={width:Number(r.headers.get('x-takeover-width'))||1,height:Number(r.headers.get('x-takeover-height'))||1};const host=r.headers.get('x-takeover-host')||'Browser';const blob=await r.blob();const next=URL.createObjectURL(blob);frame.onload=function(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=next};frame.src=next;status(host+' · live')}catch(e){status('Session unavailable, expired, or already active elsewhere');stopped=true;return}setTimeout(refresh,700)}
+function concat(a,b){const out=new Uint8Array(a.length+b.length);out.set(a);out.set(b,a.length);return out}
+async function stream(){let response;try{response=await api('stream')}catch(e){return false}if(!response.body)return false;streaming=true;let pending=new Uint8Array(0);const reader=response.body.getReader();const decoder=new TextDecoder();try{while(!stopped){const part=await reader.read();if(part.done)break;if(part.value)pending=concat(pending,part.value);for(;;){if(pending.length<8)break;const view=new DataView(pending.buffer,pending.byteOffset,pending.byteLength);const metaLength=view.getUint32(0);const imageLength=view.getUint32(4);if(metaLength<2||metaLength>2048||imageLength<1||imageLength>2000000)throw new Error('invalid stream frame');const total=8+metaLength+imageLength;if(pending.length<total)break;const meta=JSON.parse(decoder.decode(pending.slice(8,8+metaLength)));const image=pending.slice(8+metaLength,total);pending=pending.slice(total);showFrame(image,meta)}}}catch(e){if(!stopped){streaming=false;return false}}finally{try{reader.releaseLock()}catch{}}if(!stopped)streaming=false;return false}
+async function input(body){try{await api('input',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!streaming)setTimeout(refresh,60)}catch(e){status('Input rejected or session active elsewhere');stopped=true}}
 screen.addEventListener('click',function(event){const r=frame.getBoundingClientRect();if(!r.width||!r.height)return;const x=Math.max(0,Math.min(viewport.width,(event.clientX-r.left)*viewport.width/r.width));const y=Math.max(0,Math.min(viewport.height,(event.clientY-r.top)*viewport.height/r.height));void input({kind:'tap',x:x,y:y})});
 document.querySelectorAll('[data-scroll]').forEach(function(el){el.addEventListener('click',function(){void input({kind:'scroll',deltaY:Number(el.dataset.scroll)})})});
 document.querySelectorAll('[data-key]').forEach(function(el){el.addEventListener('click',function(){void input({kind:'key',key:el.dataset.key})})});
 document.querySelector('#send').addEventListener('click',function(){const field=document.querySelector('#text');const text=field.value;if(text){field.value='';void input({kind:'text',text:text})}});
 document.querySelector('#done').addEventListener('click',async function(){try{await api('done',{method:'POST'});status('Remote control closed. Return to the requesting workflow.');stopped=true}catch(e){status('Session already closed')}});
-void bootstrap().then(refresh).catch(function(){status('Session unavailable, expired, or already active elsewhere');stopped=true});
+void bootstrap().then(async function(){const active=await stream();if(!active&&!stopped)refresh()}).catch(function(){status('Session unavailable, expired, or already active elsewhere');stopped=true});
 })();`;
 }
 
@@ -164,7 +174,7 @@ export class TakeoverBroker {
       return new Response(request.method === "HEAD" ? null : pageHtml(nonce), { status: 200, headers });
     }
 
-    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|frame|input|done)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
+    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|stream|frame|input|done)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (!apiMatch) return json(404, { error: "not_found" });
     const operation = apiMatch[1]!;
     const id = apiMatch[2]!;
@@ -234,6 +244,80 @@ export class TakeoverBroker {
       request.headers.get("authorization")
     );
     if (!capability) return json(404, { error: "takeover_unavailable" });
+
+    if (operation === "stream") {
+      if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
+      let grant: ReturnType<TakeoverSessionManager["beginUse"]>;
+      try {
+        grant = this.sessions.beginUse(id, capability, boundPrincipal, clientBinding);
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
+
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      request.signal.addEventListener("abort", abort, { once: true });
+      const ttlMs = Math.max(1, grant.expiresAt - Date.now());
+      const expiry = setTimeout(abort, ttlMs);
+      const frames = this.browser.streamHumanTakeoverFrames?.(
+        grant.interventionId,
+        grant.epoch,
+        controller.signal
+      );
+      if (!frames) {
+        clearTimeout(expiry);
+        request.signal.removeEventListener("abort", abort);
+        this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
+        return json(404, { error: "frame_stream_unavailable" });
+      }
+
+      let finalized = false;
+      const finalize = () => {
+        if (finalized) return;
+        finalized = true;
+        clearTimeout(expiry);
+        request.signal.removeEventListener("abort", abort);
+        this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
+      };
+      const stream = new ReadableStream<Uint8Array>({
+        async start(streamController) {
+          try {
+            for await (const frame of frames) {
+              if (controller.signal.aborted) break;
+              const bytes = Buffer.from(frame.data, "base64");
+              if (bytes.byteLength < 1 || bytes.byteLength > 2_000_000) continue;
+              const metadata = Buffer.from(JSON.stringify({
+                width: frame.width,
+                height: frame.height,
+                hostname: frame.hostname.slice(0, 120),
+                mimeType: frame.mimeType ?? "image/jpeg"
+              }), "utf8");
+              if (metadata.byteLength > 2_048) continue;
+              const prefix = Buffer.allocUnsafe(8);
+              prefix.writeUInt32BE(metadata.byteLength, 0);
+              prefix.writeUInt32BE(bytes.byteLength, 4);
+              streamController.enqueue(prefix);
+              streamController.enqueue(metadata);
+              streamController.enqueue(bytes);
+            }
+            streamController.close();
+          } catch {
+            if (!controller.signal.aborted) streamController.error(new Error("takeover frame stream stopped"));
+            else streamController.close();
+          } finally {
+            finalize();
+          }
+        },
+        cancel() {
+          abort();
+          finalize();
+        }
+      });
+      const headers = new Headers(privateHeaders("application/octet-stream"));
+      headers.set("x-takeover-stream", "1");
+      return new Response(stream, { status: 200, headers });
+    }
 
     if (operation === "frame") {
       if (request.method !== "GET") return json(405, { error: "method_not_allowed" });

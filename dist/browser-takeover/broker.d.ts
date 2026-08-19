@@ -2,14 +2,16 @@ export interface TakeoverInterventionRef {
     id: string;
     epoch: number;
 }
+export interface TakeoverFrame {
+    data: string;
+    width: number;
+    height: number;
+    hostname: string;
+    mimeType?: "image/jpeg" | "image/png";
+}
 export interface TakeoverBrowserAdapter {
-    captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<{
-        data: string;
-        width: number;
-        height: number;
-        hostname: string;
-        mimeType?: "image/jpeg" | "image/png";
-    }>;
+    captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<TakeoverFrame>;
+    streamHumanTakeoverFrames?(interventionId: string, epoch: number, signal: AbortSignal): AsyncIterable<TakeoverFrame> | undefined;
     tapHumanTakeover(interventionId: string, epoch: number, x: number, y: number): Promise<void>;
     scrollHumanTakeover(interventionId: string, epoch: number, deltaY: number): Promise<void>;
     insertHumanTakeoverText(interventionId: string, epoch: number, text: string): Promise<void>;

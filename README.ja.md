@@ -90,6 +90,8 @@ provider/consumerはcredential、MFA/OTP、passkey material、cookie、browser-s
 
 `browser-takeover` はoptionalです。brokerが知るintervention情報は `{ id, epoch }` のみで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
+adapterはboundedなframe streamも任意で提供できます。利用可能ならbrowser surfaceは認証済みHTTP streaming response 1本でframeをpushし、inputは既存の認証済みrequest pathを使います。capabilityはheader内に維持し、WebSocket URLへ移しません。streaming未実装adapterでは従来のpolling frame pathへ互換fallbackします。broker自体はCDP / WebRTC / provider固有capture transportを規定しません。
+
 native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。旧clientがidleで、authenticated principalが一致し、generation-bound reconnect handleが一致した場合だけ新generationへrotateします。成功時は旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含めません。
 
 surface eligibility、native browser restriction、postcondition verification、authentication/principal derivation、sensitive data境界はconsumer adapter側の責務です。

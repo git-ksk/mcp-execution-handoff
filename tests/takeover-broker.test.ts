@@ -97,6 +97,8 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.match(script, /const clientBinding=randomClientBinding\(\)/);
   assert.match(script, /x-takeover-client/);
   assert.match(script, /x-mcp-takeover-capability/);
+  assert.match(script, /api\('stream'\)/);
+  assert.match(script, /response\.body\.getReader/);
   assert.doesNotMatch(script, /authorization['"]?\s*:/i);
   assert.doesNotMatch(script, /sessionStorage|localStorage/);
 
@@ -121,6 +123,81 @@ test("takeover link is locator-only and the external client stays nonce-bound an
     }
   }), PRINCIPAL_A);
   assert.equal(crossSiteBootstrap.status, 403);
+});
+
+test("push frame stream keeps the capability in headers and emits bounded binary frames", async () => {
+  const browser: TakeoverBrowserAdapter = {
+    async captureHumanTakeoverFrame() {
+      throw new Error("polling fallback should not be used");
+    },
+    async *streamHumanTakeoverFrames(interventionId, epoch, signal) {
+      assert.equal(interventionId, "stream-intervention");
+      assert.equal(epoch, 3);
+      assert.equal(signal.aborted, false);
+      yield {
+        data: Buffer.from("frame-one").toString("base64"),
+        width: 800,
+        height: 600,
+        hostname: "accounts.google.com"
+      };
+      yield {
+        data: Buffer.from("frame-two").toString("base64"),
+        width: 800,
+        height: 600,
+        hostname: "accounts.google.com",
+        mimeType: "image/png"
+      };
+    },
+    async tapHumanTakeover() {},
+    async scrollHumanTakeover() {},
+    async insertHumanTakeoverText() {},
+    async pressHumanTakeoverKey() {}
+  };
+  const broker = new TakeoverBroker(browser, { enabled: true, publicBaseUrl: "https://takeover.example", ttlMs: 60_000 });
+  const link = broker.createLink({ id: "stream-intervention", epoch: 3 }, PRINCIPAL_A);
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1);
+  assert.ok(sessionId);
+  const capability = await bootstrap(broker, sessionId);
+  const response = await broker.handle(new Request(`http://localhost/takeover/api/stream/${sessionId}`, {
+    headers: {
+      "x-mcp-takeover-capability": capability,
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-takeover-stream"), "1");
+  assert.equal(response.headers.get("content-type"), "application/octet-stream");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const frames: Array<{ meta: Record<string, unknown>; image: string }> = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    const metaLength = bytes.readUInt32BE(offset);
+    const imageLength = bytes.readUInt32BE(offset + 4);
+    offset += 8;
+    const meta = JSON.parse(bytes.subarray(offset, offset + metaLength).toString("utf8")) as Record<string, unknown>;
+    offset += metaLength;
+    const image = bytes.subarray(offset, offset + imageLength).toString("utf8");
+    offset += imageLength;
+    frames.push({ meta, image });
+  }
+  assert.deepEqual(frames, [
+    { meta: { width: 800, height: 600, hostname: "accounts.google.com", mimeType: "image/jpeg" }, image: "frame-one" },
+    { meta: { width: 800, height: 600, hostname: "accounts.google.com", mimeType: "image/png" }, image: "frame-two" }
+  ]);
+});
+
+test("push frame stream falls back cleanly when an adapter does not implement streaming", async () => {
+  const { broker, sessionId } = fixture();
+  const capability = await bootstrap(broker, sessionId);
+  const response = await broker.handle(new Request(`http://localhost/takeover/api/stream/${sessionId}`, {
+    headers: {
+      "x-mcp-takeover-capability": capability,
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { error: "frame_stream_unavailable" });
 });
 
 test("adapter may return PNG frames without browser-side conversion", async () => {
