@@ -57,7 +57,9 @@ consumerはまず通常handoff lifecycleへ入り、Humanへexclusive authority�
 
 provider出力から保持するのはprovider kind / intervention id / epoch / principal binding / session id / operator locator / optional expiryのbounded fieldのみです。追加provider dataは保持しません。credential、browser cookie、token、screenshot、DOM/network data、provider固有opaque metadataをcontinuity materialとして使ってはいけません。
 
-automationを戻す前にconsumerはexternal sessionをrevokeし、normal browser終了やdedicated profile lock解放などconsumer固有boundaryを確認します。その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。
+automationを戻す前にconsumerはexternal Human surfaceをrevokeし、consumer固有execution boundaryを確認します。local profile-switch ownerならnormal browser終了とdedicated profile lock解放を確認します。hosted shared-session ownerならexact browser sessionをHuman authority中も維持し、automation clientだけdetachし、Live View handoffをrevokeしてからsame browser sessionへfresh automation attachmentを作ります。browser ownership / provider lifecycleはgeneric coreではなくconsumer責任です。
+
+その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。credential/MFA/passkey/cookie/browser-session bearer material/provider API keyはMCP/model/log外に置き、northboundへ出すlocator自体をsecret bearer capabilityにしてはいけません。Passkey/WebAuthnはHuman/provider controlのままでbypassしません。
 
 どのintervention reasonにこのsurfaceが必要かをpackageは決めません。`selectHumanSurface()` でconsumerごとのidentity-sensitive reason setを設定し、provider固有policyをgeneric coreへ持ち込みません。
 

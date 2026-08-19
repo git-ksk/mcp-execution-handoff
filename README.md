@@ -84,23 +84,38 @@ A consumer must apply the stricter effective result. In particular, `require_fre
 
 Some identity providers reject or forbid credential entry in software-controlled or embedded browser contexts. In that case, consumers should not make the automation-adjacent `browser-takeover` transport more evasive. Instead, use the `CredentialSafeHumanSurfaceRuntime` with a pluggable external Human provider.
 
-The generic core deliberately does **not** implement remote desktop. A provider may point the operator to an existing remote-access product or another normal-browser Human surface. The consumer remains responsible for suspending its automation runtime completely before credential entry, launching the same dedicated non-default browser profile without CDP/remote-debugging/automation attachment, and refusing to restore automation until the external session is revoked and the profile is no longer owned by the normal browser process.
+The generic core deliberately does **not** implement remote desktop, hosted-browser lifecycle, or browser ownership. A provider may point the operator to an existing OS-level remote-access product, a normal-browser Human surface, or a hosted browser Live View. The consumer owns the execution boundary and must choose a lifecycle that matches its browser backend.
 
-A browser-backed consumer should follow this lifecycle:
+Two browser-backed patterns are intentionally supported without widening the generic contract:
 
 ```text
-automation profile + CDP
-  -> identity-sensitive intervention
-  -> Human authority becomes exclusive
-  -> stop automation browser completely
-  -> open same dedicated profile in normal browser (no CDP)
-  -> Human authenticates through an external provider
-  -> revoke/close external provider session
-  -> close normal browser and verify profile lock release
-  -> relaunch automation browser
-  -> fresh readiness / semantic validation
+local profile-switch owner
+  automation profile + CDP
+    -> identity-sensitive intervention
+    -> Human authority becomes exclusive
+    -> detach/stop automation browser completely
+    -> open same dedicated profile in normal browser (no CDP)
+    -> Human authenticates through external Human surface
+    -> revoke Human surface
+    -> close normal browser + verify profile lock release
+    -> relaunch automation browser
+    -> fresh readiness / semantic validation
+
+hosted shared-session owner
+  stateful hosted browser session + automation CDP
+    -> identity-sensitive intervention
+    -> Human authority becomes exclusive
+    -> detach automation client while keeping the browser session alive
+    -> Human uses provider Live View for that exact browser session
+    -> revoke Human surface
+    -> fresh automation attach to the same browser session
+    -> fresh readiness / semantic validation
+
+both
   -> never replay stale pre-auth state
 ```
+
+The provider/consumer must not expose credential material, MFA/OTP values, passkey material, cookies, browser-session bearer material, or provider API keys through MCP/model/logs. If an operator locator is returned through MCP, it must be safe to disclose as a locator rather than acting as a secret bearer capability. Passkey/WebAuthn ceremonies remain Human/provider controlled; this library does not bypass or synthesize them.
 
 `selectHumanSurface()` is a small policy helper for consumers to route configured reasons such as sign-in/consent to `credential_safe_external` while leaving other interventions on `automation_adjacent`. The core does not decide which reasons are identity-sensitive.
 

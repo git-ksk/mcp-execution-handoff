@@ -53,21 +53,36 @@ consumerは常に厳しい方を採用します。`require_fresh_semantic_action
 
 Identity providerによっては、software-controlled / embedded browser上でのcredential entry自体を拒否・禁止します。その場合、automation-adjacentな `browser-takeover` をstealth化するのではなく、`CredentialSafeHumanSurfaceRuntime` とpluggable external Human providerを使います。
 
-generic coreはremote desktopを実装しません。providerは既存remote-access製品やnormal-browser Human surfaceへのoperator locatorを返せます。consumerはcredential entry前にautomation runtimeを完全停止し、同じdedicated non-default profileをCDP / remote-debugging / automation attachmentなしのnormal browserで起動し、external sessionをrevokeしてnormal browserがprofileを解放するまでautomationを再開しない責任を持ちます。
+generic coreはremote desktop、hosted-browser lifecycle、browser ownershipを実装しません。providerは既存OS-level remote-access製品、normal-browser Human surface、またはhosted browser Live Viewへのoperator locatorを返せます。execution boundaryはconsumerが所有し、browser backendに応じたlifecycleを選びます。
 
 ```text
-automation profile + CDP
-  -> identity-sensitive intervention
-  -> Human authority exclusive
-  -> automation browser完全停止
-  -> same dedicated profileをnormal browserで起動（CDPなし）
-  -> external provider経由でHuman認証
-  -> external provider session revoke/close
-  -> normal browser終了 + profile lock解放確認
-  -> automation browser再起動
-  -> fresh readiness / semantic validation
+local profile-switch owner
+  automation profile + CDP
+    -> identity-sensitive intervention
+    -> Human authority exclusive
+    -> automation browserをdetach/完全停止
+    -> same dedicated profileをnormal browserで起動（CDPなし）
+    -> external Human surface経由でHuman認証
+    -> Human surface revoke
+    -> normal browser終了 + profile lock解放確認
+    -> automation browser再起動
+    -> fresh readiness / semantic validation
+
+hosted shared-session owner
+  stateful hosted browser session + automation CDP
+    -> identity-sensitive intervention
+    -> Human authority exclusive
+    -> browser sessionを維持したままautomation clientだけdetach
+    -> exact same browser sessionのprovider Live ViewでHuman操作
+    -> Human surface revoke
+    -> same browser sessionへautomationをfresh attach
+    -> fresh readiness / semantic validation
+
+both
   -> stale pre-auth stateをreplayしない
 ```
+
+provider/consumerはcredential、MFA/OTP、passkey material、cookie、browser-session bearer material、provider API keyをMCP/model/logへ出してはいけません。operator locatorをMCP経由で返す場合、そのlocator自体がsecret bearer capabilityにならないことをconsumer側で保証します。Passkey/WebAuthn ceremonyはHuman/provider controlのままで、このlibraryはbypass/synthesizeしません。
 
 `selectHumanSurface()` は、consumerが設定したsign-in / consent等のreasonだけを `credential_safe_external` に振り分ける小さなpolicy helperです。どのreasonがidentity-sensitiveかをgeneric coreは決めません。
 
