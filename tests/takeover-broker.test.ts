@@ -503,3 +503,59 @@ test("native reconnect fences the prior client generation after the lease become
   assert.equal(freshClient.status, 200);
   assert.deepEqual(calls.at(-1), ["frame", "reconnect-intervention", 4]);
 });
+
+test("revoking an intervention aborts its active push frame stream", async () => {
+  let observedAbort = false;
+  const browser: TakeoverBrowserAdapter = {
+    async captureHumanTakeoverFrame() {
+      throw new Error("polling fallback should not be used");
+    },
+    async *streamHumanTakeoverFrames(_interventionId, _epoch, signal) {
+      yield {
+        data: Buffer.from("initial-frame").toString("base64"),
+        width: 640,
+        height: 480,
+        hostname: "accounts.google.com"
+      };
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          observedAbort = true;
+          resolve();
+          return;
+        }
+        signal.addEventListener("abort", () => {
+          observedAbort = true;
+          resolve();
+        }, { once: true });
+      });
+    },
+    async tapHumanTakeover() {},
+    async scrollHumanTakeover() {},
+    async insertHumanTakeoverText() {},
+    async pressHumanTakeoverKey() {}
+  };
+  const broker = new TakeoverBroker(browser, { enabled: true, publicBaseUrl: "https://takeover.example", ttlMs: 60_000 });
+  const link = broker.createLink({ id: "revoke-stream-intervention", epoch: 7 }, PRINCIPAL_A);
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1);
+  assert.ok(sessionId);
+  const capability = await bootstrap(broker, sessionId);
+  const response = await broker.handle(new Request(`http://localhost/takeover/api/stream/${sessionId}`, {
+    headers: {
+      "x-mcp-takeover-capability": capability,
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL_A);
+  assert.equal(response.status, 200);
+  const reader = response.body!.getReader();
+  const first = await reader.read();
+  assert.equal(first.done, false);
+
+  broker.revokeForIntervention("revoke-stream-intervention");
+  let done = false;
+  for (let i = 0; i < 8 && !done; i += 1) {
+    done = (await reader.read()).done;
+  }
+  assert.equal(done, true);
+  assert.equal(observedAbort, true);
+});

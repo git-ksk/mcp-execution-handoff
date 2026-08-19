@@ -53,7 +53,7 @@ consumerは常に厳しい方を採用します。`require_fresh_semantic_action
 
 Identity providerによっては、software-controlled / embedded browser上でのcredential entry自体を拒否・禁止します。その場合、automation-adjacentな `browser-takeover` をstealth化するのではなく、`CredentialSafeHumanSurfaceRuntime` とpluggable external Human providerを使います。
 
-generic coreはremote desktop、hosted-browser lifecycle、browser ownershipを実装しません。providerは既存OS-level remote-access製品、normal-browser Human surface、またはhosted browser Live Viewへのoperator locatorを返せます。execution boundaryはconsumerが所有し、browser backendに応じたlifecycleを選びます。
+generic coreはremote desktop、browser capture/encode、browser ownershipを実装しません。providerは既存OS-level surface、normal-browser Human surface、またはconsumer-owned low-latency takeover runtimeへのoperator locatorを返せます。execution boundaryとcapture/input実装はconsumerが所有します。
 
 ```text
 local profile-switch owner
@@ -68,13 +68,14 @@ local profile-switch owner
     -> automation browser再起動
     -> fresh readiness / semantic validation
 
-hosted shared-session owner
-  stateful hosted browser session + automation CDP
+same-session Thin Takeover owner
+  stateful browser session + Agent-owned automation attachment
     -> identity-sensitive intervention
     -> Human authority exclusive
-    -> browser sessionを維持したままautomation clientだけdetach
-    -> exact same browser sessionのprovider Live ViewでHuman操作
-    -> Human surface revoke
+    -> Agent-owned automation input authorityをdetach + fence
+    -> consumer-owned Human runtimeがintervention/epoch-boundなcapture/input attachmentを持てる
+    -> Human surface revoke + active frame transport abort
+    -> Human-owned attachment終了
     -> same browser sessionへautomationをfresh attach
     -> fresh readiness / semantic validation
 
@@ -90,7 +91,7 @@ provider/consumerはcredential、MFA/OTP、passkey material、cookie、browser-s
 
 `browser-takeover` はoptionalです。brokerが知るintervention情報は `{ id, epoch }` のみで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
-adapterはboundedなframe streamも任意で提供できます。利用可能ならbrowser surfaceは認証済みHTTP streaming response 1本でframeをpushし、inputは既存の認証済みrequest pathを使います。capabilityはheader内に維持し、WebSocket URLへ移しません。streaming未実装adapterでは従来のpolling frame pathへ互換fallbackします。broker自体はCDP / WebRTC / provider固有capture transportを規定しません。
+adapterはboundedなframe streamも任意で提供できます。利用可能ならbrowser surfaceは認証済みHTTP streaming response 1本でframeをpushし、inputは既存の認証済みrequest pathを使います。capabilityはheader内に維持し、WebSocket URLへ移しません。revoke時はそのinterventionのactive streamをabortします。streaming未実装adapterでは従来のpolling frame pathへ互換fallbackします。broker自体はCDP / encoded-image passthrough / raw-frame encode / WebRTC / provider固有capture transportを規定しません。
 
 native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。旧clientがidleで、authenticated principalが一致し、generation-bound reconnect handleが一致した場合だけ新generationへrotateします。成功時は旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含めません。
 

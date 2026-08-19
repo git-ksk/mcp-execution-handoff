@@ -57,7 +57,7 @@ consumerはまず通常handoff lifecycleへ入り、Humanへexclusive authority�
 
 provider出力から保持するのはprovider kind / intervention id / epoch / principal binding / session id / operator locator / optional expiryのbounded fieldのみです。追加provider dataは保持しません。credential、browser cookie、token、screenshot、DOM/network data、provider固有opaque metadataをcontinuity materialとして使ってはいけません。
 
-automationを戻す前にconsumerはexternal Human surfaceをrevokeし、consumer固有execution boundaryを確認します。local profile-switch ownerならnormal browser終了とdedicated profile lock解放を確認します。hosted shared-session ownerならexact browser sessionをHuman authority中も維持し、automation clientだけdetachし、Live View handoffをrevokeしてからsame browser sessionへfresh automation attachmentを作ります。browser ownership / provider lifecycleはgeneric coreではなくconsumer責任です。
+automationを戻す前にconsumerはexternal Human surfaceをrevokeし、consumer固有execution boundaryを確認します。local profile-switch ownerならnormal browser終了とdedicated profile lock解放を確認します。same-session Thin Takeover ownerならbrowser sessionをHuman authority中も維持できますが、Agent-owned automation input authorityをdetach/fenceし、別のHuman-owned intervention/epoch-bound capture/input attachmentだけを許可します。revoke時はactive frame streamをabortし、Human attachmentを閉じてからsame browser sessionへfresh automation attachmentを作ります。invariantは「Human中にCDP/driver connectionが一切ない」ではなくexclusive authorityです。browser ownership / capture / encode / provider lifecycleはgeneric coreではなくconsumer責任です。
 
 その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。credential/MFA/passkey/cookie/browser-session bearer material/provider API keyはMCP/model/log外に置き、northboundへ出すlocator自体をsecret bearer capabilityにしてはいけません。Passkey/WebAuthnはHuman/provider controlのままでbypassしません。
 
@@ -67,7 +67,7 @@ automationを戻す前にconsumerはexternal Human surfaceをrevokeし、consume
 
 optional brokerはtransport/sessionだけを担当します。public locatorにcapabilityは含めません。同一origin bootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneはcapability + principal binding + client binding一致が必須です。
 
-低遅延adapterでは、認証済みHTTP streaming response上のbounded frame streamを任意で使えます。変わるのはframe deliveryだけで、input、principal binding、epoch fencing、client generation、expiry、revocationの意味論は維持します。capture/backpressure policyはbrowser adapterの責務で、CDP / WebRTC / provider lifecycleはgeneric brokerの外です。
+低遅延adapterでは、認証済みHTTP streaming response上のbounded frame streamを任意で使えます。変わるのはframe deliveryだけで、input、principal binding、epoch fencing、client generation、expiry、revocationの意味論は維持します。revoke時はそのinterventionのactive streamをabortします。capture、encoded/raw frame policy、encode、backpressureはbrowser adapterの責務で、CDP / WebRTC / provider lifecycleはgeneric brokerの外です。
 
 新しいbindingは既存leaseを暗黙reclaimできません。native clientは明示的なclaim/reconnect APIを利用できます。reconnectにはsame authenticated principal、generation-bound reconnect handle、旧leaseがidleであることが必要です。成功時はclient generationをincrementし、capabilityとreconnect handleを両方rotateするため、旧client generationは即時fenceされます。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credential materialは含めません。
 

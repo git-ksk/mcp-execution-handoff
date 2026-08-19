@@ -71,6 +71,7 @@ export class TakeoverBroker {
     config;
     sessions;
     publicOrigin;
+    activeStreams = new Map();
     constructor(browser, config) {
         this.browser = browser;
         this.config = config;
@@ -91,6 +92,7 @@ export class TakeoverBroker {
     }
     revokeForIntervention(interventionId) {
         this.sessions.revokeForIntervention(interventionId);
+        this.abortStreamsForIntervention(interventionId);
     }
     async handle(request, boundPrincipal) {
         if (!this.config.enabled || !boundPrincipal)
@@ -212,6 +214,7 @@ export class TakeoverBroker {
                 throw error;
             }
             const controller = new AbortController();
+            this.registerStream(grant.interventionId, controller);
             const abort = () => controller.abort();
             request.signal.addEventListener("abort", abort, { once: true });
             const ttlMs = Math.max(1, grant.expiresAt - Date.now());
@@ -230,6 +233,7 @@ export class TakeoverBroker {
                 finalized = true;
                 clearTimeout(expiry);
                 request.signal.removeEventListener("abort", abort);
+                this.unregisterStream(grant.interventionId, controller);
                 this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
             };
             const stream = new ReadableStream({
@@ -313,8 +317,9 @@ export class TakeoverBroker {
         if (!this.sameOriginMutation(request))
             return json(403, { error: "origin_not_allowed" });
         if (operation === "done") {
+            let verified;
             try {
-                this.sessions.verify(id, capability, boundPrincipal, clientBinding);
+                verified = this.sessions.verify(id, capability, boundPrincipal, clientBinding);
             }
             catch (error) {
                 if (error instanceof TakeoverSessionError)
@@ -322,6 +327,7 @@ export class TakeoverBroker {
                 throw error;
             }
             this.sessions.revoke(id);
+            this.abortStreamsForIntervention(verified.interventionId);
             return json(200, { done: true });
         }
         const length = Number(request.headers.get("content-length") ?? "0");
@@ -356,6 +362,30 @@ export class TakeoverBroker {
         finally {
             this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
         }
+    }
+    registerStream(interventionId, controller) {
+        const existing = this.activeStreams.get(interventionId);
+        if (existing) {
+            existing.add(controller);
+            return;
+        }
+        this.activeStreams.set(interventionId, new Set([controller]));
+    }
+    unregisterStream(interventionId, controller) {
+        const existing = this.activeStreams.get(interventionId);
+        if (!existing)
+            return;
+        existing.delete(controller);
+        if (existing.size === 0)
+            this.activeStreams.delete(interventionId);
+    }
+    abortStreamsForIntervention(interventionId) {
+        const existing = this.activeStreams.get(interventionId);
+        if (!existing)
+            return;
+        this.activeStreams.delete(interventionId);
+        for (const controller of existing)
+            controller.abort();
     }
     readCapability(dedicatedValue, legacyAuthorization) {
         const dedicated = /^([A-Za-z0-9_-]{32,128})$/.exec(dedicatedValue ?? "")?.[1];

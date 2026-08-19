@@ -28,12 +28,16 @@ export declare class TakeoverBroker {
     private readonly config;
     private readonly sessions;
     private readonly publicOrigin;
+    private readonly activeStreams;
     constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig);
     isEnabled(): boolean;
     isPath(pathname: string): boolean;
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
     revokeForIntervention(interventionId: string): void;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    private registerStream;
+    private unregisterStream;
+    private abortStreamsForIntervention;
     private readCapability;
     private readClientBinding;
     private readReconnectHandle;

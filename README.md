@@ -84,7 +84,7 @@ A consumer must apply the stricter effective result. In particular, `require_fre
 
 Some identity providers reject or forbid credential entry in software-controlled or embedded browser contexts. In that case, consumers should not make the automation-adjacent `browser-takeover` transport more evasive. Instead, use the `CredentialSafeHumanSurfaceRuntime` with a pluggable external Human provider.
 
-The generic core deliberately does **not** implement remote desktop, hosted-browser lifecycle, or browser ownership. A provider may point the operator to an existing OS-level remote-access product, a normal-browser Human surface, or a hosted browser Live View. The consumer owns the execution boundary and must choose a lifecycle that matches its browser backend.
+The generic core deliberately does **not** implement remote desktop, browser capture/encoding, or browser ownership. A provider may point the operator to an existing OS-level surface, a normal-browser Human surface, or a consumer-owned low-latency takeover runtime. The consumer owns the execution boundary and capture/input implementation.
 
 Two browser-backed patterns are intentionally supported without widening the generic contract:
 
@@ -101,13 +101,14 @@ local profile-switch owner
     -> relaunch automation browser
     -> fresh readiness / semantic validation
 
-hosted shared-session owner
-  stateful hosted browser session + automation CDP
+same-session Thin Takeover owner
+  stateful browser session + Agent-owned automation attachment
     -> identity-sensitive intervention
     -> Human authority becomes exclusive
-    -> detach automation client while keeping the browser session alive
-    -> Human uses provider Live View for that exact browser session
-    -> revoke Human surface
+    -> detach + fence Agent-owned automation input authority
+    -> consumer-owned Human runtime may create its own intervention/epoch-bound capture/input attachment
+    -> revoke Human surface + abort active frame transport
+    -> close the Human-owned attachment
     -> fresh automation attach to the same browser session
     -> fresh readiness / semantic validation
 
@@ -123,7 +124,7 @@ The provider/consumer must not expose credential material, MFA/OTP values, passk
 
 `browser-takeover` is optional. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
 
-Adapters may additionally expose a bounded frame stream. When present, the browser surface uses one authenticated streaming HTTP response to push frames and keeps input on the existing authenticated request path; the capability remains in headers and never moves into a WebSocket URL. If streaming is unavailable, the legacy polling frame path remains a compatibility fallback. The broker does not prescribe CDP, WebRTC, or any provider-specific capture transport.
+Adapters may additionally expose a bounded frame stream. When present, the browser surface uses one authenticated streaming HTTP response to push frames and keeps input on the existing authenticated request path; the capability remains in headers and never moves into a WebSocket URL. Revocation aborts active streams for the intervention. If streaming is unavailable, the legacy polling frame path remains a compatibility fallback. The broker does not prescribe CDP, encoded-image passthrough, raw-frame encoding, WebRTC, or any provider-specific capture transport.
 
 For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.
 
