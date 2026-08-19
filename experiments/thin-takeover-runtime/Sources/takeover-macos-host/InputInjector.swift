@@ -80,7 +80,7 @@ final class MacOSInputInjector: @unchecked Sendable {
             guard let text = String(data: event.payload, encoding: .utf8), !text.isEmpty else {
                 throw InjectionError.invalidText
             }
-            var utf16 = Array(text.utf16)
+            let utf16 = Array(text.utf16)
             guard utf16.count <= 1024 else { throw InjectionError.invalidText }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
