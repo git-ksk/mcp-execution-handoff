@@ -48,12 +48,18 @@ struct LoopbackProbe {
             firstLatencies.reserveCapacity(frameCount)
             completeLatencies.reserveCapacity(frameCount)
             var receivedPackets = 0
+            var receiveStorage = [UInt8](repeating: 0, count: 2048)
 
             while completeLatencies.count < frameCount {
-                guard let datagram = try receiver.receiveOrTimeout() else { break }
+                let count = try receiveStorage.withUnsafeMutableBytes { raw in
+                    try receiver.receiveOrTimeout(into: raw)
+                }
+                guard let count else { break }
                 receivedPackets += 1
                 let now = MonotonicClock.nowNanos()
-                let header = try VideoPacketHeader.decode(datagram)
+                let header = try receiveStorage.withUnsafeBytes { raw in
+                    try VideoPacketHeader.decode(UnsafeRawBufferPointer(rebasing: raw[..<count]))
+                }
 
                 if firstSeen.insert(header.frameID).inserted {
                     firstLatencies.append(now &- header.encodeDoneNanos)
