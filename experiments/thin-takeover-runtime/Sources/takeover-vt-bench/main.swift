@@ -40,17 +40,33 @@ private final class SerialH264Probe: @unchecked Sendable {
     private var session: VTCompressionSession?
     private let probe = EncodeProbe()
 
-    init(width: Int32, height: Int32, fps: Int32 = 60, bitrate: Int32 = 8_000_000) throws {
+    init(
+        width: Int32,
+        height: Int32,
+        fps: Int32 = 60,
+        bitrate: Int32 = 8_000_000,
+        requireHardware: Bool
+    ) throws {
         let refcon = Unmanaged.passUnretained(self).toOpaque()
+        let encoderSpecification: CFDictionary
+        if requireHardware {
+            encoderSpecification = [
+                kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String: true,
+                kVTVideoEncoderSpecification_EnableLowLatencyRateControl as String: true
+            ] as CFDictionary
+        } else {
+            encoderSpecification = [
+                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: true,
+                kVTVideoEncoderSpecification_EnableLowLatencyRateControl as String: true
+            ] as CFDictionary
+        }
+
         let status = VTCompressionSessionCreate(
             allocator: kCFAllocatorDefault,
             width: width,
             height: height,
             codecType: kCMVideoCodecType_H264,
-            encoderSpecification: [
-                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: true,
-                kVTVideoEncoderSpecification_EnableLowLatencyRateControl as String: true
-            ] as CFDictionary,
+            encoderSpecification: encoderSpecification,
             imageBufferAttributes: nil,
             compressedDataAllocator: nil,
             outputCallback: { refCon, sourceFrameRefCon, status, _, sampleBuffer in
@@ -70,7 +86,13 @@ private final class SerialH264Probe: @unchecked Sendable {
             compressionSessionOut: &session
         )
         guard status == noErr, let session else {
-            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+            throw NSError(
+                domain: NSOSStatusErrorDomain,
+                code: Int(status),
+                userInfo: [NSLocalizedDescriptionKey: requireHardware
+                    ? "VideoToolbox could not create a required-hardware H.264 session"
+                    : "VideoToolbox could not create an H.264 session"]
+            )
         }
 
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
@@ -92,22 +114,6 @@ private final class SerialH264Probe: @unchecked Sendable {
             VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             VTCompressionSessionInvalidate(session)
         }
-    }
-
-    func usingHardwareEncoder() -> String {
-        guard let session else { return "unavailable" }
-        var value: CFTypeRef?
-        let status = VTSessionCopyProperty(
-            session,
-            key: kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder,
-            allocator: kCFAllocatorDefault,
-            valueOut: &value
-        )
-        guard status == noErr, let value else { return "unknown(status=\(status))" }
-        if let number = value as? NSNumber {
-            return number.boolValue ? "true" : "false"
-        }
-        return String(describing: value)
     }
 
     func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime, record: Bool) throws {
@@ -188,13 +194,20 @@ struct VideoToolboxBench {
         let height = Int(CommandLine.arguments.dropFirst(2).first ?? "1080") ?? 1080
         let measuredFrames = Int(CommandLine.arguments.dropFirst(3).first ?? "180") ?? 180
         let warmupFrames = Int(CommandLine.arguments.dropFirst(4).first ?? "20") ?? 20
+        let hardwareMode = CommandLine.arguments.dropFirst(5).first ?? "require"
+        let requireHardware = hardwareMode != "allow"
         let fps: Int32 = 60
 
         let buffers = try [
             makePixelBuffer(width: width, height: height, seed: 3),
             makePixelBuffer(width: width, height: height, seed: 67)
         ]
-        let encoder = try SerialH264Probe(width: Int32(width), height: Int32(height), fps: fps)
+        let encoder = try SerialH264Probe(
+            width: Int32(width),
+            height: Int32(height),
+            fps: fps,
+            requireHardware: requireHardware
+        )
 
         for index in 0..<(warmupFrames + measuredFrames) {
             let buffer = buffers[index & 1]
@@ -213,7 +226,8 @@ struct VideoToolboxBench {
         let maxBytes = sizes.max() ?? 0
 
         print("codec=h264 width=\(width) height=\(height) frames=\(summary.count) warmup=\(warmupFrames)")
-        print("using_hardware_encoder=\(encoder.usingHardwareEncoder())")
+        print("hardware_policy=\(requireHardware ? "required" : "allowed")")
+        print("hardware_encoder_confirmed=\(requireHardware ? "true" : "not_asserted")")
         print("encode_callback_latency_ms p50=\(String(format: "%.3f", summary.p50Millis)) p95=\(String(format: "%.3f", summary.p95Millis)) p99=\(String(format: "%.3f", summary.p99Millis)) max=\(String(format: "%.3f", summary.maxMillis))")
         print("encoded_bytes avg=\(String(format: "%.1f", averageBytes)) max=\(maxBytes)")
     }
