@@ -93,7 +93,12 @@ public final class DatagramSender: @unchecked Sendable {
 public final class DatagramReceiver: @unchecked Sendable {
     private let fd: Int32
 
-    public init(host: String = "127.0.0.1", port: UInt16) throws {
+    public init(
+        host: String = "127.0.0.1",
+        port: UInt16,
+        receiveTimeoutMillis: Int? = nil,
+        receiveBufferBytes: Int? = nil
+    ) throws {
         fd = socket(AF_INET, datagramSocketType(), Int32(IPPROTO_UDP))
         guard fd >= 0 else { throw DatagramSocketError.socketCreation(errno) }
         var addr = sockaddr_in()
@@ -101,6 +106,23 @@ public final class DatagramReceiver: @unchecked Sendable {
         addr.sin_port = port.bigEndian
         let result = host.withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
         guard result == 1 else { close(fd); throw DatagramSocketError.invalidAddress }
+
+        if let receiveBufferBytes {
+            precondition(receiveBufferBytes > 0)
+            var requested = Int32(clamping: receiveBufferBytes)
+            let rc = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &requested, socklen_t(MemoryLayout<Int32>.size))
+            guard rc == 0 else { let e = errno; close(fd); throw DatagramSocketError.receive(e) }
+        }
+
+        if let receiveTimeoutMillis {
+            precondition(receiveTimeoutMillis >= 0)
+            var timeout = timeval()
+            timeout.tv_sec = numericCast(receiveTimeoutMillis / 1000)
+            timeout.tv_usec = numericCast((receiveTimeoutMillis % 1000) * 1000)
+            let rc = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            guard rc == 0 else { let e = errno; close(fd); throw DatagramSocketError.receive(e) }
+        }
+
         let rc = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
                 bind(fd, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
@@ -118,8 +140,20 @@ public final class DatagramReceiver: @unchecked Sendable {
         return Data(buffer.prefix(Int(count)))
     }
 
-    /// Returns nil when no datagram arrives before the deadline. Intended for bounded probes
-    /// and reconnect/liveness loops; the hot receiver can continue using blocking receive().
+    /// Uses a socket-level receive deadline configured at init, keeping the common receive
+    /// path to one `recv` syscall per datagram instead of `poll` + `recv` for every packet.
+    public func receiveOrTimeout(maxBytes: Int = 2048) throws -> Data? {
+        var buffer = [UInt8](repeating: 0, count: maxBytes)
+        let count = recv(fd, &buffer, buffer.count, 0)
+        if count < 0 {
+            if errno == EAGAIN || errno == EWOULDBLOCK { return nil }
+            throw DatagramSocketError.receive(errno)
+        }
+        return Data(buffer.prefix(Int(count)))
+    }
+
+    /// Convenience path when a one-off deadline is needed. Hot receive loops should prefer a
+    /// socket-level timeout so they do not pay an extra poll syscall for every datagram.
     public func receive(maxBytes: Int = 2048, timeoutMillis: Int32) throws -> Data? {
         precondition(timeoutMillis >= 0)
         var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
