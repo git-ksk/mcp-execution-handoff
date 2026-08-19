@@ -190,7 +190,8 @@ public struct VideoHeaderAuthenticator: Sendable {
 
     public func verify(_ header: VideoPacketHeader) -> Bool {
         let expected = authenticate(header.withAuthenticationTag(high: 0, low: 0))
-        return expected.authTagHigh == header.authTagHigh && expected.authTagLow == header.authTagLow
+        let difference = (expected.authTagHigh ^ header.authTagHigh) | (expected.authTagLow ^ header.authTagLow)
+        return difference == 0
     }
 }
 
