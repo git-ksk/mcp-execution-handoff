@@ -28,6 +28,13 @@ struct LoopbackProbe {
         let sender = try DatagramSender(host: "127.0.0.1", port: port)
         let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
         let sessionHash: UInt64 = 0x12345678ABCDEF00
+        let rootKey = Data(repeating: 0xA7, count: 32)
+        let headerAuthenticator = try VideoHeaderAuthenticator(
+            rootKey: rootKey,
+            sessionHash: sessionHash,
+            epoch: 1,
+            generation: 1
+        )
         var expectedPacketsPerFrame = 0
         packetizer.forEachPacket(
             payloadBytes: payloadBytes,
@@ -55,11 +62,12 @@ struct LoopbackProbe {
                     try receiver.receiveOrTimeout(into: raw)
                 }
                 guard let count else { break }
-                receivedPackets += 1
                 let now = MonotonicClock.nowNanos()
                 let header = try receiveStorage.withUnsafeBytes { raw in
                     try VideoPacketHeader.decode(UnsafeRawBufferPointer(rebasing: raw[..<count]))
                 }
+                guard headerAuthenticator.verify(header) else { continue }
+                receivedPackets += 1
 
                 if firstSeen.insert(header.frameID).inserted {
                     firstLatencies.append(now &- header.encodeDoneNanos)
@@ -102,7 +110,8 @@ struct LoopbackProbe {
                 encodeDoneNanos: encodeDone,
                 keyframe: frame % 120 == 0
             ) { slice in
-                try sender.send(header: slice.header, payload: payload, payloadRange: slice.payloadRange)
+                let authenticatedHeader = headerAuthenticator.authenticate(slice.header)
+                try sender.send(header: authenticatedHeader, payload: payload, payloadRange: slice.payloadRange)
             }
             if paceMillis > 0 { try await Task.sleep(for: .milliseconds(paceMillis)) }
         }
@@ -112,7 +121,7 @@ struct LoopbackProbe {
         let packetDelivery = expectedPackets == 0 ? 1 : Double(result.receivedPackets) / Double(expectedPackets)
         let frameCompletion = frameCount == 0 ? 1 : Double(result.completeLatencies.count) / Double(frameCount)
 
-        print("frames_sent=\(frameCount) frames_complete=\(result.completeLatencies.count) payload_bytes=\(payloadBytes) pace_ms=\(paceMillis) receive_buffer_bytes=\(receiveBufferBytes) elapsed_ms=\(String(format: "%.1f", elapsedMs))")
+        print("authenticated_headers=true frames_sent=\(frameCount) frames_complete=\(result.completeLatencies.count) payload_bytes=\(payloadBytes) pace_ms=\(paceMillis) receive_buffer_bytes=\(receiveBufferBytes) elapsed_ms=\(String(format: "%.1f", elapsedMs))")
         print("packet_delivery_ratio=\(String(format: "%.5f", packetDelivery)) frame_completion_ratio=\(String(format: "%.5f", frameCompletion))")
         if let first = LatencySummary.summarize(samplesNanos: result.firstLatencies) {
             print("udp_first_packet_latency_ms p50=\(String(format: "%.3f", first.p50Millis)) p95=\(String(format: "%.3f", first.p95Millis)) p99=\(String(format: "%.3f", first.p99Millis)) max=\(String(format: "%.3f", first.maxMillis))")
