@@ -16,7 +16,7 @@ public enum InputEventKind: UInt8, Sendable, Codable {
 public struct InputEvent: Sendable, Equatable {
     public static let magic: UInt32 = 0x54544B49 // TTKI
     public static let version: UInt8 = 1
-    public static let fixedHeaderBytes = 36
+    public static let fixedHeaderBytes = 40
 
     public let lane: InputLane
     public let kind: InputEventKind
@@ -83,7 +83,7 @@ public struct InputEvent: Sendable, Equatable {
         let yBits: UInt32 = try cursor.readInteger()
         let valueBits: UInt32 = try cursor.readInteger()
         let payloadLength: UInt16 = try cursor.readInteger()
-        _ = try cursor.readInteger() as UInt16
+        let _: UInt16 = try cursor.readInteger()
         guard cursor.offset + Int(payloadLength) == data.count else {
             throw InputProtocolError.invalidPayloadLength
         }
