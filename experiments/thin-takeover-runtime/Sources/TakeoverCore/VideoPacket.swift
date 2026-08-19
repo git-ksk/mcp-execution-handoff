@@ -37,27 +37,38 @@ public struct VideoPacketHeader: Sendable, Equatable {
         self.encodeDoneNanos = encodeDoneNanos
     }
 
+    /// Encodes the fixed-size wire header into temporary stack storage for hot-path sendmsg.
+    public func withEncodedBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+        try withUnsafeTemporaryAllocation(of: UInt8.self, capacity: Self.encodedSize) { bytes in
+            var cursor = MutableByteCursor(bytes)
+            cursor.writeInteger(Self.magic)
+            cursor.writeByte(Self.version)
+            cursor.writeByte(flags)
+            cursor.writeInteger(UInt16(Self.encodedSize))
+            cursor.writeInteger(sessionHash)
+            cursor.writeInteger(epoch)
+            cursor.writeInteger(generation)
+            cursor.writeInteger(frameID)
+            cursor.writeInteger(packetIndex)
+            cursor.writeInteger(packetCount)
+            cursor.writeInteger(captureNanos)
+            cursor.writeInteger(encodeDoneNanos)
+            return try body(UnsafeRawBufferPointer(bytes))
+        }
+    }
+
     public func encode() -> Data {
-        var data = Data()
-        data.reserveCapacity(Self.encodedSize)
-        data.appendInteger(Self.magic)
-        data.append(Self.version)
-        data.append(flags)
-        data.appendInteger(UInt16(Self.encodedSize))
-        data.appendInteger(sessionHash)
-        data.appendInteger(epoch)
-        data.appendInteger(generation)
-        data.appendInteger(frameID)
-        data.appendInteger(packetIndex)
-        data.appendInteger(packetCount)
-        data.appendInteger(captureNanos)
-        data.appendInteger(encodeDoneNanos)
-        return data
+        withEncodedBytes { Data($0) }
     }
 
     public static func decode(_ data: Data) throws -> VideoPacketHeader {
-        guard data.count >= encodedSize else { throw VideoPacketError.truncated }
-        var cursor = DataCursor(data)
+        try data.withUnsafeBytes { try decode($0) }
+    }
+
+    /// Decodes directly from caller-owned packet storage without constructing a Data object.
+    public static func decode(_ bytes: UnsafeRawBufferPointer) throws -> VideoPacketHeader {
+        guard bytes.count >= encodedSize else { throw VideoPacketError.truncated }
+        var cursor = RawByteCursor(bytes)
         let receivedMagic: UInt32 = try cursor.readInteger()
         guard receivedMagic == magic else { throw VideoPacketError.badMagic }
         let receivedVersion = try cursor.readByte()
@@ -171,32 +182,48 @@ public struct VideoPacketizer: Sendable {
     }
 }
 
-private extension Data {
-    mutating func appendInteger<T: FixedWidthInteger>(_ value: T) {
-        var value = value.bigEndian
-        Swift.withUnsafeBytes(of: &value) { append(contentsOf: $0) }
+private struct MutableByteCursor {
+    private var bytes: UnsafeMutableBufferPointer<UInt8>
+    private var offset = 0
+
+    init(_ bytes: UnsafeMutableBufferPointer<UInt8>) { self.bytes = bytes }
+
+    mutating func writeByte(_ value: UInt8) {
+        bytes[offset] = value
+        offset += 1
+    }
+
+    mutating func writeInteger<T: FixedWidthInteger>(_ value: T) {
+        var bigEndian = value.bigEndian
+        Swift.withUnsafeBytes(of: &bigEndian) { raw in
+            for byte in raw {
+                bytes[offset] = byte
+                offset += 1
+            }
+        }
     }
 }
 
-private struct DataCursor {
-    let data: Data
+private struct RawByteCursor {
+    let bytes: UnsafeRawBufferPointer
     var offset = 0
 
-    init(_ data: Data) { self.data = data }
+    init(_ bytes: UnsafeRawBufferPointer) { self.bytes = bytes }
 
     mutating func readByte() throws -> UInt8 {
-        guard offset < data.count else { throw VideoPacketError.truncated }
+        guard offset < bytes.count else { throw VideoPacketError.truncated }
         defer { offset += 1 }
-        return data[offset]
+        return bytes[offset]
     }
 
     mutating func readInteger<T: FixedWidthInteger>() throws -> T {
         let width = MemoryLayout<T>.size
-        guard offset + width <= data.count else { throw VideoPacketError.truncated }
-        let slice = data[offset..<(offset + width)]
-        offset += width
+        guard offset + width <= bytes.count else { throw VideoPacketError.truncated }
         var value: T = 0
-        for byte in slice { value = (value << 8) | T(byte) }
+        for index in offset..<(offset + width) {
+            value = (value << 8) | T(bytes[index])
+        }
+        offset += width
         return value
     }
 }
