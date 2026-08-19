@@ -75,7 +75,8 @@ Candidate scope:
 - track MCP MRTR, elicitation, and Tasks evolution and remove redundant project-specific plumbing when the standard subsumes it;
 - test against multiple MCP client/server implementations where practical;
 - further separate browser-takeover transport mechanics from core lifecycle semantics;
-- add transport conformance tests for capability, lease, origin, expiry, and revocation behavior.
+- add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
+- validate a low-latency push/latest-frame transport and a minimal native Human Takeover reference client without turning the project into a generic remote-desktop product.
 
 The exact version number for each item will be chosen when the work is concrete. The project may use `0.5`, `0.6`, `0.10`, and later pre-1.0 releases as needed.
 

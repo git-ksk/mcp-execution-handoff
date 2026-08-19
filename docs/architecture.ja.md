@@ -63,9 +63,9 @@ automationを戻す前にconsumerはexternal sessionをrevokeし、normal browse
 
 ## Browser takeover
 
-optional brokerはtransport/sessionだけを担当します。public locatorにcapabilityは含めません。同一origin bootstrapでmemory-only remote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneはcapability + principal binding + client binding一致が必須です。
+optional brokerはtransport/sessionだけを担当します。public locatorにcapabilityは含めません。同一origin bootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneはcapability + principal binding + client binding一致が必須です。
 
-reloadでは新しいin-memory client bindingになるため、既存leaseをreclaimできません。fresh Human round/sessionが必要です。
+新しいbindingは既存leaseを暗黙reclaimできません。native clientは明示的なclaim/reconnect APIを利用できます。reconnectにはsame authenticated principal、generation-bound reconnect handle、旧leaseがidleであることが必要です。成功時はclient generationをincrementし、capabilityとreconnect handleを両方rotateするため、旧client generationは即時fenceされます。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credential materialは含めません。
 
 brokerはtakeover可能surfaceを拡張できません。consumer browser adapterが自身のallowlistとcurrent epochで各操作を検証します。
 

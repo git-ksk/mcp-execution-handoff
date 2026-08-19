@@ -70,9 +70,9 @@ The package does not decide which intervention reasons need this surface. `selec
 
 ## Browser takeover
 
-The optional broker owns only transport/session concerns. A public locator contains no capability. Same-origin bootstrap claims one memory-only remote-client lease and returns a short-lived capability. Every frame/input/done request must present the matching capability, principal binding, and client binding.
+The optional broker owns only transport/session concerns. A public locator contains no capability. Same-origin bootstrap claims one remote-client lease and returns a short-lived capability. Every frame/input/done request must present the matching capability, principal binding, and client binding.
 
-Reloading creates a new in-memory client binding, so it cannot reclaim an already-owned lease. A fresh Human round/session is required.
+A new binding cannot implicitly reclaim an already-owned lease. Native clients may instead use the explicit claim/reconnect API. Reconnect requires the same authenticated principal, a generation-bound reconnect handle, and an idle prior lease. Successful reconnect increments the client generation and rotates both capability and reconnect handle, so the old client generation is immediately fenced. Expired/revoked sessions, active prior clients, wrong principals, wrong handles, or stale generations fail closed. The reconnect handle contains no browser content or target-service credential material.
 
 The broker cannot widen the set of surfaces eligible for takeover. The consumer browser adapter must reject navigation/state outside its own allowlist and verify every input against the current intervention epoch.
 

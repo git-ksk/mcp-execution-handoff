@@ -88,7 +88,7 @@ BrowserSkillはshell-capable Agentをreal logged-in browserへ接続し、CAPTCH
 - generic brokerはbounded session/capability/lease mechanicsだけを担当
 - takeover locatorにcapabilityを含めない
 - capabilityをintervention / epoch / principal / client / expiryへscope
-- lease ownerはremote client 1つだけで、reload/new tab/new deviceからimplicit reclaimできない
+- lease ownerはremote client generation 1つだけで、reload/new tab/new deviceからimplicit reclaimできない。明示的に再認証されたidle-session reconnectだけが新しいfenced generationへrotateできる
 - Human completionは後続actionをauthorizeしない
 
 Reference:

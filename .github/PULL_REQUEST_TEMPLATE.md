@@ -5,7 +5,7 @@
 - [ ] No Maps/Cinema/provider-specific concept was added to generic core.
 - [ ] Any new generic API is consistent with `docs/positioning.md` and `ROADMAP.md`, and does not duplicate an MCP-standard mechanism without justification.
 - [ ] Principal/invocation binding and resource-epoch fencing are preserved.
-- [ ] Browser takeover remains locator-only, short-lived, one-client, and memory-bound.
+- [ ] Browser takeover remains locator-only and short-lived with one live client generation; reload/tab/device transfer is never implicit, and any explicit reconnect preserves principal/epoch binding and fences stale generations.
 - [ ] Human completion is not treated as approval for another action.
 - [ ] No stateful/consequential action becomes automatic replay without an explicit safety basis.
 - [ ] No secrets, credentials, OTP/MFA, payment data, challenge answers, or private endpoints are included.

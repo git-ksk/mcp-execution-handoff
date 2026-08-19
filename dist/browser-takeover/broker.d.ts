@@ -19,6 +19,7 @@ export interface TakeoverBrokerConfig {
     enabled: boolean;
     publicBaseUrl?: string;
     ttlMs: number;
+    reconnectIdleMs?: number;
 }
 export declare class TakeoverBroker {
     private readonly browser;
@@ -33,6 +34,8 @@ export declare class TakeoverBroker {
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     private readCapability;
     private readClientBinding;
+    private readReconnectHandle;
+    private nativeMutationAllowed;
     private sameOriginMutation;
     private dispatchInput;
 }

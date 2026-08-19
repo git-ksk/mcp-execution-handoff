@@ -300,3 +300,129 @@ test("reload or another tab cannot implicitly reclaim an existing lease", async 
   }), PRINCIPAL_A);
   assert.equal(reloadWithFreshMemoryBinding.status, 404);
 });
+
+test("native client claim requires explicit native header and authenticated principal", async () => {
+  const { broker, sessionId } = fixture();
+  const denied = await broker.handle(new Request(`http://localhost/takeover/api/claim/${sessionId}`, {
+    method: "POST",
+    headers: { "x-takeover-client": CLIENT_A }
+  }), PRINCIPAL_A);
+  assert.equal(denied.status, 403);
+
+  const crossOrigin = await broker.handle(new Request(`http://localhost/takeover/api/claim/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "x-takeover-client": CLIENT_A,
+      "x-takeover-native-client": "1",
+      origin: "https://evil.example"
+    }
+  }), PRINCIPAL_A);
+  assert.equal(crossOrigin.status, 403);
+
+  const accepted = await broker.handle(new Request(`http://localhost/takeover/api/claim/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "x-takeover-client": CLIENT_A,
+      "x-takeover-native-client": "1"
+    }
+  }), PRINCIPAL_A);
+  assert.equal(accepted.status, 200);
+  const body = await accepted.json() as {
+    capability?: string;
+    reconnectHandle?: string;
+    clientGeneration?: number;
+  };
+  assert.match(body.capability ?? "", /^[A-Za-z0-9_-]{32,128}$/);
+  assert.match(body.reconnectHandle ?? "", /^[A-Za-z0-9_-]{32,128}$/);
+  assert.equal(body.clientGeneration, 1);
+});
+
+test("native reconnect fences the prior client generation after the lease becomes idle", async () => {
+  const calls: unknown[] = [];
+  const browser: TakeoverBrowserAdapter = {
+    async captureHumanTakeoverFrame(interventionId, epoch) {
+      calls.push(["frame", interventionId, epoch]);
+      return {
+        data: Buffer.from("jpeg-bytes").toString("base64"),
+        width: 390,
+        height: 844,
+        hostname: "Browser"
+      };
+    },
+    async tapHumanTakeover() {},
+    async scrollHumanTakeover() {},
+    async insertHumanTakeoverText() {},
+    async pressHumanTakeoverKey() {}
+  };
+  const broker = new TakeoverBroker(browser, {
+    enabled: true,
+    publicBaseUrl: "https://takeover.example",
+    ttlMs: 60_000,
+    reconnectIdleMs: 1_000
+  });
+  const link = broker.createLink({ id: "reconnect-intervention", epoch: 4 }, PRINCIPAL_A);
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1);
+  assert.ok(sessionId);
+
+  const initial = await broker.handle(new Request(`http://localhost/takeover/api/claim/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "x-takeover-client": CLIENT_A,
+      "x-takeover-native-client": "1"
+    }
+  }), PRINCIPAL_A);
+  assert.equal(initial.status, 200);
+  const first = await initial.json() as {
+    capability: string;
+    reconnectHandle: string;
+    clientGeneration: number;
+  };
+
+  const stillActive = await broker.handle(new Request(`http://localhost/takeover/api/reconnect/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "x-takeover-client": CLIENT_B,
+      "x-takeover-native-client": "1",
+      "x-mcp-takeover-reconnect": first.reconnectHandle
+    }
+  }), PRINCIPAL_A);
+  assert.equal(stillActive.status, 409);
+  assert.deepEqual(await stillActive.json(), { error: "takeover_client_active" });
+
+  await new Promise((resolve) => setTimeout(resolve, 1_050));
+  const recovered = await broker.handle(new Request(`http://localhost/takeover/api/reconnect/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "x-takeover-client": CLIENT_B,
+      "x-takeover-native-client": "1",
+      "x-mcp-takeover-reconnect": first.reconnectHandle
+    }
+  }), PRINCIPAL_A);
+  assert.equal(recovered.status, 200);
+  const second = await recovered.json() as {
+    capability: string;
+    reconnectHandle: string;
+    clientGeneration: number;
+  };
+  assert.equal(second.clientGeneration, 2);
+  assert.notEqual(second.capability, first.capability);
+  assert.notEqual(second.reconnectHandle, first.reconnectHandle);
+
+  const staleOldClient = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: {
+      "x-takeover-client": CLIENT_A,
+      "x-mcp-takeover-capability": first.capability
+    }
+  }), PRINCIPAL_A);
+  assert.equal(staleOldClient.status, 404);
+
+  const freshClient = await broker.handle(new Request(`http://localhost/takeover/api/frame/${sessionId}`, {
+    headers: {
+      "x-takeover-client": CLIENT_B,
+      "x-mcp-takeover-capability": second.capability
+    }
+  }), PRINCIPAL_A);
+  assert.equal(freshClient.status, 200);
+  assert.deepEqual(calls.at(-1), ["frame", "reconnect-intervention", 4]);
+});

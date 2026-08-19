@@ -90,7 +90,7 @@ That is a browser-automation product with a Human-in-loop capability. `mcp-execu
 - the generic broker owns only bounded session/capability/lease mechanics;
 - the takeover locator contains no capability;
 - capability scope includes intervention/epoch/principal/client/expiry;
-- one remote client owns the lease, and reload/new-tab/new-device state cannot implicitly reclaim it;
+- one remote client generation owns the lease; reload/new-tab/new-device state cannot implicitly reclaim it, while an explicitly authenticated idle-session reconnect may rotate to a new fenced generation;
 - Human completion does not authorize a later action.
 
 Reference:

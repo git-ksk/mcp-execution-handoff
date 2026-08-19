@@ -13,7 +13,7 @@ Reports are especially useful for:
 - stale epoch acceptance,
 - checkpoint tampering or secret/content persistence,
 - takeover capability leakage, replay, expiry, or revocation failures,
-- one-client lease bypass or implicit reload/tab/device transfer,
+- one-client lease bypass, implicit reload/tab/device transfer, reconnect-handle replay/theft, or stale client-generation acceptance,
 - CSP / origin / cache / referrer boundary regressions,
 - any path where Human completion is interpreted as approval for a different consequential action,
 - external Human session overlap with restored Agent/automation authority, cross-principal/epoch reuse, or sensitive provider metadata retention.
