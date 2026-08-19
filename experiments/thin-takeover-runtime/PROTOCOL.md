@@ -10,11 +10,14 @@ The data plane never grants authority. A control plane must first grant Human au
 - intervention identifier;
 - epoch;
 - client generation;
+- absolute expiry;
 - short-lived 32-byte root transport key.
 
 The runtime receives only the derived runtime binding. `Done`, `Cancel`, revoke, approval, and Agent resume remain control-plane operations and MUST NOT be inferred from a media/input packet.
 
 Agent and Human input authority are mutually exclusive. Agent resume requires Human revoke, epoch advancement, fresh automation attach, and fresh semantic readiness verification.
+
+The host converts the absolute control-plane expiry to a process-local monotonic deadline at startup. Media admission, media transmission and input injection must all fail closed after that deadline. Explicit Done/Cancel/revoke should revoke the local lease immediately instead of waiting for expiry.
 
 ## Cryptographic binding
 
@@ -76,7 +79,7 @@ Adapters may define stricter platform mappings, but MUST validate event kind/lan
 
 ## Reconnect
 
-Reconnect does not reuse stale authority. A reconnect must re-authenticate to the control plane and recover the currently valid intervention/epoch/generation binding. Old generation keys and packets cannot reclaim a newer session.
+Reconnect does not reuse stale authority. A reconnect must re-authenticate to the control plane and recover the currently valid intervention/epoch/generation/expiry binding. Old generation keys and packets cannot reclaim a newer session. A reconnect after expiry requires a fresh control-plane grant rather than extending the old local lease.
 
 ## Credentials
 
