@@ -18,10 +18,14 @@ import Testing
 
 @Test func controlSequenceGateRejectsReplay() {
     var gate = ControlSequenceGate()
-    #expect(gate.accept(100))
-    #expect(!gate.accept(100))
-    #expect(!gate.accept(99))
-    #expect(gate.accept(101))
+    let first = gate.accept(100)
+    let duplicate = gate.accept(100)
+    let older = gate.accept(99)
+    let newer = gate.accept(101)
+    #expect(first)
+    #expect(!duplicate)
+    #expect(!older)
+    #expect(newer)
 }
 
 @Test func videoHeaderAuthenticatorRejectsRoutingMutation() throws {
