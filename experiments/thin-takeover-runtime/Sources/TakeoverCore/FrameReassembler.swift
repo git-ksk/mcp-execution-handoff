@@ -21,42 +21,60 @@ public enum FrameReassemblyResult: Sendable, Equatable {
 /// A deliberately tiny receive-side jitter/reassembly buffer.
 ///
 /// Only the newest frame is retained. Starting a newer frame abandons an older incomplete one.
-/// This is a latency policy, not a reliable-transfer policy.
+/// Clear routing headers are authenticated before any reassembly allocation/state mutation, and
+/// completed frame IDs are remembered for the lifetime of the receiver generation to reject replay.
 public struct FrameReassembler: Sendable {
     public let sessionHash: UInt64
     public let epoch: UInt64
     public let generation: UInt32
     public let maxFrameBytes: Int
     public let maxPacketCount: Int
+    public let maxDatagramBytes: Int
 
+    private let headerAuthenticator: VideoHeaderAuthenticator
     private var assembly: Assembly?
+    private var highestCompletedFrameID: UInt64?
 
     public init(
         sessionHash: UInt64,
         epoch: UInt64,
         generation: UInt32,
+        headerAuthenticator: VideoHeaderAuthenticator,
         maxFrameBytes: Int = 2 * 1024 * 1024,
-        maxPacketCount: Int = 2048
+        maxPacketCount: Int = 2048,
+        maxDatagramBytes: Int = 1500
     ) {
         precondition(maxFrameBytes > 0)
         precondition(maxPacketCount > 0 && maxPacketCount <= Int(UInt16.max))
+        precondition(maxDatagramBytes >= VideoPacketHeader.encodedSize)
         self.sessionHash = sessionHash
         self.epoch = epoch
         self.generation = generation
+        self.headerAuthenticator = headerAuthenticator
         self.maxFrameBytes = maxFrameBytes
         self.maxPacketCount = maxPacketCount
+        self.maxDatagramBytes = maxDatagramBytes
     }
 
     public mutating func ingest(_ datagram: Data) -> FrameReassemblyResult {
-        guard let header = try? VideoPacketHeader.decode(datagram) else { return .droppedInvalid }
+        guard datagram.count >= VideoPacketHeader.encodedSize,
+              datagram.count <= maxDatagramBytes,
+              let header = try? VideoPacketHeader.decode(datagram),
+              headerAuthenticator.verify(header) else {
+            return .droppedInvalid
+        }
+
         guard header.sessionHash == sessionHash,
               header.epoch == epoch,
               header.generation == generation,
               header.packetCount > 0,
               header.packetIndex < header.packetCount,
-              Int(header.packetCount) <= maxPacketCount,
-              datagram.count >= VideoPacketHeader.encodedSize else {
+              Int(header.packetCount) <= maxPacketCount else {
             return .droppedInvalid
+        }
+
+        if let highestCompletedFrameID, header.frameID <= highestCompletedFrameID {
+            return .droppedStale
         }
 
         if let assembly, header.frameID < assembly.header.frameID {
@@ -70,7 +88,9 @@ public struct FrameReassembler: Sendable {
         guard var current = assembly else { return .droppedInvalid }
         guard current.header.frameID == header.frameID,
               current.header.packetCount == header.packetCount,
-              current.header.flags == header.flags else {
+              current.header.flags == header.flags,
+              current.header.captureNanos == header.captureNanos,
+              current.header.encodeDoneNanos == header.encodeDoneNanos else {
             return .droppedInvalid
         }
 
@@ -98,6 +118,7 @@ public struct FrameReassembler: Sendable {
             payload.append(part)
         }
         let completed = ReassembledFrame(header: current.header, sealedPayload: payload)
+        highestCompletedFrameID = current.header.frameID
         assembly = nil
         return .complete(completed)
     }
