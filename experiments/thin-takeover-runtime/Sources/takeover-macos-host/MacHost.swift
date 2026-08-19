@@ -24,6 +24,8 @@ private struct HostSessionConfiguration {
     let sessionHash: UInt64
     let epoch: UInt64
     let generation: UInt32
+    let expiresAtUnixMillis: UInt64
+    let inputBindHost: String
 
     static func load() throws -> HostSessionConfiguration {
         let env = ProcessInfo.processInfo.environment
@@ -51,11 +53,32 @@ private struct HostSessionConfiguration {
         guard let generation = UInt32(generationText) else {
             throw HostConfigurationError.invalid("THIN_TAKEOVER_GENERATION")
         }
+        guard let expiryText = env["THIN_TAKEOVER_EXPIRES_AT_UNIX_MS"] else {
+            throw HostConfigurationError.missing("THIN_TAKEOVER_EXPIRES_AT_UNIX_MS")
+        }
+        guard let expiresAtUnixMillis = UInt64(expiryText) else {
+            throw HostConfigurationError.invalid("THIN_TAKEOVER_EXPIRES_AT_UNIX_MS")
+        }
+        let inputBindHost = env["THIN_TAKEOVER_INPUT_BIND_HOST"] ?? "127.0.0.1"
+        guard !inputBindHost.isEmpty else {
+            throw HostConfigurationError.invalid("THIN_TAKEOVER_INPUT_BIND_HOST")
+        }
         return HostSessionConfiguration(
             rootKey: rootKey,
             sessionHash: sessionHash,
             epoch: epoch,
-            generation: generation
+            generation: generation,
+            expiresAtUnixMillis: expiresAtUnixMillis,
+            inputBindHost: inputBindHost
+        )
+    }
+
+    func makeLease() throws -> EphemeralSessionLease {
+        let wallMillis = UInt64(max(0, Date().timeIntervalSince1970 * 1_000))
+        return try EphemeralLeaseFactory.make(
+            expiresAtUnixMillis: expiresAtUnixMillis,
+            nowUnixMillis: wallMillis,
+            nowMonotonicNanos: MonotonicClock.nowNanos()
         )
     }
 }
@@ -214,8 +237,9 @@ private final class EncodedFrameSender: @unchecked Sendable {
     private let sender: DatagramSender
     private let cipher: TransportCipher
     private let context: TransportCryptoContext
+    private let lease: EphemeralSessionLease
 
-    init(sender: DatagramSender, configuration: HostSessionConfiguration) throws {
+    init(sender: DatagramSender, configuration: HostSessionConfiguration, lease: EphemeralSessionLease) throws {
         self.sender = sender
         self.cipher = try TransportCipher(rootKey: configuration.rootKey)
         self.context = TransportCryptoContext(
@@ -225,6 +249,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
             direction: .hostToClient,
             channel: .video
         )
+        self.lease = lease
     }
 
     func send(
@@ -234,6 +259,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
         encodeDoneNanos: UInt64,
         keyframe: Bool
     ) {
+        guard lease.isActive() else { return }
         if let codecConfig {
             sendPayload(
                 codecConfig,
@@ -254,6 +280,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
     }
 
     private func sendPayload(_ data: Data, captureNanos: UInt64, encodeDoneNanos: UInt64, flags: UInt8) {
+        guard lease.isActive() else { return }
         frameIDLock.lock()
         let id = frameID
         frameID &+= 1
@@ -266,6 +293,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
                 context: context,
                 associatedData: Data([flags])
             )
+            guard lease.isActive() else { return }
             try packetizer.forEachPacket(
                 payloadBytes: sealed.count,
                 sessionHash: context.sessionHash,
@@ -276,6 +304,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
                 encodeDoneNanos: encodeDoneNanos,
                 flags: flags
             ) { slice in
+                guard lease.isActive() else { return }
                 try sender.send(header: slice.header, payload: sealed, payloadRange: slice.payloadRange)
             }
         } catch {
@@ -287,13 +316,15 @@ private final class EncodedFrameSender: @unchecked Sendable {
 private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable {
     let encoder: H264Encoder
     private let admission = FrameAdmissionGate(maxInFlight: 1)
+    private let lease: EphemeralSessionLease
 
-    init(encoder: H264Encoder) {
+    init(encoder: H264Encoder, lease: EphemeralSessionLease) {
         self.encoder = encoder
+        self.lease = lease
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard lease.isActive(), type == .screen, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         if let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
            let attachments = attachmentsArray.first,
            let rawStatus = attachments[.status] as? Int,
@@ -320,16 +351,18 @@ struct MacHost {
         let defaultInputPort = videoPort == UInt16.max ? UInt16.max - 1 : videoPort + 1
         let inputPort = UInt16(CommandLine.arguments.dropFirst(3).first ?? String(defaultInputPort)) ?? defaultInputPort
         let sessionConfiguration = try HostSessionConfiguration.load()
+        let lease = try sessionConfiguration.makeLease()
 
         let sender = try DatagramSender(host: host, port: videoPort)
-        let frameSender = try EncodedFrameSender(sender: sender, configuration: sessionConfiguration)
+        let frameSender = try EncodedFrameSender(sender: sender, configuration: sessionConfiguration, lease: lease)
         let inputServer = try SecureInputServer(
-            bindHost: "0.0.0.0",
+            bindHost: sessionConfiguration.inputBindHost,
             port: inputPort,
             rootKey: sessionConfiguration.rootKey,
             sessionHash: sessionConfiguration.sessionHash,
             epoch: sessionConfiguration.epoch,
-            generation: sessionConfiguration.generation
+            generation: sessionConfiguration.generation,
+            lease: lease
         )
         _ = Task.detached(priority: .high) {
             inputServer.run()
@@ -356,15 +389,22 @@ struct MacHost {
                 keyframe: keyframe
             )
         }
-        let output = CaptureOutput(encoder: encoder)
+        let output = CaptureOutput(encoder: encoder, lease: lease)
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
         print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(host):\(videoPort)")
-        print("accepting authenticated Human input on 0.0.0.0:\(inputPort)")
+        print("accepting authenticated Human input on \(sessionConfiguration.inputBindHost):\(inputPort)")
         print("session=\(String(sessionConfiguration.sessionHash, radix: 16)) epoch=\(sessionConfiguration.epoch) generation=\(sessionConfiguration.generation)")
+        print("transport expires_at_unix_ms=\(sessionConfiguration.expiresAtUnixMillis)")
         print("Press Ctrl-C to stop")
-        while true { try await Task.sleep(for: .seconds(3600)) }
+
+        while lease.isActive() {
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        lease.revoke()
+        try? await stream.stopCapture()
+        print("takeover transport lease expired; capture/input revoked")
     }
 }
 #else
