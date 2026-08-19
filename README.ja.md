@@ -34,7 +34,7 @@ CAPTCHA solver、challenge bypass、credential relay、payment automation、gene
 - restart recoveryは必ず `reissue_and_revalidate` で、stale authorityを復元せず、actionをsilent replayしない。
 - takeover URLはlocatorのみで、capability secretを含めない。
 - capabilityはsession / intervention / resource epoch / principal / remote client binding / expiryへbindする。
-- takeover leaseはremote client 1つだけ。reload/new tab/new deviceで新しいmemory-only bindingになった場合、active leaseを暗黙reclaimできない。
+- takeover leaseはremote client generation 1つだけ。reload/new tab/new deviceで新しいbindingになってもactive leaseを暗黙reclaimできない。native reconnectは、旧leaseがidleになり、同じauthenticated principalがgeneration-bound reconnect handleを提示した場合だけ新generationへ明示rotateでき、旧capability/handleは即時fenceする。
 - `no-store` / `no-referrer` / nonce-bound CSP client asset / bounded inputを維持する。
 - credential-safe external Human controlはHuman authorityが排他的にactiveな間だけ開始でき、automation authorityを戻す前にexternal sessionをrevokeする。
 - external Human providerから保持するのはbounded control-plane field（provider kind / intervention / epoch / principal binding / session id / operator locator / optional expiry）のみで、任意provider metadataは破棄する。
@@ -74,6 +74,8 @@ automation profile + CDP
 ## Browser takeover
 
 `browser-takeover` はoptionalです。brokerが知るintervention情報は `{ id, epoch }` のみで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
+
+native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。旧clientがidleで、authenticated principalが一致し、generation-bound reconnect handleが一致した場合だけ新generationへrotateします。成功時は旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含めません。
 
 surface eligibility、native browser restriction、postcondition verification、authentication/principal derivation、sensitive data境界はconsumer adapter側の責務です。
 

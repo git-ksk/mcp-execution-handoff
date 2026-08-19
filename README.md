@@ -55,7 +55,7 @@ src/browser-takeover/
 - Restart recovery is always `reissue_and_revalidate`; it never restores stale execution authority or silently replays an action.
 - Browser takeover URLs are locators only; capabilities are returned only after authenticated same-origin bootstrap.
 - A capability is scoped to session + intervention + resource epoch + principal + remote-client binding + expiry.
-- One remote client owns a takeover lease. Reload/new-tab/new-device flows with a new in-memory binding cannot implicitly reclaim it.
+- One remote client generation owns a takeover lease. Reload/new-tab/new-device flows with a new binding cannot implicitly reclaim it. An explicit native reconnect may rotate to a new generation only after the prior lease is idle and the same authenticated principal presents the generation-bound reconnect handle; old capabilities/handles are fenced immediately.
 - Takeover responses use `no-store`, `no-referrer`, restrictive CSP with a nonce-bound client asset, and bounded input endpoints.
 - Credential-safe external Human control may start only while Human authority is already exclusive; the external session must be revoked before automation authority is restored.
 - External Human providers are narrowed to bounded control-plane fields (`providerKind`, intervention/epoch/principal binding, session id, operator locator, optional expiry). Arbitrary provider metadata is discarded.
@@ -107,6 +107,8 @@ automation profile + CDP
 ## Browser takeover
 
 `browser-takeover` is optional. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
+
+For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.
 
 Consumers remain responsible for:
 

@@ -42,7 +42,8 @@ test("one remote client owns the capability for an intervention epoch", () => {
     epoch: 4,
     principalBinding: PRINCIPAL_A,
     expiresAt: first.expiresAt,
-    clientBinding: CLIENT_A
+    clientBinding: CLIENT_A,
+    clientGeneration: 1
   });
 
   assert.throws(
@@ -108,4 +109,98 @@ test("invalid client binding never claims a lease", () => {
   );
   const grant = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_B);
   assert.equal(grant.clientBinding, CLIENT_B);
+});
+
+
+test("explicit reconnect rotates the client generation only after the prior lease is idle", () => {
+  const { sessions, advance } = manager();
+  const locator = sessions.ensure("intervention-a", 3, PRINCIPAL_A);
+  const first = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
+  assert.equal(first.clientGeneration, 1);
+  assert.match(first.reconnectHandle, /^[A-Za-z0-9_-]{32,128}$/);
+
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_CLIENT_ACTIVE"
+  );
+
+  advance(5_000);
+  const second = sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_B);
+  assert.equal(second.clientGeneration, 2);
+  assert.equal(second.clientBinding, CLIENT_B);
+  assert.notEqual(second.capability, first.capability);
+  assert.notEqual(second.reconnectHandle, first.reconnectHandle);
+
+  assert.throws(
+    () => sessions.verify(locator.id, first.capability, PRINCIPAL_A, CLIENT_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+  assert.throws(
+    () => sessions.verify(locator.id, first.capability, PRINCIPAL_A, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+  assert.equal(sessions.verify(locator.id, second.capability, PRINCIPAL_A, CLIENT_B).clientGeneration, 2);
+
+  advance(5_000);
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+});
+
+test("reconnect rejects wrong principal, invalid handle, expiry and revocation", () => {
+  const { sessions, advance } = manager();
+  const locator = sessions.ensure("intervention-a", 3, PRINCIPAL_A);
+  const first = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
+  advance(5_000);
+
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_B, first.reconnectHandle, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_A, "x".repeat(43), CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+
+  sessions.revoke(locator.id);
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_NOT_FOUND"
+  );
+
+  const replacement = sessions.ensure("intervention-b", 1, PRINCIPAL_A);
+  const replacementGrant = sessions.claimClient(replacement.id, PRINCIPAL_A, CLIENT_A);
+  advance(60_001);
+  assert.throws(
+    () => sessions.reconnectClient(replacement.id, PRINCIPAL_A, replacementGrant.reconnectHandle, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_EXPIRED"
+  );
+});
+
+test("in-flight Human operation blocks reconnect and idle time starts after the operation ends", () => {
+  const { sessions, advance } = manager();
+  const locator = sessions.ensure("intervention-a", 8, PRINCIPAL_A);
+  const first = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
+  const use = sessions.beginUse(locator.id, first.capability, PRINCIPAL_A, CLIENT_A);
+
+  advance(10_000);
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_CLIENT_ACTIVE"
+  );
+
+  sessions.endUse(locator.id, PRINCIPAL_A, CLIENT_A, use.clientGeneration);
+  advance(4_999);
+  assert.throws(
+    () => sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_CLIENT_ACTIVE"
+  );
+  advance(1);
+  const recovered = sessions.reconnectClient(locator.id, PRINCIPAL_A, first.reconnectHandle, CLIENT_B);
+  assert.equal(recovered.clientGeneration, 2);
+});
+
+test("minimum takeover ttl keeps a valid reconnect idle default", () => {
+  assert.doesNotThrow(() => new TakeoverSessionManager(1_000));
 });

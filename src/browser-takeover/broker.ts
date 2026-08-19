@@ -24,6 +24,7 @@ export interface TakeoverBrokerConfig {
   enabled: boolean;
   publicBaseUrl?: string;
   ttlMs: number;
+  reconnectIdleMs?: number;
 }
 
 function privateHeaders(contentType: string): HeadersInit {
@@ -101,7 +102,13 @@ export class TakeoverBroker {
     private readonly browser: TakeoverBrowserAdapter,
     private readonly config: TakeoverBrokerConfig
   ) {
-    this.sessions = new TakeoverSessionManager(config.ttlMs);
+    this.sessions = new TakeoverSessionManager(
+      config.ttlMs,
+      undefined,
+      undefined,
+      undefined,
+      config.reconnectIdleMs ?? 5_000
+    );
     this.publicOrigin = config.publicBaseUrl ? new URL(config.publicBaseUrl).origin : undefined;
   }
 
@@ -157,7 +164,7 @@ export class TakeoverBroker {
       return new Response(request.method === "HEAD" ? null : pageHtml(nonce), { status: 200, headers });
     }
 
-    const apiMatch = /^\/takeover\/api\/(bootstrap|frame|input|done)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
+    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|frame|input|done)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (!apiMatch) return json(404, { error: "not_found" });
     const operation = apiMatch[1]!;
     const id = apiMatch[2]!;
@@ -171,9 +178,53 @@ export class TakeoverBroker {
       }
       try {
         const grant = this.sessions.claimClient(id, boundPrincipal, clientBinding);
-        return json(200, { capability: grant.capability, expiresAt: grant.expiresAt });
+        return json(200, {
+          capability: grant.capability,
+          reconnectHandle: grant.reconnectHandle,
+          expiresAt: grant.expiresAt,
+          clientGeneration: grant.clientGeneration
+        });
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
+    }
+
+    if (operation === "claim") {
+      if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
+      if (!this.nativeMutationAllowed(request)) return json(403, { error: "native_client_required" });
+      try {
+        const grant = this.sessions.claimClient(id, boundPrincipal, clientBinding);
+        return json(200, {
+          capability: grant.capability,
+          reconnectHandle: grant.reconnectHandle,
+          expiresAt: grant.expiresAt,
+          clientGeneration: grant.clientGeneration
+        });
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
+    }
+
+    if (operation === "reconnect") {
+      if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
+      if (!this.nativeMutationAllowed(request)) return json(403, { error: "native_client_required" });
+      const reconnectHandle = this.readReconnectHandle(request.headers.get("x-mcp-takeover-reconnect"));
+      if (!reconnectHandle) return json(404, { error: "takeover_unavailable" });
+      try {
+        const grant = this.sessions.reconnectClient(id, boundPrincipal, reconnectHandle, clientBinding);
+        return json(200, {
+          capability: grant.capability,
+          reconnectHandle: grant.reconnectHandle,
+          expiresAt: grant.expiresAt,
+          clientGeneration: grant.clientGeneration
+        });
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) {
+          if (error.code === "TAKEOVER_CLIENT_ACTIVE") return json(409, { error: "takeover_client_active" });
+          return json(404, { error: "takeover_unavailable" });
+        }
         throw error;
       }
     }
@@ -184,16 +235,15 @@ export class TakeoverBroker {
     );
     if (!capability) return json(404, { error: "takeover_unavailable" });
 
-    let grant: ReturnType<TakeoverSessionManager["verify"]>;
-    try {
-      grant = this.sessions.verify(id, capability, boundPrincipal, clientBinding);
-    } catch (error) {
-      if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
-      throw error;
-    }
-
     if (operation === "frame") {
       if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
+      let grant: ReturnType<TakeoverSessionManager["beginUse"]>;
+      try {
+        grant = this.sessions.beginUse(id, capability, boundPrincipal, clientBinding);
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
       try {
         const frame = await this.browser.captureHumanTakeoverFrame(grant.interventionId, grant.epoch);
         const bytes = Buffer.from(frame.data, "base64");
@@ -206,6 +256,8 @@ export class TakeoverBroker {
         return new Response(bytes, { status: 200, headers });
       } catch {
         return json(409, { error: "takeover_state_changed" });
+      } finally {
+        this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
       }
     }
 
@@ -213,6 +265,12 @@ export class TakeoverBroker {
     if (!this.sameOriginMutation(request)) return json(403, { error: "origin_not_allowed" });
 
     if (operation === "done") {
+      try {
+        this.sessions.verify(id, capability, boundPrincipal, clientBinding);
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
       this.sessions.revoke(id);
       return json(200, { done: true });
     }
@@ -228,11 +286,20 @@ export class TakeoverBroker {
       return json(400, { error: "invalid_json" });
     }
 
+    let grant: ReturnType<TakeoverSessionManager["beginUse"]>;
+    try {
+      grant = this.sessions.beginUse(id, capability, boundPrincipal, clientBinding);
+    } catch (error) {
+      if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+      throw error;
+    }
     try {
       await this.dispatchInput(grant.interventionId, grant.epoch, body);
       return json(200, { ok: true });
     } catch {
       return json(409, { error: "takeover_input_rejected" });
+    } finally {
+      this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
     }
   }
 
@@ -249,6 +316,17 @@ export class TakeoverBroker {
   private readClientBinding(value: string | null): string | undefined {
     const match = /^([A-Za-z0-9_-]{24,128})$/.exec(value ?? "");
     return match?.[1];
+  }
+
+  private readReconnectHandle(value: string | null): string | undefined {
+    const match = /^([A-Za-z0-9_-]{32,128})$/.exec(value ?? "");
+    return match?.[1];
+  }
+
+  private nativeMutationAllowed(request: Request): boolean {
+    if (request.headers.get("x-takeover-native-client") !== "1") return false;
+    const origin = request.headers.get("origin");
+    return origin === null || origin === this.publicOrigin;
   }
 
   private sameOriginMutation(request: Request): boolean {

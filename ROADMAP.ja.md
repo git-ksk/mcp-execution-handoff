@@ -75,7 +75,8 @@ Exit criteria:
 - MCP MRTR / elicitation / Tasksの進化を追跡し、標準が代替できる独自plumbingは削減
 - 実用上可能な範囲で複数MCP client/server implementationとの検証
 - browser-takeover transport mechanicsとcore lifecycle semanticsの分離をさらに明確化
-- capability / lease / origin / expiry / revocationのtransport conformance test強化
+- capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
+- generic remote-desktop productへ広げず、low-latency push/latest-frame transportとminimal native Human Takeover reference clientを検証
 
 具体的なworkが決まった時点でversionを割り当てます。必要なら `0.5` / `0.6` / `0.10` 以降も使用します。
 

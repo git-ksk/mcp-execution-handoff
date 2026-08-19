@@ -10,17 +10,22 @@ export interface TakeoverLocator {
 
 export interface TakeoverGrant extends TakeoverLocator {
   capability: string;
+  reconnectHandle: string;
   clientBinding: string;
+  clientGeneration: number;
 }
 
 interface TakeoverRecord extends TakeoverLocator {
   revoked: boolean;
   clientBinding?: string;
+  clientGeneration: number;
+  lastSeenAt?: number;
+  inFlight: number;
 }
 
 export class TakeoverSessionError extends Error {
   constructor(
-    public readonly code: "TAKEOVER_NOT_FOUND" | "TAKEOVER_EXPIRED" | "TAKEOVER_FORBIDDEN",
+    public readonly code: "TAKEOVER_NOT_FOUND" | "TAKEOVER_EXPIRED" | "TAKEOVER_FORBIDDEN" | "TAKEOVER_CLIENT_ACTIVE",
     message: string
   ) {
     super(message);
@@ -35,10 +40,14 @@ export class TakeoverSessionManager {
     private readonly ttlMs: number,
     private readonly now: () => number = Date.now,
     private readonly createId: () => string = randomUUID,
-    private readonly signingKey: Buffer = randomBytes(32)
+    private readonly signingKey: Buffer = randomBytes(32),
+    private readonly reconnectIdleMs: number = Math.min(5_000, Math.max(250, Math.floor(ttlMs / 4)))
   ) {
     if (!Number.isInteger(ttlMs) || ttlMs < 1_000) {
       throw new Error("takeover ttl must be at least 1000ms");
+    }
+    if (!Number.isInteger(reconnectIdleMs) || reconnectIdleMs < 250 || reconnectIdleMs >= ttlMs) {
+      throw new Error("takeover reconnect idle must be at least 250ms and less than the takeover ttl");
     }
   }
 
@@ -62,7 +71,9 @@ export class TakeoverSessionManager {
       epoch,
       principalBinding,
       expiresAt: this.now() + this.ttlMs,
-      revoked: false
+      revoked: false,
+      clientGeneration: 0,
+      inFlight: 0
     };
     this.records.set(record.id, record);
     return this.locator(record);
@@ -80,10 +91,71 @@ export class TakeoverSessionManager {
     this.assertClientBindingShape(clientBinding);
     if (record.clientBinding === undefined) {
       record.clientBinding = clientBinding;
+      record.clientGeneration = 1;
     } else if (!this.same(record.clientBinding, clientBinding)) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
     }
+    record.lastSeenAt = this.now();
     return this.grant(record);
+  }
+
+  reconnectClient(
+    id: string,
+    principalBinding: string,
+    reconnectHandle: string,
+    nextClientBinding: string
+  ): TakeoverGrant {
+    const record = this.requireActive(id);
+    this.assertPrincipal(record, principalBinding);
+    this.assertClientBindingShape(nextClientBinding);
+    this.assertReconnectHandleShape(reconnectHandle);
+    if (!record.clientBinding || !record.lastSeenAt || record.clientGeneration < 1) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
+    }
+    if (record.inFlight > 0 || this.now() - record.lastSeenAt < this.reconnectIdleMs) {
+      throw new TakeoverSessionError("TAKEOVER_CLIENT_ACTIVE", "Takeover client is still active");
+    }
+    this.assertReconnectHandle(record, reconnectHandle);
+    record.clientBinding = nextClientBinding;
+    record.clientGeneration += 1;
+    record.lastSeenAt = this.now();
+    return this.grant(record);
+  }
+
+  beginUse(
+    id: string,
+    capability: string,
+    principalBinding: string,
+    clientBinding: string
+  ): Omit<TakeoverGrant, "capability" | "reconnectHandle"> {
+    const grant = this.verify(id, capability, principalBinding, clientBinding);
+    const record = this.requireActive(id);
+    record.inFlight += 1;
+    return grant;
+  }
+
+  endUse(
+    id: string,
+    principalBinding: string,
+    clientBinding: string,
+    clientGeneration: number
+  ): void {
+    const record = this.records.get(id);
+    if (!record || record.revoked) return;
+    if (record.expiresAt <= this.now()) {
+      record.revoked = true;
+      return;
+    }
+    if (
+      !this.same(record.principalBinding, principalBinding) ||
+      !record.clientBinding ||
+      !this.same(record.clientBinding, clientBinding) ||
+      record.clientGeneration !== clientGeneration
+    ) {
+      return;
+    }
+    record.inFlight = Math.max(0, record.inFlight - 1);
+    record.lastSeenAt = this.now();
   }
 
   verify(
@@ -91,7 +163,7 @@ export class TakeoverSessionManager {
     capability: string,
     principalBinding: string,
     clientBinding: string
-  ): Omit<TakeoverGrant, "capability"> {
+  ): Omit<TakeoverGrant, "capability" | "reconnectHandle"> {
     const record = this.requireActive(id);
     this.assertPrincipal(record, principalBinding);
     this.assertClient(record, clientBinding);
@@ -100,10 +172,12 @@ export class TakeoverSessionManager {
     if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover capability is invalid");
     }
+    record.lastSeenAt = this.now();
 
     return {
       ...this.locator(record),
-      clientBinding: record.clientBinding!
+      clientBinding: record.clientBinding!,
+      clientGeneration: record.clientGeneration
     };
   }
 
@@ -149,6 +223,20 @@ export class TakeoverSessionManager {
     }
   }
 
+  private assertReconnectHandleShape(reconnectHandle: string): void {
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(reconnectHandle)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover reconnect handle is invalid");
+    }
+  }
+
+  private assertReconnectHandle(record: TakeoverRecord, reconnectHandle: string): void {
+    const expected = Buffer.from(this.reconnectHandleFor(record), "utf8");
+    const supplied = Buffer.from(reconnectHandle, "utf8");
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover reconnect handle is invalid");
+    }
+  }
+
   private same(left: string, right: string): boolean {
     const expected = Buffer.from(left, "utf8");
     const supplied = Buffer.from(right, "utf8");
@@ -166,22 +254,24 @@ export class TakeoverSessionManager {
   }
 
   private grant(record: TakeoverRecord): TakeoverGrant {
-    if (!record.clientBinding) {
+    if (!record.clientBinding || record.clientGeneration < 1) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover client has not claimed the session");
     }
     return {
       ...this.locator(record),
       capability: this.capabilityFor(record),
-      clientBinding: record.clientBinding
+      reconnectHandle: this.reconnectHandleFor(record),
+      clientBinding: record.clientBinding,
+      clientGeneration: record.clientGeneration
     };
   }
 
   private capabilityFor(record: TakeoverRecord): string {
-    if (!record.clientBinding) {
+    if (!record.clientBinding || record.clientGeneration < 1) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover client has not claimed the session");
     }
     return createHmac("sha256", this.signingKey)
-      .update("mcp-execution-handoff/takeover/v1\0")
+      .update("mcp-execution-handoff/takeover/v2\0")
       .update(record.id)
       .update("\0")
       .update(record.interventionId)
@@ -191,6 +281,30 @@ export class TakeoverSessionManager {
       .update(record.principalBinding)
       .update("\0")
       .update(record.clientBinding)
+      .update("\0")
+      .update(String(record.clientGeneration))
+      .update("\0")
+      .update(String(record.expiresAt))
+      .digest("base64url");
+  }
+
+  private reconnectHandleFor(record: TakeoverRecord): string {
+    if (!record.clientBinding || record.clientGeneration < 1) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover client has not claimed the session");
+    }
+    return createHmac("sha256", this.signingKey)
+      .update("mcp-execution-handoff/takeover-reconnect/v1\0")
+      .update(record.id)
+      .update("\0")
+      .update(record.interventionId)
+      .update("\0")
+      .update(String(record.epoch))
+      .update("\0")
+      .update(record.principalBinding)
+      .update("\0")
+      .update(record.clientBinding)
+      .update("\0")
+      .update(String(record.clientGeneration))
       .update("\0")
       .update(String(record.expiresAt))
       .digest("base64url");
