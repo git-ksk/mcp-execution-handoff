@@ -6,12 +6,13 @@ Thin Takeover Runtime is a short-lived Human interaction data plane. It is not a
 
 1. Human and Agent input authority are mutually exclusive.
 2. A media socket never grants Human authority.
-3. Every transport binding is short-lived and scoped to session / intervention / epoch / principal / client generation by the control plane.
+3. Every transport binding is short-lived and scoped to session / intervention / epoch / principal / client generation / expiry by the control plane.
 4. Stale epoch or generation material fails closed.
-5. `Done` and `Cancel` are control-plane operations. Human completion is not proof that authentication or another semantic action succeeded.
-6. Agent resume requires revoke, epoch advancement, fresh attach, and fresh readiness/semantic verification.
-7. Credential, OTP/MFA, passkey, cookie, token, typed text, and framebuffer contents are not durable control-plane artifacts.
-8. No transport error may fall back to unauthenticated media or input.
+5. Expired local leases stop media admission/transmission and Human input injection; explicit revoke should stop them earlier.
+6. `Done` and `Cancel` are control-plane operations. Human completion is not proof that authentication or another semantic action succeeded.
+7. Agent resume requires revoke, epoch advancement, fresh attach, and fresh readiness/semantic verification.
+8. Credential, OTP/MFA, passkey, cookie, token, typed text, and framebuffer contents are not durable control-plane artifacts.
+9. No transport error may fall back to unauthenticated media or input.
 
 ## Transport protection
 
@@ -21,6 +22,8 @@ The runtime accepts a random 32-byte root key from the authority/control plane. 
 
 The clear video packet header is routing metadata only. It is untrusted until the complete frame is reassembled and AEAD verification succeeds. Reassembly therefore has hard bounds on packet count and frame bytes and retains only the newest frame.
 
+At host startup, the absolute control-plane expiry is converted once to a monotonic process-local deadline. This avoids extending a grant because of later wall-clock changes. Input binds to loopback by default; remote operation requires an explicitly configured local bind address.
+
 ## Threats explicitly addressed
 
 - packet tampering / content injection;
@@ -28,6 +31,8 @@ The clear video packet header is routing metadata only. It is untrusted until th
 - host-to-client packet reflection into client-to-host channels;
 - duplicate critical input injection;
 - stale realtime input application;
+- use of an already-expired runtime grant;
+- transport continuing indefinitely after its expiry;
 - unbounded frame reassembly allocation;
 - reliable-video queue growth causing latency collapse;
 - accidental unauthenticated fallback.
@@ -37,13 +42,15 @@ The clear video packet header is routing metadata only. It is untrusted until th
 The embedding application must provide:
 
 - principal authentication;
-- capability issuance and expiry;
+- capability issuance and authoritative expiry/revoke;
 - intervention lifecycle;
 - process/sandbox boundaries;
 - NAT traversal / relay trust policy;
 - OS permission UX;
 - secure destruction/rotation of session keys;
-- authority revoke on disconnect/timeout according to product policy.
+- immediate authority revoke on Done/Cancel/disconnect/timeout according to product policy.
+
+The local expiry lease is defense in depth; it does not replace authoritative control-plane revocation.
 
 ## Logging
 
