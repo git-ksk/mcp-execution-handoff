@@ -1,102 +1,153 @@
-# Thin Takeover Runtime experiment
+# Thin Takeover Runtime — v0.1 candidate
 
-> **Experimental / unstable.** This directory is intentionally outside the public `mcp-execution-handoff` contract. Nothing here is exported by the npm package or treated as a supported provider API. If the approach proves useful across consumers, it may later move to a separate repository.
+> **Extraction-ready experiment.** This code currently lives under `mcp-execution-handoff/experiments` so it does not widen the parent package's public API. The runtime is designed to move to a standalone MIT-licensed repository once physical-device acceptance is complete.
 
-This experiment explores an ultra-low-latency Human Takeover media/input plane for short-lived, authority-fenced remote interaction. It is intentionally **not** a general-purpose remote desktop.
+Thin Takeover Runtime is an ultra-low-latency media/input plane for **short-lived, authority-fenced Human Takeover**. It is deliberately not a permanent remote-desktop server.
 
-## V0 architecture
+## What is implemented
 
 ```text
+Human authority from control plane
+        │
+        ├─ short-lived session / epoch / generation / root key
+        │
 macOS ScreenCaptureKit
         ↓
-VideoToolbox H.264 (real-time / low-latency)
+VideoToolbox H.264
+  real-time / no reorder / zero lookahead
         ↓
-MTU-bounded thin packetizer
+maxInFlight=1
+  stale capture frames drop instead of queue
         ↓
-UDP media plane
+ChaCha20-Poly1305 once per encoded frame
         ↓
-future native client
+MTU-bounded descriptor packetizer
+        ↓
+scatter/gather non-blocking UDP
+        ↓
+network
+        ↓
+bounded newest-frame reassembly
+        ↓
+AEAD verify
+        ↓
+VideoToolbox/native decoder adapter
 
-Human input (next slice)
+Human input
         ↓
-separate deadline-aware input plane
+realtime lane  ─ latest wins
+critical lane  ─ bounded retry + dedupe
         ↓
-authority / epoch / generation validation
+per-event AEAD
+        ↓
+bounded platform input adapter
 ```
 
-The platform-neutral core contains:
+The core currently includes:
 
 - exclusive Agent/Human authority controller;
-- intervention/epoch/generation fencing primitives;
-- MTU-bounded video datagram header + packetizer;
-- descriptor-based packetization for the hot path;
+- intervention / epoch / client-generation fencing primitives;
+- frame admission (`maxInFlight=1`) to prevent stale encoder queues;
+- fixed-size MTU-aware video header and zero-copy-oriented packet descriptors;
+- non-blocking scatter/gather UDP send;
+- bounded newest-frame-only receiver reassembly;
+- frame-level ChaCha20-Poly1305 with HKDF-SHA256 directional/channel keys;
+- binary input protocol with realtime vs critical semantics;
+- secure input datagrams and replay/deduplication gate;
+- deadline-bounded keyframe NACK / rate-limited IDR recovery planner;
 - monotonic latency metrics;
-- UDP sender/receiver;
-- non-blocking scatter/gather UDP send for encoded payload slices;
-- bounded frame admission so encoder work cannot create an unbounded stale-frame queue;
-- localhost packetization / full-frame delivery probes.
+- packetization, UDP, AEAD, hardware encode and hardware codec round-trip benchmarks.
 
-The macOS host prototype contains:
+The macOS host includes:
 
-- ScreenCaptureKit display capture;
-- complete-frame filtering from ScreenCaptureKit metadata;
-- VideoToolbox H.264 hardware-acceleration request;
-- real-time encoding mode;
-- frame reordering disabled;
-- zero max-frame-delay request;
-- low-latency rate-control encoder request;
-- speed-over-quality encoding hint;
-- zero-lookahead request;
-- 60 fps capture target;
-- minimum ScreenCaptureKit queue depth of three;
-- encoder `maxInFlight=1` admission mode;
-- descriptor/scatter-gather UDP packetization path.
+- complete ScreenCaptureKit frame filtering;
+- 60 fps target and minimum capture queue;
+- VideoToolbox hardware H.264 request;
+- real-time mode, no B-frame reordering, zero frame delay request;
+- speed-over-quality and zero-lookahead hints;
+- AVCC-native encoder output;
+- authenticated frame transport;
+- fail-closed startup if the control-plane session binding is absent.
 
-## Portable checks
+## Build and test
+
+Requires macOS 14+ for the host. The core and benchmarks are exercised on ARM64 macOS CI.
 
 ```bash
 swift test
 swift build -c release
+swift run -c release takeover-crypto-bench 32000 2000
 swift run -c release takeover-packet-bench 2000 131072
-swift run -c release takeover-loopback 400 32000 1
-swift run -c release takeover-loopback 200 131072 16
+swift run -c release takeover-vt-bench 1280 720 180 20
+swift run -c release takeover-vt-codec-bench 1280 720 120 20
 ```
 
-The reported transport timings are **not glass-to-glass latency**. They measure only local packetization/send/receive overhead and exist to expose accidental CPU copies, queueing and burst-loss regressions.
+See [BENCHMARKS.md](BENCHMARKS.md) for current numbers and methodology.
 
-Synthetic Linux/x86_64 development-container results from 2026-08-20:
+## macOS authenticated host
 
-- 128 KiB packetization, 2000 frames: copy-heavy reference roughly 311–339 ms total versus descriptor path roughly 0.5–0.8 ms in repeated runs;
-- 32 KiB full-frame localhost UDP at 1 ms pacing: 100% packet delivery / 100% frame completion; complete-frame p50 roughly 0.10–0.15 ms;
-- 128 KiB burst/keyframe stress at 16 ms pacing: packet delivery stayed near 99%+, but frame completion fell below 100% with the intentionally non-blocking sender.
-
-The large-frame stress result is intentional evidence: the runtime must solve keyframe burst pacing/recovery explicitly rather than hiding pressure inside a blocking socket or unbounded queue.
-
-## macOS host probe
-
-Requires macOS 14+ and Screen Recording permission.
+The host intentionally has no insecure default session. A control plane must provide a short-lived binding:
 
 ```bash
-swift run takeover-macos-host 127.0.0.1 45555
+export THIN_TAKEOVER_SESSION_KEY_HEX=<64 hex chars / 32 random bytes>
+export THIN_TAKEOVER_SESSION_HASH_HEX=<16 hex chars>
+export THIN_TAKEOVER_EPOCH=1
+export THIN_TAKEOVER_GENERATION=1
+
+swift run -c release takeover-macos-host <client-ip> 45555
 ```
 
-The macOS slice is sender-only and must be validated on a real Mac before any promotion beyond `experiments/`. Planned slices:
+Screen Recording permission is required. The root key must come from the authority/control plane and must not be persisted or logged.
 
-1. real-Mac capture → VideoToolbox encode latency p50/p95/p99;
-2. native receiver + VideoToolbox decode/render;
-3. bounded keyframe packet pacing + short-deadline IDR recovery comparison;
-4. input datagrams with separate realtime/critical semantics;
-5. authenticated ephemeral session key + AEAD packet protection;
-6. NAT traversal / relay provider;
-7. browser/Chrome capture adapter;
-8. Windows/Linux capture adapters.
+## Authority boundary
 
-## Security boundary
+Possession of a media or input socket is not Human authority. `Done`, `Cancel`, revoke and Agent resume stay in the control plane.
 
-Possession of a media socket is **not** Human authority. Every future input/control message must be bound to a short-lived authenticated takeover session, intervention, epoch, principal and client generation. Human and Agent input authority must remain mutually exclusive. Agent resume is rejected while Human authority remains active.
+The required lifecycle is:
 
-Credential text and framebuffer content must never be returned to the requesting model/MCP control plane or persisted as durable handoff state.
+```text
+Agent active
+  ↓ revoke/fence Agent input
+Human authority grant
+  ↓
+short-lived authenticated media/input session
+  ↓ Done / Cancel via control plane
+Human input revoke
+  ↓ epoch advance + old key invalidation
+fresh Agent attach
+  ↓ fresh readiness / semantic verify
+Agent active
+```
 
-## Dependency / license note
+Human completion is never authentication proof. Credential, MFA/OTP, passkey, cookie, token, typed text and framebuffer data must never be returned to MCP/model context or durable handoff state.
 
-This experiment is covered by the repository's MIT license. Sunshine, Selkies, RustDesk and similar remote-display systems are architecture/performance references only; no code is copied from them here.
+Read [PROTOCOL.md](PROTOCOL.md) and [SECURITY.md](SECURITY.md) before integrating the runtime.
+
+## Performance direction
+
+The project optimizes for **freshness under bounded loss**, not perfect delivery:
+
+- no unbounded video retransmission;
+- no stale frame queue;
+- ordinary delta-frame loss drops;
+- keyframe repair is short-deadline only;
+- realtime input is newest-wins;
+- critical input is deduplicated;
+- control-plane authority stays reliable and separate from the media hot path.
+
+Current hosted ARM64 results show the UDP packet plane below the hardware codec cost. Physical Mac → native-client presentation measurements are still required before claiming glass-to-glass latency.
+
+## Scope still intentionally outside v0.1 core
+
+- signaling / NAT traversal / relay provider;
+- permanent remote access accounts;
+- audio, gamepad, HDR, virtual displays;
+- browser polling/screenshot transport;
+- CAPTCHA solving or credential automation;
+- authority issuance/authentication itself.
+
+Browser and Windows/Linux capture/input adapters can reuse the same transport/security core later.
+
+## License and provenance
+
+This directory is covered by the parent repository's MIT license. Sunshine, Moonlight, Selkies, RustDesk and similar systems are architecture/performance references only; no source code is copied from them into this experiment.
