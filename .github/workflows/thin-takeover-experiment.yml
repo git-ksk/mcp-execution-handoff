@@ -1,0 +1,40 @@
+name: Thin Takeover Experiment
+
+on:
+  pull_request:
+    paths:
+      - "experiments/thin-takeover-runtime/**"
+      - ".github/workflows/thin-takeover-experiment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: macos-26
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: experiments/thin-takeover-runtime
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+      - name: Toolchain
+        run: |
+          uname -a
+          xcodebuild -version
+          swift --version
+      - name: Test portable core
+        run: swift test
+      - name: Build release package
+        run: swift build -c release
+      - name: Force macOS host compile
+        run: swift build -c release --product takeover-macos-host
+      - name: Packetization benchmark
+        run: swift run -c release takeover-packet-bench 2000 131072
+      - name: Typical frame loopback
+        run: swift run -c release takeover-loopback 400 32000 1
+      - name: Keyframe burst stress
+        run: swift run -c release takeover-loopback 200 131072 16
