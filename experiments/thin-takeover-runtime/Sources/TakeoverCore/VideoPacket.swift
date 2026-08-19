@@ -1,5 +1,11 @@
 import Foundation
 
+public enum VideoPacketFlags {
+    public static let keyframe: UInt8 = 0x01
+    public static let codecConfig: UInt8 = 0x02
+    public static let avccSample: UInt8 = 0x04
+}
+
 public struct VideoPacketHeader: Sendable, Equatable {
     public static let magic: UInt32 = 0x54544B52 // TTKR
     public static let version: UInt8 = 1
@@ -123,7 +129,7 @@ public struct VideoPacketizer: Sendable {
         frameID: UInt64,
         captureNanos: UInt64,
         encodeDoneNanos: UInt64,
-        keyframe: Bool,
+        flags: UInt8,
         _ body: (VideoPacketSlice) throws -> Void
     ) rethrows {
         precondition(payloadBytes >= 0)
@@ -135,7 +141,7 @@ public struct VideoPacketizer: Sendable {
             let lower = index * maxPayload
             let upper = min(payloadBytes, lower + maxPayload)
             let header = VideoPacketHeader(
-                flags: keyframe ? 0x01 : 0,
+                flags: flags,
                 sessionHash: sessionHash,
                 epoch: epoch,
                 generation: generation,
@@ -147,6 +153,30 @@ public struct VideoPacketizer: Sendable {
             )
             try body(VideoPacketSlice(header: header, payloadRange: lower..<upper))
         }
+    }
+
+    public func forEachPacket(
+        payloadBytes: Int,
+        sessionHash: UInt64,
+        epoch: UInt64,
+        generation: UInt32,
+        frameID: UInt64,
+        captureNanos: UInt64,
+        encodeDoneNanos: UInt64,
+        keyframe: Bool,
+        _ body: (VideoPacketSlice) throws -> Void
+    ) rethrows {
+        try forEachPacket(
+            payloadBytes: payloadBytes,
+            sessionHash: sessionHash,
+            epoch: epoch,
+            generation: generation,
+            frameID: frameID,
+            captureNanos: captureNanos,
+            encodeDoneNanos: encodeDoneNanos,
+            flags: keyframe ? VideoPacketFlags.keyframe : 0,
+            body
+        )
     }
 
     // Compatibility/reference path. The hot sender path should use forEachPacket + send(header:payload:range:)
