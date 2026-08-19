@@ -10,12 +10,14 @@ let package = Package(
         .library(name: "TakeoverCore", targets: ["TakeoverCore"]),
         .executable(name: "takeover-loopback", targets: ["takeover-loopback"]),
         .executable(name: "takeover-packet-bench", targets: ["takeover-packet-bench"]),
+        .executable(name: "takeover-vt-bench", targets: ["takeover-vt-bench"]),
         .executable(name: "takeover-macos-host", targets: ["takeover-macos-host"]),
     ],
     targets: [
         .target(name: "TakeoverCore"),
         .executableTarget(name: "takeover-loopback", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-packet-bench", dependencies: ["TakeoverCore"]),
+        .executableTarget(name: "takeover-vt-bench", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-macos-host", dependencies: ["TakeoverCore"]),
         .testTarget(name: "TakeoverCoreTests", dependencies: ["TakeoverCore"]),
     ]
