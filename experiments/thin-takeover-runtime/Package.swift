@@ -13,6 +13,7 @@ let package = Package(
         .executable(name: "takeover-crypto-bench", targets: ["takeover-crypto-bench"]),
         .executable(name: "takeover-vt-bench", targets: ["takeover-vt-bench"]),
         .executable(name: "takeover-vt-codec-bench", targets: ["takeover-vt-codec-bench"]),
+        .executable(name: "takeover-control-send", targets: ["takeover-control-send"]),
         .executable(name: "takeover-macos-host", targets: ["takeover-macos-host"]),
     ],
     targets: [
@@ -22,6 +23,7 @@ let package = Package(
         .executableTarget(name: "takeover-crypto-bench", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-vt-bench", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-vt-codec-bench", dependencies: ["TakeoverCore"]),
+        .executableTarget(name: "takeover-control-send", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-macos-host", dependencies: ["TakeoverCore"]),
         .testTarget(name: "TakeoverCoreTests", dependencies: ["TakeoverCore"]),
     ]
