@@ -9,7 +9,8 @@ public enum VideoPacketFlags {
 public struct VideoPacketHeader: Sendable, Equatable {
     public static let magic: UInt32 = 0x54544B52 // TTKR
     public static let version: UInt8 = 1
-    public static let encodedSize = 56
+    public static let authenticationBytesSize = 56
+    public static let encodedSize = 72
 
     public var flags: UInt8
     public var sessionHash: UInt64
@@ -20,6 +21,8 @@ public struct VideoPacketHeader: Sendable, Equatable {
     public var packetCount: UInt16
     public var captureNanos: UInt64
     public var encodeDoneNanos: UInt64
+    public var authTagHigh: UInt64
+    public var authTagLow: UInt64
 
     public init(
         flags: UInt8 = 0,
@@ -30,7 +33,9 @@ public struct VideoPacketHeader: Sendable, Equatable {
         packetIndex: UInt16,
         packetCount: UInt16,
         captureNanos: UInt64,
-        encodeDoneNanos: UInt64
+        encodeDoneNanos: UInt64,
+        authTagHigh: UInt64 = 0,
+        authTagLow: UInt64 = 0
     ) {
         self.flags = flags
         self.sessionHash = sessionHash
@@ -41,26 +46,63 @@ public struct VideoPacketHeader: Sendable, Equatable {
         self.packetCount = packetCount
         self.captureNanos = captureNanos
         self.encodeDoneNanos = encodeDoneNanos
+        self.authTagHigh = authTagHigh
+        self.authTagLow = authTagLow
+    }
+
+    public func withAuthenticationTag(high: UInt64, low: UInt64) -> VideoPacketHeader {
+        VideoPacketHeader(
+            flags: flags,
+            sessionHash: sessionHash,
+            epoch: epoch,
+            generation: generation,
+            frameID: frameID,
+            packetIndex: packetIndex,
+            packetCount: packetCount,
+            captureNanos: captureNanos,
+            encodeDoneNanos: encodeDoneNanos,
+            authTagHigh: high,
+            authTagLow: low
+        )
+    }
+
+    /// Canonical bytes authenticated before receiver reassembly-state mutation.
+    public func authenticationData() -> Data {
+        withAuthenticationBytes { Data($0) }
+    }
+
+    public func withAuthenticationBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+        try withUnsafeTemporaryAllocation(of: UInt8.self, capacity: Self.authenticationBytesSize) { bytes in
+            var cursor = MutableByteCursor(bytes)
+            writeAuthenticatedFields(to: &cursor)
+            return try body(UnsafeRawBufferPointer(bytes))
+        }
     }
 
     /// Encodes the fixed-size wire header into temporary stack storage for hot-path sendmsg.
     public func withEncodedBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
         try withUnsafeTemporaryAllocation(of: UInt8.self, capacity: Self.encodedSize) { bytes in
             var cursor = MutableByteCursor(bytes)
-            cursor.writeInteger(Self.magic)
-            cursor.writeByte(Self.version)
-            cursor.writeByte(flags)
-            cursor.writeInteger(UInt16(Self.encodedSize))
-            cursor.writeInteger(sessionHash)
-            cursor.writeInteger(epoch)
-            cursor.writeInteger(generation)
-            cursor.writeInteger(frameID)
-            cursor.writeInteger(packetIndex)
-            cursor.writeInteger(packetCount)
-            cursor.writeInteger(captureNanos)
-            cursor.writeInteger(encodeDoneNanos)
+            writeAuthenticatedFields(to: &cursor)
+            cursor.writeInteger(authTagHigh)
+            cursor.writeInteger(authTagLow)
             return try body(UnsafeRawBufferPointer(bytes))
         }
+    }
+
+    private func writeAuthenticatedFields(to cursor: inout MutableByteCursor) {
+        cursor.writeInteger(Self.magic)
+        cursor.writeByte(Self.version)
+        cursor.writeByte(flags)
+        cursor.writeInteger(UInt16(Self.encodedSize))
+        cursor.writeInteger(sessionHash)
+        cursor.writeInteger(epoch)
+        cursor.writeInteger(generation)
+        cursor.writeInteger(frameID)
+        cursor.writeInteger(packetIndex)
+        cursor.writeInteger(packetCount)
+        cursor.writeInteger(captureNanos)
+        cursor.writeInteger(encodeDoneNanos)
     }
 
     public func encode() -> Data {
@@ -91,7 +133,9 @@ public struct VideoPacketHeader: Sendable, Equatable {
             packetIndex: try cursor.readInteger(),
             packetCount: try cursor.readInteger(),
             captureNanos: try cursor.readInteger(),
-            encodeDoneNanos: try cursor.readInteger()
+            encodeDoneNanos: try cursor.readInteger(),
+            authTagHigh: try cursor.readInteger(),
+            authTagLow: try cursor.readInteger()
         )
     }
 }
@@ -189,7 +233,8 @@ public struct VideoPacketizer: Sendable {
         frameID: UInt64,
         captureNanos: UInt64,
         encodeDoneNanos: UInt64,
-        keyframe: Bool
+        keyframe: Bool,
+        authenticator: VideoHeaderAuthenticator? = nil
     ) -> [Data] {
         var packets: [Data] = []
         forEachPacket(
@@ -202,7 +247,8 @@ public struct VideoPacketizer: Sendable {
             encodeDoneNanos: encodeDoneNanos,
             keyframe: keyframe
         ) { slice in
-            var datagram = slice.header.encode()
+            let header = authenticator?.authenticate(slice.header) ?? slice.header
+            var datagram = header.encode()
             if !slice.payloadRange.isEmpty {
                 datagram.append(payload.subdata(in: slice.payloadRange))
             }
