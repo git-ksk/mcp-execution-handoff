@@ -1,127 +1,143 @@
-# Thin Takeover Runtime architecture (experiment)
+# Thin Takeover Runtime architecture
 
-## Design objective
-
-Minimize Human-perceived control latency while preserving an external authority controller that grants and revokes a short-lived takeover deterministically. The runtime is a transport implementation experiment, not a new public `mcp-execution-handoff` API.
-
-## Target split
+This experiment is intentionally outside the public `mcp-execution-handoff` package contract. It is an extraction-ready, low-latency Human Takeover data plane whose authority comes from a separate control plane.
 
 ```text
-mcp-execution-handoff control plane
-        │
-        │ grant / revoke / principal / intervention / epoch
-        ▼
-Thin Takeover Runtime
-        ├─ CaptureAdapter
-        ├─ EncoderAdapter
-        ├─ TransportAdapter
-        ├─ InputAdapter
-        └─ LatencyMetrics
+mcp-execution-handoff / embedding control plane
+  └─ authenticates principal
+  └─ grants intervention / epoch / generation
+  └─ issues short-lived root transport key + absolute expiry
+  └─ owns Done / Cancel / revoke / Agent resume
+                    │
+                    ▼
+         Thin Takeover Runtime
+  ┌───────────────────────────────────┐
+  │ EphemeralSessionLease             │
+  │ TakeoverSessionController         │
+  │ TransportCipher                   │
+  │ VideoPacketizer / Reassembler     │
+  │ InputProtocol / SecureInputCodec  │
+  │ RecoveryPlanner                   │
+  │ LatencyMetrics                    │
+  └───────────────────────────────────┘
+           │                    ▲
+           ▼                    │
+     host adapters          client adapters
 ```
 
-The control plane remains authoritative. Media possession alone cannot grant control.
-
-## Data plane
-
-### Media plane
-
-- native capture;
-- GPU-backed buffers where the platform permits;
-- low-delay hardware encoder;
-- newest-frame-wins queueing;
-- MTU-aware UDP packets;
-- no retransmission for ordinary delta-frame packets;
-- short-deadline recovery / IDR request for decoder-critical loss.
-
-### Input plane
-
-- pointer/gesture updates: unordered, latest-wins, no retransmit;
-- click/key/text: sequenced, deduplicated, bounded retries;
-- Done/Cancel/revoke: reliable authenticated control plane.
-
-## Adapters
+## macOS host hot path
 
 ```text
-CaptureAdapter
-  macOS: ScreenCaptureKit
-  Windows: WGC/DXGI (future)
-  Linux: PipeWire/DRM (future)
-  Chrome: compositor/native window (future)
-
-EncoderAdapter
-  macOS: VideoToolbox
-  Windows/Linux: platform hardware encoders (future)
-
-TransportAdapter
-  V3: WebRTC (future compatibility path)
-  V4: thin native UDP (latency ceiling experiment)
-```
-
-## Authority sequence
-
-```text
-Agent active
-  ↓ fence Agent input
-Human grant(intervention, principal, epoch, generation)
-  ↓
-media/input active
-  ↓ Done / Cancel / revoke
-Human authority revoked
-  ↓ epoch advance
-fresh automation attach / fresh semantic verification
-  ↓
-Agent active
-```
-
-## V0 ultra-low-latency hot path
-
-The current experiment intentionally prefers bounded loss over hidden queueing latency:
-
-```text
-ScreenCaptureKit complete frame
-        ↓
+ScreenCaptureKit
+  ↓ complete frames only
 FrameAdmissionGate(maxInFlight: 1)
-        ↓ busy => drop capture frame
-VideoToolbox real-time encoder
-  - frame reordering disabled
-  - max frame delay 0
-  - low-latency rate control requested
-  - speed-over-quality hint
-  - look-ahead requested as 0
-        ↓
-packet descriptors
-  - no per-packet encoded-payload `subdata` copy on hot path
-        ↓
-non-blocking scatter/gather UDP `sendmsg`
-        ↓ would-block => abandon remaining frame packets
-receiver / future native client
+  ↓
+CVPixelBuffer
+  ↓
+VideoToolbox H.264
+  - hardware requested
+  - real time
+  - no frame reordering
+  - zero frame-delay request
+  - speed over quality
+  - zero lookahead where available
+  ↓
+AVCC CMBlockBuffer view
+  ↓ one AEAD operation per complete encoded frame/config
+ChaCha20-Poly1305
+  ↓
+MTU-bounded packet descriptors
+  ↓
+stack-backed header + scatter/gather non-blocking sendmsg
+  ↓
+UDP
 ```
 
-This is deliberately harsher than a conventional streaming pipeline. A stale complete frame is considered worse than a dropped frame for Human takeover.
+There is no full-frame AVCC→Annex-B reconstruction in the sender hot path. Packet descriptors describe ranges of one sealed frame instead of allocating a `[Data]` containing every UDP packet.
 
-### Current probe finding
-
-Small/typical synthetic frames complete with sub-millisecond localhost transport overhead, while large 128 KiB keyframe-style bursts can lose enough packets to leave a frame incomplete. The next transport comparison therefore needs **bounded keyframe pacing + decoder-critical recovery**, not a larger hidden socket queue.
-
-Candidate comparison:
+## receive policy
 
 ```text
-A. no pacing / newest-frame-first baseline
-B. bounded keyframe pacing inside a strict frame deadline
-C. B + short-deadline NACK for decoder-critical packets
-D. miss deadline => abandon frame + request fresh IDR
+UDP datagrams
+  ↓
+untrusted fixed header parse
+  ↓ hard packet/frame bounds
+newest-frame-only reassembly
+  ↓
+complete sealed frame
+  ↓
+AEAD verification
+  ↓
+decoder adapter
 ```
 
-No mode may turn packet recovery into an unbounded retransmission queue.
+Starting a newer frame abandons an older incomplete one. Ordinary delta-frame loss is dropped. Decoder-critical keyframe repair has a short NACK deadline and bounded packet count; after the deadline the runtime requests a new IDR. No reliable-video backlog exists.
 
-## Invariants
+## input path
+
+```text
+Human client
+  ├─ realtime pointer/scroll state ─ latest wins
+  └─ critical click/key/text ─ bounded retry
+            ↓
+      per-event AEAD
+            ↓
+       UDP input lane
+            ↓
+      verify/decrypt
+            ↓
+      replay/dedupe gate
+            ↓
+      lease still active?
+            ↓
+      platform bounds check
+            ↓
+      OS input injection
+```
+
+The macOS adapter uses CoreGraphics for pointer, buttons, scrolling, keyboard events, and bounded Unicode text commit. Invalid, stale, unauthenticated, expired, or unsupported events are dropped without changing authority.
+
+## expiry and revoke
+
+The control plane supplies an absolute expiry. At process startup it is converted to a monotonic local deadline. The same `EphemeralSessionLease` fences capture admission, media sends, and input injection. Expiry is defense in depth; explicit Done/Cancel/revoke should revoke/terminate the runtime immediately.
+
+The runtime never promotes Human completion into Agent authorization. Fresh Agent attach and semantic readiness verification remain mandatory after Human revoke and epoch advancement.
+
+## latency model
+
+Measure each stage independently:
+
+```text
+capture callback
+  → encode callback
+  → frame AEAD
+  → packet send
+  → packet receive
+  → reassembly / AEAD open
+  → decode callback
+  → presentation
+
+input creation
+  → receive / AEAD open
+  → replay gate
+  → OS injection
+  → next presented frame
+```
+
+Queues are a latency budget. The default policy is to drop obsolete work instead of preserving throughput at the cost of freshness.
+
+## portability
+
+The authority, crypto, packetization, reassembly, recovery and input semantics are adapter-neutral. Current concrete host adapter is macOS. Browser, Windows and Linux capture/input adapters should consume the same core rather than introduce platform semantics into the authority layer.
+
+## invariants
 
 - Human and Agent input authority are mutually exclusive.
 - Agent cannot resume before Human revocation.
-- A stale epoch or generation cannot inject input.
+- A stale or expired epoch/generation cannot inject input or continue media delivery.
 - Video delivery never blocks input delivery.
 - Slow receivers do not create an unbounded frame queue.
 - Socket pressure must not block the capture/encoder callback path.
 - Reconnect never revives an expired/revoked intervention.
 - Credential text and framebuffer content are not returned to an agent/model control plane.
-- The experiment must stay out of the generic public core until more than one real consumer validates the abstraction.
+- Platform/product ownership semantics remain outside the generic parent core.
