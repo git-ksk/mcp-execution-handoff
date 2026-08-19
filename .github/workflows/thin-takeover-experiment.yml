@@ -32,6 +32,10 @@ jobs:
         run: swift build -c release
       - name: Force macOS host compile
         run: swift build -c release --product takeover-macos-host
+      - name: VideoToolbox 720p encode benchmark
+        run: swift run -c release takeover-vt-bench 1280 720 180 20
+      - name: VideoToolbox 1080p encode benchmark
+        run: swift run -c release takeover-vt-bench 1920 1080 180 20
       - name: Packetization benchmark
         run: swift run -c release takeover-packet-bench 2000 131072
       - name: Typical frame loopback
