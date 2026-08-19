@@ -47,7 +47,9 @@ private final class H264Encoder: @unchecked Sendable {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 0))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: NSNumber(value: fps))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_SuggestedLookAheadFrameCount, value: NSNumber(value: 0))
+        if #available(macOS 15.0, *) {
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_SuggestedLookAheadFrameCount, value: NSNumber(value: 0))
+        }
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: bitrate))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: fps * 2))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_Main_AutoLevel)
@@ -140,41 +142,19 @@ private final class H264Encoder: @unchecked Sendable {
     }
 }
 
-private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable {
-    let encoder: H264Encoder
+private final class EncodedFrameSender: @unchecked Sendable {
     private var frameID: UInt64 = 0
     private let frameIDLock = NSLock()
     private let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
     private let sender: DatagramSender
     private let sessionHash: UInt64
-    private let admission = FrameAdmissionGate(maxInFlight: 1)
 
-    init(encoder: H264Encoder, sender: DatagramSender, sessionHash: UInt64) {
-        self.encoder = encoder
+    init(sender: DatagramSender, sessionHash: UInt64) {
         self.sender = sender
         self.sessionHash = sessionHash
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        if let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
-           let attachments = attachmentsArray.first,
-           let rawStatus = attachments[.status] as? Int,
-           let status = SCFrameStatus(rawValue: rawStatus),
-           status != .complete {
-            return
-        }
-        guard admission.tryAcquire() else { return }
-        let captureNanos = MonotonicClock.nowNanos()
-        encoder.encode(
-            pixel,
-            pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
-            captureNanos: captureNanos,
-            completion: { [admission] in admission.release() }
-        )
-    }
-
-    func sendEncoded(_ data: Data, captureNanos: UInt64, encodeDoneNanos: UInt64, keyframe: Bool) {
+    func send(_ data: Data, captureNanos: UInt64, encodeDoneNanos: UInt64, keyframe: Bool) {
         frameIDLock.lock()
         let id = frameID
         frameID &+= 1
@@ -195,12 +175,41 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
     }
 }
 
+private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable {
+    let encoder: H264Encoder
+    private let admission = FrameAdmissionGate(maxInFlight: 1)
+
+    init(encoder: H264Encoder) {
+        self.encoder = encoder
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        if let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+           let attachments = attachmentsArray.first,
+           let rawStatus = attachments[.status] as? Int,
+           let status = SCFrameStatus(rawValue: rawStatus),
+           status != .complete {
+            return
+        }
+        guard admission.tryAcquire() else { return }
+        let captureNanos = MonotonicClock.nowNanos()
+        encoder.encode(
+            pixel,
+            pts: CMSampleBufferGetPresentationTimeStamp(sampleBuffer),
+            captureNanos: captureNanos,
+            completion: { [admission] in admission.release() }
+        )
+    }
+}
+
 @main
 struct MacHost {
     static func main() async throws {
         let host = CommandLine.arguments.dropFirst().first ?? "127.0.0.1"
         let port = UInt16(CommandLine.arguments.dropFirst(2).first ?? "45555") ?? 45555
         let sender = try DatagramSender(host: host, port: port)
+        let frameSender = EncodedFrameSender(sender: sender, sessionHash: 0xA11CE001)
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else { fatalError("No display available") }
@@ -214,12 +223,10 @@ struct MacHost {
         config.capturesAudio = false
         config.showsCursor = false
 
-        var outputRef: CaptureOutput!
-        let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { data, capture, encodeDone, keyframe in
-            outputRef?.sendEncoded(data, captureNanos: capture, encodeDoneNanos: encodeDone, keyframe: keyframe)
+        let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { [frameSender] data, capture, encodeDone, keyframe in
+            frameSender.send(data, captureNanos: capture, encodeDoneNanos: encodeDone, keyframe: keyframe)
         }
-        let output = CaptureOutput(encoder: encoder, sender: sender, sessionHash: 0xA11CE001)
-        outputRef = output
+        let output = CaptureOutput(encoder: encoder)
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
