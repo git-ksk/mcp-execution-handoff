@@ -5,7 +5,7 @@ Thin Takeover Runtime optimizes a narrow problem: short-lived, low-latency Human
 Before proposing a change:
 
 1. keep authority, media transport, and OS/browser adapters separate;
-2. preserve fail-closed session / epoch / generation binding;
+2. preserve fail-closed session / epoch / generation / expiry binding;
 3. never add an unauthenticated fallback;
 4. never make ordinary video reliable by default or introduce an unbounded queue;
 5. keep realtime input latest-wins and critical input deduplicated;
