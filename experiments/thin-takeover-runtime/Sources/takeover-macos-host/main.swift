@@ -8,12 +8,19 @@ import ScreenCaptureKit
 import VideoToolbox
 
 private final class H264Encoder: @unchecked Sendable {
-    typealias Output = @Sendable (_ annexB: Data, _ captureNanos: UInt64, _ encodeDoneNanos: UInt64, _ keyframe: Bool) -> Void
+    /// `avccSample` aliases VideoToolbox-owned CMBlockBuffer memory and is valid only for the
+    /// synchronous duration of this callback. The consumer must not retain it.
+    typealias Output = @Sendable (
+        _ avccSample: Data,
+        _ codecConfig: Data?,
+        _ captureNanos: UInt64,
+        _ encodeDoneNanos: UInt64,
+        _ keyframe: Bool
+    ) -> Void
     typealias Completion = @Sendable () -> Void
 
     private var session: VTCompressionSession?
     private let output: Output
-    private var parameterSets: Data?
 
     init(width: Int32, height: Int32, fps: Int32 = 60, bitrate: Int32 = 8_000_000, output: @escaping Output) throws {
         self.output = output
@@ -32,7 +39,7 @@ private final class H264Encoder: @unchecked Sendable {
             outputCallback: { refCon, sourceFrameRefCon, status, _, sampleBuffer in
                 guard let sourceFrameRefCon else { return }
                 let frameContext = Unmanaged<FrameContext>.fromOpaque(sourceFrameRefCon).takeRetainedValue()
-                frameContext.completion()
+                defer { frameContext.completion() }
                 guard status == noErr, let refCon, let sampleBuffer else { return }
                 let encoder = Unmanaged<H264Encoder>.fromOpaque(refCon).takeUnretainedValue()
                 encoder.handle(sampleBuffer, captureNanos: frameContext.captureNanos)
@@ -97,48 +104,34 @@ private final class H264Encoder: @unchecked Sendable {
         let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]]
         let isKeyframe = !(attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
 
-        if isKeyframe, let format = CMSampleBufferGetFormatDescription(sampleBuffer) {
-            var sets = Data()
-            var index = 0
-            while true {
-                var pointer: UnsafePointer<UInt8>?
-                var size = 0
-                var count = 0
-                let status = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
-                    format,
-                    parameterSetIndex: index,
-                    parameterSetPointerOut: &pointer,
-                    parameterSetSizeOut: &size,
-                    parameterSetCountOut: &count,
-                    nalUnitHeaderLengthOut: nil
-                )
-                guard status == noErr, let pointer else { break }
-                sets.append(contentsOf: [0, 0, 0, 1])
-                sets.append(pointer, count: size)
-                index += 1
-                if index >= count { break }
-            }
-            parameterSets = sets
+        var codecConfig: Data?
+        if isKeyframe, let format = CMSampleBufferGetFormatDescription(sampleBuffer),
+           let atoms = CMFormatDescriptionGetExtension(
+                format,
+                extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms
+           ) as? NSDictionary {
+            codecConfig = atoms["avcC"] as? Data
         }
 
         var totalLength = 0
         var dataPointer: UnsafeMutablePointer<Int8>?
-        let status = CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &totalLength, dataPointerOut: &dataPointer)
-        guard status == noErr, let dataPointer else { return }
-        let bytes = UnsafeRawBufferPointer(start: dataPointer, count: totalLength)
-        var offset = 0
-        var annexB = isKeyframe ? (parameterSets ?? Data()) : Data()
-        while offset + 4 <= totalLength {
-            let length = bytes[offset..<(offset + 4)].reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
-            offset += 4
-            let end = offset + Int(length)
-            guard end <= totalLength else { break }
-            annexB.append(contentsOf: [0, 0, 0, 1])
-            annexB.append(contentsOf: bytes[offset..<end])
-            offset = end
-        }
+        let status = CMBlockBufferGetDataPointer(
+            block,
+            atOffset: 0,
+            lengthAtOffsetOut: nil,
+            totalLengthOut: &totalLength,
+            dataPointerOut: &dataPointer
+        )
+        guard status == noErr, let dataPointer, totalLength > 0 else { return }
 
-        output(annexB, captureNanos, encodeDone, isKeyframe)
+        // Native takeover clients can consume AVCC directly. Keep the CMBlockBuffer bytes in
+        // place and synchronously packetize them before this VideoToolbox callback returns.
+        let avccSample = Data(
+            bytesNoCopy: UnsafeMutableRawPointer(dataPointer),
+            count: totalLength,
+            deallocator: .none
+        )
+        output(avccSample, codecConfig, captureNanos, encodeDone, isKeyframe)
     }
 }
 
@@ -154,7 +147,35 @@ private final class EncodedFrameSender: @unchecked Sendable {
         self.sessionHash = sessionHash
     }
 
-    func send(_ data: Data, captureNanos: UInt64, encodeDoneNanos: UInt64, keyframe: Bool) {
+    func send(
+        avccSample: Data,
+        codecConfig: Data?,
+        captureNanos: UInt64,
+        encodeDoneNanos: UInt64,
+        keyframe: Bool
+    ) {
+        // Repeat the tiny decoder configuration with every keyframe for now. A later reliable
+        // control channel can deduplicate/version this without making ordinary video reliable.
+        if let codecConfig {
+            sendPayload(
+                codecConfig,
+                captureNanos: captureNanos,
+                encodeDoneNanos: encodeDoneNanos,
+                flags: VideoPacketFlags.codecConfig
+            )
+        }
+
+        var flags = VideoPacketFlags.avccSample
+        if keyframe { flags |= VideoPacketFlags.keyframe }
+        sendPayload(
+            avccSample,
+            captureNanos: captureNanos,
+            encodeDoneNanos: encodeDoneNanos,
+            flags: flags
+        )
+    }
+
+    private func sendPayload(_ data: Data, captureNanos: UInt64, encodeDoneNanos: UInt64, flags: UInt8) {
         frameIDLock.lock()
         let id = frameID
         frameID &+= 1
@@ -168,7 +189,7 @@ private final class EncodedFrameSender: @unchecked Sendable {
             frameID: id,
             captureNanos: captureNanos,
             encodeDoneNanos: encodeDoneNanos,
-            keyframe: keyframe
+            flags: flags
         ) { slice in
             try sender.send(header: slice.header, payload: data, payloadRange: slice.payloadRange)
         }
@@ -223,14 +244,20 @@ struct MacHost {
         config.capturesAudio = false
         config.showsCursor = false
 
-        let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { [frameSender] data, capture, encodeDone, keyframe in
-            frameSender.send(data, captureNanos: capture, encodeDoneNanos: encodeDone, keyframe: keyframe)
+        let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { [frameSender] avccSample, codecConfig, capture, encodeDone, keyframe in
+            frameSender.send(
+                avccSample: avccSample,
+                codecConfig: codecConfig,
+                captureNanos: capture,
+                encodeDoneNanos: encodeDone,
+                keyframe: keyframe
+            )
         }
         let output = CaptureOutput(encoder: encoder)
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
-        print("streaming ScreenCaptureKit -> VideoToolbox H.264 -> UDP to \(host):\(port)")
+        print("streaming ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(host):\(port)")
         print("Press Ctrl-C to stop")
         while true { try await Task.sleep(for: .seconds(3600)) }
     }
