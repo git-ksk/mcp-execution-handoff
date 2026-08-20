@@ -10,12 +10,14 @@
 		A00000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* AppDelegate.swift */; };
 		A00000000000000000000002 /* ReferenceBootstrapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* ReferenceBootstrapViewController.swift */; };
 		A00000000000000000000003 /* TakeoverNativeClient in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000002 /* TakeoverNativeClient */; };
+		A00000000000000000000004 /* NativeOperatorWebAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* NativeOperatorWebAuthenticator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		B00000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B00000000000000000000002 /* ReferenceBootstrapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceBootstrapViewController.swift; sourceTree = "<group>"; };
 		B00000000000000000000003 /* TakeoverReferenceApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TakeoverReferenceApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000000000000000000004 /* NativeOperatorWebAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOperatorWebAuthenticator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -43,6 +45,7 @@
 			children = (
 				B00000000000000000000001 /* AppDelegate.swift */,
 				B00000000000000000000002 /* ReferenceBootstrapViewController.swift */,
+				B00000000000000000000004 /* NativeOperatorWebAuthenticator.swift */,
 			);
 			path = TakeoverReferenceApp;
 			sourceTree = "<group>";
@@ -131,6 +134,7 @@
 			files = (
 				A00000000000000000000001 /* AppDelegate.swift in Sources */,
 				A00000000000000000000002 /* ReferenceBootstrapViewController.swift in Sources */,
+				A00000000000000000000004 /* NativeOperatorWebAuthenticator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
