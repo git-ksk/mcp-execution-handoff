@@ -96,6 +96,8 @@ Before calling any number glass-to-glass, measure on a physical Mac and a real n
 9. input creation → host receive → OS injection → next presented frame;
 10. immediate revoke → input cleanup/capture stop latency.
 
-Real mobile/WAN acceptance must also measure MTU, steady and burst packet loss, congestion, background/foreground, and reconnect. If bounded keyframe repair/IDR is insufficient, compare small FEC or codec/NAL-aware fragmentation rather than introducing an unbounded retransmission queue.
+For the WebRTC sibling transport, record three identifier-free acceptance metrics per viable path: selected candidate-pair RTT for `direct`, selected candidate-pair RTT for `relay`, and locator/connect-attempt → first rendered video frame latency. The browser classifies only `direct` vs `relay` from local WebRTC stats; candidate IDs, IPs, ICE/TURN endpoints, SSID/carrier/network identifiers, credentials, SDP, and key material are not samples. The runtime retains only a bounded process-memory window and exposes aggregate comparison; no durable telemetry is required.
+
+Real mobile/WAN acceptance must also measure MTU, steady and burst packet loss, congestion, background/foreground, reconnect, same-Wi-Fi direct selection, and real 5G/external-Wi-Fi TURN fallback. If bounded keyframe repair/IDR is insufficient, compare small FEC or codec/NAL-aware fragmentation rather than introducing an unbounded retransmission queue.
 
 The project target is latency minimization under bounded loss, not perfect frame delivery.

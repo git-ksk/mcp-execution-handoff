@@ -1,14 +1,8 @@
 import { spawn } from "node:child_process";
 import type { TakeoverGrant } from "./session.js";
-export interface WebRtcTakeoverRuntimeBinding {
-    takeoverSessionId: string;
-    interventionId: string;
-    epoch: number;
-    principalBinding: string;
-    clientBinding: string;
-    clientGeneration: number;
-    expiresAt: number;
-}
+import { type WebRtcBrowserIceConfiguration, type WebRtcTakeoverRuntimeBinding } from "./webrtc-ice.js";
+import { type WebRtcLatencyComparison, type WebRtcLatencySample } from "./webrtc-latency.js";
+export type { WebRtcTakeoverRuntimeBinding } from "./webrtc-ice.js";
 export interface WebRtcSessionDescription {
     type: "offer" | "answer";
     sdp: string;
@@ -33,14 +27,17 @@ export interface WebRtcRuntimeHooks {
     disconnected(): void;
 }
 export interface WebRtcTakeoverRuntimeProvider {
+    prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration>;
     start(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
+    recordLatency(sample: WebRtcLatencySample): void;
+    latencySnapshot(): WebRtcLatencyComparison;
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
 }
 export declare class WebRtcTakeoverRuntimeError extends Error {
-    readonly code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED";
-    constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string);
+    readonly code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED";
+    constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string);
 }
 export declare function webRtcBindingFromGrant(grant: TakeoverGrant): WebRtcTakeoverRuntimeBinding;
 export declare function parseWebRtcOffer(value: unknown): WebRtcSessionDescription;
@@ -59,14 +56,21 @@ export interface SpawnedWebRtcRuntimeProviderConfig {
  * is written to that helper over stdin. The only broker-visible state is the generation binding.
  */
 export declare class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvider {
+    #private;
     private readonly config;
     private readonly active;
+    private readonly prepared;
+    private readonly latency;
     private readonly spawnProcess;
     constructor(config: SpawnedWebRtcRuntimeProviderConfig);
+    prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration>;
+    recordLatency(sample: WebRtcLatencySample): void;
+    latencySnapshot(): WebRtcLatencyComparison;
     start(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
+    private revokePrepared;
     private spawnHost;
     private attachPeer;
     private attachHost;

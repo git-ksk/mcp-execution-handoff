@@ -133,9 +133,20 @@ The Native path above remains unchanged. An additional install-free Safari trans
 - background / peer disconnect destroys the old peer and requires fresh-generation reconnect;
 - WebRTC-only input is broker-generation-gated before entering a bounded local helper pipe;
 - WebRTC browser capture is capped at 1280×720 / 30 fps and uses Constrained Baseline H.264 (`42c01f`) for the initial Safari acceptance path; encoder admission stays at one in-flight frame plus one latest pending encoded frame;
-- server-side implicit third-party STUN is disabled; TURN/NAT traversal is an explicit future embedding policy.
+- server-side implicit third-party STUN remains disabled; when an explicit ICE credential provider is configured, host/direct candidates remain eligible and short-lived STUN/TURN candidates are added for WAN fallback without switching the default policy to relay-only;
+- Cloudflare Realtime TURN is the first supported credential-provider adapter: the long-lived TURN key token stays server-side, while separate short-lived browser/server ICE credentials are issued only after the Handoff client generation is bound and are revoked with that generation;
+- no TURN provider means the existing direct-only `iceServers: []` behavior; credential issuance failure remains direct-only with relay explicitly unavailable rather than silently widening trust.
 
 The macOS helper is built as `takeover-webrtc-host`. It carries only ephemeral framebuffer/H.264 and bounded Human input. It does not receive MCP/model context, and its environment is reduced to expiry plus optional display selection rather than inheriting the parent process environment.
+
+WAN relay configuration is owned by the Handoff runtime deployment, not by Maps or another consumer. `SpawnedWebRtcRuntimeProvider` recognizes both of the following server-side variables together:
+
+```text
+MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID
+MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN
+```
+
+Neither variable is forwarded to the browser or helper. If neither is present, the runtime remains direct-only. Supplying only one is an invalid, fail-closed startup configuration. Production deployment should inject the API token from its normal server-side secret boundary rather than commit it to source or configuration files.
 
 ## Validation
 
@@ -276,18 +287,21 @@ The browser transport is implementation-complete enough for physical acceptance,
 6. background Safari and return to foreground, confirming the stale peer/generation does not revive and recovery uses a fresh generation;
 7. re-run the existing Native physical path to confirm no regression.
 
-The current default WebRTC path intentionally uses host ICE candidates only (`iceServers: []`). Same-network acceptance comes first. TURN / WAN / cellular traversal is a separate explicit relay trust-policy decision, not an automatic fallback.
+The default remains direct-only when no ICE credential provider is configured. With the Cloudflare Realtime TURN adapter configured, normal ICE negotiation uses `iceTransportPolicy: all`: host/direct and server-reflexive candidates remain eligible, and relay is selected only when the ICE candidate pair cannot establish a direct path. Relay allocation is transport reachability, **not** Human authentication or proof that the target service accepted credentials.
+
+The browser control plane is intentionally two-stage: (1) claim/reconnect rotates and binds the exact intervention / epoch / principal / client-generation / expiry tuple and prepares short-lived ICE material; (2) only that generation may submit its bounded offer. Reconnect always creates a fresh peer, fresh generation, and fresh ICE session. TURN credentials, SDP, candidates, DTLS/SRTP key material, framebuffer bytes, and raw Human input remain process-memory/no-store signaling data and are never MCP/model/checkpoint/log artifacts.
 
 The main remaining work now requires physical devices / real networks:
 
-1. physical Mac ScreenCaptureKit callback → encode timing;
-2. actual iPhone receive → secure pipeline → VideoToolbox decode → **Metal presentation/scanout** timing;
-3. touch/input creation → host injection → next presented frame timing;
-4. immediate revoke → input cleanup/capture-stop timing;
-5. background/foreground with a real fresh control-plane generation/key;
-6. real Wi-Fi/cellular RTT, MTU, steady/burst loss and congestion behavior;
-7. decide from evidence whether bounded IDR recovery is sufficient or whether small FEC / codec-NAL-aware fragmentation is justified;
-8. choose/implement the production NAT traversal or relay adapter without changing the authority contract.
+1. same-Wi-Fi Safari acceptance and verification that the selected path reports `direct`;
+2. iPhone 5G / external Wi-Fi / CGNAT acceptance and verification that direct failure falls through to Cloudflare TURN and reports `relay`;
+3. direct tap / one-finger swipe / iOS keyboard text, Backspace and Enter over both viable paths;
+4. immediate Done revoke → input/capture stop and stale peer rejection;
+5. background/foreground with a real fresh control-plane generation and fresh ICE session;
+6. direct RTT vs relay RTT and first-frame latency using identifier-free in-memory samples;
+7. real Wi-Fi/cellular MTU, steady/burst loss and congestion behavior;
+8. re-run the existing Native physical path and compare its committed sources/binaries for regression;
+9. decide from evidence whether bounded IDR recovery is sufficient or whether small FEC / codec-NAL-aware fragmentation is justified.
 
 Do not add an unbounded reliable-video queue to hide loss.
 

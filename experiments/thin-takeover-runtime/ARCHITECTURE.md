@@ -200,8 +200,9 @@ The install-free browser transport is a sibling data plane under the same Handof
 ```text
 control plane: intervention / epoch / principal / client generation / expiry
   ↓ authenticated locator claim or fresh reconnect
+  ↓ prepare ICE for that exact generation (direct-only, or short-lived STUN/TURN)
 Handoff WebRTC runtime
-  ├─ HTTP signaling: bounded SDP only
+  ├─ no-store HTTP signaling: bounded ICE configuration + bounded SDP
   ├─ ScreenCaptureKit → VideoToolbox H.264 Constrained Baseline
   │    → 1280×720 / 30 fps initial Safari acceptance profile
   │    → maxInFlight=1 → latest pending encoded frame only
@@ -216,7 +217,11 @@ The realtime DataChannel is unordered with zero retransmissions and carries swip
 
 Safari lifecycle is fail-closed. `pagehide` / background / peer disconnect destroys the peer and releases that exact client generation. Foreground or connection recovery constructs a new peer only after the broker validates the generation-bound reconnect handle and rotates to a fresh generation. The old capability remains fenced. `Done` revokes broker authority before transport teardown and never means authentication succeeded.
 
-The server explicitly disables Werift's implicit third-party STUN default. Same-network host candidates are the current acceptance path. TURN/NAT traversal is an embedding policy and requires an explicit relay trust review rather than an automatic fallback. PLI requests are rate-limited before asking the macOS encoder for a new IDR.
+The server explicitly disables Werift's implicit third-party STUN default. No provider preserves direct-only `iceServers: []`. When configured, `CloudflareRealtimeTurnCredentialProvider` is owned by the Handoff runtime, not a consumer such as Maps. It uses the server-only Cloudflare TURN key token to mint two independent, short-lived ICE credential sets after generation binding: one returned to the browser in no-store signaling and one retained for the Werift peer. Werift/browser both use normal `iceTransportPolicy: all`; host/direct candidates stay eligible and a relay candidate is used only if ICE selects it. A credential-provider outage does not switch to a different relay or a weaker transport: direct remains eligible and the UI reports relay unavailable if WAN establishment fails.
+
+The relay is a distinct third-party network trust boundary, not an authority boundary. It can observe relay-visible network metadata and encrypted traffic characteristics, but Handoff does not attach principal/intervention/client identifiers to Cloudflare TURN analytics. TURN credential success cannot advance authentication or Agent authority. Suspend/disconnect/Done/Cancel/expiry/reconnect revoke the generation's ICE session along with media/input authority. PLI requests remain rate-limited before asking the macOS encoder for a new IDR.
+
+For acceptance comparisons, the browser derives only the selected path class (`direct` or `relay`), candidate-pair RTT, and first-video-frame latency from local WebRTC stats/timing. It sends only those bounded numeric/path fields through a generation-capability-verified endpoint. Candidate IDs, addresses, ICE/TURN endpoints, credentials, and network identifiers are rejected and the runtime keeps at most a bounded process-memory sample window.
 
 ## portability
 

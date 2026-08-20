@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, random16, useH264 } from "werift";
+import { CloudflareRealtimeTurnCredentialProvider, cloneIceServers, directOnlyIceSession } from "./webrtc-ice.js";
+import { WebRtcLatencyTracker } from "./webrtc-latency.js";
 const MAX_SIGNALING_SDP_BYTES = 128 * 1024;
 const MAX_DATA_CHANNEL_MESSAGE_BYTES = 4 * 1024;
 const MAX_TEXT_BYTES = 4 * 1024;
@@ -51,13 +53,57 @@ export function parseWebRtcOffer(value) {
 export class SpawnedWebRtcRuntimeProvider {
     config;
     active = new Map();
+    prepared = new Map();
+    latency = new WebRtcLatencyTracker();
     spawnProcess;
+    #iceCredentialProvider;
     constructor(config) {
         this.config = config;
         if (!config.hostExecutable.trim() || !isAbsolute(config.hostExecutable)) {
             throw new Error("WebRTC host executable must be an absolute path");
         }
         this.spawnProcess = config.spawnProcess ?? spawn;
+        this.#iceCredentialProvider = iceCredentialProviderFromEnvironment(process.env);
+    }
+    async prepare(binding) {
+        const existing = this.active.get(binding.takeoverSessionId);
+        if (existing?.binding.clientGeneration === binding.clientGeneration) {
+            throw new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_ALREADY_ACTIVE", "WebRTC runtime for this generation is already active");
+        }
+        if (existing) {
+            // A broker-authorized fresh generation must fence and close the previous peer before new
+            // ICE material exists. This also covers reconnect after the broker's idle threshold.
+            await this.end(binding.takeoverSessionId, false);
+        }
+        await this.revokePrepared(binding.takeoverSessionId);
+        let iceSession;
+        if (!this.#iceCredentialProvider) {
+            iceSession = directOnlyIceSession("disabled");
+        }
+        else {
+            try {
+                iceSession = await this.#iceCredentialProvider.issue(binding);
+            }
+            catch {
+                // Credential-provider failure does not silently widen trust. Keep LAN/direct eligibility,
+                // but make relay unavailable so a WAN failure is explicit and safe.
+                iceSession = directOnlyIceSession("unavailable");
+            }
+        }
+        const delay = Math.max(0, binding.expiresAt - Date.now());
+        const expiryTimer = setTimeout(() => { void this.revokePrepared(binding.takeoverSessionId); }, delay);
+        expiryTimer.unref();
+        this.prepared.set(binding.takeoverSessionId, { binding: { ...binding }, iceSession, expiryTimer });
+        return {
+            iceServers: cloneIceServers(iceSession.browser.iceServers),
+            relay: iceSession.browser.relay
+        };
+    }
+    recordLatency(sample) {
+        this.latency.record(sample);
+    }
+    latencySnapshot() {
+        return this.latency.snapshot();
     }
     async start(binding, offer, hooks) {
         if (offer.type !== "offer" || Buffer.byteLength(offer.sdp, "utf8") > MAX_SIGNALING_SDP_BYTES) {
@@ -69,9 +115,20 @@ export class SpawnedWebRtcRuntimeProvider {
         }
         if (existing)
             await this.end(binding.takeoverSessionId, false);
+        let prepared = this.prepared.get(binding.takeoverSessionId);
+        if (!prepared && !this.#iceCredentialProvider) {
+            await this.prepare(binding);
+            prepared = this.prepared.get(binding.takeoverSessionId);
+        }
+        if (!prepared || !sameBinding(prepared.binding, binding)) {
+            throw new WebRtcTakeoverRuntimeError("WEBRTC_ICE_NOT_PREPARED", "WebRTC ICE session is unavailable");
+        }
+        this.prepared.delete(binding.takeoverSessionId);
+        clearTimeout(prepared.expiryTimer);
         const peer = new RTCPeerConnection({
             codecs: { video: [useH264()] },
-            iceServers: [],
+            iceServers: cloneIceServers(prepared.iceSession.serverIceServers),
+            iceTransportPolicy: "all",
             maxMessageSize: MAX_DATA_CHANNEL_MESSAGE_BYTES
         });
         const track = new MediaStreamTrack({ kind: "video" });
@@ -79,8 +136,12 @@ export class SpawnedWebRtcRuntimeProvider {
         try {
             host = this.spawnHost(binding);
             await this.waitForSpawn(host);
+            const expiryTimer = setTimeout(() => { void this.end(binding.takeoverSessionId, true); }, Math.max(0, binding.expiresAt - Date.now()));
+            expiryTimer.unref();
             const runtime = {
                 binding: { ...binding },
+                iceSession: prepared.iceSession,
+                expiryTimer,
                 peer,
                 track,
                 host,
@@ -112,7 +173,11 @@ export class SpawnedWebRtcRuntimeProvider {
             if (host)
                 host.kill("SIGTERM");
             await peer.close().catch(() => undefined);
+            const active = this.active.get(binding.takeoverSessionId);
+            if (active)
+                clearTimeout(active.expiryTimer);
             this.active.delete(binding.takeoverSessionId);
+            await prepared.iceSession.revoke().catch(() => undefined);
             throw error instanceof WebRtcTakeoverRuntimeError
                 ? error
                 : new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_START_FAILED", "WebRTC runtime failed to start");
@@ -122,14 +187,32 @@ export class SpawnedWebRtcRuntimeProvider {
         return this.start(binding, offer, hooks);
     }
     async revoke(takeoverSessionId) {
+        await this.revokePrepared(takeoverSessionId);
         await this.end(takeoverSessionId, false);
     }
     async revokeForIntervention(interventionId) {
-        const ids = [...this.active]
-            .filter(([, runtime]) => runtime.binding.interventionId === interventionId)
-            .map(([id]) => id);
+        const ids = new Set();
+        for (const [id, runtime] of this.active)
+            if (runtime.binding.interventionId === interventionId)
+                ids.add(id);
+        for (const [id, runtime] of this.prepared)
+            if (runtime.binding.interventionId === interventionId)
+                ids.add(id);
         for (const id of ids)
-            await this.end(id, false);
+            await this.revoke(id);
+    }
+    async revokePrepared(takeoverSessionId) {
+        const prepared = this.prepared.get(takeoverSessionId);
+        if (!prepared)
+            return;
+        this.prepared.delete(takeoverSessionId);
+        clearTimeout(prepared.expiryTimer);
+        try {
+            await prepared.iceSession.revoke();
+        }
+        catch {
+            throw new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_REVOKE_FAILED", "WebRTC ICE credential revoke failed");
+        }
     }
     spawnHost(binding) {
         const env = {
@@ -284,6 +367,11 @@ export class SpawnedWebRtcRuntimeProvider {
             return;
         runtime.closing = true;
         this.active.delete(takeoverSessionId);
+        clearTimeout(runtime.expiryTimer);
+        // Fence broker authority before any OS cleanup or third-party TURN revocation can block.
+        // Relay credential revocation is defense-in-depth after the exact client generation is stale.
+        if (notifyDisconnect)
+            runtime.hooks.disconnected();
         try {
             runtime.critical?.close();
             await runtime.peer.close().catch(() => undefined);
@@ -300,8 +388,7 @@ export class SpawnedWebRtcRuntimeProvider {
             }
         }
         finally {
-            if (notifyDisconnect)
-                runtime.hooks.disconnected();
+            await runtime.iceSession.revoke().catch(() => undefined);
         }
     }
     async waitForSpawn(child) {
@@ -332,6 +419,25 @@ export class SpawnedWebRtcRuntimeProvider {
         child.stdout?.destroy();
         child.stderr?.destroy();
     }
+}
+function iceCredentialProviderFromEnvironment(env) {
+    const turnKeyId = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID;
+    const turnKeyApiToken = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN;
+    if (!turnKeyId && !turnKeyApiToken)
+        return undefined;
+    if (!turnKeyId || !turnKeyApiToken) {
+        throw new Error("Cloudflare TURN configuration is incomplete");
+    }
+    return new CloudflareRealtimeTurnCredentialProvider({ turnKeyId, turnKeyApiToken });
+}
+function sameBinding(left, right) {
+    return left.takeoverSessionId === right.takeoverSessionId
+        && left.interventionId === right.interventionId
+        && left.epoch === right.epoch
+        && left.principalBinding === right.principalBinding
+        && left.clientBinding === right.clientBinding
+        && left.clientGeneration === right.clientGeneration
+        && left.expiresAt === right.expiresAt;
 }
 function parseHumanInput(value, realtime) {
     if (!value || typeof value !== "object" || Array.isArray(value))

@@ -156,7 +156,7 @@ Client embeddings must similarly deliver the short-lived binding through an appl
 
 ## WebRTC browser sibling transport
 
-The browser path is a sibling transport, not a new authority protocol. The broker binds the browser peer to the existing intervention / epoch / principal / client-generation / expiry tuple. Initial claim and reconnect exchange bounded SDP over authenticated same-origin HTTP; SDP is signaling material only and cannot grant authority.
+The browser path is a sibling transport, not a new authority protocol. The broker binds the browser peer to the existing intervention / epoch / principal / client-generation / expiry tuple. Initial claim and reconnect are two-stage: the broker first allocates/rotates the exact client generation and prepares that generation's ICE configuration, then the capability-bound client submits a bounded offer. ICE configuration and SDP use authenticated same-origin, no-store signaling and are transport material only; neither can grant Human authority.
 
 Video uses ScreenCaptureKit → VideoToolbox H.264 Constrained Baseline → RFC 6184 RTP over WebRTC SRTP. The initial Safari acceptance profile is capped at 1280×720 / 30 fps and produces `42c01f` on the current macOS encoder. Capture/encode admission remains newest-frame-oriented (`maxInFlight=1` plus at most one pending encoded frame). PLI feedback is locally rate-limited and requests an IDR for the next admitted frame. No reliable video FIFO is introduced.
 
@@ -169,7 +169,11 @@ Every accepted message is bounded before entering the macOS helper and rechecks 
 
 Safari background/pagehide or peer disconnect tears down the peer and releases that generation. Foreground/connection recovery must present the generation-bound reconnect handle and obtain a fresh generation before constructing a replacement peer. `Done` first disables local browser input, then asks the broker to revoke the generation, then tears down the peer; it never signals authentication or action approval.
 
-The default server configuration uses no implicit STUN/TURN service (`iceServers: []`). Relay/NAT traversal is outside the default wire contract and requires an explicit trust policy.
+The default server configuration uses no implicit STUN/TURN service (`iceServers: []`). An explicit ICE provider may add STUN/TURN servers, but both peers MUST keep normal `iceTransportPolicy: all`; relay-only is not the default. ICE therefore evaluates direct/host (and, when available, server-reflexive) candidate pairs alongside relay candidates and may select TURN only when the viable pair requires it. The Human UI exposes only coarse states such as `Connecting directly…`, `Trying secure relay…`, `Live · direct`, and `Live · relay`; candidate/IP/TURN endpoint detail is not exposed.
+
+A TURN credential set is scoped operationally to one Handoff client generation and expires no later than that takeover binding. Reconnect MUST allocate a fresh client generation, construct a fresh peer/ICE session, and revoke the previous TURN allocations. Done, Cancel, suspend, pagehide/background, disconnect, intervention revoke, and expiry MUST make the old media/input generation unusable immediately even if third-party credential revocation itself is temporarily unreachable. TURN allocation/authentication is not Handoff authentication and MUST NOT be used as evidence of target-service login/MFA/passkey success.
+
+TURN credentials, SDP, ICE candidates, DTLS/SRTP key material, candidate/network identifiers, framebuffer content, and raw Human input MUST NOT enter MCP/model messages, ordinary logs, analytics, or durable checkpoints. Identifier-free acceptance metrics MAY contain only `path ∈ {direct, relay}`, bounded RTT milliseconds, and bounded first-frame milliseconds, and SHOULD remain process-memory-only.
 
 ## Credentials
 

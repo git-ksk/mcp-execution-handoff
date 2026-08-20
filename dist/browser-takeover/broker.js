@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { TakeoverSessionError, TakeoverSessionManager } from "./session.js";
 import { NativeTakeoverRuntimeError, nativeBindingFromGrant, parseNativeTakeoverClientEndpoint } from "./native-runtime.js";
 import { WebRtcTakeoverRuntimeError, parseWebRtcOffer, webRtcBindingFromGrant } from "./webrtc-runtime.js";
+import { parseWebRtcLatencySample } from "./webrtc-latency.js";
 function privateHeaders(contentType) {
     return {
         "content-type": contentType,
@@ -69,30 +70,38 @@ function webRtcClientScript() {
     return `(() => {
 const parts=location.pathname.split('/').filter(Boolean);const sessionId=parts.length?parts[parts.length-1]:'';
 const statusEl=document.querySelector('#status');const video=document.querySelector('#video');const keyboard=document.querySelector('#keyboard');
-let clientBinding=randomClientBinding();let cap='';let reconnectHandle='';let pc=null;let critical=null;let realtime=null;let stopped=false;let suspended=false;let suspendPromise=Promise.resolve();let gesture=null;let composing=false;
-const MARK='\\u200b';
+let clientBinding=randomClientBinding();let cap='';let reconnectHandle='';let clientGeneration=0;let pc=null;let critical=null;let realtime=null;let stopped=false;let suspended=false;let suspendPromise=Promise.resolve();let gesture=null;let composing=false;let failureInProgress=false;let initialReconnectUsed=false;let connectionStartedAt=0;let firstFrameMs=null;let metricsReported=false;let relayState='disabled';let relayTimer=0;
+const MARK='\u200b';
 function status(text){statusEl.textContent=text}
 function randomClientBinding(){const bytes=new Uint8Array(24);crypto.getRandomValues(bytes);let binary='';for(let i=0;i<bytes.length;i+=1)binary+=String.fromCharCode(bytes[i]);return btoa(binary).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')}
 function wait(ms){return new Promise(r=>setTimeout(r,ms))}
-function waitIce(peer){if(peer.iceGatheringState==='complete')return Promise.resolve();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('ice timeout')),8000);function done(){if(peer.iceGatheringState==='complete'){clearTimeout(timer);peer.removeEventListener('icegatheringstatechange',done);resolve()}}peer.addEventListener('icegatheringstatechange',done)})}
+function waitIce(peer){if(peer.iceGatheringState==='complete')return Promise.resolve();return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('ice timeout')),10000);function done(){if(peer.iceGatheringState==='complete'){clearTimeout(timer);peer.removeEventListener('icegatheringstatechange',done);resolve()}}peer.addEventListener('icegatheringstatechange',done)})}
 function resetKeyboard(){keyboard.value=MARK;try{keyboard.setSelectionRange(MARK.length,MARK.length)}catch{}}
-function closePeer(){if(pc){try{pc.ontrack=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null}critical=null;realtime=null}
+function clearRelayTimer(){if(relayTimer){clearTimeout(relayTimer);relayTimer=0}}
+function closePeer(){clearRelayTimer();if(pc){try{pc.ontrack=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null}critical=null;realtime=null}
 function mapPoint(event){const r=video.getBoundingClientRect();const vw=video.videoWidth||1;const vh=video.videoHeight||1;if(!r.width||!r.height)return null;const scale=Math.min(r.width/vw,r.height/vh);const w=vw*scale,h=vh*scale;const left=r.left+(r.width-w)/2,top=r.top+(r.height-h)/2;if(event.clientX<left||event.clientX>left+w||event.clientY<top||event.clientY>top+h)return null;return{x:(event.clientX-left)/w,y:(event.clientY-top)/h}}
 function send(channel,body,maxBuffered){if(stopped||!channel||channel.readyState!=='open'||channel.bufferedAmount>maxBuffered)return false;const text=JSON.stringify(body);if(new TextEncoder().encode(text).byteLength>4096)return false;channel.send(text);return true}
 function sendCritical(body){return send(critical,body,32768)}function sendRealtime(body){return send(realtime,body,4096)}
-async function makeOffer(){closePeer();const next=new RTCPeerConnection();pc=next;next.addTransceiver('video',{direction:'recvonly'});critical=next.createDataChannel('human-critical',{ordered:true});realtime=next.createDataChannel('human-realtime',{ordered:false,maxRetransmits:0});critical.onmessage=function(event){try{const m=JSON.parse(String(event.data));if(m.kind==='focus'){if(m.editable){keyboard.focus({preventScroll:true});resetKeyboard()}else{keyboard.blur()}}}catch{}};next.ontrack=function(event){if(event.streams&&event.streams[0])video.srcObject=event.streams[0];else video.srcObject=new MediaStream([event.track]);void video.play().catch(()=>{})};next.onconnectionstatechange=function(){if(next!==pc)return;if(next.connectionState==='connected')status('Live · direct touch');if(next.connectionState==='failed'||next.connectionState==='disconnected'){status('Connection ended · reconnecting requires a fresh generation');suspended=true;closePeer();if(document.visibilityState==='visible'&&!stopped)setTimeout(()=>{if(suspended&&!stopped)void reconnect()},250)}};const offer=await next.createOffer();await next.setLocalDescription(offer);await waitIce(next);if(!next.localDescription)throw new Error('missing offer');return{type:'offer',sdp:next.localDescription.sdp}}
-async function signal(mode,offer){const headers={'content-type':'application/json','x-takeover-client':clientBinding};if(mode==='reconnect')headers['x-mcp-takeover-reconnect']=reconnectHandle;const response=await fetch('/takeover/api/webrtc-'+mode+'/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers,body:JSON.stringify(offer)});if(!response.ok){const e=new Error('signal unavailable');e.status=response.status;throw e}const data=await response.json();if(!data.capability||!data.reconnectHandle||!data.webrtc||data.webrtc.type!=='answer')throw new Error('invalid signal response');cap=data.capability;reconnectHandle=data.reconnectHandle;await pc.setRemoteDescription(data.webrtc);suspended=false}
-async function connect(mode){status(mode==='claim'?'Connecting…':'Reconnecting with fresh generation…');const offer=await makeOffer();await signal(mode,offer)}
-async function suspend(){if(stopped||suspended||!cap)return;suspended=true;const oldPc=pc;closePeer();status('Suspended · stale session closed');try{await fetch('/takeover/api/webrtc-suspend/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding}})}catch{}finally{if(oldPc){try{oldPc.close()}catch{}}}}
-async function reconnect(){if(stopped||!suspended||!reconnectHandle)return;clientBinding=randomClientBinding();for(let attempt=0;attempt<4;attempt+=1){try{await connect('reconnect');return}catch(e){closePeer();if(e&&e.status===409){await wait(350);continue}break}}status('Fresh locator required');stopped=true}
+async function prepare(mode){const headers={'x-takeover-client':clientBinding};if(mode==='reconnect')headers['x-mcp-takeover-reconnect']=reconnectHandle;const response=await fetch('/takeover/api/webrtc-prepare-'+mode+'/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers});if(!response.ok){const e=new Error('prepare unavailable');e.status=response.status;throw e}const data=await response.json();if(!data.capability||!data.reconnectHandle||!Number.isFinite(data.clientGeneration)||!data.webrtcIce||!Array.isArray(data.webrtcIce.iceServers))throw new Error('invalid prepare response');if(!['disabled','available','unavailable'].includes(data.webrtcIce.relay))throw new Error('invalid relay state');cap=data.capability;reconnectHandle=data.reconnectHandle;clientGeneration=data.clientGeneration;relayState=data.webrtcIce.relay;return data.webrtcIce}
+function armFirstFrame(next){firstFrameMs=null;metricsReported=false;let fired=false;const mark=function(){if(fired||next!==pc)return;fired=true;firstFrameMs=Math.max(0,performance.now()-connectionStartedAt);void reportMetrics(next)};if(typeof video.requestVideoFrameCallback==='function'){video.requestVideoFrameCallback(mark)}else{video.addEventListener('playing',mark,{once:true})}}
+async function selectedPath(peer){for(let attempt=0;attempt<4;attempt+=1){try{const stats=await peer.getStats();let pair=null;stats.forEach(function(report){if(!pair&&report.type==='transport'&&report.selectedCandidatePairId)pair=stats.get(report.selectedCandidatePairId)});if(!pair)stats.forEach(function(report){if(!pair&&report.type==='candidate-pair'&&report.state==='succeeded'&&report.nominated)pair=report});if(pair){const local=stats.get(pair.localCandidateId);const remote=stats.get(pair.remoteCandidateId);const path=(local&&local.candidateType==='relay')||(remote&&remote.candidateType==='relay')?'relay':'direct';const rtt=Number(pair.currentRoundTripTime);return{path:path,rttMs:Number.isFinite(rtt)&&rtt>=0?Math.min(120000,rtt*1000):undefined}}}catch{}await wait(100)}return null}
+async function reportMetrics(peer){if(metricsReported||firstFrameMs===null||peer!==pc||!cap)return;const selected=await selectedPath(peer);if(!selected||peer!==pc)return;metricsReported=true;status('Live · '+selected.path);const body={path:selected.path,firstFrameMs:firstFrameMs};if(selected.rttMs!==undefined)body.rttMs=selected.rttMs;try{await fetch('/takeover/api/webrtc-metrics/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers:{'content-type':'application/json','x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding},body:JSON.stringify(body)})}catch{}}
+async function connected(next){clearRelayTimer();failureInProgress=false;initialReconnectUsed=false;const selected=await selectedPath(next);if(next!==pc)return;if(selected){status('Live · '+selected.path)}else{status('Live')}void reportMetrics(next)}
+async function releaseGeneration(label){if(stopped||!cap)return;suspended=true;const oldPc=pc;closePeer();status(label||'Suspended · stale session closed');try{await fetch('/takeover/api/webrtc-suspend/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding}})}catch{}finally{if(oldPc){try{oldPc.close()}catch{}}}}
+async function connectionFailed(next){if(next!==pc||stopped||failureInProgress)return;failureInProgress=true;const finalStatus=relayState==='unavailable'?'Secure relay unavailable':relayState==='disabled'?'Direct connection unavailable':'Connection unavailable';await releaseGeneration(finalStatus);if(document.visibilityState==='visible'&&!stopped&&!initialReconnectUsed&&reconnectHandle){initialReconnectUsed=true;await wait(250);try{await reconnect();return}catch{}}status(finalStatus);failureInProgress=false}
+async function makeOffer(ice){closePeer();connectionStartedAt=performance.now();firstFrameMs=null;metricsReported=false;const next=new RTCPeerConnection({iceServers:ice.iceServers,iceTransportPolicy:'all'});pc=next;next.addTransceiver('video',{direction:'recvonly'});critical=next.createDataChannel('human-critical',{ordered:true});realtime=next.createDataChannel('human-realtime',{ordered:false,maxRetransmits:0});critical.onmessage=function(event){try{const m=JSON.parse(String(event.data));if(m.kind==='focus'){if(m.editable){keyboard.focus({preventScroll:true});resetKeyboard()}else{keyboard.blur()}}}catch{}};next.ontrack=function(event){if(event.streams&&event.streams[0])video.srcObject=event.streams[0];else video.srcObject=new MediaStream([event.track]);armFirstFrame(next);void video.play().catch(()=>{})};next.onconnectionstatechange=function(){if(next!==pc)return;if(next.connectionState==='connected')void connected(next);if(next.connectionState==='failed'||next.connectionState==='disconnected')void connectionFailed(next)};if(ice.relay==='available'){relayTimer=setTimeout(function(){if(next===pc&&next.connectionState!=='connected')status('Trying secure relay…')},1800)}else if(ice.relay==='unavailable'){relayTimer=setTimeout(function(){if(next===pc&&next.connectionState!=='connected')status('Connecting directly… · secure relay unavailable')},1800)}const offer=await next.createOffer();await next.setLocalDescription(offer);await waitIce(next);if(!next.localDescription)throw new Error('missing offer');return{type:'offer',sdp:next.localDescription.sdp}}
+async function signal(offer){const response=await fetch('/takeover/api/webrtc-connect/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers:{'content-type':'application/json','x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding},body:JSON.stringify(offer)});if(!response.ok){const e=new Error('signal unavailable');e.status=response.status;throw e}const data=await response.json();if(!data.webrtc||data.webrtc.type!=='answer')throw new Error('invalid signal response');if(!pc)throw new Error('peer closed');await pc.setRemoteDescription(data.webrtc);suspended=false}
+async function connect(mode){status(mode==='claim'?'Connecting directly…':'Reconnecting with fresh generation…');const ice=await prepare(mode);if(mode==='reconnect')status('Connecting directly…');const offer=await makeOffer(ice);try{await signal(offer)}catch(error){await releaseGeneration(ice.relay==='unavailable'?'Secure relay unavailable':'Connection unavailable');throw error}}
+async function suspend(){if(stopped||suspended||!cap)return;suspendPromise=releaseGeneration('Suspended · stale session closed');await suspendPromise}
+async function reconnect(){if(stopped||!suspended||!reconnectHandle)return;clientBinding=randomClientBinding();for(let attempt=0;attempt<4;attempt+=1){try{await connect('reconnect');failureInProgress=false;return}catch(e){closePeer();if(e&&e.status===409){await wait(350);continue}throw e}}throw new Error('reconnect unavailable')}
 video.addEventListener('pointerdown',function(event){if(stopped||!critical||critical.readyState!=='open')return;const p=mapPoint(event);if(!p)return;video.setPointerCapture?.(event.pointerId);gesture={id:event.pointerId,startX:event.clientX,startY:event.clientY,lastX:event.clientX,lastY:event.clientY,point:p,moved:false};event.preventDefault()});
 video.addEventListener('pointermove',function(event){if(!gesture||gesture.id!==event.pointerId)return;const dx=event.clientX-gesture.lastX,dy=event.clientY-gesture.lastY;gesture.lastX=event.clientX;gesture.lastY=event.clientY;if(Math.hypot(event.clientX-gesture.startX,event.clientY-gesture.startY)>8)gesture.moved=true;if(gesture.moved)sendRealtime({kind:'scroll',deltaX:Math.max(-2000,Math.min(2000,-dx*2)),deltaY:Math.max(-2000,Math.min(2000,-dy*2))});event.preventDefault()});
 video.addEventListener('pointerup',function(event){if(!gesture||gesture.id!==event.pointerId)return;const g=gesture;gesture=null;if(!g.moved){keyboard.focus({preventScroll:true});resetKeyboard();sendCritical({kind:'tap',x:g.point.x,y:g.point.y})}event.preventDefault()});
 video.addEventListener('pointercancel',function(){gesture=null});
-keyboard.addEventListener('compositionstart',function(){composing=true});keyboard.addEventListener('compositionend',function(event){composing=false;if(event.data)sendCritical({kind:'text',text:event.data});resetKeyboard()});keyboard.addEventListener('input',function(){if(composing)return;const value=keyboard.value;if(value===''){sendCritical({kind:'key',key:'Backspace'})}else{let text=value.split(MARK).join('');if(text.endsWith('\\n')){text=text.slice(0,-1);if(text)sendCritical({kind:'text',text});sendCritical({kind:'key',key:'Enter'})}else if(text){sendCritical({kind:'text',text})}}resetKeyboard()});
-document.querySelector('#done').addEventListener('click',async function(){if(stopped)return;stopped=true;keyboard.blur();try{await fetch('/takeover/api/done/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding}});status('Remote control closed. Return to the requesting workflow.')}catch{status('Session closed')}finally{closePeer();cap='';reconnectHandle=''}});
-document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){suspendPromise=suspend()}else if(document.visibilityState==='visible'&&suspended){void suspendPromise.finally(()=>reconnect())}});window.addEventListener('pagehide',function(){suspendPromise=suspend()});window.addEventListener('pageshow',function(event){if(event.persisted&&suspended)void suspendPromise.finally(()=>reconnect())});
-resetKeyboard();void connect('claim').catch(function(){closePeer();status('Session unavailable or fresh locator required');stopped=true});
+keyboard.addEventListener('compositionstart',function(){composing=true});keyboard.addEventListener('compositionend',function(event){composing=false;if(event.data)sendCritical({kind:'text',text:event.data});resetKeyboard()});keyboard.addEventListener('input',function(){if(composing)return;const value=keyboard.value;if(value===''){sendCritical({kind:'key',key:'Backspace'})}else{let text=value.split(MARK).join('');if(text.endsWith('\n')){text=text.slice(0,-1);if(text)sendCritical({kind:'text',text});sendCritical({kind:'key',key:'Enter'})}else if(text){sendCritical({kind:'text',text})}}resetKeyboard()});
+document.querySelector('#done').addEventListener('click',async function(){if(stopped)return;stopped=true;keyboard.blur();try{await fetch('/takeover/api/done/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding}});status('Remote control closed. Return to the requesting workflow.')}catch{status('Session closed')}finally{closePeer();cap='';reconnectHandle='';clientGeneration=0}});
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){void suspend()}else if(document.visibilityState==='visible'&&suspended&&!stopped){void suspendPromise.finally(()=>reconnect().catch(()=>status('Connection unavailable')))}});window.addEventListener('pagehide',function(){void suspend()});window.addEventListener('pageshow',function(event){if(event.persisted&&suspended&&!stopped)void suspendPromise.finally(()=>reconnect().catch(()=>status('Connection unavailable')))});
+resetKeyboard();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});
 })();`;
 }
 function webRtcPageHtml(nonce) {
@@ -230,7 +239,7 @@ export class TakeoverBroker {
             const html = this.webRtcOnlySessions.has(pageMatch[1]) ? webRtcPageHtml(nonce) : pageHtml(nonce);
             return new Response(request.method === "HEAD" ? null : html, { status: 200, headers });
         }
-        const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|webrtc-claim|webrtc-reconnect|webrtc-suspend|frame|input|done|cancel)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
+        const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-connect|webrtc-metrics|webrtc-suspend|frame|input|done|cancel)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
         if (!apiMatch)
             return json(404, { error: "not_found" });
         const operation = apiMatch[1];
@@ -238,28 +247,21 @@ export class TakeoverBroker {
         const clientBinding = this.readClientBinding(request.headers.get("x-takeover-client"));
         if (!clientBinding)
             return json(404, { error: "takeover_unavailable" });
-        if (operation === "webrtc-claim" || operation === "webrtc-reconnect") {
+        if (operation === "webrtc-prepare-claim" || operation === "webrtc-prepare-reconnect") {
             if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
                 return json(404, { error: "takeover_unavailable" });
             if (request.method !== "POST")
                 return json(405, { error: "method_not_allowed" });
             if (!this.sameOriginMutation(request))
                 return json(403, { error: "origin_not_allowed" });
-            const reconnectHandle = operation === "webrtc-reconnect"
+            const reconnectHandle = operation === "webrtc-prepare-reconnect"
                 ? this.readReconnectHandle(request.headers.get("x-mcp-takeover-reconnect"))
                 : undefined;
-            if (operation === "webrtc-reconnect" && !reconnectHandle)
+            if (operation === "webrtc-prepare-reconnect" && !reconnectHandle)
                 return json(404, { error: "takeover_unavailable" });
-            let offer;
-            try {
-                offer = parseWebRtcOffer(await this.readBoundedJson(request, 128 * 1024));
-            }
-            catch {
-                return json(400, { error: "webrtc_offer_invalid" });
-            }
             let grant;
             try {
-                grant = operation === "webrtc-claim"
+                grant = operation === "webrtc-prepare-claim"
                     ? this.sessions.claimClient(id, boundPrincipal, clientBinding)
                     : this.sessions.reconnectClient(id, boundPrincipal, reconnectHandle, clientBinding);
             }
@@ -272,35 +274,99 @@ export class TakeoverBroker {
                 throw error;
             }
             const binding = webRtcBindingFromGrant(grant);
-            const hooks = {
-                beginInput: () => {
-                    const use = this.sessions.beginBoundUse(binding.takeoverSessionId, binding.principalBinding, binding.clientBinding, binding.clientGeneration);
-                    return () => this.sessions.endUse(binding.takeoverSessionId, binding.principalBinding, binding.clientBinding, use.clientGeneration);
-                },
-                disconnected: () => {
-                    try {
-                        this.sessions.releaseClientGeneration(binding.takeoverSessionId, binding.principalBinding, binding.clientBinding, binding.clientGeneration);
-                    }
-                    catch {
-                        // A newer/revoked generation already fences this transport.
-                    }
-                }
-            };
             try {
-                const answer = operation === "webrtc-claim"
-                    ? await this.webRtcRuntime.start(binding, offer, hooks)
-                    : await this.webRtcRuntime.reconnect(binding, offer, hooks);
-                return json(200, this.publicGrant(grant, undefined, answer));
+                const webrtcIce = await this.webRtcRuntime.prepare(binding);
+                return json(200, { ...this.publicGrant(grant), webrtcIce });
             }
             catch (error) {
-                this.sessions.revoke(id);
-                this.webRtcOnlySessions.delete(id);
+                try {
+                    this.sessions.releaseClientGeneration(id, boundPrincipal, clientBinding, binding.clientGeneration);
+                }
+                catch { }
                 await this.webRtcRuntime.revoke(id).catch(() => undefined);
                 if (error instanceof WebRtcTakeoverRuntimeError && error.code === "WEBRTC_RUNTIME_ALREADY_ACTIVE") {
                     return json(409, { error: "webrtc_runtime_already_active" });
                 }
-                return json(503, { error: "webrtc_runtime_unavailable" });
+                return json(503, { error: "webrtc_ice_unavailable" });
             }
+        }
+        if (operation === "webrtc-connect") {
+            if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
+                return json(404, { error: "takeover_unavailable" });
+            if (request.method !== "POST")
+                return json(405, { error: "method_not_allowed" });
+            if (!this.sameOriginMutation(request))
+                return json(403, { error: "origin_not_allowed" });
+            const capability = this.readCapability(request.headers.get("x-mcp-takeover-capability"), request.headers.get("authorization"));
+            if (!capability)
+                return json(404, { error: "takeover_unavailable" });
+            let offer;
+            try {
+                offer = parseWebRtcOffer(await this.readBoundedJson(request, 128 * 1024));
+            }
+            catch {
+                return json(400, { error: "webrtc_offer_invalid" });
+            }
+            let verified;
+            try {
+                verified = this.sessions.verify(id, capability, boundPrincipal, clientBinding);
+            }
+            catch (error) {
+                if (error instanceof TakeoverSessionError)
+                    return json(404, { error: "takeover_unavailable" });
+                throw error;
+            }
+            const binding = {
+                takeoverSessionId: verified.id,
+                interventionId: verified.interventionId,
+                epoch: verified.epoch,
+                principalBinding: verified.principalBinding,
+                clientBinding: verified.clientBinding,
+                clientGeneration: verified.clientGeneration,
+                expiresAt: verified.expiresAt
+            };
+            try {
+                const answer = await this.webRtcRuntime.start(binding, offer, this.webRtcHooks(binding));
+                return json(200, { webrtc: answer });
+            }
+            catch {
+                try {
+                    this.sessions.releaseClientGeneration(id, boundPrincipal, clientBinding, binding.clientGeneration);
+                }
+                catch { }
+                await this.webRtcRuntime.revoke(id).catch(() => undefined);
+                return json(503, { error: "webrtc_runtime_unavailable", reconnectRequired: true });
+            }
+        }
+        if (operation === "webrtc-metrics") {
+            if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
+                return json(404, { error: "takeover_unavailable" });
+            if (request.method !== "POST")
+                return json(405, { error: "method_not_allowed" });
+            if (!this.sameOriginMutation(request))
+                return json(403, { error: "origin_not_allowed" });
+            const capability = this.readCapability(request.headers.get("x-mcp-takeover-capability"), request.headers.get("authorization"));
+            if (!capability)
+                return json(404, { error: "takeover_unavailable" });
+            try {
+                this.sessions.verify(id, capability, boundPrincipal, clientBinding);
+            }
+            catch (error) {
+                if (error instanceof TakeoverSessionError)
+                    return json(404, { error: "takeover_unavailable" });
+                throw error;
+            }
+            let sample;
+            try {
+                sample = parseWebRtcLatencySample(await this.readBoundedJson(request, 1_024));
+            }
+            catch {
+                return json(400, { error: "webrtc_metrics_invalid" });
+            }
+            if (!sample)
+                return json(400, { error: "webrtc_metrics_invalid" });
+            this.webRtcRuntime.recordLatency(sample);
+            return json(200, { accepted: true });
         }
         if (operation === "webrtc-suspend") {
             if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
@@ -502,6 +568,22 @@ export class TakeoverBroker {
         finally {
             this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
         }
+    }
+    webRtcHooks(binding) {
+        return {
+            beginInput: () => {
+                const use = this.sessions.beginBoundUse(binding.takeoverSessionId, binding.principalBinding, binding.clientBinding, binding.clientGeneration);
+                return () => this.sessions.endUse(binding.takeoverSessionId, binding.principalBinding, binding.clientBinding, use.clientGeneration);
+            },
+            disconnected: () => {
+                try {
+                    this.sessions.releaseClientGeneration(binding.takeoverSessionId, binding.principalBinding, binding.clientBinding, binding.clientGeneration);
+                }
+                catch {
+                    // A newer/revoked generation already fences this transport.
+                }
+            }
+        };
     }
     forgetNativeOnlyIntervention(interventionId) {
         for (const [sessionId, currentIntervention] of this.nativeOnlySessions) {

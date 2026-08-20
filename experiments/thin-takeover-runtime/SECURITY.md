@@ -35,7 +35,11 @@ The browser transport shares the control-plane intervention / epoch / principal 
 
 Backgrounding, `pagehide`, peer failure, explicit suspend, Done, Cancel, and expiry all tear down media/input capability. Background/foreground does not resurrect the old peer: reconnect requires the generation-bound reconnect handle and a freshly rotated client generation. WebRTC-only locators reject the legacy HTTP frame/input endpoints, so media failure cannot downgrade to the old button-driven surface.
 
-Werift is configured with `iceServers: []` to prevent implicit third-party STUN discovery. TURN/relay credentials and topology are not part of the current default path and must be reviewed as a separate trust boundary if enabled. Do not log or persist raw Human input, framebuffer/H.264/RTP payloads, SDP/DTLS key material, reconnect handles/capabilities, credentials, OTP/MFA/passkey material, cookies, or target-service tokens.
+Werift never uses its implicit third-party STUN default. Without an explicit provider, both peers use direct-only `iceServers: []`. With the Cloudflare Realtime TURN adapter, the broker first binds the exact intervention / epoch / principal / client-generation / expiry tuple, then the Handoff runtime obtains separate short-lived ICE credentials for browser and server peers. Normal ICE policy remains `all`, not `relay`, so direct candidate pairs remain preferred/eligible and TURN is a reachability fallback. Reconnect creates a new generation and new ICE session; suspend, peer disconnect, Done, Cancel, pagehide/background, intervention revoke, and expiry tear down the peer and revoke the associated short-lived TURN allocations. A stale capability, reconnect handle, or generation cannot reattach to the prepared or active ICE session.
+
+Cloudflare Realtime TURN is a **third-party relay trust boundary** when relay is selected. Cloudflare can necessarily observe relay allocation/account metadata, peer network addresses visible to the relay, timing/volume, and encrypted packet transit. It must not receive Handoff principal/intervention/client identifiers as TURN `customIdentifier` metadata. DTLS/SRTP/DataChannel cryptography remains endpoint-to-endpoint; the relay is not granted plaintext framebuffer or Human input by this design. TURN allocation authentication proves only permission to use the relay and MUST NOT be interpreted as Human identity, target-service authentication, MFA/passkey completion, or authorization for an Agent action.
+
+The long-lived Cloudflare TURN key token is server-side configuration only (`MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN`; paired with the non-secret key id). A partial pair is rejected at runtime construction. The token MUST NOT be serialized to the browser, helper process, MCP/model context, exception/log payloads, analytics, or durable state. Short-lived TURN username/credential material is returned only in no-store browser signaling and retained in process memory long enough to negotiate/revoke the bound generation. Do not log or persist TURN credentials, raw Human input, framebuffer/H.264/RTP payloads, SDP, ICE candidates, DTLS/SRTP key material, reconnect handles/capabilities, credentials, OTP/MFA/passkey material, cookies, or target-service tokens.
 
 ## Threats explicitly addressed
 
@@ -62,7 +66,7 @@ The following are not considered solved by synthetic CI and require physical-pat
 - real mobile/WAN packet loss, burst loss, MTU behavior, congestion, and whether bounded NACK/IDR needs FEC or codec-aware fragmentation;
 - actual display presentation/scanout latency and input-to-next-presented-frame latency;
 - mobile background/foreground/reconnect lifecycle;
-- NAT traversal / relay trust policy;
+- physical validation of the configured TURN relay trust/availability boundary;
 - Screen Recording / Accessibility permission UX and least-privilege process boundaries;
 - secure key injection/destruction in a production embedding (environment variables are only a development/reference path).
 
@@ -74,7 +78,7 @@ The embedding application must provide:
 - capability issuance and authoritative expiry/revoke;
 - intervention lifecycle;
 - process/sandbox boundaries;
-- NAT traversal / relay trust policy;
+- optional ICE/TURN provider selection and server-only secret provisioning;
 - OS permission UX;
 - secure destruction/rotation of session keys;
 - immediate control-plane Done/Cancel/disconnect/timeout policy.
@@ -83,7 +87,7 @@ The authenticated local revoke signal is a teardown mechanism only; it does not 
 
 ## Logging
 
-Safe logs may contain aggregate latency, packet counts, codec names, frame sizes, and opaque non-secret generation numbers. Do not log root keys, plaintext input, text commits, framebuffer bytes, credential material, cookies, tokens, full takeover URLs/capabilities, or plaintext control messages containing future sensitive operations.
+Safe logs may contain aggregate identifier-free latency distributions, packet counts, codec names, and frame sizes. WebRTC direct/relay RTT and first-frame samples are bounded in process memory and contain only path class plus timing values; they are not durable telemetry by default. Do not log root keys, plaintext input, text commits, framebuffer bytes, credential material, cookies, tokens, full takeover URLs/capabilities, or plaintext control messages containing future sensitive operations.
 
 ## Reporting
 

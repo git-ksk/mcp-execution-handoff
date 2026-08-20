@@ -42,6 +42,7 @@ export declare class TakeoverBroker {
     revokeNativeForIntervention(interventionId: string): Promise<void>;
     revokeWebRtcForIntervention(interventionId: string): Promise<void>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    private webRtcHooks;
     private forgetNativeOnlyIntervention;
     private forgetWebRtcOnlyIntervention;
     private publicGrant;
