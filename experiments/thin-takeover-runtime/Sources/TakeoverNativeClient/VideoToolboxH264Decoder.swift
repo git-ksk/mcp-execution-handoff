@@ -6,6 +6,8 @@ import CoreMedia
 import CoreVideo
 import VideoToolbox
 
+private let takeoverParameterError: OSStatus = -50
+
 public enum NativeH264DecoderError: Error, Equatable {
     case invalidAVCC
     case noParameterSets
@@ -115,7 +117,7 @@ public final class VideoToolboxH264Decoder: @unchecked Sendable {
     }
 
     public func decode(avccSample: Data, metadata: NativeVideoFrameMetadata) throws {
-        guard !avccSample.isEmpty else { throw NativeH264DecoderError.blockBuffer(OSStatus(paramErr)) }
+        guard !avccSample.isEmpty else { throw NativeH264DecoderError.blockBuffer(takeoverParameterError) }
         guard let formatDescription, let session else { throw NativeH264DecoderError.decoderNotConfigured }
 
         var block: CMBlockBuffer?
@@ -133,7 +135,7 @@ public final class VideoToolboxH264Decoder: @unchecked Sendable {
         guard status == kCMBlockBufferNoErr, let block else { throw NativeH264DecoderError.blockBuffer(status) }
 
         status = avccSample.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return OSStatus(paramErr) }
+            guard let base = raw.baseAddress else { return takeoverParameterError }
             return CMBlockBufferReplaceDataBytes(
                 with: base,
                 blockBuffer: block,
