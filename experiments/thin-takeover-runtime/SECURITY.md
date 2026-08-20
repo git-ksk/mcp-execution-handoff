@@ -29,6 +29,14 @@ At host startup, the absolute control-plane expiry is converted once to a monoto
 
 The macOS input adapter tracks pressed keys/buttons and releases all remaining pressed state when the lease ends or the input loop exits. The input receive loop uses a bounded timeout so revoke/expiry is observed even while no Human packets arrive.
 
+## WebRTC browser transport boundary
+
+The browser transport shares the control-plane intervention / epoch / principal / client-generation / expiry binding. HTTP signaling cannot grant Human authority by itself. Every DataChannel input message passes an in-process exact-generation authority check before it can enter the bounded macOS helper pipe. A released, stale, revoked, or expired generation fails closed.
+
+Backgrounding, `pagehide`, peer failure, explicit suspend, Done, Cancel, and expiry all tear down media/input capability. Background/foreground does not resurrect the old peer: reconnect requires the generation-bound reconnect handle and a freshly rotated client generation. WebRTC-only locators reject the legacy HTTP frame/input endpoints, so media failure cannot downgrade to the old button-driven surface.
+
+Werift is configured with `iceServers: []` to prevent implicit third-party STUN discovery. TURN/relay credentials and topology are not part of the current default path and must be reviewed as a separate trust boundary if enabled. Do not log or persist raw Human input, framebuffer/H.264/RTP payloads, SDP/DTLS key material, reconnect handles/capabilities, credentials, OTP/MFA/passkey material, cookies, or target-service tokens.
+
 ## Threats explicitly addressed
 
 - AEAD nonce reuse caused by process-local sequence reset;

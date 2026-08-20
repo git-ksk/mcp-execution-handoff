@@ -10,4 +10,6 @@ CAPTCHA/challenge solving、anti-bot bypass、stealth/fingerprint spoofing、pro
 
 password、OAuth/session/access token、OTP/MFA/verification code、CAPTCHA answer、cookie/browser profile、payment data、private endpoint、production credentialをcommit/log/checkpoint/public issueへ含めないでください。Checkpoint signing keyもrepository外で管理します。
 
+WebRTC transportでは、background/foregroundやpeer disconnectでstale generationを暗黙復活させる経路、legacy frame/input UIへのfallback、transport dataがlog/durable control-plane stateへ流れる経路もsecurity boundaryとして扱います。raw Human input、framebuffer/video payload、WebRTC key material、sensitiveなdeployment topologyを含み得るSDP、reconnect/capability secretもcommit / log / checkpointへ保存しません。
+
 GitHub Private Vulnerability Reportingが有効な場合はそれを利用してください。利用できない場合、exploit detailsやsecretをpublic issueへ書かず、private reporting channelを求める最小限のissueだけを作成してください。

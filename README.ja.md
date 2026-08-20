@@ -34,7 +34,7 @@ CAPTCHA solver、challenge bypass、credential relay、payment automation、gene
 - restart recoveryは必ず `reissue_and_revalidate` で、stale authorityを復元せず、actionをsilent replayしない。
 - takeover URLはlocatorのみで、capability secretを含めない。
 - capabilityはsession / intervention / resource epoch / principal / remote client binding / expiryへbindする。
-- takeover leaseはremote client generation 1つだけ。reload/new tab/new deviceで新しいbindingになってもactive leaseを暗黙reclaimできない。native reconnectは、旧leaseがidleになり、同じauthenticated principalがgeneration-bound reconnect handleを提示した場合だけ新generationへ明示rotateでき、旧capability/handleは即時fenceする。
+- takeover leaseはremote client generation 1つだけ。reload/new tab/new deviceで新しいbindingになってもactive leaseを暗黙reclaimできない。native reconnectは旧leaseがidleになった後だけ、WebRTC browserはsuspend/disconnect時に現generationを明示releaseしてからreconnectする。どちらも同じauthenticated principal + generation-bound reconnect handleを必須とし、fresh client generationへrotateして旧capability/handleを即時fenceする。
 - `no-store` / `no-referrer` / nonce-bound CSP client asset / bounded inputを維持する。
 - credential-safe external Human controlはHuman authorityが排他的にactiveな間だけ開始でき、automation authorityを戻す前にexternal sessionをrevokeする。
 - external Human providerから保持するのはbounded control-plane field（provider kind / intervention / epoch / principal binding / session id / operator locator / optional expiry）のみで、任意provider metadataは破棄する。
@@ -53,7 +53,7 @@ consumerは常に厳しい方を採用します。`require_fresh_semantic_action
 
 Identity providerによっては、software-controlled / embedded browser上でのcredential entry自体を拒否・禁止します。その場合、automation-adjacentな `browser-takeover` をstealth化するのではなく、`CredentialSafeHumanSurfaceRuntime` とpluggable external Human providerを使います。
 
-generic coreはremote desktopを実装しません。providerは既存remote-access製品やnormal-browser Human surfaceへのoperator locatorを返せます。consumerはcredential entry前にautomation runtimeを完全停止し、同じdedicated non-default profileをCDP / remote-debugging / automation attachmentなしのnormal browserで起動し、external sessionをrevokeしてnormal browserがprofileを解放するまでautomationを再開しない責任を持ちます。
+`CredentialSafeHumanSurfaceRuntime` 自体はremote desktopを実装しません。providerは既存remote-access製品やnormal-browser Human surfaceへのoperator locatorを返せます。consumerはcredential entry前にautomation runtimeを完全停止し、同じdedicated non-default profileをCDP / remote-debugging / automation attachmentなしのnormal browserで起動し、external sessionをrevokeしてnormal browserがprofileを解放するまでautomationを再開しない責任を持ちます。
 
 ```text
 automation profile + CDP
@@ -76,6 +76,10 @@ automation profile + CDP
 `browser-takeover` はoptionalです。brokerが知るintervention情報は `{ id, epoch }` のみで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
 native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。旧clientがidleで、authenticated principalが一致し、generation-bound reconnect handleが一致した場合だけ新generationへrotateします。成功時は旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含めません。
+
+optionalなWebRTC browser transportはsignaling / H.264 RTP / DataChannel input / Safari lifecycle / reconnect fencingをHandoff内部へ閉じ込めます。初期Safari acceptance profileは1280×720 / 30 fpsのConstrained Baseline H.264です。WebRTC locatorはMac framebufferを`playsinline` videoへ直接表示し、その画面へのtap/swipeを直接操作へ変換します。文字入力とBackspaceはiOS keyboardを使い、旧HTTP frame/input UIのScroll / Tab / Send等へfallbackしません。background / peer disconnect / explicit suspendではpeerを破棄してそのclient generationをreleaseし、foreground復帰はfresh generationを取得してから新peerを作ります。`Done` はtransport teardownより先にbroker generationをrevokeし、認証成功とは扱いません。
+
+WebRTC serverは暗黙のthird-party STUN discoveryを無効化 (`iceServers: []`) します。NAT traversal / TURNはrelay trust boundaryを明示reviewしたembedding policyとしてのみ追加し、transportから勝手に有効化しません。framebuffer / raw Human input / SDP・DTLS key material / credential / MFA / passkey / target-service secretはephemeral data-plane materialであり、MCP / model / log / checkpointへ出しません。
 
 surface eligibility、native browser restriction、postcondition verification、authentication/principal derivation、sensitive data境界はconsumer adapter側の責務です。
 

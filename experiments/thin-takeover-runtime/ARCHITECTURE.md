@@ -193,6 +193,31 @@ client event
 
 Host and client monotonic clocks are not interchangeable. Cross-device glass-to-glass results require physical instrumentation or an explicit clock-correlation method.
 
+## WebRTC browser transport
+
+The install-free browser transport is a sibling data plane under the same Handoff control plane; it does not replace the Native Thin Takeover Runtime.
+
+```text
+control plane: intervention / epoch / principal / client generation / expiry
+  ↓ authenticated locator claim or fresh reconnect
+Handoff WebRTC runtime
+  ├─ HTTP signaling: bounded SDP only
+  ├─ ScreenCaptureKit → VideoToolbox H.264 Constrained Baseline
+  │    → 1280×720 / 30 fps initial Safari acceptance profile
+  │    → maxInFlight=1 → latest pending encoded frame only
+  │    → RFC 6184 RTP → SRTP/DTLS → Safari playsinline video
+  └─ Safari direct tap/swipe/iOS keyboard
+       → bounded WebRTC DataChannels
+       → exact generation authority gate
+       → bounded local helper pipe → CoreGraphics input
+```
+
+The realtime DataChannel is unordered with zero retransmissions and carries swipe/scroll deltas only. Critical tap/text/key input is ordered and reliable but is bounded before it reaches the authority gate. WebRTC signaling/media/input state is process-local; framebuffer bytes, raw input, credentials, MFA/passkeys, SDP/DTLS key material, and target-service secrets are not MCP/model/checkpoint artifacts.
+
+Safari lifecycle is fail-closed. `pagehide` / background / peer disconnect destroys the peer and releases that exact client generation. Foreground or connection recovery constructs a new peer only after the broker validates the generation-bound reconnect handle and rotates to a fresh generation. The old capability remains fenced. `Done` revokes broker authority before transport teardown and never means authentication succeeded.
+
+The server explicitly disables Werift's implicit third-party STUN default. Same-network host candidates are the current acceptance path. TURN/NAT traversal is an embedding policy and requires an explicit relay trust review rather than an automatic fallback. PLI requests are rate-limited before asking the macOS encoder for a new IDR.
+
 ## portability
 
 `TakeoverCore` keeps authority, crypto, packetization, reassembly, feedback and input semantics platform-neutral. Current concrete host adapter is macOS. `TakeoverNativeClient` supports iOS/macOS compilation. Windows/Linux host adapters should consume the same core rather than introduce platform ownership semantics into it.

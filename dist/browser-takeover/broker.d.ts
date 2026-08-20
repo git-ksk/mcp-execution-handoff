@@ -1,4 +1,5 @@
 import { type NativeTakeoverRuntimeProvider } from "./native-runtime.js";
+import { type WebRtcTakeoverRuntimeProvider } from "./webrtc-runtime.js";
 export interface TakeoverInterventionRef {
     id: string;
     epoch: number;
@@ -26,18 +27,23 @@ export declare class TakeoverBroker {
     private readonly browser;
     private readonly config;
     private readonly nativeRuntime?;
+    private readonly webRtcRuntime?;
     private readonly sessions;
     private readonly publicOrigin;
     private readonly nativeOnlySessions;
-    constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined);
+    private readonly webRtcOnlySessions;
+    constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined, webRtcRuntime?: WebRtcTakeoverRuntimeProvider | undefined);
     isEnabled(): boolean;
     isPath(pathname: string): boolean;
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
     createNativeLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
+    createWebRtcLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
     revokeForIntervention(interventionId: string): void;
     revokeNativeForIntervention(interventionId: string): Promise<void>;
+    revokeWebRtcForIntervention(interventionId: string): Promise<void>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     private forgetNativeOnlyIntervention;
+    private forgetWebRtcOnlyIntervention;
     private publicGrant;
     private readBoundedJson;
     private readCapability;

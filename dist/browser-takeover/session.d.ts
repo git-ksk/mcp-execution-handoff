@@ -27,6 +27,8 @@ export declare class TakeoverSessionManager {
     validateLocator(id: string, principalBinding: string): TakeoverLocator;
     claimClient(id: string, principalBinding: string, clientBinding: string): TakeoverGrant;
     reconnectClient(id: string, principalBinding: string, reconnectHandle: string, nextClientBinding: string): TakeoverGrant;
+    releaseClientGeneration(id: string, principalBinding: string, clientBinding: string, clientGeneration: number): void;
+    beginBoundUse(id: string, principalBinding: string, clientBinding: string, clientGeneration: number): Omit<TakeoverGrant, "capability" | "reconnectHandle">;
     beginUse(id: string, capability: string, principalBinding: string, clientBinding: string): Omit<TakeoverGrant, "capability" | "reconnectHandle">;
     endUse(id: string, principalBinding: string, clientBinding: string, clientGeneration: number): void;
     verify(id: string, capability: string, principalBinding: string, clientBinding: string): Omit<TakeoverGrant, "capability" | "reconnectHandle">;

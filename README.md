@@ -55,7 +55,7 @@ src/browser-takeover/
 - Restart recovery is always `reissue_and_revalidate`; it never restores stale execution authority or silently replays an action.
 - Browser takeover URLs are locators only; capabilities are returned only after authenticated same-origin bootstrap.
 - A capability is scoped to session + intervention + resource epoch + principal + remote-client binding + expiry.
-- One remote client generation owns a takeover lease. Reload/new-tab/new-device flows with a new binding cannot implicitly reclaim it. An explicit native reconnect may rotate to a new generation only after the prior lease is idle and the same authenticated principal presents the generation-bound reconnect handle; old capabilities/handles are fenced immediately.
+- One remote client generation owns a takeover lease. Reload/new-tab/new-device flows with a new binding cannot implicitly reclaim it. Native reconnect may rotate only after the prior lease is idle. WebRTC browser suspend/disconnect explicitly releases the current generation before reconnect. Both paths require the same authenticated principal plus the generation-bound reconnect handle, rotate to a fresh client generation, and fence old capabilities/handles immediately.
 - Takeover responses use `no-store`, `no-referrer`, restrictive CSP with a nonce-bound client asset, and bounded input endpoints.
 - Credential-safe external Human control may start only while Human authority is already exclusive; the external session must be revoked before automation authority is restored.
 - External Human providers are narrowed to bounded control-plane fields (`providerKind`, intervention/epoch/principal binding, session id, operator locator, optional expiry). Arbitrary provider metadata is discarded.
@@ -84,7 +84,7 @@ A consumer must apply the stricter effective result. In particular, `require_fre
 
 Some identity providers reject or forbid credential entry in software-controlled or embedded browser contexts. In that case, consumers should not make the automation-adjacent `browser-takeover` transport more evasive. Instead, use the `CredentialSafeHumanSurfaceRuntime` with a pluggable external Human provider.
 
-The generic core deliberately does **not** implement remote desktop. A provider may point the operator to an existing remote-access product or another normal-browser Human surface. The consumer remains responsible for suspending its automation runtime completely before credential entry, launching the same dedicated non-default browser profile without CDP/remote-debugging/automation attachment, and refusing to restore automation until the external session is revoked and the profile is no longer owned by the normal browser process.
+The `CredentialSafeHumanSurfaceRuntime` deliberately does **not** implement a remote desktop. A provider may point the operator to an existing remote-access product or another normal-browser Human surface. The consumer remains responsible for suspending its automation runtime completely before credential entry, launching the same dedicated non-default browser profile without CDP/remote-debugging/automation attachment, and refusing to restore automation until the external session is revoked and the profile is no longer owned by the normal browser process.
 
 A browser-backed consumer should follow this lifecycle:
 
@@ -109,6 +109,10 @@ automation profile + CDP
 `browser-takeover` is optional. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
 
 For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.
+
+The optional WebRTC browser transport keeps signaling, H.264/RTP, DataChannel input, Safari lifecycle handling, and reconnect fencing inside Handoff. Its initial Safari acceptance profile is 1280×720 / 30 fps Constrained Baseline H.264. A WebRTC locator renders the Mac framebuffer directly into a `playsinline` video surface; tap/swipe operate directly on that surface and a hidden browser input bridge uses the iOS keyboard for text/Backspace. It never falls back to the legacy HTTP frame/input controls. Backgrounding, peer disconnect, or explicit suspend tears down the peer and releases that exact client generation; foreground recovery requires a fresh generation before a new peer is created. `Done` revokes the broker generation before transport teardown and is not authentication success.
+
+The WebRTC server disables implicit third-party STUN discovery (`iceServers: []`). NAT traversal or TURN may be added only as an explicit embedding policy with a reviewed relay trust boundary; it is not silently enabled by the transport. Framebuffer bytes, raw Human input, SDP/DTLS key material, credentials, MFA/passkeys, and target-service secrets remain ephemeral data-plane material and are not MCP/model/log/checkpoint artifacts.
 
 Consumers remain responsible for:
 

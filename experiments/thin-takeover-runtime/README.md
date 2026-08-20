@@ -122,6 +122,21 @@ It includes:
 
 The reference controller is intentionally a thin example, not an authentication/control-plane UI.
 
+### WebRTC browser client
+
+The Native path above remains unchanged. An additional install-free Safari transport is available through the parent Handoff broker:
+
+- locator opens a fullscreen `playsinline` Mac video surface;
+- direct tap and swipe operate on that surface;
+- tapping an editable field bridges to the iOS keyboard for text / Backspace / Enter;
+- no Scroll / Tab / Send operation-button fallback is exposed for WebRTC-only locators;
+- background / peer disconnect destroys the old peer and requires fresh-generation reconnect;
+- WebRTC-only input is broker-generation-gated before entering a bounded local helper pipe;
+- WebRTC browser capture is capped at 1280×720 / 30 fps and uses Constrained Baseline H.264 (`42c01f`) for the initial Safari acceptance path; encoder admission stays at one in-flight frame plus one latest pending encoded frame;
+- server-side implicit third-party STUN is disabled; TURN/NAT traversal is an explicit future embedding policy.
+
+The macOS helper is built as `takeover-webrtc-host`. It carries only ephemeral framebuffer/H.264 and bounded Human input. It does not receive MCP/model context, and its environment is reduced to expiry plus optional display selection rather than inheriting the parent process environment.
+
 ## Validation
 
 The latest native-client phase ARM64 gate verifies:
@@ -157,6 +172,7 @@ These are hosted-runner component probes, **not glass-to-glass claims**. See [BE
 ```bash
 swift test
 swift build -c release
+swift build -c release --product takeover-webrtc-host
 swift run -c release takeover-crypto-bench 32000 2000
 swift run -c release takeover-vt-bench 1280 720 180 20
 swift run -c release takeover-vt-codec-bench 1280 720 120 20
@@ -247,6 +263,20 @@ The project optimizes for **freshness under bounded loss**:
 - old/revoked mobile generations are not automatically resurrected.
 
 ## Remaining before standalone v0.1.0
+
+### WebRTC Safari physical acceptance
+
+The browser transport is implementation-complete enough for physical acceptance, but the following must still be verified on a real iPhone Safari against the Mac host:
+
+1. open the short-lived locator directly in Safari;
+2. confirm the Mac screen renders as live video without the legacy Scroll / Tab / Send controls;
+3. tap and one-finger swipe directly on the video and verify Mac input;
+4. tap an editable field and verify the iOS keyboard can send text and Backspace;
+5. press Done and confirm further input is immediately impossible;
+6. background Safari and return to foreground, confirming the stale peer/generation does not revive and recovery uses a fresh generation;
+7. re-run the existing Native physical path to confirm no regression.
+
+The current default WebRTC path intentionally uses host ICE candidates only (`iceServers: []`). Same-network acceptance comes first. TURN / WAN / cellular traversal is a separate explicit relay trust-policy decision, not an automatic fallback.
 
 The main remaining work now requires physical devices / real networks:
 

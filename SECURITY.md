@@ -17,6 +17,7 @@ Reports are especially useful for:
 - CSP / origin / cache / referrer boundary regressions,
 - any path where Human completion is interpreted as approval for a different consequential action,
 - external Human session overlap with restored Agent/automation authority, cross-principal/epoch reuse, or sensitive provider metadata retention.
+- WebRTC stale-generation revival, implicit background/foreground reconnect, legacy frame/input fallback, or transport data leaking into logs/durable control-plane state.
 
 ## Non-goals that must remain non-goals
 
@@ -32,7 +33,8 @@ Never commit, log, persist in checkpoints, or place in public issues:
 - CAPTCHA/challenge answers,
 - cookies or browser-profile contents,
 - payment-card or bank data,
-- private endpoints or production credentials.
+- private endpoints or production credentials,
+- raw Human input, framebuffer/video payloads, WebRTC key material, SDP containing sensitive deployment topology, or reconnect/capability secrets.
 
 Checkpoint signing keys must be generated and stored outside the repository.
 

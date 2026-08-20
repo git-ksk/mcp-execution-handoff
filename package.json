@@ -21,7 +21,8 @@
     "prepack": "npm run check && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0"
+    "@modelcontextprotocol/server": "2.0.0",
+    "werift": "^0.24.4"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

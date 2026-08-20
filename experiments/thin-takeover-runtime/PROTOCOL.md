@@ -154,6 +154,23 @@ The macOS host production-preferred key source is an inherited read-only FD cont
 
 Client embeddings must similarly deliver the short-lived binding through an application secret boundary and must not persist it for automatic reconnect.
 
+## WebRTC browser sibling transport
+
+The browser path is a sibling transport, not a new authority protocol. The broker binds the browser peer to the existing intervention / epoch / principal / client-generation / expiry tuple. Initial claim and reconnect exchange bounded SDP over authenticated same-origin HTTP; SDP is signaling material only and cannot grant authority.
+
+Video uses ScreenCaptureKit → VideoToolbox H.264 Constrained Baseline → RFC 6184 RTP over WebRTC SRTP. The initial Safari acceptance profile is capped at 1280×720 / 30 fps and produces `42c01f` on the current macOS encoder. Capture/encode admission remains newest-frame-oriented (`maxInFlight=1` plus at most one pending encoded frame). PLI feedback is locally rate-limited and requests an IDR for the next admitted frame. No reliable video FIFO is introduced.
+
+Browser Human input uses two DataChannels:
+
+- `human-realtime`: unordered, `maxRetransmits=0`, swipe/scroll deltas only;
+- `human-critical`: ordered/reliable, bounded tap/text/Backspace/Enter commits.
+
+Every accepted message is bounded before entering the macOS helper and rechecks the exact current client generation at the broker. The helper pipe has bounded realtime/critical buffering. Stale/released/expired generations fail closed. WebRTC-only locators reject the legacy HTTP frame/input endpoints.
+
+Safari background/pagehide or peer disconnect tears down the peer and releases that generation. Foreground/connection recovery must present the generation-bound reconnect handle and obtain a fresh generation before constructing a replacement peer. `Done` first disables local browser input, then asks the broker to revoke the generation, then tears down the peer; it never signals authentication or action approval.
+
+The default server configuration uses no implicit STUN/TURN service (`iceServers: []`). Relay/NAT traversal is outside the default wire contract and requires an explicit trust policy.
+
 ## Credentials
 
 Credential, OTP/MFA, passkey, cookie, token, framebuffer and typed-text material are ephemeral Human-plane data. They MUST NOT be returned to MCP/model context, argv, durable checkpoints, analytics, or ordinary logs.
