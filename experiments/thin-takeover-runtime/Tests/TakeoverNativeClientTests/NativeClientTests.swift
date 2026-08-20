@@ -34,7 +34,7 @@ private func authenticatedPackets(
     )
     let packetizer = VideoPacketizer(maxDatagramBytes: 1200)
     var packets: [Data] = []
-    try packetizer.forEachPacket(
+    packetizer.forEachPacket(
         payloadBytes: sealed.count,
         sessionHash: sessionHash,
         epoch: epoch,
