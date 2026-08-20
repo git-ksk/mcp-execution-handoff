@@ -112,6 +112,7 @@ interface NativeGrantBody {
 export class TakeoverBroker {
   private readonly sessions: TakeoverSessionManager;
   private readonly publicOrigin: string | undefined;
+  private readonly nativeOnlySessions = new Map<string, string>();
 
   constructor(
     private readonly browser: TakeoverBrowserAdapter,
@@ -145,13 +146,30 @@ export class TakeoverBroker {
     return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
   }
 
+  createNativeLink(
+    intervention: TakeoverInterventionRef,
+    principalBinding: string | undefined
+  ): string | undefined {
+    if (!this.nativeRuntime || !this.config.enabled || !this.config.publicBaseUrl || !principalBinding) return undefined;
+    const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
+    for (const [sessionId, currentIntervention] of this.nativeOnlySessions) {
+      if (currentIntervention === intervention.id && sessionId !== locator.id) this.nativeOnlySessions.delete(sessionId);
+    }
+    this.nativeOnlySessions.set(locator.id, intervention.id);
+    const expiryCleanup = setTimeout(() => this.nativeOnlySessions.delete(locator.id), this.config.ttlMs + 1_000);
+    expiryCleanup.unref();
+    return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
+  }
+
   revokeForIntervention(interventionId: string): void {
     this.sessions.revokeForIntervention(interventionId);
+    this.forgetNativeOnlyIntervention(interventionId);
     if (this.nativeRuntime) void this.nativeRuntime.revokeForIntervention(interventionId).catch(() => undefined);
   }
 
   async revokeNativeForIntervention(interventionId: string): Promise<void> {
     this.sessions.revokeForIntervention(interventionId);
+    this.forgetNativeOnlyIntervention(interventionId);
     await this.nativeRuntime?.revokeForIntervention(interventionId);
   }
 
@@ -194,6 +212,7 @@ export class TakeoverBroker {
     if (!clientBinding) return json(404, { error: "takeover_unavailable" });
 
     if (operation === "bootstrap") {
+      if (this.nativeOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });
       if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
       if (request.headers.get("sec-fetch-site") !== "same-origin") {
         return json(403, { error: "bootstrap_not_same_origin" });
@@ -248,6 +267,7 @@ export class TakeoverBroker {
           return json(409, { error: "native_bootstrap_already_issued" });
         }
         this.sessions.revoke(id);
+        this.nativeOnlySessions.delete(id);
         await this.nativeRuntime?.revoke(id).catch(() => undefined);
         return json(503, { error: "native_runtime_unavailable" });
       }
@@ -258,6 +278,9 @@ export class TakeoverBroker {
       request.headers.get("authorization")
     );
     if (!capability) return json(404, { error: "takeover_unavailable" });
+    if (this.nativeOnlySessions.has(id) && (operation === "frame" || operation === "input")) {
+      return json(404, { error: "takeover_unavailable" });
+    }
 
     if (operation === "frame") {
       if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
@@ -299,6 +322,7 @@ export class TakeoverBroker {
       // Revoke the broker generation first. Even if process teardown encounters an OS failure,
       // the stale capability/reconnect handle can no longer be used through this control plane.
       this.sessions.revoke(id);
+      this.nativeOnlySessions.delete(id);
       try {
         await this.nativeRuntime?.revoke(id);
       } catch {
@@ -332,6 +356,12 @@ export class TakeoverBroker {
       return json(409, { error: "takeover_input_rejected" });
     } finally {
       this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
+    }
+  }
+
+  private forgetNativeOnlyIntervention(interventionId: string): void {
+    for (const [sessionId, currentIntervention] of this.nativeOnlySessions) {
+      if (currentIntervention === interventionId) this.nativeOnlySessions.delete(sessionId);
     }
   }
 

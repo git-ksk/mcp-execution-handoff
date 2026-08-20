@@ -77,7 +77,7 @@ function createFixture() {
     ttlMs: 60_000,
     reconnectIdleMs: 250
   }, native);
-  const locator = broker.createLink({ id: "native-intervention", epoch: 9 }, PRINCIPAL);
+  const locator = broker.createNativeLink({ id: "native-intervention", epoch: 9 }, PRINCIPAL);
   assert.ok(locator);
   const sessionId = new URL(locator).pathname.split("/").at(-1);
   assert.ok(sessionId);
@@ -120,6 +120,41 @@ test("native endpoint accepts only bounded IP-literal UDP endpoints", () => {
     videoPort: 45_555,
     inputFeedbackPort: 45_555
   }), NativeTakeoverRuntimeError);
+});
+
+test("Native-only sessions cannot be claimed or driven through the legacy Web frame/input surface", async () => {
+  const { broker, sessionId } = createFixture();
+  const bootstrap = await broker.handle(new Request(`https://takeover.example/takeover/api/bootstrap/${sessionId}`, {
+    headers: {
+      "sec-fetch-site": "same-origin",
+      "x-takeover-client": CLIENT_A
+    }
+  }), PRINCIPAL);
+  assert.equal(bootstrap.status, 404);
+
+  const claimed = await claim(broker, sessionId);
+  assert.equal(claimed.status, 200);
+  const grant = await claimed.json() as { capability: string };
+
+  const frame = await broker.handle(new Request(`https://takeover.example/takeover/api/frame/${sessionId}`, {
+    headers: {
+      "x-takeover-client": CLIENT_A,
+      "x-mcp-takeover-capability": grant.capability
+    }
+  }), PRINCIPAL);
+  assert.equal(frame.status, 404);
+
+  const input = await broker.handle(new Request(`https://takeover.example/takeover/api/input/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-takeover-client": CLIENT_A,
+      "x-mcp-takeover-capability": grant.capability,
+      "x-takeover-native-client": "1"
+    },
+    body: JSON.stringify({ kind: "tap", x: 1, y: 1 })
+  }), PRINCIPAL);
+  assert.equal(input.status, 404);
 });
 
 test("native claim binds one-shot transport bootstrap to broker epoch and generation", async () => {
