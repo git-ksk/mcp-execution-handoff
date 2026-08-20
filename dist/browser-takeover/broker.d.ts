@@ -1,3 +1,4 @@
+import { type NativeTakeoverRuntimeProvider } from "./native-runtime.js";
 export interface TakeoverInterventionRef {
     id: string;
     epoch: number;
@@ -24,14 +25,18 @@ export interface TakeoverBrokerConfig {
 export declare class TakeoverBroker {
     private readonly browser;
     private readonly config;
+    private readonly nativeRuntime?;
     private readonly sessions;
     private readonly publicOrigin;
-    constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig);
+    constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined);
     isEnabled(): boolean;
     isPath(pathname: string): boolean;
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
     revokeForIntervention(interventionId: string): void;
+    revokeNativeForIntervention(interventionId: string): Promise<void>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    private publicGrant;
+    private readBoundedJson;
     private readCapability;
     private readClientBinding;
     private readReconnectHandle;
