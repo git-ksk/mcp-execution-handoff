@@ -45,6 +45,7 @@ class FakeNativeRuntime implements NativeTakeoverRuntimeProvider {
     return {
       rootKeyBase64Url: Buffer.alloc(32, binding.clientGeneration).toString("base64url"),
       sessionHashHex: binding.clientGeneration.toString(16).padStart(16, "0"),
+      epoch: binding.epoch,
       network: {
         host: "192.0.2.10",
         videoPort: endpoint.videoPort,
@@ -120,7 +121,7 @@ test("native endpoint accepts only bounded IP-literal UDP endpoints", () => {
   }), NativeTakeoverRuntimeError);
 });
 
-test("native claim binds one-shot transport bootstrap to broker generation", async () => {
+test("native claim binds one-shot transport bootstrap to broker epoch and generation", async () => {
   const { broker, native, sessionId } = createFixture();
   const response = await claim(broker, sessionId);
   assert.equal(response.status, 200);
@@ -134,6 +135,7 @@ test("native claim binds one-shot transport bootstrap to broker generation", asy
   assert.equal(body.clientGeneration, 1);
   assert.equal(Buffer.from(body.native.rootKeyBase64Url, "base64url").length, 32);
   assert.equal(body.native.sessionHashHex, "0000000000000001");
+  assert.equal(body.native.epoch, 9);
   assert.deepEqual(body.native.network, {
     host: "192.0.2.10",
     videoPort: 46_000,
@@ -182,6 +184,7 @@ test("native reconnect rotates broker generation and transport bootstrap togethe
     native: NativeTakeoverClientBootstrap;
   };
   assert.equal(second.clientGeneration, 2);
+  assert.equal(second.native.epoch, 9);
   assert.notEqual(second.capability, first.capability);
   assert.notEqual(second.reconnectHandle, first.reconnectHandle);
   assert.notEqual(second.native.rootKeyBase64Url, first.native.rootKeyBase64Url);
