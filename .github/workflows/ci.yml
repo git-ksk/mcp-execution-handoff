@@ -23,3 +23,11 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: Upload built package dist
+        if: matrix.node == 24
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: package-dist-node24
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
