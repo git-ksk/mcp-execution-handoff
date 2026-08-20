@@ -40,6 +40,7 @@ class FakeNativeRuntime implements NativeTakeoverRuntimeProvider {
         "already issued"
       );
     }
+    if (generation !== undefined) await this.revoke(binding.takeoverSessionId);
     this.active.set(binding.takeoverSessionId, binding.clientGeneration);
     this.starts.push({ binding: { ...binding }, endpoint: { ...endpoint } });
     return {
