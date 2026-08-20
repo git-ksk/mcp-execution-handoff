@@ -12,6 +12,7 @@ import UIKit
 @MainActor
 public final class TakeoverMetalView: MTKView {
     private var textureCache: CVMetalTextureCache?
+    private var commandQueue: MTLCommandQueue?
     private var pipeline: MTLRenderPipelineState?
     private var latestPixelBuffer: CVPixelBuffer?
 
@@ -43,8 +44,7 @@ public final class TakeoverMetalView: MTKView {
     }
 
     public override func draw(_ rect: CGRect) {
-        guard let device,
-              let commandQueue = device.makeCommandQueue(),
+        guard let commandQueue,
               let pipeline,
               let textureCache,
               let pixelBuffer = latestPixelBuffer,
@@ -113,6 +113,7 @@ public final class TakeoverMetalView: MTKView {
         preferredFramesPerSecond = 60
 
         guard let device else { return }
+        commandQueue = device.makeCommandQueue()
         var cache: CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cache) == kCVReturnSuccess else { return }
         textureCache = cache
