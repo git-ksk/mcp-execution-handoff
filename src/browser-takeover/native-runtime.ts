@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { isIP } from "node:net";
+import type { Writable } from "node:stream";
 import type { TakeoverGrant } from "./session.js";
 
 export interface NativeTakeoverClientEndpoint {
@@ -64,6 +65,14 @@ function validPort(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65_535;
 }
 
+function inheritedKeyPipe(child: ChildProcess, label: string): Writable {
+  const pipe = child.stdio[3];
+  if (!pipe || typeof (pipe as Writable).end !== "function") {
+    throw new Error(`missing ${label} inherited key pipe`);
+  }
+  return pipe as Writable;
+}
+
 export function parseNativeTakeoverClientEndpoint(value: unknown): NativeTakeoverClientEndpoint {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new NativeTakeoverRuntimeError("NATIVE_ENDPOINT_INVALID", "native client endpoint is invalid");
@@ -97,7 +106,6 @@ interface ActiveNativeRuntime {
   rootKey: Buffer;
   sessionHashHex: string;
   child: ChildProcess;
-  bootstrapDelivered: boolean;
 }
 
 export interface InheritedFdNativeRuntimeProviderConfig {
@@ -199,9 +207,7 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
         stdio: ["ignore", "ignore", "ignore", "pipe"]
       });
       await this.waitForSpawn(child);
-      const keyPipe = child.stdio[3];
-      if (!keyPipe || typeof keyPipe.end !== "function") throw new Error("missing inherited key pipe");
-      keyPipe.end(rootKey);
+      inheritedKeyPipe(child, "host").end(rootKey);
     } catch (error) {
       rootKey.fill(0);
       throw new NativeTakeoverRuntimeError(
@@ -214,8 +220,7 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
       binding: { ...binding },
       rootKey,
       sessionHashHex,
-      child,
-      bootstrapDelivered: true
+      child
     };
     this.active.set(binding.takeoverSessionId, active);
     child.once("exit", () => {
@@ -279,9 +284,7 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
       { env, stdio: ["ignore", "ignore", "ignore", "pipe"] }
     );
     await this.waitForSpawn(child);
-    const keyPipe = child.stdio[3];
-    if (!keyPipe || typeof keyPipe.end !== "function") throw new Error("missing revoke key pipe");
-    keyPipe.end(active.rootKey);
+    inheritedKeyPipe(child, "revoke").end(active.rootKey);
     await new Promise<void>((resolve, reject) => {
       child.once("error", reject);
       child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`revoke sender exited with code ${String(code)}`)));
