@@ -2,6 +2,7 @@ import Foundation
 import TakeoverCore
 
 #if os(macOS)
+import ApplicationServices
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -11,11 +12,13 @@ import VideoToolbox
 private enum HostConfigurationError: Error, CustomStringConvertible {
     case missing(String)
     case invalid(String)
+    case unavailable(String)
 
     var description: String {
         switch self {
         case .missing(let name): return "missing required environment variable \(name)"
         case .invalid(let name): return "invalid environment variable \(name)"
+        case .unavailable(let reason): return reason
         }
     }
 }
@@ -28,6 +31,8 @@ private struct HostSessionConfiguration {
     let expiresAtUnixMillis: UInt64
     let inputBindHost: String
     let controlBindHost: String
+    let feedbackBindHost: String
+    let displayID: CGDirectDisplayID?
 
     static func load() throws -> HostSessionConfiguration {
         let env = ProcessInfo.processInfo.environment
@@ -61,14 +66,22 @@ private struct HostSessionConfiguration {
         guard let expiresAtUnixMillis = UInt64(expiryText) else {
             throw HostConfigurationError.invalid("THIN_TAKEOVER_EXPIRES_AT_UNIX_MS")
         }
+
         let inputBindHost = env["THIN_TAKEOVER_INPUT_BIND_HOST"] ?? "127.0.0.1"
-        guard !inputBindHost.isEmpty else {
-            throw HostConfigurationError.invalid("THIN_TAKEOVER_INPUT_BIND_HOST")
-        }
         let controlBindHost = env["THIN_TAKEOVER_CONTROL_BIND_HOST"] ?? "127.0.0.1"
-        guard !controlBindHost.isEmpty else {
-            throw HostConfigurationError.invalid("THIN_TAKEOVER_CONTROL_BIND_HOST")
+        let feedbackBindHost = env["THIN_TAKEOVER_FEEDBACK_BIND_HOST"] ?? "127.0.0.1"
+        guard !inputBindHost.isEmpty else { throw HostConfigurationError.invalid("THIN_TAKEOVER_INPUT_BIND_HOST") }
+        guard !controlBindHost.isEmpty else { throw HostConfigurationError.invalid("THIN_TAKEOVER_CONTROL_BIND_HOST") }
+        guard !feedbackBindHost.isEmpty else { throw HostConfigurationError.invalid("THIN_TAKEOVER_FEEDBACK_BIND_HOST") }
+
+        let displayID: CGDirectDisplayID?
+        if let text = env["THIN_TAKEOVER_DISPLAY_ID"] {
+            guard let value = UInt32(text) else { throw HostConfigurationError.invalid("THIN_TAKEOVER_DISPLAY_ID") }
+            displayID = CGDirectDisplayID(value)
+        } else {
+            displayID = nil
         }
+
         return HostSessionConfiguration(
             rootKey: rootKey,
             sessionHash: sessionHash,
@@ -76,7 +89,9 @@ private struct HostSessionConfiguration {
             generation: generation,
             expiresAtUnixMillis: expiresAtUnixMillis,
             inputBindHost: inputBindHost,
-            controlBindHost: controlBindHost
+            controlBindHost: controlBindHost,
+            feedbackBindHost: feedbackBindHost,
+            displayID: displayID
         )
     }
 
@@ -124,6 +139,29 @@ private func evenDimension(_ value: Double) -> Int {
     return rounded.isMultiple(of: 2) ? rounded : rounded - 1
 }
 
+private func selectDisplay(from displays: [SCDisplay], requested: CGDirectDisplayID?) throws -> SCDisplay {
+    guard !displays.isEmpty else { throw HostConfigurationError.unavailable("No capturable display available") }
+    if let requested {
+        guard let display = displays.first(where: { $0.displayID == requested }) else {
+            throw HostConfigurationError.invalid("THIN_TAKEOVER_DISPLAY_ID")
+        }
+        return display
+    }
+    guard displays.count == 1, let only = displays.first else {
+        throw HostConfigurationError.missing("THIN_TAKEOVER_DISPLAY_ID (required when multiple displays are capturable)")
+    }
+    return only
+}
+
+private func preflightHumanSurfacePermissions() throws {
+    guard CGPreflightScreenCaptureAccess() else {
+        throw HostConfigurationError.unavailable("Screen Recording permission is required before Human authority is granted")
+    }
+    guard AXIsProcessTrusted() else {
+        throw HostConfigurationError.unavailable("Accessibility permission is required before Human authority is granted")
+    }
+}
+
 private final class H264Encoder: @unchecked Sendable {
     typealias Output = @Sendable (
         _ avccSample: Data,
@@ -136,6 +174,8 @@ private final class H264Encoder: @unchecked Sendable {
 
     private var session: VTCompressionSession?
     private let output: Output
+    private let keyframeLock = NSLock()
+    private var forceNextKeyframe = false
 
     init(width: Int32, height: Int32, fps: Int32 = 60, bitrate: Int32 = 8_000_000, output: @escaping Output) throws {
         self.output = output
@@ -185,16 +225,33 @@ private final class H264Encoder: @unchecked Sendable {
         }
     }
 
+    func requestIDR() {
+        keyframeLock.lock()
+        forceNextKeyframe = true
+        keyframeLock.unlock()
+    }
+
+    private func consumeKeyframeRequest() -> Bool {
+        keyframeLock.lock()
+        defer { keyframeLock.unlock() }
+        let value = forceNextKeyframe
+        forceNextKeyframe = false
+        return value
+    }
+
     func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime, captureNanos: UInt64, completion: @escaping Completion) {
         guard let session else { completion(); return }
         var flags: VTEncodeInfoFlags = []
         let context = Unmanaged.passRetained(FrameContext(captureNanos: captureNanos, completion: completion)).toOpaque()
+        let frameProperties: CFDictionary? = consumeKeyframeRequest()
+            ? [kVTEncodeFrameOptionKey_ForceKeyFrame as String: true] as CFDictionary
+            : nil
         let status = VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: pixelBuffer,
             presentationTimeStamp: pts,
             duration: .invalid,
-            frameProperties: nil,
+            frameProperties: frameProperties,
             sourceFrameRefcon: context,
             infoFlagsOut: &flags
         )
@@ -372,27 +429,31 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
 @main
 struct MacHost {
     static func main() async throws {
-        let host = CommandLine.arguments.dropFirst().first ?? "127.0.0.1"
+        let clientHost = CommandLine.arguments.dropFirst().first ?? "127.0.0.1"
         let videoPort = UInt16(CommandLine.arguments.dropFirst(2).first ?? "45555") ?? 45555
-        let defaultInputPort = adjacentPort(videoPort, offset: 1)
-        let inputPort = UInt16(CommandLine.arguments.dropFirst(3).first ?? String(defaultInputPort)) ?? defaultInputPort
-        let defaultControlPort = adjacentPort(videoPort, offset: 2)
-        let controlPort = UInt16(CommandLine.arguments.dropFirst(4).first ?? String(defaultControlPort)) ?? defaultControlPort
-        guard videoPort != inputPort, videoPort != controlPort, inputPort != controlPort else {
-            throw HostConfigurationError.invalid("video/input/control ports must be distinct")
+        let inputPort = UInt16(CommandLine.arguments.dropFirst(3).first ?? String(adjacentPort(videoPort, offset: 1))) ?? adjacentPort(videoPort, offset: 1)
+        let controlPort = UInt16(CommandLine.arguments.dropFirst(4).first ?? String(adjacentPort(videoPort, offset: 2))) ?? adjacentPort(videoPort, offset: 2)
+        let videoFeedbackPort = UInt16(CommandLine.arguments.dropFirst(5).first ?? String(adjacentPort(videoPort, offset: 3))) ?? adjacentPort(videoPort, offset: 3)
+        let clientFeedbackPort = UInt16(CommandLine.arguments.dropFirst(6).first ?? String(adjacentPort(videoPort, offset: 4))) ?? adjacentPort(videoPort, offset: 4)
+        let ports = [videoPort, inputPort, controlPort, videoFeedbackPort, clientFeedbackPort]
+        guard Set(ports).count == ports.count else {
+            throw HostConfigurationError.invalid("video/input/control/video-feedback/client-feedback ports must be distinct")
         }
 
         let sessionConfiguration = try HostSessionConfiguration.load()
         let lease = try sessionConfiguration.makeLease()
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let mainDisplayID = CGMainDisplayID()
-        guard let display = content.displays.first(where: { $0.displayID == mainDisplayID }) ?? content.displays.first else {
-            fatalError("No display available")
-        }
+        // Permission checks happen before capture/input sockets become active. A takeover runtime
+        // without both required macOS permissions is not a usable Human surface and fails closed.
+        try preflightHumanSurfacePermissions()
 
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let display = try selectDisplay(from: content.displays, requested: sessionConfiguration.displayID)
         let nativeWidth = Double(display.width)
         let nativeHeight = Double(display.height)
+        guard nativeWidth > 0, nativeHeight > 0 else {
+            throw HostConfigurationError.unavailable("Selected display has invalid dimensions")
+        }
         let scale = min(1.0, min(1920.0 / nativeWidth, 1080.0 / nativeHeight))
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
@@ -405,11 +466,23 @@ struct MacHost {
         config.capturesAudio = false
         config.showsCursor = false
 
-        let sender = try DatagramSender(host: host, port: videoPort)
+        let sender = try DatagramSender(host: clientHost, port: videoPort)
         let frameSender = try EncodedFrameSender(sender: sender, configuration: sessionConfiguration, lease: lease)
+        let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { [frameSender] avccSample, codecConfig, capture, encodeDone, keyframe in
+            frameSender.send(
+                avccSample: avccSample,
+                codecConfig: codecConfig,
+                captureNanos: capture,
+                encodeDoneNanos: encodeDone,
+                keyframe: keyframe
+            )
+        }
+
         let inputServer = try SecureInputServer(
             bindHost: sessionConfiguration.inputBindHost,
             port: inputPort,
+            feedbackHost: clientHost,
+            feedbackPort: clientFeedbackPort,
             rootKey: sessionConfiguration.rootKey,
             sessionHash: sessionConfiguration.sessionHash,
             epoch: sessionConfiguration.epoch,
@@ -426,26 +499,30 @@ struct MacHost {
             generation: sessionConfiguration.generation,
             lease: lease
         )
+        let feedbackServer = try SecureVideoFeedbackServer(
+            bindHost: sessionConfiguration.feedbackBindHost,
+            port: videoFeedbackPort,
+            rootKey: sessionConfiguration.rootKey,
+            sessionHash: sessionConfiguration.sessionHash,
+            epoch: sessionConfiguration.epoch,
+            generation: sessionConfiguration.generation,
+            lease: lease,
+            requestIDR: { [encoder] in encoder.requestIDR() }
+        )
         _ = Task.detached(priority: .high) { inputServer.run() }
         _ = Task.detached(priority: .high) { controlServer.run() }
+        _ = Task.detached(priority: .high) { feedbackServer.run() }
 
-        let encoder = try H264Encoder(width: Int32(config.width), height: Int32(config.height)) { [frameSender] avccSample, codecConfig, capture, encodeDone, keyframe in
-            frameSender.send(
-                avccSample: avccSample,
-                codecConfig: codecConfig,
-                captureNanos: capture,
-                encodeDoneNanos: encodeDone,
-                keyframe: keyframe
-            )
-        }
         let output = CaptureOutput(encoder: encoder, lease: lease)
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
-        print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(host):\(videoPort)")
+        print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(clientHost):\(videoPort)")
         print("captured display=\(display.displayID) encoded=\(config.width)x\(config.height)")
         print("accepting authenticated Human input on \(sessionConfiguration.inputBindHost):\(inputPort)")
         print("accepting authenticated revoke control on \(sessionConfiguration.controlBindHost):\(controlPort)")
+        print("accepting authenticated IDR feedback on \(sessionConfiguration.feedbackBindHost):\(videoFeedbackPort)")
+        print("sending authenticated critical-input ACKs to \(clientHost):\(clientFeedbackPort)")
         print("session=\(String(sessionConfiguration.sessionHash, radix: 16)) epoch=\(sessionConfiguration.epoch) generation=\(sessionConfiguration.generation)")
         print("transport expires_at_unix_ms=\(sessionConfiguration.expiresAtUnixMillis)")
         print("Press Ctrl-C to stop")
