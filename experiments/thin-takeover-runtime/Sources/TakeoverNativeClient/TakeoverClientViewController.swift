@@ -50,6 +50,21 @@ public final class TakeoverClientViewController: UIViewController, UIKeyInput {
     public var onRequiresFreshBinding: (() -> Void)?
     public var onCloseRequested: ((NativeTakeoverCloseAction) -> Void)?
 
+    // UITextInputTraits is intentionally configured for credential-safe direct forwarding. These
+    // are settable because UIKit declares the traits as optional mutable properties.
+    public var autocorrectionType: UITextAutocorrectionType = .no
+    public var autocapitalizationType: UITextAutocapitalizationType = .none
+    public var spellCheckingType: UITextSpellCheckingType = .no
+    public var smartQuotesType: UITextSmartQuotesType = .no
+    public var smartDashesType: UITextSmartDashesType = .no
+    public var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
+    public var keyboardType: UIKeyboardType = .default
+    public var keyboardAppearance: UIKeyboardAppearance = .default
+    public var returnKeyType: UIReturnKeyType = .default
+    public var enablesReturnKeyAutomatically: Bool = false
+    public var isSecureTextEntry: Bool = false
+    public var textContentType: UITextContentType? = nil
+
     private var pendingBinding: NativeClientSessionBinding?
     private let frameStore = LatestDecodedFrameStore()
     private let metalView = TakeoverMetalView()
@@ -79,18 +94,6 @@ public final class TakeoverClientViewController: UIViewController, UIKeyInput {
 
     public override var canBecomeFirstResponder: Bool { !closing && session != nil }
     public var hasText: Bool { session != nil }
-    public var autocorrectionType: UITextAutocorrectionType { .no }
-    public var autocapitalizationType: UITextAutocapitalizationType { .none }
-    public var spellCheckingType: UITextSpellCheckingType { .no }
-    public var smartQuotesType: UITextSmartQuotesType { .no }
-    public var smartDashesType: UITextSmartDashesType { .no }
-    public var smartInsertDeleteType: UITextSmartInsertDeleteType { .no }
-    public var keyboardType: UIKeyboardType { .default }
-    public var keyboardAppearance: UIKeyboardAppearance { .default }
-    public var returnKeyType: UIReturnKeyType { .default }
-    public var enablesReturnKeyAutomatically: Bool { false }
-    public var isSecureTextEntry: Bool { false }
-    public var textContentType: UITextContentType! { nil }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
