@@ -52,7 +52,29 @@ final class SecureInputServer: @unchecked Sendable {
     func run() {
         var gate = InputSequenceGate()
         var feedbackSequence: UInt64 = 0
+        var injectedCriticalOrder: [UInt64] = []
+        var injectedCriticalSet = Set<UInt64>()
         defer { injector.releaseAll() }
+
+        func rememberInjected(_ sequence: UInt64) {
+            guard injectedCriticalSet.insert(sequence).inserted else { return }
+            injectedCriticalOrder.append(sequence)
+            if injectedCriticalOrder.count > 64 {
+                let evicted = injectedCriticalOrder.removeFirst()
+                injectedCriticalSet.remove(evicted)
+            }
+        }
+
+        func sendAck(reference: UInt64) throws {
+            let ack = FeedbackMessage(
+                kind: .criticalInputAck,
+                sequence: feedbackSequence,
+                reference: reference,
+                monotonicNanos: MonotonicClock.nowNanos()
+            )
+            feedbackSequence &+= 1
+            try feedbackSender.send(feedbackCodec.seal(ack))
+        }
 
         while lease.isActive() {
             do {
@@ -61,27 +83,28 @@ final class SecureInputServer: @unchecked Sendable {
                 }
                 guard lease.isActive() else { break }
                 let event = try codec.open(datagram)
-                guard gate.accept(event) == .accepted else { continue }
+                let acceptance = gate.accept(event)
+                guard acceptance == .accepted else {
+                    // A bounded retry of an event that was already injected is not injected twice,
+                    // but it receives a fresh ACK so an earlier lost ACK does not keep the client
+                    // retrying until its deadline. Unknown/too-old critical sequences stay silent.
+                    if event.lane == .critical, injectedCriticalSet.contains(event.sequence) {
+                        try sendAck(reference: event.sequence)
+                    }
+                    continue
+                }
                 guard lease.isActive() else { break }
                 try injector.inject(event)
 
                 // ACK only after the critical event passed authentication, replay gating and OS
-                // injection. If the ACK is lost, a retry is safe because the input gate dedupes it.
+                // injection. Remember only successfully injected sequences.
                 if event.lane == .critical {
-                    let ack = FeedbackMessage(
-                        kind: .criticalInputAck,
-                        sequence: feedbackSequence,
-                        reference: event.sequence,
-                        monotonicNanos: MonotonicClock.nowNanos()
-                    )
-                    feedbackSequence &+= 1
-                    let sealed = try feedbackCodec.seal(ack)
-                    try feedbackSender.send(sealed)
+                    rememberInjected(event.sequence)
+                    try sendAck(reference: event.sequence)
                 }
             } catch {
                 // Human-plane input is fail-closed and best-effort. Invalid, stale, unauthenticated,
-                // or unsupported events are dropped without changing authority. A lost ACK never
-                // causes double injection because retries hit the receiver dedupe gate.
+                // or unsupported events are dropped without changing authority.
                 continue
             }
         }
