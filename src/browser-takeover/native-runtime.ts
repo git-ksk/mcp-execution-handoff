@@ -35,6 +35,7 @@ export interface NativeTakeoverNetworkBootstrap {
 export interface NativeTakeoverClientBootstrap {
   rootKeyBase64Url: string;
   sessionHashHex: string;
+  epoch: number;
   network: NativeTakeoverNetworkBootstrap;
 }
 
@@ -234,6 +235,7 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
     return {
       rootKeyBase64Url: rootKey.toString("base64url"),
       sessionHashHex,
+      epoch: binding.epoch,
       network: {
         host: this.config.advertisedHost,
         videoPort: endpoint.videoPort,
