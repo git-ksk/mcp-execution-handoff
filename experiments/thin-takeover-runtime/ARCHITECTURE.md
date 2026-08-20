@@ -4,25 +4,27 @@ This experiment is intentionally outside the public `mcp-execution-handoff` pack
 
 ```text
 mcp-execution-handoff / embedding control plane
-  └─ authenticates principal
-  └─ grants intervention / epoch / generation
-  └─ issues short-lived root transport key + absolute expiry
-  └─ owns Done / Cancel / revoke / Agent resume
+  ├─ authenticates principal
+  ├─ grants intervention / epoch / generation
+  ├─ issues short-lived root transport key + absolute expiry
+  ├─ owns Done / Cancel / authoritative revoke
+  └─ owns Agent resume
                     │
                     ▼
          Thin Takeover Runtime
-  ┌───────────────────────────────────┐
-  │ EphemeralSessionLease             │
-  │ TakeoverSessionController         │
-  │ TransportCipher                   │
-  │ VideoPacketizer / Reassembler     │
-  │ InputProtocol / SecureInputCodec  │
-  │ RecoveryPlanner                   │
-  │ LatencyMetrics                    │
-  └───────────────────────────────────┘
-           │                    ▲
-           ▼                    │
-     host adapters          client adapters
+  ┌────────────────────────────────────────┐
+  │ TakeoverCore                           │
+  │ lease / fencing / crypto / wire        │
+  │ packetization / input / feedback       │
+  │ recovery / latency                     │
+  └────────────────────────────────────────┘
+          │                           │
+          ▼                           ▼
+      macOS host                 native client
+ ScreenCaptureKit                iOS / macOS
+ VideoToolbox encode             secure receiver
+ CoreGraphics input              VideoToolbox decode
+                                 Metal presenter
 ```
 
 ## macOS host hot path
@@ -44,100 +46,166 @@ VideoToolbox H.264
   ↓
 AVCC CMBlockBuffer view
   ↓ one AEAD operation per complete encoded frame/config
-ChaCha20-Poly1305
+ChaCha20-Poly1305 + random 96-bit nonce
   ↓
 MTU-bounded packet descriptors
   ↓
-stack-backed header + scatter/gather non-blocking sendmsg
+72-byte authenticated routing header
   ↓
-UDP
+scatter/gather non-blocking UDP
 ```
 
-There is no full-frame AVCC→Annex-B reconstruction in the sender hot path. Packet descriptors describe ranges of one sealed frame instead of allocating a `[Data]` containing every UDP packet.
+There is no full-frame AVCC→Annex-B reconstruction in the sender hot path. Packet descriptors describe ranges of one sealed frame rather than allocating a `[Data]` packet array.
 
-## receive policy
+## native receive / presentation path
 
 ```text
-UDP datagrams
+UDP datagram
   ↓
-untrusted fixed header parse
-  ↓ hard packet/frame bounds
-newest-frame-only reassembly
+fixed routing parse + hard datagram bounds
   ↓
-complete sealed frame
+HMAC verify before reassembly state mutation
   ↓
-AEAD verification
+bounded newest-frame-only reassembly
   ↓
-decoder adapter
+complete-frame ChaCha20-Poly1305 open
+  ↓
+AVCC / codec-config dispatch
+  ↓
+VideoToolbox hardware decode
+  ↓
+IOSurface-backed NV12 CVPixelBuffer
+  ↓
+LatestDecodedFrameStore (one slot)
+  ↓ display cadence
+CVMetalTextureCache
+  ↓
+Metal NV12→RGB
+  ↓
+presentation
 ```
 
-Starting a newer frame abandons an older incomplete one. Ordinary delta-frame loss is dropped. Decoder-critical keyframe repair has a short NACK deadline and bounded packet count; after the deadline the runtime requests a new IDR. No reliable-video backlog exists.
+`LatestDecodedFrameStore` intentionally replaces an unpresented old frame with a newer one. It is not a FIFO.
 
-## input path
+## input and ACK path
 
 ```text
-Human client
-  ├─ realtime pointer/scroll state ─ latest wins
+Human touch
+  ├─ local cursor immediately updates
+  ├─ realtime pointer ─ no retry / latest wins
   └─ critical click/key/text ─ bounded retry
-            ↓
-      per-event AEAD
-            ↓
-       UDP input lane
-            ↓
-      verify/decrypt
-            ↓
-      replay/dedupe gate
-            ↓
-      lease still active?
-            ↓
-      platform bounds check
-            ↓
-      OS input injection
+             ↓
+         per-event AEAD
+             ↓
+           UDP input
+             ↓
+      auth + replay/dedupe
+             ↓
+       lease still active?
+             ↓
+       CoreGraphics inject
+             ↓ success only
+     authenticated input ACK
+             ↓
+ client removes pending retry
 ```
 
-The macOS adapter uses CoreGraphics for pointer, buttons, scrolling, keyboard events, and bounded Unicode text commit. Invalid, stale, unauthenticated, expired, or unsupported events are dropped without changing authority.
+If an ACK is lost, a bounded duplicate critical event is not injected twice. A recently injected sequence is re-ACKed instead.
 
-## expiry and revoke
+## decoder recovery feedback
 
-The control plane supplies an absolute expiry. At process startup it is converted to a monotonic local deadline. The same `EphemeralSessionLease` fences capture admission, media sends, and input injection. Expiry is defense in depth; explicit Done/Cancel/revoke should revoke/terminate the runtime immediately.
+```text
+client detects decode/desync failure
+  ↓
+authenticated requestIDR
+  ↓ client rate limit
+UDP video-feedback
+  ↓ host replay gate + rate limit
+encoder.requestIDR()
+  ↓
+next admitted frame ForceKeyFrame
+```
 
-The runtime never promotes Human completion into Agent authorization. Fresh Agent attach and semantic readiness verification remain mandatory after Human revoke and epoch advancement.
+Input ACK and IDR feedback have separate derived crypto channels and cannot be interpreted as revoke/authority messages.
+
+## revoke / expiry
+
+The control plane supplies an absolute expiry. At host process startup it becomes a monotonic local deadline. The same `EphemeralSessionLease` fences capture admission, media send and Human input injection.
+
+An authenticated revoke-only local control signal can drop that lease immediately. It cannot grant authority, approve an operation, or resume the Agent. Fresh Agent attach and semantic readiness verification remain mandatory after authoritative Human revoke and epoch advancement.
+
+## mobile lifecycle
+
+The iOS reference controller treats one session binding as one-shot:
+
+```text
+fresh generation + root key
+  ↓
+NativeTakeoverClientSession
+  ↓
+background / teardown
+  ↓
+discard binding + pending input
+  X no automatic reconnect
+  ↓
+control plane must issue fresh generation + root key
+```
+
+This prevents app lifecycle transitions from silently reviving stale Human authority.
+
+## platform and secret boundaries
+
+The macOS host:
+
+- preflights Screen Recording and Accessibility before starting the Human surface;
+- requires explicit display ID if multiple displays are capturable;
+- maps Human input to the same selected display;
+- prefers a 32-byte root key delivered over an inherited FD; hex environment input is development fallback only.
+
+The native client consumes its binding once when constructing a session and does not persist it for automatic reconnect.
 
 ## latency model
 
-Measure each stage independently:
+Measure stages independently:
 
 ```text
+host:
 capture callback
   → encode callback
-  → frame AEAD
+  → AEAD/header auth
   → packet send
-  → packet receive
-  → reassembly / AEAD open
-  → decode callback
-  → presentation
 
-input creation
-  → receive / AEAD open
-  → replay gate
+client:
+packet receive
+  → header verify/reassembly
+  → AEAD open
+  → decode callback
+  → Metal command submit
+  → actual presentation/scanout
+
+input:
+client event
+  → host auth/dedupe
   → OS injection
+  → ACK
   → next presented frame
 ```
 
-Queues are a latency budget. The default policy is to drop obsolete work instead of preserving throughput at the cost of freshness.
+Host and client monotonic clocks are not interchangeable. Cross-device glass-to-glass results require physical instrumentation or an explicit clock-correlation method.
 
 ## portability
 
-The authority, crypto, packetization, reassembly, recovery and input semantics are adapter-neutral. Current concrete host adapter is macOS. Browser, Windows and Linux capture/input adapters should consume the same core rather than introduce platform semantics into the authority layer.
+`TakeoverCore` keeps authority, crypto, packetization, reassembly, feedback and input semantics platform-neutral. Current concrete host adapter is macOS. `TakeoverNativeClient` supports iOS/macOS compilation. Windows/Linux host adapters should consume the same core rather than introduce platform ownership semantics into it.
 
 ## invariants
 
 - Human and Agent input authority are mutually exclusive.
-- Agent cannot resume before Human revocation.
-- A stale or expired epoch/generation cannot inject input or continue media delivery.
+- Agent cannot resume before authoritative Human revocation.
+- A stale/expired generation cannot inject input or continue media delivery.
+- Runtime restart/reconnect requires a fresh generation/root key.
 - Video delivery never blocks input delivery.
-- Slow receivers do not create an unbounded frame queue.
-- Socket pressure must not block the capture/encoder callback path.
+- Slow receivers do not create an unbounded frame or presentation queue.
+- Critical retries do not cause duplicate OS injection.
+- Feedback can request recovery or acknowledge injection, never change authority.
 - Reconnect never revives an expired/revoked intervention.
-- Credential text and framebuffer content are not returned to an agent/model control plane.
-- Platform/product ownership semantics remain outside the generic parent core.
+- Credential text and framebuffer content are not returned to agent/model control-plane state.
