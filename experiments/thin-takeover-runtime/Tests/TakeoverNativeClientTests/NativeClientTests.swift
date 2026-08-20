@@ -128,3 +128,48 @@ private func authenticatedPackets(
         _ = try AVCDecoderConfigurationRecord(avcC: Data([1, 2, 3]))
     }
 }
+
+@Test func nativeInputRealtimeIsNeverQueuedForRetry() throws {
+    let client = try NativeInputClient(
+        rootKey: Data(repeating: 0x19, count: 32),
+        sessionHash: 1,
+        epoch: 2,
+        generation: 3
+    )
+    let first = try client.realtime(kind: .pointerMove, x: 100, y: 200, nowNanos: 10)
+    let second = try client.realtime(kind: .pointerMove, x: 300, y: 400, nowNanos: 11)
+    #expect(first.event.sequence == 0)
+    #expect(second.event.sequence == 1)
+    #expect(client.pendingCriticalCount == 0)
+    #expect(client.dueCriticalRetries(nowNanos: 100_000_000).isEmpty)
+}
+
+@Test func nativeInputCriticalRetriesAreBoundedAndAckable() throws {
+    let policy = CriticalInputRetryPolicy(
+        retryIntervalNanos: 10,
+        lifetimeNanos: 35,
+        maxAttempts: 3
+    )
+    let client = try NativeInputClient(
+        rootKey: Data(repeating: 0x20, count: 32),
+        sessionHash: 1,
+        epoch: 2,
+        generation: 3,
+        retryPolicy: policy
+    )
+    let click = try client.critical(kind: .pointerButton, x: 10, y: 20, value: 1, nowNanos: 100)
+    #expect(client.pendingCriticalCount == 1)
+    #expect(client.dueCriticalRetries(nowNanos: 109).isEmpty)
+    let retry1 = client.dueCriticalRetries(nowNanos: 110)
+    #expect(retry1.count == 1)
+    #expect(retry1[0].event.sequence == click.event.sequence)
+    let retry2 = client.dueCriticalRetries(nowNanos: 120)
+    #expect(retry2.count == 1)
+    #expect(client.dueCriticalRetries(nowNanos: 130).isEmpty)
+    #expect(client.pendingCriticalCount == 0)
+
+    let key = try client.critical(kind: .key, x: 12, value: 1, nowNanos: 200)
+    client.acknowledgeCritical(sequence: key.event.sequence)
+    #expect(client.pendingCriticalCount == 0)
+    #expect(client.dueCriticalRetries(nowNanos: 220).isEmpty)
+}
