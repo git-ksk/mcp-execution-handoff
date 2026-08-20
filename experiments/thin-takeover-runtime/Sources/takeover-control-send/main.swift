@@ -35,15 +35,38 @@ private func decodeHex(_ text: String) -> Data? {
     return output
 }
 
+private func loadRootKey(_ env: [String: String]) throws -> Data {
+    if let fdText = env["THIN_TAKEOVER_SESSION_KEY_FD"] {
+        guard let fd = Int32(fdText), fd >= 0 else {
+            throw ControlSendError.invalid("THIN_TAKEOVER_SESSION_KEY_FD")
+        }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
+        var key = Data()
+        key.reserveCapacity(TransportCipher.rootKeyBytes)
+        while key.count < TransportCipher.rootKeyBytes {
+            let remaining = TransportCipher.rootKeyBytes - key.count
+            guard let chunk = try handle.read(upToCount: remaining), !chunk.isEmpty else { break }
+            key.append(chunk)
+        }
+        guard key.count == TransportCipher.rootKeyBytes else {
+            throw ControlSendError.invalid("THIN_TAKEOVER_SESSION_KEY_FD")
+        }
+        return key
+    }
+
+    guard let keyHex = env["THIN_TAKEOVER_SESSION_KEY_HEX"],
+          let rootKey = decodeHex(keyHex),
+          rootKey.count == TransportCipher.rootKeyBytes else {
+        throw ControlSendError.missing("THIN_TAKEOVER_SESSION_KEY_FD or development THIN_TAKEOVER_SESSION_KEY_HEX")
+    }
+    return rootKey
+}
+
 @main
 struct TakeoverControlSend {
     static func main() throws {
         let env = ProcessInfo.processInfo.environment
-        guard let keyHex = env["THIN_TAKEOVER_SESSION_KEY_HEX"],
-              let rootKey = decodeHex(keyHex),
-              rootKey.count == TransportCipher.rootKeyBytes else {
-            throw ControlSendError.missing("THIN_TAKEOVER_SESSION_KEY_HEX")
-        }
+        let rootKey = try loadRootKey(env)
         guard let sessionHex = env["THIN_TAKEOVER_SESSION_HASH_HEX"],
               sessionHex.count == 16,
               let sessionHash = UInt64(sessionHex, radix: 16) else {
@@ -70,6 +93,6 @@ struct TakeoverControlSend {
         let datagram = try codec.seal(ControlMessage(kind: .revoke, sequence: sequence))
         let sender = try DatagramSender(host: host, port: port)
         try sender.send(datagram)
-        print("authenticated revoke sent to \(host):\(port)")
+        print("authenticated revoke sent")
     }
 }
