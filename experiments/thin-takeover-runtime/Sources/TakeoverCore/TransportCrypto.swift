@@ -11,6 +11,8 @@ public enum TransportChannel: UInt8, Sendable, Codable {
     case inputRealtime = 2
     case inputCritical = 3
     case control = 4
+    case inputFeedback = 5
+    case videoFeedback = 6
 }
 
 public struct TransportCryptoContext: Sendable, Equatable {
