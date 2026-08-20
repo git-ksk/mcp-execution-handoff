@@ -36,6 +36,15 @@ jobs:
         run: swift build -c release --product TakeoverNativeClient
       - name: iOS native client compile smoke
         run: xcodebuild -scheme TakeoverNativeClient -destination 'generic/platform=iOS' -configuration Release CODE_SIGNING_ALLOWED=NO build
+      - name: iPhone reference app compile smoke
+        run: >-
+          xcodebuild
+          -project ReferenceApps/TakeoverReferenceApp/TakeoverReferenceApp.xcodeproj
+          -scheme TakeoverReferenceApp
+          -destination 'generic/platform=iOS'
+          -configuration Release
+          CODE_SIGNING_ALLOWED=NO
+          build
       - name: Frame AEAD benchmark 32 KiB
         run: swift run -c release takeover-crypto-bench 32000 2000
       - name: Frame AEAD benchmark 128 KiB
