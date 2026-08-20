@@ -53,8 +53,14 @@ test("Cloudflare TURN adapter issues separate short-lived peer credentials and r
   assert.equal(session.browser.iceServers.length, 2);
   assert.equal(session.serverIceServers.length, 2);
   assert.notEqual(session.browser.iceServers[1]!.username, session.serverIceServers[1]!.username);
-  assert.equal(JSON.stringify(session.browser.iceServers).includes(":53\""), false);
-  assert.equal(JSON.stringify(session.serverIceServers).includes("stun.cloudflare.com:53"), true);
+  const browserUrls = session.browser.iceServers.flatMap((server) =>
+    Array.isArray(server.urls) ? server.urls : [server.urls]
+  );
+  const serverUrls = session.serverIceServers.flatMap((server) =>
+    Array.isArray(server.urls) ? server.urls : [server.urls]
+  );
+  assert.equal(browserUrls.includes("stun:stun.cloudflare.com:53"), false);
+  assert.equal(serverUrls.includes("stun:stun.cloudflare.com:53"), true);
 
   const generateRequests = requests.filter(({ url }) => url.includes("generate-ice-servers"));
   assert.equal(generateRequests.length, 2);
