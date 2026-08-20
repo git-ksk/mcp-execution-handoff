@@ -13,7 +13,7 @@ permissions:
 jobs:
   macos-arm64:
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 18
     defaults:
       run:
         working-directory: experiments/thin-takeover-runtime
@@ -26,12 +26,16 @@ jobs:
           uname -a
           xcodebuild -version
           swift --version
-      - name: Test portable core
+      - name: Test portable and native-client core
         run: swift test
       - name: Build release package
         run: swift build -c release
       - name: Force macOS host compile
         run: swift build -c release --product takeover-macos-host
+      - name: Force native client library compile
+        run: swift build -c release --product TakeoverNativeClient
+      - name: iOS native client compile smoke
+        run: xcodebuild -scheme TakeoverNativeClient -destination 'generic/platform=iOS' -configuration Release CODE_SIGNING_ALLOWED=NO build
       - name: Frame AEAD benchmark 32 KiB
         run: swift run -c release takeover-crypto-bench 32000 2000
       - name: Frame AEAD benchmark 128 KiB
@@ -44,6 +48,10 @@ jobs:
         run: swift run -c release takeover-vt-codec-bench 1280 720 120 20
       - name: VideoToolbox 1080p hardware codec round trip
         run: swift run -c release takeover-vt-codec-bench 1920 1080 120 20
+      - name: Native secure client 720p pipeline
+        run: swift run -c release takeover-native-client-pipeline-bench 1280 720 60
+      - name: Native secure client 1080p pipeline
+        run: swift run -c release takeover-native-client-pipeline-bench 1920 1080 30
       - name: Packetization benchmark
         run: swift run -c release takeover-packet-bench 2000 131072
       - name: Typical frame loopback
