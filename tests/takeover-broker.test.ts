@@ -86,6 +86,8 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   );
   assert.doesNotMatch(html, /sessionStorage|localStorage/);
   assert.doesNotMatch(html, /Maps human takeover|return to MCP/);
+  assert.match(html, /id="keyboard"/);
+  assert.doesNotMatch(html, /data-scroll|data-key|id="send"/);
 
   const scriptResponse = await broker.handle(new Request(`http://localhost/takeover/client.js`), PRINCIPAL_A);
   assert.equal(scriptResponse.status, 200);
@@ -99,6 +101,12 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.match(script, /x-mcp-takeover-capability/);
   assert.match(script, /api\('stream'\)/);
   assert.match(script, /response\.body\.getReader/);
+  assert.match(script, /pointerdown/);
+  assert.match(script, /pointermove/);
+  assert.match(script, /pointerup/);
+  assert.match(script, /beforeinput/);
+  assert.match(script, /kind:'scroll'/);
+  assert.doesNotMatch(script, /querySelectorAll\('\[data-scroll\]'/);
   assert.doesNotMatch(script, /authorization['"]?\s*:/i);
   assert.doesNotMatch(script, /sessionStorage|localStorage/);
 
