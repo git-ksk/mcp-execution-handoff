@@ -77,9 +77,15 @@ function finishGesture(event){if(!gesture||gesture.id!==event.pointerId)return;c
 screen.addEventListener('pointerup',finishGesture);
 screen.addEventListener('pointercancel',function(event){if(gesture&&gesture.id===event.pointerId)gesture=null});
 const keyboard=document.querySelector('#keyboard');
-keyboard.addEventListener('beforeinput',function(event){if(stopped)return;const type=event.inputType||'';if(type==='insertText'&&event.data){event.preventDefault();keyboard.value='';void input({kind:'text',text:event.data});return}if(type==='insertLineBreak'){event.preventDefault();keyboard.value='';void input({kind:'key',key:'Enter'});return}if(type==='deleteContentBackward'){event.preventDefault();keyboard.value='';void input({kind:'key',key:'Backspace'})}});
-keyboard.addEventListener('input',function(){const text=keyboard.value;if(text){keyboard.value='';void input({kind:'text',text:text})}});
-keyboard.addEventListener('keydown',function(event){const allowed={Enter:'Enter',Tab:'Tab',Escape:'Escape',Backspace:'Backspace',ArrowUp:'ArrowUp',ArrowDown:'ArrowDown',ArrowLeft:'ArrowLeft',ArrowRight:'ArrowRight'};const key=allowed[event.key];if(key){event.preventDefault();keyboard.value='';void input({kind:'key',key:key})}});
+let composing=false;let flushTimer=0;let flushing=false;
+async function flushKeyboard(){if(stopped||composing||flushing)return;const text=keyboard.value;if(!text)return;flushing=true;keyboard.value='';try{await input({kind:'text',text:text});status('Input sent · live')}finally{flushing=false;if(keyboard.value&&!composing)scheduleKeyboardFlush()}}
+function scheduleKeyboardFlush(){if(flushTimer)clearTimeout(flushTimer);flushTimer=setTimeout(function(){flushTimer=0;void flushKeyboard()},180)}
+keyboard.addEventListener('compositionstart',function(){composing=true;if(flushTimer){clearTimeout(flushTimer);flushTimer=0}});
+keyboard.addEventListener('compositionend',function(){composing=false;scheduleKeyboardFlush()});
+keyboard.addEventListener('input',function(event){if(stopped||composing||event.isComposing)return;scheduleKeyboardFlush()});
+keyboard.addEventListener('beforeinput',function(event){if(stopped)return;const type=event.inputType||'';if(type==='insertLineBreak'){event.preventDefault();if(flushTimer){clearTimeout(flushTimer);flushTimer=0}void flushKeyboard().then(function(){return input({kind:'key',key:'Enter'})});return}if(type==='deleteContentBackward'&&!keyboard.value){event.preventDefault();void input({kind:'key',key:'Backspace'})}});
+keyboard.addEventListener('keydown',function(event){if(event.isComposing)return;const allowed={Enter:'Enter',Tab:'Tab',Escape:'Escape',ArrowUp:'ArrowUp',ArrowDown:'ArrowDown',ArrowLeft:'ArrowLeft',ArrowRight:'ArrowRight'};const key=allowed[event.key];if(key){event.preventDefault();if(flushTimer){clearTimeout(flushTimer);flushTimer=0}void flushKeyboard().then(function(){return input({kind:'key',key:key})})}});
+keyboard.addEventListener('blur',function(){if(flushTimer){clearTimeout(flushTimer);flushTimer=0}void flushKeyboard()});
 document.querySelector('#done').addEventListener('click',async function(){try{await api('done',{method:'POST'});status('Remote control closed. Return to the requesting workflow.');stopped=true}catch(e){status('Session already closed')}});
 void bootstrap().then(async function(){const active=await stream();if(!active&&!stopped)refresh()}).catch(function(){status('Session unavailable, expired, or already active elsewhere');stopped=true});
 })();`;
@@ -100,10 +106,10 @@ function pageHtml(nonce: string): string {
 <div class="bar"><strong>Human takeover</strong><span id="status" class="status">Connecting…</span></div>
 <div id="screen" class="screen"><img id="frame" alt="Live browser view"></div>
 <div class="controls">
-<input id="keyboard" class="keyboard" type="text" inputmode="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Keyboard — type into the focused browser field">
+<input id="keyboard" class="keyboard" type="text" inputmode="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type here — sent directly to the focused browser field">
 <button id="done" class="done">Done — return to the requesting workflow</button>
 </div>
-<div class="hint">Tap the live view directly. Swipe on it to scroll. Use the keyboard field only after focusing a text field in the remote browser.</div>
+<div class="hint">Tap the live view directly. Swipe to scroll. After tapping a remote text field, type here; text is sent after a short IME-safe delay and then cleared.</div>
 <small>This page controls only the current dedicated browser surface. One remote page owns the takeover lease at a time. Reloading or opening the same URL elsewhere cannot reclaim an active lease; return to the requesting workflow for a fresh Human round instead. It does not expose a native automation protocol, an address bar, cookies, DOM, or network data. Passwords, 2FA codes and CAPTCHA responses stay in the browser interaction and are not sent to the requesting agent or workflow.</small>
 </main>
 <script nonce="${nonce}" src="/takeover/client.js" defer></script>

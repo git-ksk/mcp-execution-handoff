@@ -101,6 +101,10 @@ test("takeover link is locator-only and the external client stays nonce-bound an
   assert.match(script, /x-mcp-takeover-capability/);
   assert.match(script, /api\('stream'\)/);
   assert.match(script, /response\.body\.getReader/);
+  assert.match(script, /compositionstart/);
+  assert.match(script, /compositionend/);
+  assert.match(script, /scheduleKeyboardFlush/);
+  assert.match(script, /180/);
   assert.match(script, /pointerdown/);
   assert.match(script, /pointermove/);
   assert.match(script, /pointerup/);
