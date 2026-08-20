@@ -1,225 +1,277 @@
 # Thin Takeover Runtime — v0.1 candidate
 
-> **Extraction-ready OSS experiment.** This code currently lives under `mcp-execution-handoff/experiments` so it does not widen the parent package's public API. The subtree has its own MIT license, protocol, security model, benchmarks, and contribution rules and is designed to move to a standalone repository after physical-device acceptance.
+> **Extraction-ready OSS experiment.** This code lives under `mcp-execution-handoff/experiments` so it does not widen the parent package's public API. The subtree has its own MIT license, protocol, security model, benchmarks, and contribution rules and is designed to move to a standalone repository after physical-device acceptance.
 
 Thin Takeover Runtime is an ultra-low-latency media/input plane for **short-lived, authority-fenced Human Takeover**. It is deliberately not a permanent remote-desktop server.
 
-## What is implemented
+## Current V4 path
 
 ```text
-Human authority from control plane
+mcp-execution-handoff / embedding control plane
         │
-        ├─ session / epoch / generation
+        ├─ principal / intervention / epoch / generation
         ├─ short-lived random 32-byte root key
         └─ absolute expiry
         │
-macOS ScreenCaptureKit
-        ↓
+        ▼
+macOS host
+ScreenCaptureKit
+  ↓ complete frames only
 VideoToolbox H.264
   real-time / no reorder / zero lookahead
-        ↓
+  ↓
 maxInFlight=1
-  stale capture frames drop instead of queue
-        ↓
+  newest-frame-wins
+  ↓
 ChaCha20-Poly1305 once per encoded frame
   fresh random 96-bit nonce
-        ↓
-MTU-bounded descriptor packetizer
-  authenticated 72-byte routing header
-        ↓
-scatter/gather non-blocking UDP
-        ↓
-network
-        ↓
+  ↓
+72-byte HMAC-authenticated routing header
+  ↓
+MTU-bounded scatter/gather UDP
+        │
+        ▼
+iOS/native client
 header auth before allocation
-        ↓
+  ↓
 bounded newest-frame reassembly
-  completed-frame replay fence
-        ↓
-frame AEAD verify
-        ↓
-native decoder adapter
+  ↓
+frame AEAD open
+  ↓
+VideoToolbox hardware decode
+  ↓ IOSurface-backed NV12 CVPixelBuffer
+single-slot latest-frame store
+  ↓
+Metal display-cadence presenter
 
 Human input
-        ↓
-realtime lane  ─ latest wins
-critical lane  ─ bounded retry + dedupe
-        ↓
-per-event AEAD
-        ↓
-macOS bounded CoreGraphics input adapter
-  pressed state released on revoke/expiry
+  iOS local cursor immediately updates
+  ↓
+  realtime pointer ─ latest wins / no retry
+  critical click/key/text ─ bounded retry
+  ↓ per-event AEAD
+  macOS replay/dedupe gate
+  ↓
+  CoreGraphics injection
+  ↓ injected critical event only
+  authenticated ACK
 
-Control plane
-        ↓
-authenticated revoke-only control lane
-        ↓
-shared lease revoked immediately
+Decoder recovery
+  native client request IDR
+  ↓ authenticated + rate-limited feedback
+  macOS encoder force-next-keyframe
+
+Done / Cancel
+  authoritative control plane
+  ↓ authenticated revoke-only local signal
+  shared lease revoked immediately
 ```
 
-The core includes:
+## Implemented runtime
 
-- exclusive Agent/Human authority controller;
-- intervention / epoch / client-generation fencing primitives;
+### Core security and transport
+
+- exclusive Agent/Human authority controller and intervention/epoch/client-generation fencing primitives;
 - monotonic ephemeral session lease with explicit revoke and expiry;
-- fresh-random-nonce ChaCha20-Poly1305 with HKDF-SHA256 directional/channel keys;
-- authenticated 72-byte video routing header using a separately derived truncated HMAC-SHA256 tag;
+- fresh-random-nonce ChaCha20-Poly1305 with HKDF-SHA256 separation by session/epoch/generation/direction/channel;
+- authenticated 72-byte video routing header using a separately derived 128-bit truncated HMAC-SHA256 tag;
 - pre-reassembly header verification and completed-frame replay fencing;
-- frame admission (`maxInFlight=1`) to prevent stale encoder queues;
-- MTU-aware zero-copy-oriented packet descriptors and non-blocking scatter/gather UDP send;
-- bounded newest-frame-only receiver reassembly;
-- binary input protocol with realtime vs critical semantics;
-- secure input datagrams and replay/deduplication gate;
-- authenticated revoke-only control protocol and replay gate;
-- deadline-bounded keyframe NACK / rate-limited IDR recovery planner;
-- monotonic latency metrics;
-- packetization, UDP, AEAD, hardware encode and hardware codec round-trip benchmarks.
+- MTU-aware descriptor packetization and non-blocking scatter/gather UDP send;
+- bounded newest-frame-only reassembly;
+- realtime and critical input lanes with replay/deduplication;
+- authenticated revoke-only control protocol;
+- separately keyed authenticated input-ACK and video-IDR feedback channels;
+- malformed-datagram / routing-header mutation robustness tests;
+- monotonic stage-local latency metrics and synthetic regression probes.
 
-The macOS host includes:
+### macOS host
 
 - ScreenCaptureKit complete-frame filtering;
-- captured-display selection shared with Human input coordinate mapping;
-- aspect-ratio-preserving max 1920×1080 output dimensions;
-- 60 fps target and small capture queue;
-- VideoToolbox hardware H.264 request;
-- real-time mode, no B-frame reordering, zero frame-delay request;
-- speed-over-quality and zero-lookahead hints;
-- AVCC-native encoder output;
-- authenticated frame transport;
-- authenticated realtime/critical Human input receiver;
-- bounded pointer/button/scroll/key/Unicode text injection;
-- tracked key/button release on revoke, expiry, or input-loop exit;
-- 50 ms bounded input/control receive timeouts so lease changes are observed promptly;
-- authenticated immediate revoke listener on a distinct control port;
-- fail-closed startup if session key, binding, or expiry is absent/invalid.
+- explicit display selection when multiple displays are capturable;
+- capture display ID reused for Human input coordinate mapping;
+- aspect-ratio-preserving max 1920×1080 output;
+- 60 fps target, small capture queue, `maxInFlight=1` encoder admission;
+- VideoToolbox hardware H.264 request with real-time, no-reorder, zero-frame-delay, speed-over-quality and zero-lookahead hints;
+- AVCC-native output without a full-frame Annex-B sender conversion;
+- authenticated video/input/feedback/revoke UDP planes;
+- CoreGraphics pointer/button/scroll/key/Unicode injection;
+- pressed key/button tracking and release-all on revoke/expiry/input-loop exit;
+- critical input ACK only after successful OS injection, with safe re-ACK of already-injected bounded retries;
+- authenticated, replay-fenced, rate-limited IDR request handling;
+- Screen Recording and Accessibility permission preflight before the Human surface starts;
+- fail-closed multi-display selection;
+- production-preferred inherited-FD root-key input (`THIN_TAKEOVER_SESSION_KEY_FD`), with hex environment fallback only for development/reference use.
+
+### iOS/native client library
+
+`TakeoverNativeClient` supports macOS/iOS and is generic-iOS compile-gated in CI.
+
+It includes:
+
+- `SecureVideoReceiver`: header auth → bounded reassembly → complete-frame AEAD open;
+- `VideoToolboxH264Decoder`: hardware-required H.264 AVCC decode to IOSurface-backed NV12 `CVPixelBuffer`;
+- `NativeVideoClientPipeline`: secure receive-to-decode state machine;
+- `NativeInputClient`: latest-only realtime input and bounded critical retries;
+- authenticated critical-input ACK consumption;
+- `NativeVideoFeedbackClient`: rate-limited authenticated IDR requests;
+- `NativeTakeoverClientSession`: video receiver, input sender, ACK receiver and IDR sender UDP glue;
+- `LatestDecodedFrameStore`: single-slot decoded frame handoff, not a presentation FIFO;
+- `TakeoverMetalView`: iOS CVMetalTextureCache + GPU NV12→RGB rendering at the device display cadence;
+- `TakeoverClientViewController`: reference touch client with immediate local cursor, video/ACK receive loops, critical retry loop and fail-closed mobile lifecycle;
+- background/foreground behavior that discards the current binding and requires a fresh generation/root key rather than silently reviving stale authority.
+
+The reference controller is intentionally a thin example, not an authentication/control-plane UI.
 
 ## Validation
 
-The hardened ARM64 macOS gate verifies **21/21 Swift tests**, release build, macOS host compile, random-nonce frame AEAD, authenticated video routing headers, secure input/control protocols, hardware H.264 encode/decode, packetization, and UDP loss/buffer stress.
+The latest native-client phase ARM64 gate verifies:
 
-Representative hosted-runner p50 values from the hardened authenticated baseline:
+- **36/36 Swift tests PASS**;
+- release package build PASS;
+- authenticated macOS host compile PASS;
+- `TakeoverNativeClient` compile PASS on macOS;
+- **generic iOS 17 `TakeoverNativeClient` build PASS with signing disabled**;
+- hardware-required H.264 encode/decode PASS;
+- secure native receive→hardware-decode pipeline PASS at 720p and 1080p;
+- authenticated packet/loopback loss-buffer stress PASS.
+
+Representative hosted-runner p50 values from that phase:
 
 | probe | p50 |
 |---|---:|
-| 32 KiB AEAD seal / open | 0.065 / 0.071 ms |
-| 128 KiB AEAD seal / open | 0.232 / 0.252 ms |
-| 720p hardware codec round trip | 9.241 ms |
-| 1080p hardware codec round trip | 14.980 ms |
+| 32 KiB frame AEAD seal / open | 0.067 / 0.073 ms |
+| 128 KiB frame AEAD seal / open | 0.241 / 0.260 ms |
+| 720p hardware codec round trip | 7.654 ms |
+| 1080p hardware codec round trip | 14.100 ms |
+| **post-encode secure native receive → HW decode, 720p** | **1.881 ms** |
+| **post-encode secure native receive → HW decode, 1080p** | **2.723 ms** |
 | authenticated 32 KiB complete localhost frame | 1.009 ms |
-| authenticated 128 KiB complete localhost frame, bounded 256 KiB receive buffer | 3.695 ms |
+| authenticated 128 KiB complete localhost frame, 256 KiB receive buffer | 3.408 ms |
 
-The per-datagram routing-header authentication measured about **0.382 ms per 128 KiB frame on the sending side** in the 2000-frame synthetic probe. Security hardening is measurable but still below hardware codec cost in this environment.
+The secure native-client probe includes frame AEAD, video-header authentication, MTU packetization, reassembly, AEAD open and hardware decode. It deliberately excludes real network transit and display presentation/scanout.
 
-These are hosted-runner synthetic probes, **not glass-to-glass claims**. See [BENCHMARKS.md](BENCHMARKS.md) for p95/p99, methodology and burst-loss results.
+These are hosted-runner component probes, **not glass-to-glass claims**. See [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Build and test
-
-Requires macOS 14+ for the host. The core and benchmarks are exercised on ARM64 macOS CI.
 
 ```bash
 swift test
 swift build -c release
 swift run -c release takeover-crypto-bench 32000 2000
-swift run -c release takeover-packet-bench 2000 131072
 swift run -c release takeover-vt-bench 1280 720 180 20
 swift run -c release takeover-vt-codec-bench 1280 720 120 20
+swift run -c release takeover-native-client-pipeline-bench 1280 720 60
+swift run -c release takeover-packet-bench 2000 131072
+swift run -c release takeover-loopback 200 131072 16 262144
+
+# iOS compile smoke
+xcodebuild -scheme TakeoverNativeClient \
+  -destination 'generic/platform=iOS' \
+  -configuration Release \
+  CODE_SIGNING_ALLOWED=NO build
 ```
 
 ## macOS authenticated host
 
-The host intentionally has no insecure default session. The authority/control plane must provide a short-lived binding. The environment-variable example below is a development/reference path only; production embeddings should inject and destroy key material through an appropriate secret/IPC boundary without argv or ordinary logs.
+The host has no insecure default session. Production embeddings should pass the root key via an inherited read-only FD containing exactly 32 raw bytes:
 
 ```bash
-export THIN_TAKEOVER_SESSION_KEY_HEX=<64 hex chars / 32 random bytes>
+export THIN_TAKEOVER_SESSION_KEY_FD=<inherited-fd-number>
 export THIN_TAKEOVER_SESSION_HASH_HEX=<16 hex chars>
 export THIN_TAKEOVER_EPOCH=1
 export THIN_TAKEOVER_GENERATION=1
-export THIN_TAKEOVER_EXPIRES_AT_UNIX_MS=<future unix time in milliseconds>
-
-# Safe defaults for Human input and revoke control are loopback.
-# For a remote client/control bridge, bind only an explicitly approved local interface.
-export THIN_TAKEOVER_INPUT_BIND_HOST=127.0.0.1
-export THIN_TAKEOVER_CONTROL_BIND_HOST=127.0.0.1
-
-# args: <client-ip> [video-port] [input-port] [control-port]
-# defaults: input=video+1, control=video+2
-swift run -c release takeover-macos-host <client-ip> 45555 45556 45557
+export THIN_TAKEOVER_EXPIRES_AT_UNIX_MS=<future unix ms>
 ```
 
-Screen Recording permission is required for capture, and macOS must permit the host process to inject the requested Human input.
+For development only, `THIN_TAKEOVER_SESSION_KEY_HEX=<64 hex chars>` remains a fallback.
 
-To exercise immediate revoke using the same short-lived binding:
+Human-plane sockets bind to loopback unless explicitly configured:
+
+```bash
+export THIN_TAKEOVER_INPUT_BIND_HOST=127.0.0.1
+export THIN_TAKEOVER_CONTROL_BIND_HOST=127.0.0.1
+export THIN_TAKEOVER_FEEDBACK_BIND_HOST=127.0.0.1
+
+# Optional when more than one display is capturable; required in that case.
+export THIN_TAKEOVER_DISPLAY_ID=<CGDirectDisplayID>
+
+# args:
+# <client-ip> [video] [input] [control] [host-video-feedback] [client-input-feedback]
+# defaults from video 45555: 45555 / 45556 / 45557 / 45558 / 45559
+swift run -c release takeover-macos-host <client-ip> 45555 45556 45557 45558 45559
+```
+
+The host fails closed before takeover if required Screen Recording or Accessibility permission is unavailable.
+
+Immediate local teardown can be exercised with the separately authenticated revoke sender:
 
 ```bash
 swift run -c release takeover-control-send 127.0.0.1 45557
 ```
 
-The revoke sender reads the transport key/binding from the environment, not argv. A valid revoke drops the shared local lease immediately; capture/media/input then stop and tracked pressed Human key/button state is released.
+The local revoke lane is teardown-only. It cannot approve an action or resume Agent authority.
 
 ## Authority boundary
 
-Possession of a media, input, or revoke-control socket is not Human authority. `Done`, `Cancel`, approval, revoke policy, and Agent resume remain authoritative control-plane semantics. The local revoke signal is teardown-only.
-
-The required lifecycle is:
+Possession of media/input/feedback/control sockets is not Human authority. The control plane owns Human grant, Done/Cancel, authoritative revoke, epoch/generation advancement and Agent resume.
 
 ```text
 Agent active
-  ↓ revoke/fence Agent input
+  ↓ fence Agent input
 Human authority grant
   ↓ fresh generation + fresh root key
-short-lived authenticated media/input session
-  ↓ Done / Cancel via control plane
-signed local revoke + Human authority revoke
-  ↓ local lease stops + pressed state released
+short-lived native media/input session
+  ↓ Human Done / Cancel
+control-plane revoke + authenticated local teardown
+  ↓ capture/input/feedback stop + pressed state release
   ↓ epoch/generation advance + old key invalidation
 fresh Agent attach
-  ↓ fresh readiness / semantic verify
+  ↓ semantic readiness/auth verification
 Agent active
 ```
 
 Human completion is never authentication proof. Credential, MFA/OTP, passkey, cookie, token, typed secret text and framebuffer data must never be returned to MCP/model context or durable handoff state.
 
-Read [PROTOCOL.md](PROTOCOL.md) and [SECURITY.md](SECURITY.md) before integrating the runtime.
-
 ## Performance policy
 
-The project optimizes for **freshness under bounded loss**, not perfect delivery:
+The project optimizes for **freshness under bounded loss**:
 
-- no unbounded video retransmission;
-- no stale frame queue;
-- ordinary delta-frame loss drops;
-- keyframe repair is short-deadline only;
-- realtime input is newest-wins;
-- critical input is deduplicated;
-- pre-reassembly routing metadata is authenticated and bounded;
-- completed frames cannot be replayed inside a live generation;
-- all media/input/control is bound to the active session generation and expiry;
-- control-plane authority stays reliable and separate from the media hot path.
+- capture admission `maxInFlight=1`;
+- no stale video FIFO;
+- single-slot decoded-frame presentation handoff;
+- realtime pointer state is never retransmitted;
+- critical input retries are short-lived, bounded and host-deduplicated;
+- ACK loss causes safe re-ACK, not double injection;
+- ordinary lost delta frames do not become an unbounded reliable queue;
+- decoder recovery uses authenticated, replay-fenced, client+host rate-limited IDR requests;
+- old/revoked mobile generations are not automatically resurrected.
 
-## What remains before a physical v0.1 acceptance tag
+## Remaining before standalone v0.1.0
 
-The software/runtime contract is implemented and CI-gated. Remaining work requires a real operator path rather than more synthetic CI:
+The main remaining work now requires physical devices / real networks:
 
 1. physical Mac ScreenCaptureKit callback → encode timing;
-2. native client receive/header-auth/reassembly/AEAD-open → hardware decode → actual presentation timing;
-3. physical network RTT/loss and Human input → OS injection → next-frame timing;
+2. actual iPhone receive → secure pipeline → VideoToolbox decode → **Metal presentation/scanout** timing;
+3. touch/input creation → host injection → next presented frame timing;
 4. immediate revoke → input cleanup/capture-stop timing;
-5. mobile background/foreground/reconnect behavior through fresh generation/key rotation;
-6. MTU, steady/burst packet loss and congestion measurements on the intended mobile path.
+5. background/foreground with a real fresh control-plane generation/key;
+6. real Wi-Fi/cellular RTT, MTU, steady/burst loss and congestion behavior;
+7. decide from evidence whether bounded IDR recovery is sufficient or whether small FEC / codec-NAL-aware fragmentation is justified;
+8. choose/implement the production NAT traversal or relay adapter without changing the authority contract.
 
-If bounded keyframe NACK/IDR proves insufficient on real networks, compare small FEC or codec/NAL-aware fragmentation. Do not hide loss behind an unbounded reliable-video queue.
+Do not add an unbounded reliable-video queue to hide loss.
 
 ## Scope intentionally outside the core
 
-- signaling / NAT traversal / relay provider;
-- permanent remote access accounts;
+- authority issuance/principal authentication;
+- permanent remote-access accounts;
+- provider-specific signaling/NAT/relay implementation;
 - audio, gamepad, HDR, virtual displays;
 - browser screenshot polling;
-- CAPTCHA solving or credential automation;
-- authority issuance/authentication itself.
+- CAPTCHA solving or credential automation.
 
-Browser and Windows/Linux capture/input adapters can reuse the same transport/security core later.
+Windows/Linux host adapters can reuse the same transport/security/native-client contract later.
 
 ## License and provenance
 
-The subtree includes an MIT license. Sunshine, Moonlight, Selkies, RustDesk and similar systems are architecture/performance references only; no source code is copied from them into this runtime.
+The subtree is MIT licensed. Sunshine, Moonlight, Selkies, RustDesk and similar systems are architecture/performance references only; no source code is copied from them into this runtime.
