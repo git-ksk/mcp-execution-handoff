@@ -1,0 +1,102 @@
+name: Apply Native-only Takeover Session
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/apply-native-only-session.yml
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'experiment/thin-takeover-runtime'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Fence Native-only broker sessions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          broker_path = Path("src/browser-takeover/broker.ts")
+          text = broker_path.read_text()
+
+          fields = '''export class TakeoverBroker {\n  private readonly sessions: TakeoverSessionManager;\n  private readonly publicOrigin: string | undefined;\n'''
+          fields_new = '''export class TakeoverBroker {\n  private readonly sessions: TakeoverSessionManager;\n  private readonly publicOrigin: string | undefined;\n  private readonly nativeOnlySessions = new Map<string, string>();\n'''
+          if text.count(fields) != 1:
+              raise SystemExit("broker field anchor changed")
+          text = text.replace(fields, fields_new, 1)
+
+          create_link = '''  createLink(\n    intervention: TakeoverInterventionRef,\n    principalBinding: string | undefined\n  ): string | undefined {\n    if (!this.config.enabled || !this.config.publicBaseUrl || !principalBinding) return undefined;\n    const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);\n    return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();\n  }\n'''
+          create_link_new = create_link + '''\n  createNativeLink(\n    intervention: TakeoverInterventionRef,\n    principalBinding: string | undefined\n  ): string | undefined {\n    if (!this.nativeRuntime || !this.config.enabled || !this.config.publicBaseUrl || !principalBinding) return undefined;\n    const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);\n    for (const [sessionId, currentIntervention] of this.nativeOnlySessions) {\n      if (currentIntervention === intervention.id && sessionId !== locator.id) this.nativeOnlySessions.delete(sessionId);\n    }\n    this.nativeOnlySessions.set(locator.id, intervention.id);\n    const expiryCleanup = setTimeout(() => this.nativeOnlySessions.delete(locator.id), this.config.ttlMs + 1_000);\n    expiryCleanup.unref();\n    return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();\n  }\n'''
+          if text.count(create_link) != 1:
+              raise SystemExit("createLink anchor changed")
+          text = text.replace(create_link, create_link_new, 1)
+
+          revoke = '''  revokeForIntervention(interventionId: string): void {\n    this.sessions.revokeForIntervention(interventionId);\n    if (this.nativeRuntime) void this.nativeRuntime.revokeForIntervention(interventionId).catch(() => undefined);\n  }\n\n  async revokeNativeForIntervention(interventionId: string): Promise<void> {\n    this.sessions.revokeForIntervention(interventionId);\n    await this.nativeRuntime?.revokeForIntervention(interventionId);\n  }\n'''
+          revoke_new = '''  revokeForIntervention(interventionId: string): void {\n    this.sessions.revokeForIntervention(interventionId);\n    this.forgetNativeOnlyIntervention(interventionId);\n    if (this.nativeRuntime) void this.nativeRuntime.revokeForIntervention(interventionId).catch(() => undefined);\n  }\n\n  async revokeNativeForIntervention(interventionId: string): Promise<void> {\n    this.sessions.revokeForIntervention(interventionId);\n    this.forgetNativeOnlyIntervention(interventionId);\n    await this.nativeRuntime?.revokeForIntervention(interventionId);\n  }\n'''
+          if text.count(revoke) != 1:
+              raise SystemExit("revoke anchor changed")
+          text = text.replace(revoke, revoke_new, 1)
+
+          bootstrap = '''    if (operation === "bootstrap") {\n      if (request.method !== "GET") return json(405, { error: "method_not_allowed" });\n'''
+          bootstrap_new = '''    if (operation === "bootstrap") {\n      if (this.nativeOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });\n      if (request.method !== "GET") return json(405, { error: "method_not_allowed" });\n'''
+          if text.count(bootstrap) != 1:
+              raise SystemExit("bootstrap anchor changed")
+          text = text.replace(bootstrap, bootstrap_new, 1)
+
+          failed_start = '''        this.sessions.revoke(id);\n        await this.nativeRuntime?.revoke(id).catch(() => undefined);\n        return json(503, { error: "native_runtime_unavailable" });\n'''
+          failed_start_new = '''        this.sessions.revoke(id);\n        this.nativeOnlySessions.delete(id);\n        await this.nativeRuntime?.revoke(id).catch(() => undefined);\n        return json(503, { error: "native_runtime_unavailable" });\n'''
+          if text.count(failed_start) != 1:
+              raise SystemExit("native start failure anchor changed")
+          text = text.replace(failed_start, failed_start_new, 1)
+
+          capability = '''    if (!capability) return json(404, { error: "takeover_unavailable" });\n\n    if (operation === "frame") {\n'''
+          capability_new = '''    if (!capability) return json(404, { error: "takeover_unavailable" });\n    if (this.nativeOnlySessions.has(id) && (operation === "frame" || operation === "input")) {\n      return json(404, { error: "takeover_unavailable" });\n    }\n\n    if (operation === "frame") {\n'''
+          if text.count(capability) != 1:
+              raise SystemExit("capability anchor changed")
+          text = text.replace(capability, capability_new, 1)
+
+          done = '''      this.sessions.revoke(id);\n      try {\n        await this.nativeRuntime?.revoke(id);\n'''
+          done_new = '''      this.sessions.revoke(id);\n      this.nativeOnlySessions.delete(id);\n      try {\n        await this.nativeRuntime?.revoke(id);\n'''
+          if text.count(done) != 1:
+              raise SystemExit("done revoke anchor changed")
+          text = text.replace(done, done_new, 1)
+
+          final_anchor = '''  private publicGrant(grant: TakeoverGrant, native?: NativeTakeoverClientBootstrap): NativeGrantBody {\n'''
+          helper = '''  private forgetNativeOnlyIntervention(interventionId: string): void {\n    for (const [sessionId, currentIntervention] of this.nativeOnlySessions) {\n      if (currentIntervention === interventionId) this.nativeOnlySessions.delete(sessionId);\n    }\n  }\n\n'''
+          if text.count(final_anchor) != 1:
+              raise SystemExit("publicGrant anchor changed")
+          text = text.replace(final_anchor, helper + final_anchor, 1)
+          broker_path.write_text(text)
+
+          test_path = Path("tests/native-runtime.test.ts")
+          tests = test_path.read_text()
+          old_fixture = '  const locator = broker.createLink({ id: "native-intervention", epoch: 9 }, PRINCIPAL);\n'
+          new_fixture = '  const locator = broker.createNativeLink({ id: "native-intervention", epoch: 9 }, PRINCIPAL);\n'
+          if tests.count(old_fixture) != 1:
+              raise SystemExit("native fixture anchor changed")
+          tests = tests.replace(old_fixture, new_fixture, 1)
+
+          claim_anchor = '''test("native claim binds one-shot transport bootstrap to broker epoch and generation", async () => {\n'''
+          native_only_test = '''test("Native-only sessions cannot be claimed or driven through the legacy Web frame/input surface", async () => {\n  const { broker, sessionId } = createFixture();\n  const bootstrap = await broker.handle(new Request(`https://takeover.example/takeover/api/bootstrap/${sessionId}`, {\n    headers: {\n      "sec-fetch-site": "same-origin",\n      "x-takeover-client": CLIENT_A\n    }\n  }), PRINCIPAL);\n  assert.equal(bootstrap.status, 404);\n\n  const claimed = await claim(broker, sessionId);\n  assert.equal(claimed.status, 200);\n  const grant = await claimed.json() as { capability: string };\n\n  const frame = await broker.handle(new Request(`https://takeover.example/takeover/api/frame/${sessionId}`, {\n    headers: {\n      "x-takeover-client": CLIENT_A,\n      "x-mcp-takeover-capability": grant.capability\n    }\n  }), PRINCIPAL);\n  assert.equal(frame.status, 404);\n\n  const input = await broker.handle(new Request(`https://takeover.example/takeover/api/input/${sessionId}`, {\n    method: "POST",\n    headers: {\n      "content-type": "application/json",\n      "x-takeover-client": CLIENT_A,\n      "x-mcp-takeover-capability": grant.capability,\n      "x-takeover-native-client": "1"\n    },\n    body: JSON.stringify({ kind: "tap", x: 1, y: 1 })\n  }), PRINCIPAL);\n  assert.equal(input.status, 404);\n});\n\n'''
+          if tests.count(claim_anchor) != 1:
+              raise SystemExit("native claim test anchor changed")
+          tests = tests.replace(claim_anchor, native_only_test + claim_anchor, 1)
+          test_path.write_text(tests)
+      - name: Commit Native-only session fence
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/browser-takeover/broker.ts tests/native-runtime.test.ts
+          git commit -m "fix(takeover): fence Native-only broker sessions"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
