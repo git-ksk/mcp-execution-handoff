@@ -36,12 +36,7 @@ private struct HostSessionConfiguration {
 
     static func load() throws -> HostSessionConfiguration {
         let env = ProcessInfo.processInfo.environment
-        guard let keyHex = env["THIN_TAKEOVER_SESSION_KEY_HEX"] else {
-            throw HostConfigurationError.missing("THIN_TAKEOVER_SESSION_KEY_HEX")
-        }
-        guard let rootKey = decodeHex(keyHex), rootKey.count == TransportCipher.rootKeyBytes else {
-            throw HostConfigurationError.invalid("THIN_TAKEOVER_SESSION_KEY_HEX")
-        }
+        let rootKey = try HostSessionKeySource.load(environment: env)
         guard let sessionHex = env["THIN_TAKEOVER_SESSION_HASH_HEX"] else {
             throw HostConfigurationError.missing("THIN_TAKEOVER_SESSION_HASH_HEX")
         }
@@ -102,29 +97,6 @@ private struct HostSessionConfiguration {
             nowUnixMillis: wallMillis,
             nowMonotonicNanos: MonotonicClock.nowNanos()
         )
-    }
-}
-
-private func decodeHex(_ text: String) -> Data? {
-    let bytes = Array(text.utf8)
-    guard bytes.count.isMultiple(of: 2) else { return nil }
-    var output = Data()
-    output.reserveCapacity(bytes.count / 2)
-    var index = 0
-    while index < bytes.count {
-        guard let high = hexNibble(bytes[index]), let low = hexNibble(bytes[index + 1]) else { return nil }
-        output.append((high << 4) | low)
-        index += 2
-    }
-    return output
-}
-
-private func hexNibble(_ byte: UInt8) -> UInt8? {
-    switch byte {
-    case 48...57: return byte - 48
-    case 65...70: return byte - 55
-    case 97...102: return byte - 87
-    default: return nil
     }
 }
 
