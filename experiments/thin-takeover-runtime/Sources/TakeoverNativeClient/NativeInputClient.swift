@@ -30,12 +30,18 @@ public struct NativeInputTransmission: Sendable, Equatable {
     }
 }
 
+public enum NativeInputFeedbackResult: Sendable, Equatable {
+    case acknowledged(sequence: UInt64)
+    case duplicateOrStale
+    case unrelated
+}
+
 /// Client-side authenticated input encoder with bounded critical retries.
 ///
 /// Pointer movement and other realtime state are never retained for retransmission. Critical
 /// events are retained only for the configured short deadline and are deduplicated by the host.
-/// The embedding client must feed authenticated ACKs into `acknowledgeCritical` once the feedback
-/// channel is active; expiry still bounds retry even when an ACK is lost.
+/// Authenticated host ACKs remove pending critical events immediately; lost ACKs still cannot
+/// create an unbounded retry queue because both lifetime and attempt count are capped.
 public final class NativeInputClient: @unchecked Sendable {
     private struct PendingCritical {
         let transmission: NativeInputTransmission
@@ -45,11 +51,13 @@ public final class NativeInputClient: @unchecked Sendable {
     }
 
     private let codec: SecureInputCodec
+    private let ackCodec: SecureFeedbackCodec
     private let retryPolicy: CriticalInputRetryPolicy
     private let lock = NSLock()
     private var realtimeSequence: UInt64 = 0
     private var criticalSequence: UInt64 = 0
     private var pending: [UInt64: PendingCritical] = [:]
+    private var feedbackGate = FeedbackSequenceGate()
 
     public init(
         rootKey: Data,
@@ -63,6 +71,14 @@ public final class NativeInputClient: @unchecked Sendable {
             sessionHash: sessionHash,
             epoch: epoch,
             generation: generation
+        )
+        self.ackCodec = try SecureFeedbackCodec(
+            rootKey: rootKey,
+            sessionHash: sessionHash,
+            epoch: epoch,
+            generation: generation,
+            direction: .hostToClient,
+            channel: .inputFeedback
         )
         self.retryPolicy = retryPolicy
     }
@@ -128,6 +144,22 @@ public final class NativeInputClient: @unchecked Sendable {
         return transmission
     }
 
+    /// Opens and applies a host->client authenticated input ACK.
+    ///
+    /// An ACK is accepted only once per feedback sequence and removes only the exact critical
+    /// input sequence referenced by the authenticated feedback message.
+    @discardableResult
+    public func ingestFeedback(_ datagram: Data) throws -> NativeInputFeedbackResult {
+        let message = try ackCodec.open(datagram)
+        guard message.kind == .criticalInputAck else { return .unrelated }
+        lock.lock()
+        defer { lock.unlock() }
+        guard feedbackGate.accept(message.sequence) else { return .duplicateOrStale }
+        pending.removeValue(forKey: message.reference)
+        return .acknowledged(sequence: message.reference)
+    }
+
+    /// Test/embedding convenience for an already-authenticated ACK reference.
     public func acknowledgeCritical(sequence: UInt64) {
         lock.lock()
         pending.removeValue(forKey: sequence)
