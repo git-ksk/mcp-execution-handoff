@@ -28,13 +28,16 @@ export declare class TakeoverBroker {
     private readonly nativeRuntime?;
     private readonly sessions;
     private readonly publicOrigin;
+    private readonly nativeOnlySessions;
     constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined);
     isEnabled(): boolean;
     isPath(pathname: string): boolean;
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
+    createNativeLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
     revokeForIntervention(interventionId: string): void;
     revokeNativeForIntervention(interventionId: string): Promise<void>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    private forgetNativeOnlyIntervention;
     private publicGrant;
     private readBoundedJson;
     private readCapability;
