@@ -41,7 +41,7 @@ private final class ClientRunToken: @unchecked Sendable {
 public final class TakeoverClientViewController: UIViewController {
     public var onRequiresFreshBinding: (() -> Void)?
 
-    private let binding: NativeClientSessionBinding
+    private var pendingBinding: NativeClientSessionBinding?
     private let frameStore = LatestDecodedFrameStore()
     private let metalView = TakeoverMetalView()
     private let cursorView = UIView(frame: CGRect(x: 0, y: 0, width: 14, height: 14))
@@ -50,7 +50,7 @@ public final class TakeoverClientViewController: UIViewController {
     private var backgrounded = false
 
     public init(binding: NativeClientSessionBinding) {
-        self.binding = binding
+        self.pendingBinding = binding
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -74,23 +74,14 @@ public final class TakeoverClientViewController: UIViewController {
         cursorView.isHidden = true
         view.addSubview(cursorView)
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(didEnterBackground),
-            name: UIApplication.didEnterBackgroundNotification,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(willEnterForeground),
-            name: UIApplication.willEnterForegroundNotification,
-            object: nil
-        )
+        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
 
         do {
             try startSession()
         } catch {
             stopSession()
+            pendingBinding = nil
             onRequiresFreshBinding?()
         }
     }
@@ -105,7 +96,7 @@ public final class TakeoverClientViewController: UIViewController {
     }
 
     private func startSession() throws {
-        guard session == nil, !backgrounded else { return }
+        guard session == nil, !backgrounded, let binding = pendingBinding else { return }
         let store = frameStore
         let created = try NativeTakeoverClientSession(
             network: binding.network,
@@ -115,6 +106,9 @@ public final class TakeoverClientViewController: UIViewController {
             generation: binding.generation,
             decodedFrame: { frame in store.push(frame) }
         )
+        // The binding (and its root-key Data) is one-shot. Reconnect/background requires a new
+        // control-plane grant rather than retaining and reviving this material.
+        pendingBinding = nil
         session = created
         let token = ClientRunToken()
         runToken = token
@@ -124,8 +118,6 @@ public final class TakeoverClientViewController: UIViewController {
                 do {
                     _ = try created.receiveVideoOnce()
                 } catch {
-                    // Decoder desync/corruption is advisory: ask for a fresh IDR. The client and
-                    // host independently rate-limit this path.
                     _ = try? created.requestIDR(afterFrameID: 0)
                 }
             }
@@ -153,13 +145,13 @@ public final class TakeoverClientViewController: UIViewController {
 
     @objc private func didEnterBackground() {
         backgrounded = true
+        pendingBinding = nil
         stopSession()
     }
 
     @objc private func willEnterForeground() {
         guard backgrounded else { return }
         backgrounded = false
-        // Deliberately do not reuse `binding`; a new control-plane generation/key is required.
         onRequiresFreshBinding?()
     }
 
@@ -169,13 +161,7 @@ public final class TakeoverClientViewController: UIViewController {
         updateLocalCursor(point)
         let normalized = normalizedPoint(point)
         _ = try? session.sendRealtimeInput(kind: .pointerMove, x: normalized.x, y: normalized.y)
-        _ = try? session.sendCriticalInput(
-            kind: .pointerButton,
-            x: normalized.x,
-            y: normalized.y,
-            value: 1,
-            payload: Data([0])
-        )
+        _ = try? session.sendCriticalInput(kind: .pointerButton, x: normalized.x, y: normalized.y, value: 1, payload: Data([0]))
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -186,26 +172,15 @@ public final class TakeoverClientViewController: UIViewController {
         _ = try? session.sendRealtimeInput(kind: .pointerMove, x: normalized.x, y: normalized.y)
     }
 
-    public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        finishTouch(touches)
-    }
-
-    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        finishTouch(touches)
-    }
+    public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { finishTouch(touches) }
+    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { finishTouch(touches) }
 
     private func finishTouch(_ touches: Set<UITouch>) {
         guard let touch = touches.first, let session else { return }
         let point = touch.location(in: view)
         updateLocalCursor(point)
         let normalized = normalizedPoint(point)
-        _ = try? session.sendCriticalInput(
-            kind: .pointerButton,
-            x: normalized.x,
-            y: normalized.y,
-            value: 0,
-            payload: Data([0])
-        )
+        _ = try? session.sendCriticalInput(kind: .pointerButton, x: normalized.x, y: normalized.y, value: 0, payload: Data([0]))
     }
 
     private func updateLocalCursor(_ point: CGPoint) {
@@ -218,10 +193,7 @@ public final class TakeoverClientViewController: UIViewController {
         let height = max(view.bounds.height, 1)
         let x = min(1.0, max(0.0, point.x / width))
         let y = min(1.0, max(0.0, point.y / height))
-        return (
-            Int32((x * 1_000_000).rounded()),
-            Int32((y * 1_000_000).rounded())
-        )
+        return (Int32((x * 1_000_000).rounded()), Int32((y * 1_000_000).rounded()))
     }
 }
 #endif
