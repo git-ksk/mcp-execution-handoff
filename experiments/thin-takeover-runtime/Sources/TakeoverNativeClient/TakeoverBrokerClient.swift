@@ -227,7 +227,7 @@ public final class TakeoverBrokerClient: @unchecked Sendable {
               rootKey.count == 32,
               grant.native.sessionHashHex.count == 16,
               let sessionHash = UInt64(grant.native.sessionHashHex, radix: 16),
-              try? Self.validateIPLiteral(grant.native.network.host) != nil else {
+              Self.isIPLiteral(grant.native.network.host) else {
             throw TakeoverBrokerClientError.malformedBootstrap
         }
 
@@ -315,6 +315,10 @@ public final class TakeoverBrokerClient: @unchecked Sendable {
             .appending(path: sessionID)
     }
 
+    private static func isIPLiteral(_ host: String) -> Bool {
+        (try? validateIPLiteral(host)) != nil
+    }
+
     private static func validateIPLiteral(_ host: String) throws {
         let valid = host.withCString { pointer -> Bool in
             var ipv4 = in_addr()
@@ -368,7 +372,11 @@ public enum NativeClientNetworkAddress {
                     0,
                     NI_NUMERICHOST
                 )
-                if result == 0 { return String(cString: hostname) }
+                if result == 0 {
+                    let end = hostname.firstIndex(of: 0) ?? hostname.endIndex
+                    let bytes = hostname[..<end].map { UInt8(bitPattern: $0) }
+                    return String(decoding: bytes, as: UTF8.self)
+                }
             }
             cursor = current.pointee.ifa_next
         }
