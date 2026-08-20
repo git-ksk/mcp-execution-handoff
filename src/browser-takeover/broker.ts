@@ -1,5 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { TakeoverSessionError, TakeoverSessionManager } from "./session.js";
+import { TakeoverSessionError, TakeoverSessionManager, type TakeoverGrant } from "./session.js";
+import {
+  NativeTakeoverRuntimeError,
+  nativeBindingFromGrant,
+  parseNativeTakeoverClientEndpoint,
+  type NativeTakeoverClientBootstrap,
+  type NativeTakeoverRuntimeProvider
+} from "./native-runtime.js";
 
 export interface TakeoverInterventionRef {
   id: string;
@@ -94,13 +101,22 @@ function pageHtml(nonce: string): string {
 </body></html>`;
 }
 
+interface NativeGrantBody {
+  capability: string;
+  reconnectHandle: string;
+  expiresAt: number;
+  clientGeneration: number;
+  native?: NativeTakeoverClientBootstrap;
+}
+
 export class TakeoverBroker {
   private readonly sessions: TakeoverSessionManager;
   private readonly publicOrigin: string | undefined;
 
   constructor(
     private readonly browser: TakeoverBrowserAdapter,
-    private readonly config: TakeoverBrokerConfig
+    private readonly config: TakeoverBrokerConfig,
+    private readonly nativeRuntime?: NativeTakeoverRuntimeProvider
   ) {
     this.sessions = new TakeoverSessionManager(
       config.ttlMs,
@@ -131,6 +147,12 @@ export class TakeoverBroker {
 
   revokeForIntervention(interventionId: string): void {
     this.sessions.revokeForIntervention(interventionId);
+    if (this.nativeRuntime) void this.nativeRuntime.revokeForIntervention(interventionId).catch(() => undefined);
+  }
+
+  async revokeNativeForIntervention(interventionId: string): Promise<void> {
+    this.sessions.revokeForIntervention(interventionId);
+    await this.nativeRuntime?.revokeForIntervention(interventionId);
   }
 
   async handle(
@@ -164,7 +186,7 @@ export class TakeoverBroker {
       return new Response(request.method === "HEAD" ? null : pageHtml(nonce), { status: 200, headers });
     }
 
-    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|frame|input|done)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
+    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|frame|input|done|cancel)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (!apiMatch) return json(404, { error: "not_found" });
     const operation = apiMatch[1]!;
     const id = apiMatch[2]!;
@@ -178,54 +200,56 @@ export class TakeoverBroker {
       }
       try {
         const grant = this.sessions.claimClient(id, boundPrincipal, clientBinding);
-        return json(200, {
-          capability: grant.capability,
-          reconnectHandle: grant.reconnectHandle,
-          expiresAt: grant.expiresAt,
-          clientGeneration: grant.clientGeneration
-        });
+        return json(200, this.publicGrant(grant));
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
         throw error;
       }
     }
 
-    if (operation === "claim") {
+    if (operation === "claim" || operation === "reconnect") {
       if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
       if (!this.nativeMutationAllowed(request)) return json(403, { error: "native_client_required" });
-      try {
-        const grant = this.sessions.claimClient(id, boundPrincipal, clientBinding);
-        return json(200, {
-          capability: grant.capability,
-          reconnectHandle: grant.reconnectHandle,
-          expiresAt: grant.expiresAt,
-          clientGeneration: grant.clientGeneration
-        });
-      } catch (error) {
-        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
-        throw error;
-      }
-    }
+      const reconnectHandle = operation === "reconnect"
+        ? this.readReconnectHandle(request.headers.get("x-mcp-takeover-reconnect"))
+        : undefined;
+      if (operation === "reconnect" && !reconnectHandle) return json(404, { error: "takeover_unavailable" });
 
-    if (operation === "reconnect") {
-      if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
-      if (!this.nativeMutationAllowed(request)) return json(403, { error: "native_client_required" });
-      const reconnectHandle = this.readReconnectHandle(request.headers.get("x-mcp-takeover-reconnect"));
-      if (!reconnectHandle) return json(404, { error: "takeover_unavailable" });
+      let endpoint: ReturnType<typeof parseNativeTakeoverClientEndpoint> | undefined;
+      if (this.nativeRuntime) {
+        try {
+          endpoint = parseNativeTakeoverClientEndpoint(await this.readBoundedJson(request, 1_024));
+        } catch (error) {
+          if (error instanceof NativeTakeoverRuntimeError) return json(400, { error: "native_endpoint_invalid" });
+          return json(400, { error: "invalid_json" });
+        }
+      }
+
+      let grant: TakeoverGrant;
       try {
-        const grant = this.sessions.reconnectClient(id, boundPrincipal, reconnectHandle, clientBinding);
-        return json(200, {
-          capability: grant.capability,
-          reconnectHandle: grant.reconnectHandle,
-          expiresAt: grant.expiresAt,
-          clientGeneration: grant.clientGeneration
-        });
+        grant = operation === "claim"
+          ? this.sessions.claimClient(id, boundPrincipal, clientBinding)
+          : this.sessions.reconnectClient(id, boundPrincipal, reconnectHandle!, clientBinding);
       } catch (error) {
         if (error instanceof TakeoverSessionError) {
           if (error.code === "TAKEOVER_CLIENT_ACTIVE") return json(409, { error: "takeover_client_active" });
           return json(404, { error: "takeover_unavailable" });
         }
         throw error;
+      }
+
+      try {
+        const native = this.nativeRuntime && endpoint
+          ? await this.nativeRuntime.begin(nativeBindingFromGrant(grant), endpoint)
+          : undefined;
+        return json(200, this.publicGrant(grant, native));
+      } catch (error) {
+        if (error instanceof NativeTakeoverRuntimeError && error.code === "NATIVE_BOOTSTRAP_ALREADY_ISSUED") {
+          return json(409, { error: "native_bootstrap_already_issued" });
+        }
+        this.sessions.revoke(id);
+        await this.nativeRuntime?.revoke(id).catch(() => undefined);
+        return json(503, { error: "native_runtime_unavailable" });
       }
     }
 
@@ -262,26 +286,34 @@ export class TakeoverBroker {
     }
 
     if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
-    if (!this.sameOriginMutation(request)) return json(403, { error: "origin_not_allowed" });
+    const mutationAllowed = this.sameOriginMutation(request) || this.nativeMutationAllowed(request);
+    if (!mutationAllowed) return json(403, { error: "origin_not_allowed" });
 
-    if (operation === "done") {
+    if (operation === "done" || operation === "cancel") {
       try {
         this.sessions.verify(id, capability, boundPrincipal, clientBinding);
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
         throw error;
       }
+      // Revoke the broker generation first. Even if process teardown encounters an OS failure,
+      // the stale capability/reconnect handle can no longer be used through this control plane.
       this.sessions.revoke(id);
-      return json(200, { done: true });
+      try {
+        await this.nativeRuntime?.revoke(id);
+      } catch {
+        return json(503, { error: "native_runtime_revoke_failed", revoked: true });
+      }
+      return operation === "done"
+        ? json(200, { done: true })
+        : json(200, { cancelled: true });
     }
 
     const length = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(length) && length > 8_192) return json(413, { error: "request_body_too_large" });
     let body: unknown;
     try {
-      const text = await request.text();
-      if (Buffer.byteLength(text, "utf8") > 8_192) return json(413, { error: "request_body_too_large" });
-      body = JSON.parse(text);
+      body = await this.readBoundedJson(request, 8_192);
     } catch {
       return json(400, { error: "invalid_json" });
     }
@@ -301,6 +333,25 @@ export class TakeoverBroker {
     } finally {
       this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
     }
+  }
+
+  private publicGrant(grant: TakeoverGrant, native?: NativeTakeoverClientBootstrap): NativeGrantBody {
+    return {
+      capability: grant.capability,
+      reconnectHandle: grant.reconnectHandle,
+      expiresAt: grant.expiresAt,
+      clientGeneration: grant.clientGeneration,
+      ...(native ? { native } : {})
+    };
+  }
+
+  private async readBoundedJson(request: Request, maxBytes: number): Promise<unknown> {
+    const length = Number(request.headers.get("content-length") ?? "0");
+    if (Number.isFinite(length) && length > maxBytes) throw new Error("body_too_large");
+    const text = await request.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("body_too_large");
+    if (!text) return {};
+    return JSON.parse(text);
   }
 
   private readCapability(
