@@ -9,7 +9,8 @@ import {
   RtpPacket,
   random16,
   useH264,
-  type RTCDataChannel
+  type RTCDataChannel,
+  type RTCRtpSender
 } from "werift";
 import type { TakeoverGrant } from "./session.js";
 import {
@@ -64,7 +65,7 @@ export interface WebRtcTakeoverRuntimeProvider {
     offer: WebRtcSessionDescription,
     hooks: WebRtcRuntimeHooks
   ): Promise<WebRtcSessionDescription>;
-  recordLatency(sample: WebRtcLatencySample): void;
+  recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void;
   latencySnapshot(): WebRtcLatencyComparison;
   revoke(takeoverSessionId: string): Promise<void>;
   revokeForIntervention(interventionId: string): Promise<void>;
@@ -85,7 +86,7 @@ export class WebRtcTakeoverRuntimeError extends Error {
   }
 }
 
-export function webRtcBindingFromGrant(grant: TakeoverGrant): WebRtcTakeoverRuntimeBinding {
+export function webRtcBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): WebRtcTakeoverRuntimeBinding {
   return {
     takeoverSessionId: grant.id,
     interventionId: grant.interventionId,
@@ -93,7 +94,8 @@ export function webRtcBindingFromGrant(grant: TakeoverGrant): WebRtcTakeoverRunt
     principalBinding: grant.principalBinding,
     clientBinding: grant.clientBinding,
     clientGeneration: grant.clientGeneration,
-    expiresAt: grant.expiresAt
+    expiresAt: grant.expiresAt,
+    ...(targetProcessId === undefined ? {} : { targetProcessId })
   };
 }
 
@@ -124,12 +126,19 @@ interface ActiveWebRtcRuntime {
   expiryTimer: NodeJS.Timeout;
   peer: RTCPeerConnection;
   track: MediaStreamTrack;
+  sender?: RTCRtpSender;
   host: ChildProcess;
   hooks: WebRtcRuntimeHooks;
   closing: boolean;
   critical?: RTCDataChannel;
   nextSequence: number;
   lastIdrRequestAt: number;
+  lastHostEncodeMs?: number;
+  lastRtpDrainMs?: number;
+  videoDrainActive: boolean;
+  awaitingVideoKeyframe: boolean;
+  pendingFrame?: EncodedHostFrame;
+  preconnectKeyframe?: EncodedHostFrame;
 }
 
 interface PreparedWebRtcRuntime {
@@ -205,8 +214,13 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     };
   }
 
-  recordLatency(sample: WebRtcLatencySample): void {
-    this.latency.record(sample);
+  recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void {
+    const runtime = this.active.get(takeoverSessionId);
+    this.latency.record({
+      ...sample,
+      ...(runtime?.lastHostEncodeMs === undefined ? {} : { hostEncodeMs: runtime.lastHostEncodeMs }),
+      ...(runtime?.lastRtpDrainMs === undefined ? {} : { rtpDrainMs: runtime.lastRtpDrainMs })
+    });
   }
 
   latencySnapshot(): WebRtcLatencyComparison {
@@ -264,7 +278,9 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         hooks,
         closing: false,
         nextSequence: random16(),
-        lastIdrRequestAt: 0
+        lastIdrRequestAt: 0,
+        videoDrainActive: false,
+        awaitingVideoKeyframe: false
       };
       this.active.set(binding.takeoverSessionId, runtime);
       this.attachHost(runtime);
@@ -272,11 +288,9 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
 
       await peer.setRemoteDescription(offer);
       const sender = peer.addTrack(track);
+      runtime.sender = sender;
       sender.onPictureLossIndication.subscribe(() => {
-        const now = Date.now();
-        if (runtime.closing || now - runtime.lastIdrRequestAt < 250) return;
-        runtime.lastIdrRequestAt = now;
-        this.writeHostCommand(runtime, { kind: "requestIDR" });
+        this.requestIdr(runtime);
       });
       const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
@@ -339,9 +353,12 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS: String(binding.expiresAt)
     };
     if (this.config.displayId !== undefined) env.TAKEOVER_WEBRTC_DISPLAY_ID = String(this.config.displayId);
+    if (binding.targetProcessId !== undefined) env.TAKEOVER_WEBRTC_TARGET_PID = String(binding.targetProcessId);
     return this.spawnProcess(this.config.hostExecutable, this.config.hostArgs ?? [], {
       env,
-      stdio: ["pipe", "pipe", "ignore"]
+      // stdout is the stable frame/control wire. stderr is a bounded, never-forwarded diagnostic
+      // side channel so timing instrumentation does not change the media wire consumed by older hosts/runtimes.
+      stdio: ["pipe", "pipe", "pipe"]
     });
   }
 
@@ -357,6 +374,17 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       });
     });
     runtime.peer.connectionStateChange.subscribe((state) => {
+      if (state === "connected") {
+        const keyframe = runtime.preconnectKeyframe;
+        delete runtime.preconnectKeyframe;
+        if (keyframe && runtime.sender) {
+          this.enqueueConnectedFrame(runtime, keyframe);
+        } else {
+          runtime.awaitingVideoKeyframe = true;
+          this.requestIdr(runtime);
+        }
+        return;
+      }
       if (state === "failed" || state === "disconnected" || state === "closed") {
         void this.end(runtime.binding.takeoverSessionId, true);
       }
@@ -365,14 +393,21 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
 
   private attachHost(runtime: ActiveWebRtcRuntime): void {
     const stdout = runtime.host.stdout as Readable | null;
-    if (!stdout) throw new Error("WebRTC host stdout is unavailable");
+    const stderr = runtime.host.stderr as Readable | null;
+    if (!stdout || !stderr) throw new Error("WebRTC host pipes are unavailable");
     const parser = new HostRecordParser(
       (frame) => this.writeFrame(runtime, frame),
-      (editable) => this.sendEditableFeedback(runtime, editable),
+      (editable) => this.sendEditableFeedback(runtime, editable, "tap"),
       () => void this.end(runtime.binding.takeoverSessionId, true)
+    );
+    const metricParser = new HostMetricParser(
+      (hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; },
+      (regions) => this.sendEditableRegions(runtime, regions)
     );
     stdout.on("data", (chunk: Buffer) => parser.push(chunk));
     stdout.once("end", () => parser.end());
+    stderr.on("data", (chunk: Buffer) => metricParser.push(chunk));
+    stderr.once("end", () => metricParser.end());
     runtime.host.once("exit", () => {
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true);
     });
@@ -382,15 +417,93 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
   }
 
   private writeFrame(runtime: ActiveWebRtcRuntime, frame: EncodedHostFrame): void {
-    if (runtime.closing || runtime.peer.connectionState !== "connected") return;
+    if (runtime.closing) return;
+    if (runtime.peer.connectionState !== "connected" || !runtime.sender) {
+      // ScreenCaptureKit may produce the only useful static-screen IDR before ICE/DTLS is connected.
+      // Keep exactly one pre-connect keyframe so the receiver can initialize without retaining a
+      // stale video queue. Dependent P-frames are never retained across this boundary.
+      if (frame.keyframe) runtime.preconnectKeyframe = frame;
+      return;
+    }
+    this.enqueueConnectedFrame(runtime, frame);
+  }
+
+  private enqueueConnectedFrame(runtime: ActiveWebRtcRuntime, frame: EncodedHostFrame): void {
+    if (runtime.closing || runtime.peer.connectionState !== "connected" || !runtime.sender) return;
+
+    // Video is a latest-state stream, not a reliable queue. Werift's MediaStreamTrack.writeRtp()
+    // dispatches async sender work without awaiting it, so pumping every encoded frame through the
+    // track can accumulate stale SRTP/ICE sends when a TURN path is congested. Keep at most one
+    // frame in flight plus the newest pending frame and drop superseded pending frames.
+    if (runtime.awaitingVideoKeyframe) {
+      if (!frame.keyframe) return;
+      runtime.awaitingVideoKeyframe = false;
+      runtime.pendingFrame = frame;
+    } else if (runtime.pendingFrame) {
+      if (runtime.pendingFrame.keyframe) {
+        // Preserve the resynchronization point over newer dependent P-frames. A newer keyframe may
+        // safely replace it because either keyframe independently restarts decoder state.
+        if (frame.keyframe) runtime.pendingFrame = frame;
+        else return;
+      } else {
+        // Superseding an already-encoded dependent frame creates a reference gap. Drop the stale
+        // pending chain, request a fresh IDR, and do not resume media until that keyframe arrives.
+        delete runtime.pendingFrame;
+        runtime.awaitingVideoKeyframe = true;
+        this.requestIdr(runtime);
+        if (!frame.keyframe) return;
+        runtime.awaitingVideoKeyframe = false;
+        runtime.pendingFrame = frame;
+      }
+    } else {
+      runtime.pendingFrame = frame;
+    }
+    if (runtime.videoDrainActive) return;
+    runtime.videoDrainActive = true;
+    void this.drainLatestFrames(runtime).catch(() => {
+      if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true);
+    });
+  }
+
+  private async drainLatestFrames(runtime: ActiveWebRtcRuntime): Promise<void> {
+    try {
+      while (!runtime.closing && runtime.peer.connectionState === "connected" && runtime.sender) {
+        const frame = runtime.pendingFrame;
+        if (!frame) break;
+        delete runtime.pendingFrame;
+        await this.sendFrame(runtime, runtime.sender, frame);
+      }
+    } finally {
+      runtime.videoDrainActive = false;
+      if (
+        runtime.pendingFrame &&
+        !runtime.closing &&
+        runtime.peer.connectionState === "connected" &&
+        runtime.sender
+      ) {
+        runtime.videoDrainActive = true;
+        void this.drainLatestFrames(runtime).catch(() => {
+          if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true);
+        });
+      }
+    }
+  }
+
+  private async sendFrame(
+    runtime: ActiveWebRtcRuntime,
+    sender: RTCRtpSender,
+    frame: EncodedHostFrame
+  ): Promise<void> {
+    const drainStartedAt = process.hrtime.bigint();
     const nalUnits = splitAvcc(frame.avcc);
     if (nalUnits.length === 0) return;
     let sequence = runtime.nextSequence;
     for (let nalIndex = 0; nalIndex < nalUnits.length; nalIndex += 1) {
+      if (runtime.closing || runtime.peer.connectionState !== "connected") return;
       const nal = nalUnits[nalIndex]!;
       const isLastNal = nalIndex === nalUnits.length - 1;
       if (nal.length <= RTP_PAYLOAD_BYTES) {
-        runtime.track.writeRtp(new RtpPacket(new RtpHeader({
+        await sender.sendRtp(new RtpPacket(new RtpHeader({
           sequenceNumber: sequence,
           timestamp: frame.rtpTimestamp,
           marker: isLastNal
@@ -404,10 +517,11 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       const fragment = nal.subarray(1);
       const size = RTP_PAYLOAD_BYTES - 2;
       for (let offset = 0; offset < fragment.length; offset += size) {
+        if (runtime.closing || runtime.peer.connectionState !== "connected") return;
         const chunk = fragment.subarray(offset, Math.min(fragment.length, offset + size));
         const last = offset + chunk.length >= fragment.length;
         const fuHeader = (offset === 0 ? 0x80 : 0) | (last ? 0x40 : 0) | nalType;
-        runtime.track.writeRtp(new RtpPacket(new RtpHeader({
+        await sender.sendRtp(new RtpPacket(new RtpHeader({
           sequenceNumber: sequence,
           timestamp: frame.rtpTimestamp,
           marker: isLastNal && last
@@ -416,6 +530,15 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       }
     }
     runtime.nextSequence = sequence;
+    const elapsedNs = process.hrtime.bigint() - drainStartedAt;
+    runtime.lastRtpDrainMs = Math.min(120_000, Math.max(0, Number(elapsedNs) / 1_000_000));
+  }
+
+  private requestIdr(runtime: ActiveWebRtcRuntime): void {
+    const now = Date.now();
+    if (runtime.closing || now - runtime.lastIdrRequestAt < 250) return;
+    runtime.lastIdrRequestAt = now;
+    this.writeHostCommand(runtime, { kind: "requestIDR" });
   }
 
   private handleChannelMessage(
@@ -472,10 +595,16 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     stdin.write(`${line}\n`);
   }
 
-  private sendEditableFeedback(runtime: ActiveWebRtcRuntime, editable: boolean): void {
+  private sendEditableFeedback(runtime: ActiveWebRtcRuntime, editable: boolean, phase: "tap"): void {
     const channel = runtime.critical;
     if (!channel || channel.readyState !== "open" || channel.bufferedAmount > 16 * 1024) return;
-    channel.send(JSON.stringify({ kind: "focus", editable }));
+    channel.send(JSON.stringify({ kind: "focus", editable, phase }));
+  }
+
+  private sendEditableRegions(runtime: ActiveWebRtcRuntime, regions: number[][]): void {
+    const channel = runtime.critical;
+    if (!channel || channel.readyState !== "open" || channel.bufferedAmount > 16 * 1024) return;
+    channel.send(JSON.stringify({ kind: "editableRegions", regions }));
   }
 
   private async end(takeoverSessionId: string, notifyDisconnect: boolean): Promise<void> {
@@ -553,7 +682,8 @@ function sameBinding(left: WebRtcTakeoverRuntimeBinding, right: WebRtcTakeoverRu
     && left.principalBinding === right.principalBinding
     && left.clientBinding === right.clientBinding
     && left.clientGeneration === right.clientGeneration
-    && left.expiresAt === right.expiresAt;
+    && left.expiresAt === right.expiresAt
+    && left.targetProcessId === right.targetProcessId;
 }
 
 function parseHumanInput(value: unknown, realtime: boolean): WebRtcHumanInput | undefined {
@@ -593,6 +723,56 @@ function splitAvcc(sample: Buffer): Buffer[] {
     offset += length;
   }
   return offset === sample.length ? nalUnits : [];
+}
+
+class HostMetricParser {
+  private text = "";
+
+  constructor(
+    private readonly onHostEncode: (hostEncodeMs: number) => void,
+    private readonly onEditableRegions: (regions: number[][]) => void
+  ) {}
+
+  push(chunk: Buffer): void {
+    if (chunk.length === 0) return;
+    this.text += chunk.toString("utf8");
+    if (this.text.length > 8_192) this.text = this.text.slice(-2_048);
+    for (;;) {
+      const newline = this.text.indexOf("\n");
+      if (newline < 0) return;
+      const line = this.text.slice(0, newline).trim();
+      this.text = this.text.slice(newline + 1);
+      const matched = /^MCP_HANDOFF_METRIC encode_tenths=(\d{1,5})$/.exec(line);
+      if (matched) {
+        const tenths = Number(matched[1]);
+        if (Number.isSafeInteger(tenths) && tenths >= 0 && tenths <= 65_535) this.onHostEncode(tenths / 10);
+        continue;
+      }
+      const regionsLine = /^MCP_HANDOFF_CONTROL editable_regions=(.*)$/.exec(line);
+      if (regionsLine) {
+        const payload = regionsLine[1] ?? "";
+        if (payload.length > 1_024) continue;
+        if (payload === "") { this.onEditableRegions([]); continue; }
+        const encoded = payload.split(";");
+        if (encoded.length > 32) continue;
+        const regions: number[][] = [];
+        let valid = true;
+        for (const item of encoded) {
+          const match = /^(\d{1,5}),(\d{1,5}),(\d{1,5}),(\d{1,5})$/.exec(item);
+          if (!match) { valid = false; break; }
+          const region = match.slice(1).map(Number);
+          const [x, y, width, height] = region;
+          if (!region.every(Number.isSafeInteger) || width! < 1 || height! < 1 || x! < 0 || y! < 0 || x! + width! > 10_000 || y! + height! > 10_000) { valid = false; break; }
+          regions.push(region);
+        }
+        if (valid) this.onEditableRegions(regions);
+      }
+    }
+  }
+
+  end(): void {
+    this.text = "";
+  }
 }
 
 class HostRecordParser {

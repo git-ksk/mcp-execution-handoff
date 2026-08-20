@@ -35,14 +35,15 @@ export function parseNativeTakeoverClientEndpoint(value) {
     }
     return { clientHost, videoPort, inputFeedbackPort };
 }
-export function nativeBindingFromGrant(grant) {
+export function nativeBindingFromGrant(grant, targetProcessId) {
     return {
         takeoverSessionId: grant.id,
         interventionId: grant.interventionId,
         epoch: grant.epoch,
         principalBinding: grant.principalBinding,
         clientGeneration: grant.clientGeneration,
-        expiresAt: grant.expiresAt
+        expiresAt: grant.expiresAt,
+        ...(targetProcessId === undefined ? {} : { targetProcessId })
     };
 }
 /**
@@ -108,6 +109,8 @@ export class InheritedFdNativeRuntimeProvider {
         };
         if (this.config.displayId !== undefined)
             env.THIN_TAKEOVER_DISPLAY_ID = String(this.config.displayId);
+        if (binding.targetProcessId !== undefined)
+            env.THIN_TAKEOVER_TARGET_PID = String(binding.targetProcessId);
         delete env.THIN_TAKEOVER_SESSION_KEY_HEX;
         const args = [
             endpoint.clientHost,

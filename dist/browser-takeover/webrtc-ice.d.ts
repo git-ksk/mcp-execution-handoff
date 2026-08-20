@@ -6,6 +6,7 @@ export interface WebRtcTakeoverRuntimeBinding {
     clientBinding: string;
     clientGeneration: number;
     expiresAt: number;
+    targetProcessId?: number;
 }
 export interface WebRtcIceServer {
     urls: string | string[];

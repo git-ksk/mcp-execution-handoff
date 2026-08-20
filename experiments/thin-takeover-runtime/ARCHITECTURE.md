@@ -158,8 +158,9 @@ This prevents app lifecycle transitions from silently reviving stale Human autho
 The macOS host:
 
 - preflights Screen Recording and Accessibility before starting the Human surface;
-- requires explicit display ID if multiple displays are capturable;
-- maps Human input to the same selected display;
+- accepts an optional consumer-bound target process ID; if present, exactly one eligible on-screen window must resolve and be fully contained in one capturable display;
+- uses a one-window ScreenCaptureKit inclusion filter plus display-local source cropping and maps Human input to that exact window bounds;
+- without a target process, retains explicit display selection when multiple displays are capturable and maps input to that display;
 - prefers a 32-byte root key delivered over an inherited FD; hex environment input is development fallback only.
 
 The native client consumes its binding once when constructing a session and does not persist it for automatic reconnect.

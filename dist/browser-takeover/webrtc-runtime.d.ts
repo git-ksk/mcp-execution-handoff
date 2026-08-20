@@ -30,7 +30,7 @@ export interface WebRtcTakeoverRuntimeProvider {
     prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration>;
     start(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
-    recordLatency(sample: WebRtcLatencySample): void;
+    recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void;
     latencySnapshot(): WebRtcLatencyComparison;
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
@@ -39,7 +39,7 @@ export declare class WebRtcTakeoverRuntimeError extends Error {
     readonly code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED";
     constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string);
 }
-export declare function webRtcBindingFromGrant(grant: TakeoverGrant): WebRtcTakeoverRuntimeBinding;
+export declare function webRtcBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): WebRtcTakeoverRuntimeBinding;
 export declare function parseWebRtcOffer(value: unknown): WebRtcSessionDescription;
 export interface SpawnedWebRtcRuntimeProviderConfig {
     hostExecutable: string;
@@ -64,7 +64,7 @@ export declare class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRunti
     private readonly spawnProcess;
     constructor(config: SpawnedWebRtcRuntimeProviderConfig);
     prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration>;
-    recordLatency(sample: WebRtcLatencySample): void;
+    recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void;
     latencySnapshot(): WebRtcLatencyComparison;
     start(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
@@ -75,11 +75,16 @@ export declare class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRunti
     private attachPeer;
     private attachHost;
     private writeFrame;
+    private enqueueConnectedFrame;
+    private drainLatestFrames;
+    private sendFrame;
+    private requestIdr;
     private handleChannelMessage;
     private canWriteHostInput;
     private writeHostInput;
     private writeHostCommand;
     private sendEditableFeedback;
+    private sendEditableRegions;
     private end;
     private waitForSpawn;
     private waitForExitOrTerminate;

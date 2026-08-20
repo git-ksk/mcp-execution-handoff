@@ -84,11 +84,20 @@ Done / Cancel
 - malformed-datagram / routing-header mutation robustness tests;
 - monotonic stage-local latency metrics and synthetic regression probes.
 
+Browser WebRTC diagnostics remain bounded, identifier-free, and process-memory-only. Receiver metrics
+include network RTT/jitter, jitter-buffer actual/target/minimum delay, decode/processing time,
+receive-to-display/compositor time, and tap-to-host-feedback latency. The browser's WebRTC
+`requestVideoFrameCallback().captureTime` is treated only as a remote RTP/RTCP sender-timeline
+estimate: with the custom Werift sender it is **not** labeled or interpreted as the true
+ScreenCaptureKit capture instant. Host encode and RTP-drain timings are measured server-side and
+cannot be supplied by the browser metrics payload.
+
 ### macOS host
 
 - ScreenCaptureKit complete-frame filtering;
-- explicit display selection when multiple displays are capturable;
-- capture display ID reused for Human input coordinate mapping;
+- optional consumer-bound target process ID; when present, exactly one eligible on-screen target window must resolve or the runtime fails closed;
+- target-window capture uses a one-window ScreenCaptureKit inclusion filter plus a display-local `sourceRect` crop, and Human pointer input maps to the same window bounds;
+- generic callers without a target process keep explicit display selection when multiple displays are capturable;
 - aspect-ratio-preserving max 1920×1080 output;
 - 60 fps target, small capture queue, `maxInFlight=1` encoder admission;
 - VideoToolbox hardware H.264 request with real-time, no-reorder, zero-frame-delay, speed-over-quality and zero-lookahead hints;
@@ -126,7 +135,7 @@ The reference controller is intentionally a thin example, not an authentication/
 
 The Native path above remains unchanged. An additional install-free Safari transport is available through the parent Handoff broker:
 
-- locator opens a fullscreen `playsinline` Mac video surface;
+- locator opens a fullscreen `playsinline` video surface for the selected host capture scope;
 - direct tap and swipe operate on that surface;
 - tapping an editable field bridges to the iOS keyboard for text / Backspace / Enter;
 - no Scroll / Tab / Send operation-button fallback is exposed for WebRTC-only locators;
@@ -137,7 +146,7 @@ The Native path above remains unchanged. An additional install-free Safari trans
 - Cloudflare Realtime TURN is the first supported credential-provider adapter: the long-lived TURN key token stays server-side, while separate short-lived browser/server ICE credentials are issued only after the Handoff client generation is bound and are revoked with that generation;
 - no TURN provider means the existing direct-only `iceServers: []` behavior; credential issuance failure remains direct-only with relay explicitly unavailable rather than silently widening trust.
 
-The macOS helper is built as `takeover-webrtc-host`. It carries only ephemeral framebuffer/H.264 and bounded Human input. It does not receive MCP/model context, and its environment is reduced to expiry plus optional display selection rather than inheriting the parent process environment.
+The macOS helper is built as `takeover-webrtc-host`. It carries only ephemeral framebuffer/H.264 and bounded Human input. It does not receive MCP/model context, and its environment is reduced to expiry plus optional display/target-process selection rather than inheriting the parent process environment. When a consumer supplies a target process, the helper requires exactly one eligible window and crops capture/input to that window; it never broadens an ambiguous target to the desktop.
 
 WAN relay configuration is owned by the Handoff runtime deployment, not by Maps or another consumer. `SpawnedWebRtcRuntimeProvider` recognizes both of the following server-side variables together:
 
@@ -280,7 +289,7 @@ The project optimizes for **freshness under bounded loss**:
 The browser transport is implementation-complete enough for physical acceptance, but the following must still be verified on a real iPhone Safari against the Mac host:
 
 1. open the short-lived locator directly in Safari;
-2. confirm the Mac screen renders as live video without the legacy Scroll / Tab / Send controls;
+2. confirm the intended host capture surface renders as live video without the legacy Scroll / Tab / Send controls; for a target-process consumer such as Maps, verify that only the dedicated Chrome window is visible and desktop/menu-bar/Dock/other-app pixels are absent;
 3. tap and one-finger swipe directly on the video and verify Mac input;
 4. tap an editable field and verify the iOS keyboard can send text and Backspace;
 5. press Done and confirm further input is immediately impossible;

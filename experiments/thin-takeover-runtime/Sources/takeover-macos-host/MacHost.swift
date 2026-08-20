@@ -33,6 +33,7 @@ private struct HostSessionConfiguration {
     let controlBindHost: String
     let feedbackBindHost: String
     let displayID: CGDirectDisplayID?
+    let targetProcessID: pid_t?
 
     static func load() throws -> HostSessionConfiguration {
         let env = ProcessInfo.processInfo.environment
@@ -77,6 +78,14 @@ private struct HostSessionConfiguration {
             displayID = nil
         }
 
+        let targetProcessID: pid_t?
+        if let text = env["THIN_TAKEOVER_TARGET_PID"] {
+            guard let value = Int32(text), value > 0 else { throw HostConfigurationError.invalid("THIN_TAKEOVER_TARGET_PID") }
+            targetProcessID = pid_t(value)
+        } else {
+            targetProcessID = nil
+        }
+
         return HostSessionConfiguration(
             rootKey: rootKey,
             sessionHash: sessionHash,
@@ -86,7 +95,8 @@ private struct HostSessionConfiguration {
             inputBindHost: inputBindHost,
             controlBindHost: controlBindHost,
             feedbackBindHost: feedbackBindHost,
-            displayID: displayID
+            displayID: displayID,
+            targetProcessID: targetProcessID
         )
     }
 
@@ -123,6 +133,69 @@ private func selectDisplay(from displays: [SCDisplay], requested: CGDirectDispla
         throw HostConfigurationError.missing("THIN_TAKEOVER_DISPLAY_ID (required when multiple displays are capturable)")
     }
     return only
+}
+
+private struct CaptureSurface {
+    let filter: SCContentFilter
+    let sourceRect: CGRect?
+    let inputBounds: CGRect
+    let pixelWidth: Double
+    let pixelHeight: Double
+    let scope: String
+}
+
+private func selectCaptureSurface(
+    from content: SCShareableContent,
+    requestedDisplay: CGDirectDisplayID?,
+    targetProcessID: pid_t?
+) throws -> CaptureSurface {
+    if let targetProcessID {
+        let windows = content.windows.filter { window in
+            guard window.owningApplication?.processID == targetProcessID,
+                  window.isOnScreen,
+                  window.windowLayer == 0 else { return false }
+            return window.frame.width >= 160 && window.frame.height >= 120
+        }
+        guard windows.count == 1, let window = windows.first else {
+            throw HostConfigurationError.unavailable("Target browser process must own exactly one capturable on-screen window")
+        }
+        let containingDisplays = content.displays.filter { $0.frame.contains(window.frame) }
+        guard containingDisplays.count == 1, let display = containingDisplays.first else {
+            throw HostConfigurationError.unavailable("Target browser window must be fully contained in exactly one capturable display")
+        }
+        let filter = SCContentFilter(display: display, including: [window])
+        let displayLocalBounds = CGRect(origin: .zero, size: display.frame.size)
+        let sourceRect = CGRect(
+            x: window.frame.minX - display.frame.minX,
+            y: window.frame.minY - display.frame.minY,
+            width: window.frame.width,
+            height: window.frame.height
+        )
+        guard displayLocalBounds.contains(sourceRect) else {
+            throw HostConfigurationError.unavailable("Target browser crop is outside the selected display")
+        }
+        let scale = max(1.0, Double(filter.pointPixelScale))
+        let pixelWidth = max(2.0, Double(sourceRect.width) * scale)
+        let pixelHeight = max(2.0, Double(sourceRect.height) * scale)
+        return CaptureSurface(
+            filter: filter,
+            sourceRect: sourceRect,
+            inputBounds: window.frame,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            scope: "window"
+        )
+    }
+
+    let display = try selectDisplay(from: content.displays, requested: requestedDisplay)
+    return CaptureSurface(
+        filter: SCContentFilter(display: display, excludingWindows: []),
+        sourceRect: nil,
+        inputBounds: CGDisplayBounds(display.displayID),
+        pixelWidth: Double(display.width),
+        pixelHeight: Double(display.height),
+        scope: "display"
+    )
 }
 
 private func preflightHumanSurfacePermissions() throws {
@@ -420,18 +493,25 @@ struct MacHost {
         try preflightHumanSurfacePermissions()
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let display = try selectDisplay(from: content.displays, requested: sessionConfiguration.displayID)
-        let nativeWidth = Double(display.width)
-        let nativeHeight = Double(display.height)
+        let surface = try selectCaptureSurface(
+            from: content,
+            requestedDisplay: sessionConfiguration.displayID,
+            targetProcessID: sessionConfiguration.targetProcessID
+        )
+        let nativeWidth = surface.pixelWidth
+        let nativeHeight = surface.pixelHeight
         guard nativeWidth > 0, nativeHeight > 0 else {
-            throw HostConfigurationError.unavailable("Selected display has invalid dimensions")
+            throw HostConfigurationError.unavailable("Selected capture surface has invalid dimensions")
         }
         let scale = min(1.0, min(1920.0 / nativeWidth, 1080.0 / nativeHeight))
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let filter = surface.filter
         let config = SCStreamConfiguration()
+        if let sourceRect = surface.sourceRect { config.sourceRect = sourceRect }
         config.width = evenDimension(nativeWidth * scale)
         config.height = evenDimension(nativeHeight * scale)
+        config.scalesToFit = true
+        config.preservesAspectRatio = true
         config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         config.queueDepth = 3
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
@@ -459,7 +539,7 @@ struct MacHost {
             sessionHash: sessionConfiguration.sessionHash,
             epoch: sessionConfiguration.epoch,
             generation: sessionConfiguration.generation,
-            displayID: display.displayID,
+            inputBounds: surface.inputBounds,
             lease: lease
         )
         let controlServer = try SecureControlServer(
@@ -490,7 +570,7 @@ struct MacHost {
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture.frames", qos: .userInteractive))
         try await stream.startCapture()
         print("streaming authenticated ScreenCaptureKit -> VideoToolbox H.264 AVCC -> UDP to \(clientHost):\(videoPort)")
-        print("captured display=\(display.displayID) encoded=\(config.width)x\(config.height)")
+        print("capture-scope=\(surface.scope) encoded=\(config.width)x\(config.height)")
         print("accepting authenticated Human input on \(sessionConfiguration.inputBindHost):\(inputPort)")
         print("accepting authenticated revoke control on \(sessionConfiguration.controlBindHost):\(controlPort)")
         print("accepting authenticated IDR feedback on \(sessionConfiguration.feedbackBindHost):\(videoFeedbackPort)")

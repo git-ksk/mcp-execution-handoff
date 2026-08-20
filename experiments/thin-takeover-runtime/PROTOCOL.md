@@ -88,7 +88,7 @@ Each input datagram exposes only lane + sequence for routing/replay and encrypts
 
 Field semantics:
 
-- pointer coordinates: normalized integer `0...1_000_000` relative to the captured display;
+- pointer coordinates: normalized integer `0...1_000_000` relative to the captured surface; target-process sessions map them to the exact target window bounds, while generic display sessions map them to the selected display;
 - pointer button: `value=1` down, `value=0` up; payload identifies left/right/center;
 - scroll: bounded signed x/y deltas;
 - key: x carries platform key code, `value=1` down / `0` up;

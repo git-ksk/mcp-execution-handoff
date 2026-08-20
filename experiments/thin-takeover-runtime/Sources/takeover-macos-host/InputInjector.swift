@@ -16,15 +16,14 @@ final class MacOSInputInjector: @unchecked Sendable {
     }
 
     private let source = CGEventSource(stateID: .hidSystemState)
-    private let displayID: CGDirectDisplayID
+    private let inputBounds: CGRect
     private var pressedKeys = Set<CGKeyCode>()
     private var pressedButtons = Set<CGMouseButton>()
     private var lastPointerPoint: CGPoint
 
-    init(displayID: CGDirectDisplayID) {
-        self.displayID = displayID
-        let bounds = CGDisplayBounds(displayID)
-        self.lastPointerPoint = CGPoint(x: bounds.midX, y: bounds.midY)
+    init(inputBounds: CGRect) {
+        self.inputBounds = inputBounds
+        self.lastPointerPoint = CGPoint(x: inputBounds.midX, y: inputBounds.midY)
     }
 
     func inject(_ event: InputEvent) throws {
@@ -174,10 +173,9 @@ final class MacOSInputInjector: @unchecked Sendable {
         guard (0...upper).contains(x), (0...upper).contains(y) else {
             throw InjectionError.invalidCoordinate
         }
-        let bounds = CGDisplayBounds(displayID)
         return CGPoint(
-            x: bounds.minX + bounds.width * CGFloat(x) / CGFloat(upper),
-            y: bounds.minY + bounds.height * CGFloat(y) / CGFloat(upper)
+            x: inputBounds.minX + inputBounds.width * CGFloat(x) / CGFloat(upper),
+            y: inputBounds.minY + inputBounds.height * CGFloat(y) / CGFloat(upper)
         )
     }
 }

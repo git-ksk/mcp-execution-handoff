@@ -4,6 +4,7 @@ import TakeoverCore
 #if os(macOS)
 import ApplicationServices
 import CoreGraphics
+import Darwin
 import CoreMedia
 import CoreVideo
 import ScreenCaptureKit
@@ -39,12 +40,195 @@ private func loadDisplayID() throws -> CGDirectDisplayID? {
     return CGDirectDisplayID(value)
 }
 
+private func loadTargetProcessID() throws -> pid_t? {
+    guard let text = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_TARGET_PID"] else { return nil }
+    guard let value = Int32(text), value > 0 else { throw WebRtcHostError.configuration }
+    return pid_t(value)
+}
+
+private struct CaptureSurface {
+    let filter: SCContentFilter
+    let sourceRect: CGRect?
+    let inputBounds: CGRect
+    let pixelWidth: Double
+    let pixelHeight: Double
+}
+
+private func selectedCaptureSurface(
+    from content: SCShareableContent,
+    requestedDisplay: CGDirectDisplayID?,
+    targetProcessID: pid_t?
+) throws -> CaptureSurface {
+    if let targetProcessID {
+        let windows = content.windows.filter { window in
+            guard window.owningApplication?.processID == targetProcessID,
+                  window.isOnScreen,
+                  window.windowLayer == 0 else { return false }
+            return window.frame.width >= 160 && window.frame.height >= 120
+        }
+        guard windows.count == 1, let window = windows.first else { throw WebRtcHostError.display }
+        let containingDisplays = content.displays.filter { $0.frame.contains(window.frame) }
+        guard containingDisplays.count == 1, let display = containingDisplays.first else {
+            throw WebRtcHostError.display
+        }
+        let filter = SCContentFilter(display: display, including: [window])
+        let displayLocalBounds = CGRect(origin: .zero, size: display.frame.size)
+        let sourceRect = CGRect(
+            x: window.frame.minX - display.frame.minX,
+            y: window.frame.minY - display.frame.minY,
+            width: window.frame.width,
+            height: window.frame.height
+        )
+        guard displayLocalBounds.contains(sourceRect) else { throw WebRtcHostError.display }
+        let scale = max(1.0, Double(filter.pointPixelScale))
+        return CaptureSurface(
+            filter: filter,
+            sourceRect: sourceRect,
+            inputBounds: window.frame,
+            pixelWidth: max(2.0, Double(sourceRect.width) * scale),
+            pixelHeight: max(2.0, Double(sourceRect.height) * scale)
+        )
+    }
+    let display = try selectedDisplay(from: content.displays, requested: requestedDisplay)
+    return CaptureSurface(
+        filter: SCContentFilter(display: display, excludingWindows: []),
+        sourceRect: nil,
+        inputBounds: CGDisplayBounds(display.displayID),
+        pixelWidth: Double(display.width),
+        pixelHeight: Double(display.height)
+    )
+}
+
 private func makeLease() throws -> EphemeralSessionLease {
     guard let text = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS"], let expiry = UInt64(text) else {
         throw WebRtcHostError.configuration
     }
     let wallMillis = UInt64(max(0, Date().timeIntervalSince1970 * 1_000))
     return try EphemeralLeaseFactory.make(expiresAtUnixMillis: expiry, nowUnixMillis: wallMillis, nowMonotonicNanos: MonotonicClock.nowNanos())
+}
+
+private final class HostMetricWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastEmitNs: UInt64 = 0
+
+    func submitEncodeMs(_ encodeMs: Double) {
+        let nowNs = DispatchTime.now().uptimeNanoseconds
+        lock.lock()
+        if lastEmitNs != 0, nowNs >= lastEmitNs, nowNs - lastEmitNs < 500_000_000 { lock.unlock(); return }
+        lastEmitNs = nowNs
+        lock.unlock()
+        let tenths = UInt16(min(Double(UInt16.max), max(0, (encodeMs * 10).rounded())))
+        FileHandle.standardError.write(Data("MCP_HANDOFF_METRIC encode_tenths=\(tenths)\n".utf8))
+    }
+}
+
+private final class HostControlWriter: @unchecked Sendable {
+    private let handle = FileHandle.standardError
+    private let lock = NSLock()
+
+    func submitEditableRegions(_ regions: [[Int]]) {
+        let payload = regions.prefix(32).map { region in
+            region.prefix(4).map(String.init).joined(separator: ",")
+        }.joined(separator: ";")
+        lock.lock(); defer { lock.unlock() }
+        handle.write(Data("MCP_HANDOFF_CONTROL editable_regions=\(payload)\n".utf8))
+    }
+}
+
+private final class EditableRegionPublisher: @unchecked Sendable {
+    private let targetProcessID: pid_t
+    private let inputBounds: CGRect
+    private let writer: HostControlWriter
+
+    init(targetProcessID: pid_t, inputBounds: CGRect, writer: HostControlWriter) {
+        self.targetProcessID = targetProcessID
+        self.inputBounds = inputBounds
+        self.writer = writer
+    }
+
+    func start(stop: StopState) {
+        Thread.detachNewThread { [self, stop] in
+            while !stop.isStopped {
+                writer.submitEditableRegions(snapshot())
+                usleep(250_000)
+            }
+        }
+    }
+
+    private func snapshot() -> [[Int]] {
+        guard inputBounds.width > 0, inputBounds.height > 0 else { return [] }
+        let app = AXUIElementCreateApplication(targetProcessID)
+        guard let webArea = firstWebArea(in: app) else { return [] }
+        var stack: [AXUIElement] = [webArea]
+        var visited = 0
+        var regions: [[Int]] = []
+        while let element = stack.popLast(), visited < 1_024, regions.count < 32 {
+            visited += 1
+            if elementIsEditable(element), let frame = elementFrame(element) {
+                let clipped = frame.intersection(inputBounds)
+                if !clipped.isNull, clipped.width >= 2, clipped.height >= 2 {
+                    let x = normalized(clipped.minX - inputBounds.minX, inputBounds.width)
+                    let y = normalized(clipped.minY - inputBounds.minY, inputBounds.height)
+                    let maxX = normalized(clipped.maxX - inputBounds.minX, inputBounds.width)
+                    let maxY = normalized(clipped.maxY - inputBounds.minY, inputBounds.height)
+                    let w = max(1, min(10_000 - x, maxX - x))
+                    let h = max(1, min(10_000 - y, maxY - y))
+                    regions.append([x, y, w, h])
+                }
+            }
+            children(of: element).reversed().forEach { stack.append($0) }
+        }
+        return regions
+    }
+
+    private func firstWebArea(in root: AXUIElement) -> AXUIElement? {
+        var stack: [AXUIElement] = [root]
+        var visited = 0
+        while let element = stack.popLast(), visited < 512 {
+            visited += 1
+            if role(of: element) == "AXWebArea" { return element }
+            children(of: element).reversed().forEach { stack.append($0) }
+        }
+        return nil
+    }
+
+    private func children(of element: AXUIElement) -> [AXUIElement] {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &raw) == .success,
+              let values = raw as? [AXUIElement] else { return [] }
+        return values
+    }
+
+    private func role(of element: AXUIElement) -> String? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &raw) == .success else { return nil }
+        return raw as? String
+    }
+
+    private func elementIsEditable(_ element: AXUIElement) -> Bool {
+        let value = role(of: element)
+        return value == (kAXTextFieldRole as String)
+            || value == (kAXTextAreaRole as String)
+            || value == (kAXComboBoxRole as String)
+    }
+
+    private func elementFrame(_ element: AXUIElement) -> CGRect? {
+        var positionRaw: CFTypeRef?
+        var sizeRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionRaw) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRaw) == .success,
+              let positionRaw, let sizeRaw,
+              CFGetTypeID(positionRaw) == AXValueGetTypeID(), CFGetTypeID(sizeRaw) == AXValueGetTypeID() else { return nil }
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(unsafeDowncast(positionRaw, to: AXValue.self), .cgPoint, &point),
+              AXValueGetValue(unsafeDowncast(sizeRaw, to: AXValue.self), .cgSize, &size) else { return nil }
+        return CGRect(origin: point, size: size)
+    }
+
+    private func normalized(_ value: CGFloat, _ extent: CGFloat) -> Int {
+        Int(min(10_000, max(0, (value / extent * 10_000).rounded())))
+    }
 }
 
 private final class LatestOutputWriter: @unchecked Sendable {
@@ -82,7 +266,7 @@ private final class LatestOutputWriter: @unchecked Sendable {
 
 private final class H264PipeEncoder: @unchecked Sendable {
     typealias Completion = @Sendable () -> Void
-    typealias Output = @Sendable (_ avcc: Data, _ timestamp: UInt32, _ keyframe: Bool) -> Void
+    typealias Output = @Sendable (_ avcc: Data, _ timestamp: UInt32, _ keyframe: Bool, _ encodeMs: Double) -> Void
     private var session: VTCompressionSession?
     private let output: Output
     private let keyframeLock = NSLock()
@@ -103,7 +287,7 @@ private final class H264PipeEncoder: @unchecked Sendable {
                 let context = Unmanaged<FrameContext>.fromOpaque(sourceFrameRefCon).takeRetainedValue()
                 defer { context.completion() }
                 guard status == noErr, let refCon, let sampleBuffer else { return }
-                Unmanaged<H264PipeEncoder>.fromOpaque(refCon).takeUnretainedValue().handle(sampleBuffer)
+                Unmanaged<H264PipeEncoder>.fromOpaque(refCon).takeUnretainedValue().handle(sampleBuffer, startedAtNs: context.startedAtNs)
             }, refcon: refcon, compressionSessionOut: &session
         )
         guard status == noErr, let session else { throw WebRtcHostError.encoder(status) }
@@ -145,10 +329,14 @@ private final class H264PipeEncoder: @unchecked Sendable {
 
     private final class FrameContext {
         let completion: Completion
-        init(completion: @escaping Completion) { self.completion = completion }
+        let startedAtNs: UInt64
+        init(completion: @escaping Completion) {
+            self.completion = completion
+            self.startedAtNs = DispatchTime.now().uptimeNanoseconds
+        }
     }
 
-    private func handle(_ sampleBuffer: CMSampleBuffer) {
+    private func handle(_ sampleBuffer: CMSampleBuffer, startedAtNs: UInt64) {
         guard CMSampleBufferDataIsReady(sampleBuffer), let block = CMSampleBufferGetDataBuffer(sampleBuffer), let format = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
         let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]]
         let keyframe = !(attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
@@ -184,7 +372,9 @@ private final class H264PipeEncoder: @unchecked Sendable {
         sample.resetBytes(in: 0..<sample.count)
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let scaled = CMTimeConvertScale(pts, timescale: 90_000, method: .default)
-        output(normalized, UInt32(truncatingIfNeeded: max(Int64(0), scaled.value)), keyframe)
+        let nowNs = DispatchTime.now().uptimeNanoseconds
+        let encodeMs = nowNs >= startedAtNs ? Double(nowNs - startedAtNs) / 1_000_000.0 : 0
+        output(normalized, UInt32(truncatingIfNeeded: max(Int64(0), scaled.value)), keyframe, min(6_553.5, max(0, encodeMs)))
     }
 
     private func normalizeAvcc(_ sample: Data, nalHeaderLength: Int, prefix: [Data]) -> Data? {
@@ -224,9 +414,11 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
 
 private final class HumanInputInjector: @unchecked Sendable {
     private let source = CGEventSource(stateID: .hidSystemState)
-    private let displayID: CGDirectDisplayID
+    private let inputBounds: CGRect
     private let writer: LatestOutputWriter
-    init(displayID: CGDirectDisplayID, writer: LatestOutputWriter) { self.displayID = displayID; self.writer = writer }
+    init(inputBounds: CGRect, writer: LatestOutputWriter) {
+        self.inputBounds = inputBounds; self.writer = writer
+    }
 
     func apply(_ object: [String: Any]) {
         guard let kind = object["kind"] as? String else { return }
@@ -234,11 +426,11 @@ private final class HumanInputInjector: @unchecked Sendable {
         case "tap":
             guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return }
             let point = screenPoint(x: x, y: y)
+            let editableAtPoint = editableElement(at: point)
             guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
                   let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else { return }
             down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
-            usleep(20_000)
-            writer.submitEditable(focusedElementIsEditable())
+            writer.submitEditable(editableAtPoint || editableAfterTap())
         case "scroll":
             guard let dx = number(object["deltaX"]), let dy = number(object["deltaY"]), abs(dx) <= 2_000, abs(dy) <= 2_000 else { return }
             guard let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0) else { return }
@@ -267,17 +459,49 @@ private final class HumanInputInjector: @unchecked Sendable {
 
     private func number(_ value: Any?) -> Double? { (value as? NSNumber)?.doubleValue }
     private func screenPoint(x: Double, y: Double) -> CGPoint {
-        let bounds = CGDisplayBounds(displayID)
-        return CGPoint(x: bounds.minX + bounds.width * x, y: bounds.minY + bounds.height * y)
+        return CGPoint(x: inputBounds.minX + inputBounds.width * x, y: inputBounds.minY + inputBounds.height * y)
     }
+    private func editableElement(at point: CGPoint) -> Bool {
+        let system = AXUIElementCreateSystemWide()
+        var element: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &element) == .success,
+              let element else { return false }
+        if elementIsEditable(element) { return true }
+        var current = element
+        for _ in 0..<4 {
+            var parentRaw: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &parentRaw) == .success,
+                  let parentRaw else { break }
+            let parent = unsafeDowncast(parentRaw, to: AXUIElement.self)
+            if elementIsEditable(parent) { return true }
+            current = parent
+        }
+        return false
+    }
+
+    private func elementIsEditable(_ element: AXUIElement) -> Bool {
+        var roleRaw: CFTypeRef?
+        let role = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRaw) == .success ? roleRaw as? String : nil
+        return role == (kAXTextFieldRole as String)
+            || role == (kAXTextAreaRole as String)
+            || role == (kAXComboBoxRole as String)
+    }
+
+    private func editableAfterTap() -> Bool {
+        // Chromium focus can arrive a few run-loop turns after the synthetic mouse-up. Keep this
+        // bounded so non-editable taps never stall the Human input lane indefinitely.
+        for attempt in 0..<5 {
+            if focusedElementIsEditable() { return true }
+            if attempt < 4 { usleep(20_000) }
+        }
+        return false
+    }
+
     private func focusedElementIsEditable() -> Bool {
         let system = AXUIElementCreateSystemWide(); var raw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &raw) == .success, let raw else { return false }
-        let element = unsafeDowncast(raw, to: AXUIElement.self); var roleRaw: CFTypeRef?
-        let role = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRaw) == .success ? roleRaw as? String : nil
-        if role == (kAXTextFieldRole as String) || role == (kAXTextAreaRole as String) || role == (kAXComboBoxRole as String) { return true }
-        var settable: DarwinBoolean = false
-        return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success && settable.boolValue
+        let element = unsafeDowncast(raw, to: AXUIElement.self)
+        return elementIsEditable(element)
     }
 }
 
@@ -290,12 +514,20 @@ private final class InputReader: @unchecked Sendable {
     }
     func start() {
         Thread.detachNewThread { [stop, injector, requestIDR] in
-            let handle = FileHandle.standardInput; var pending = Data()
+            let inputFD = FileHandle.standardInput.fileDescriptor
+            var pending = Data()
+            var buffer = [UInt8](repeating: 0, count: 2_048)
             while !stop.isStopped {
-                let chunk: Data
-                do { chunk = try handle.read(upToCount: 2_048) ?? Data() } catch { stop.stop(); break }
-                guard !chunk.isEmpty else { stop.stop(); break }
-                pending.append(chunk)
+                let count = buffer.withUnsafeMutableBytes { rawBuffer -> Int in
+                    guard let base = rawBuffer.baseAddress else { return -1 }
+                    return Darwin.read(inputFD, base, rawBuffer.count)
+                }
+                if count == 0 { stop.stop(); break }
+                if count < 0 {
+                    if errno == EINTR { continue }
+                    stop.stop(); break
+                }
+                pending.append(contentsOf: buffer.prefix(count))
                 if pending.count > 8_192 { stop.stop(); break }
                 while let newline = pending.firstIndex(of: 0x0A) {
                     let line = pending.prefix(upTo: newline); pending.removeSubrange(...newline)
@@ -329,25 +561,39 @@ struct WebRtcMacHost {
         guard CGPreflightScreenCaptureAccess(), AXIsProcessTrusted() else { throw WebRtcHostError.permission }
         let lease = try makeLease(); let stop = StopState()
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let display = try selectedDisplay(from: content.displays, requested: loadDisplayID())
-        let nativeWidth = Double(display.width), nativeHeight = Double(display.height)
+        let targetProcessID = try loadTargetProcessID()
+        let surface = try selectedCaptureSurface(
+            from: content,
+            requestedDisplay: loadDisplayID(),
+            targetProcessID: targetProcessID
+        )
+        let nativeWidth = surface.pixelWidth, nativeHeight = surface.pixelHeight
         guard nativeWidth > 0, nativeHeight > 0 else { throw WebRtcHostError.display }
         let scale = min(1.0, min(1280.0 / nativeWidth, 720.0 / nativeHeight))
         let width = evenDimension(nativeWidth * scale), height = evenDimension(nativeHeight * scale)
 
         let writer = LatestOutputWriter()
-        let encoder = try H264PipeEncoder(width: Int32(width), height: Int32(height)) { avcc, timestamp, keyframe in
+        let metricWriter = HostMetricWriter()
+        let controlWriter = HostControlWriter()
+        let encoder = try H264PipeEncoder(width: Int32(width), height: Int32(height)) { avcc, timestamp, keyframe, encodeMs in
+            metricWriter.submitEncodeMs(encodeMs)
             if lease.isActive(), !stop.isStopped,
                let record = frameRecord(avcc: avcc, timestamp: timestamp, keyframe: keyframe, width: width, height: height) {
                 writer.submitFrame(record)
             }
         }
-        let injector = HumanInputInjector(displayID: display.displayID, writer: writer)
+        let injector = HumanInputInjector(inputBounds: surface.inputBounds, writer: writer)
         InputReader(stop: stop, injector: injector, requestIDR: { encoder.requestIDR() }).start()
+        if let targetProcessID {
+            EditableRegionPublisher(targetProcessID: targetProcessID, inputBounds: surface.inputBounds, writer: controlWriter).start(stop: stop)
+        }
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let filter = surface.filter
         let configuration = SCStreamConfiguration()
+        if let sourceRect = surface.sourceRect { configuration.sourceRect = sourceRect }
         configuration.width = width; configuration.height = height
+        configuration.scalesToFit = true
+        configuration.preservesAspectRatio = true
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         configuration.queueDepth = 2
         configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange

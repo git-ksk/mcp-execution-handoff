@@ -17,6 +17,7 @@ export interface NativeTakeoverRuntimeBinding {
   principalBinding: string;
   clientGeneration: number;
   expiresAt: number;
+  targetProcessId?: number;
 }
 
 export interface NativeTakeoverNetworkBootstrap {
@@ -91,14 +92,15 @@ export function parseNativeTakeoverClientEndpoint(value: unknown): NativeTakeove
   return { clientHost, videoPort, inputFeedbackPort };
 }
 
-export function nativeBindingFromGrant(grant: TakeoverGrant): NativeTakeoverRuntimeBinding {
+export function nativeBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): NativeTakeoverRuntimeBinding {
   return {
     takeoverSessionId: grant.id,
     interventionId: grant.interventionId,
     epoch: grant.epoch,
     principalBinding: grant.principalBinding,
     clientGeneration: grant.clientGeneration,
-    expiresAt: grant.expiresAt
+    expiresAt: grant.expiresAt,
+    ...(targetProcessId === undefined ? {} : { targetProcessId })
   };
 }
 
@@ -190,6 +192,7 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
       THIN_TAKEOVER_FEEDBACK_BIND_HOST: this.config.feedbackBindHost
     };
     if (this.config.displayId !== undefined) env.THIN_TAKEOVER_DISPLAY_ID = String(this.config.displayId);
+    if (binding.targetProcessId !== undefined) env.THIN_TAKEOVER_TARGET_PID = String(binding.targetProcessId);
     delete env.THIN_TAKEOVER_SESSION_KEY_HEX;
 
     const args = [

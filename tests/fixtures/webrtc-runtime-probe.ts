@@ -15,6 +15,8 @@ const timer = setInterval(() => {
   payload.writeUInt16BE(640, 5);
   payload.writeUInt16BE(360, 7);
   avcc.copy(payload, 9);
+  process.stderr.write('MCP_HANDOFF_METRIC encode_tenths=42\n'); // 4.2 ms, duration-only diagnostic side channel
+  process.stderr.write('MCP_HANDOFF_CONTROL editable_regions=1000,2000,3000,1000\n');
   const record = Buffer.alloc(5 + payload.length);
   record[0] = 1;
   record.writeUInt32BE(payload.length, 1);
@@ -57,6 +59,10 @@ async function main(): Promise<void> {
   let inputUses = 0;
   let endedUses = 0;
   let disconnected = 0;
+  const feedback: Array<{ kind?: string; phase?: string; editable?: boolean; regions?: number[][] }> = [];
+  critical.onMessage.subscribe((message) => {
+    try { feedback.push(JSON.parse(String(message))); } catch {}
+  });
   client.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { rtpPackets += 1; }));
 
   try {
@@ -70,6 +76,16 @@ async function main(): Promise<void> {
     await client.setRemoteDescription(answer);
     await waitFor(() => client.connectionState === "connected" && critical.readyState === "open");
     await waitFor(() => rtpPackets > 0);
+    provider.recordLatency("runtime-session-1", { path: "direct", rttMs: 1 });
+    const latency = provider.latencySnapshot();
+    if (latency.direct.hostEncode.count !== 1 || latency.direct.hostEncode.p50Ms !== 4.2) {
+      throw new Error("host encode metric was not correlated with the active runtime");
+    }
+    if (latency.direct.rtpDrain.count !== 1 || latency.direct.rtpDrain.p50Ms === undefined) {
+      throw new Error("RTP drain metric was not correlated with the active runtime");
+    }
+    await waitFor(() => feedback.some((value) => value.kind === "editableRegions" && JSON.stringify(value.regions) === JSON.stringify([[1000, 2000, 3000, 1000]])));
+    if (inputUses !== 0 || endedUses !== 0) throw new Error("editable-region metadata reached the Human input authority gate");
     critical.send(JSON.stringify({ kind: "tap", x: 0.25, y: 0.75 }));
     await waitFor(() => inputUses === 1 && endedUses === 1);
     critical.send(JSON.stringify({ kind: "tap", x: 2, y: 0.5 }));

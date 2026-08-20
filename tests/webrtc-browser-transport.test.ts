@@ -46,7 +46,7 @@ class FakeWebRtcRuntime implements WebRtcTakeoverRuntimeProvider {
     return this.start(binding, offer, hooks);
   }
 
-  recordLatency(sample: WebRtcLatencySample): void {
+  recordLatency(_takeoverSessionId: string, sample: WebRtcLatencySample): void {
     this.latency.push(sample);
   }
 
@@ -78,7 +78,7 @@ function noOpBrowser(): TakeoverBrowserAdapter {
   };
 }
 
-function fixture() {
+function fixture(targetProcessId?: number) {
   const runtime = new FakeWebRtcRuntime();
   const broker = new TakeoverBroker(
     noOpBrowser(),
@@ -86,7 +86,11 @@ function fixture() {
     undefined,
     runtime
   );
-  const link = broker.createWebRtcLink({ id: "webrtc-intervention", epoch: 11 }, PRINCIPAL);
+  const link = broker.createWebRtcLink(
+    { id: "webrtc-intervention", epoch: 11 },
+    PRINCIPAL,
+    targetProcessId === undefined ? undefined : { processId: targetProcessId }
+  );
   assert.ok(link);
   const sessionId = new URL(link).pathname.split("/").at(-1);
   assert.ok(sessionId);
@@ -151,12 +155,23 @@ async function prepareAndConnect(
   return grant;
 }
 
+
+test("WebRTC runtime binding keeps an optional host target process private and generation-bound", async () => {
+  const { broker, runtime, sessionId } = fixture(4242);
+  const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(grant.clientGeneration, 1);
+  assert.equal(runtime.prepares[0]!.targetProcessId, 4242);
+  assert.equal(runtime.starts[0]!.binding.targetProcessId, 4242);
+});
+
 test("WebRTC locator renders direct touch UI and direct-first relay-capable client without legacy buttons", async () => {
   const { broker, link } = fixture();
   const page = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /<video id="video"/);
+  assert.match(html, /webkit-playsinline/);
+  assert.match(html, /opacity:0/);
   assert.match(html, />Done<\/button>/);
   assert.match(html, /\/takeover\/webrtc-client\.js/);
   assert.doesNotMatch(html, />.*Scroll.*<\/button>/i);
@@ -167,17 +182,52 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   const client = await broker.handle(new Request("http://localhost/takeover/webrtc-client.js"), PRINCIPAL);
   assert.equal(client.status, 200);
   const script = await client.text();
+  assert.doesNotThrow(() => new Function(script));
   assert.match(script, /new RTCPeerConnection\(\{iceServers:ice\.iceServers,iceTransportPolicy:'all'\}\)/);
   assert.match(script, /webrtc-prepare-/);
   assert.match(script, /webrtc-connect/);
   assert.match(script, /Trying secure relay/);
+  assert.match(script, /candidate\.type==='relay'/);
+  assert.doesNotMatch(script, /ice timeout/);
   assert.match(script, /Live · /);
   assert.match(script, /candidateType==='relay'/);
   assert.match(script, /webrtc-metrics/);
+  assert.match(script, /jitterBufferDelay/);
+  assert.match(script, /jitterBufferTargetDelay/);
+  assert.match(script, /jitterBufferMinimumDelay/);
+  assert.match(script, /totalDecodeTime/);
+  assert.match(script, /totalProcessingDelay/);
+  assert.match(script, /captureTime/);
+  assert.match(script, /receiveTime/);
+  assert.match(script, /expectedDisplayTime/);
+  assert.match(script, /senderTimelineToDisplayMs/);
+  assert.match(script, /senderTimelineToReceiveMs/);
+  assert.match(script, /inputAckMs/);
+  assert.match(script, /inputMetricsSamplesSent>=6/);
+  assert.match(script, /pointerType==='touch'\?18:8/);
+  assert.match(script, /editableRegions/);
+  assert.match(script, /applyEditableRegions/);
+  assert.match(script, /pointIsEditable/);
+  assert.match(script, /performance\.now\(\)-editableRegionsAt>1000/);
+  assert.match(script, /if\(g\.editable\)/);
+  assert.doesNotMatch(script, /probeEditable|phase==='probe'/);
+  assert.match(script, /reportInputAck/);
+  assert.doesNotMatch(script, /frameAgeMs|captureToReceiveMs/);
+  assert.match(script, /metricsSamplesSent>=12/);
   assert.match(script, /requestVideoFrameCallback/);
+  assert.match(script, /video\.style\.opacity='1'/);
+  assert.match(script, /video\.style\.opacity='0'/);
   assert.match(script, /currentRoundTripTime/);
   assert.match(script, /human-critical/);
   assert.match(script, /human-realtime/);
+  assert.match(script, /beforeinput/);
+  assert.match(script, /insertText/);
+  assert.match(script, /insertReplacementText/);
+  assert.match(script, /insertFromPaste/);
+  assert.match(script, /keydown/);
+  assert.match(script, /deleteContentBackward/);
+  assert.match(script, /insertLineBreak/);
+  assert.match(script, /event\.preventDefault\(\)/);
   assert.match(script, /visibilitychange/);
   assert.match(script, /webrtc-suspend/);
   assert.match(script, /connect\('reconnect'\)/);
@@ -314,10 +364,20 @@ test("latency endpoint accepts only bounded path metrics and never accepts netwo
       "x-takeover-client": CLIENT_A,
       "x-mcp-takeover-capability": grant.capability
     },
-    body: JSON.stringify({ path: "relay", rttMs: 51.27, firstFrameMs: 322.94 })
+    body: JSON.stringify({
+      path: "relay", rttMs: 51.27, firstFrameMs: 322.94, jitterMs: 8.88, jitterBufferMs: 77.77,
+      jitterBufferTargetMs: 91.11, jitterBufferMinimumMs: 22.22, avgDecodeMs: 6.66, avgProcessingMs: 88.88,
+      senderTimelineToDisplayMs: 222.22, senderTimelineToReceiveMs: 44.44, receiveToDisplayMs: 177.78,
+      frameDecodeMs: 5.55, compositorMs: 16.67, inputAckMs: 55.55
+    })
   }), PRINCIPAL);
   assert.equal(metrics.status, 200);
-  assert.deepEqual(runtime.latency, [{ path: "relay", rttMs: 51.3, firstFrameMs: 322.9 }]);
+  assert.deepEqual(runtime.latency, [{
+    path: "relay", rttMs: 51.3, firstFrameMs: 322.9, jitterMs: 8.9, jitterBufferMs: 77.8,
+    jitterBufferTargetMs: 91.1, jitterBufferMinimumMs: 22.2, avgDecodeMs: 6.7, avgProcessingMs: 88.9,
+    senderTimelineToDisplayMs: 222.2, senderTimelineToReceiveMs: 44.4, receiveToDisplayMs: 177.8,
+    frameDecodeMs: 5.6, compositorMs: 16.7, inputAckMs: 55.6
+  }]);
 
   const rejected = await broker.handle(new Request(`http://localhost/takeover/api/webrtc-metrics/${sessionId}`, {
     method: "POST",
@@ -330,6 +390,12 @@ test("latency endpoint accepts only bounded path metrics and never accepts netwo
     body: JSON.stringify({ path: "direct", rttMs: 2, address: "192.0.2.1" })
   }), PRINCIPAL);
   assert.equal(rejected.status, 400);
+  const spoofedHostMetric = await broker.handle(new Request(`http://localhost/takeover/api/webrtc-metrics/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "content-type": "application/json", "x-takeover-client": CLIENT_A, "x-mcp-takeover-capability": grant.capability },
+    body: JSON.stringify({ path: "direct", rttMs: 2, hostEncodeMs: 1 })
+  }), PRINCIPAL);
+  assert.equal(spoofedHostMetric.status, 400);
   assert.equal(runtime.latency.length, 1);
 });
 

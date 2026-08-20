@@ -12,6 +12,7 @@ export interface NativeTakeoverRuntimeBinding {
     principalBinding: string;
     clientGeneration: number;
     expiresAt: number;
+    targetProcessId?: number;
 }
 export interface NativeTakeoverNetworkBootstrap {
     host: string;
@@ -41,7 +42,7 @@ export declare class NativeTakeoverRuntimeError extends Error {
     constructor(code: "NATIVE_ENDPOINT_INVALID" | "NATIVE_BOOTSTRAP_ALREADY_ISSUED" | "NATIVE_RUNTIME_START_FAILED" | "NATIVE_RUNTIME_REVOKE_FAILED", message: string);
 }
 export declare function parseNativeTakeoverClientEndpoint(value: unknown): NativeTakeoverClientEndpoint;
-export declare function nativeBindingFromGrant(grant: TakeoverGrant): NativeTakeoverRuntimeBinding;
+export declare function nativeBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): NativeTakeoverRuntimeBinding;
 export interface InheritedFdNativeRuntimeProviderConfig {
     hostExecutable: string;
     revokeExecutable: string;

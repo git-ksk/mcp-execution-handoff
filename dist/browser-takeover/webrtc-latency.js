@@ -1,5 +1,12 @@
 const MAX_LATENCY_MS = 120_000;
 const MAX_SAMPLES = 128;
+const BROWSER_LATENCY_FIELDS = [
+    "rttMs", "firstFrameMs", "jitterMs", "jitterBufferMs", "jitterBufferTargetMs",
+    "jitterBufferMinimumMs", "avgDecodeMs", "avgProcessingMs", "senderTimelineToDisplayMs",
+    "senderTimelineToReceiveMs", "receiveToDisplayMs", "frameDecodeMs", "compositorMs", "inputAckMs"
+];
+const SERVER_LATENCY_FIELDS = ["hostEncodeMs", "rtpDrainMs"];
+const LATENCY_FIELDS = [...BROWSER_LATENCY_FIELDS, ...SERVER_LATENCY_FIELDS];
 /** Bounded, process-memory-only latency samples with no peer/network/credential identifiers. */
 export class WebRtcLatencyTracker {
     samples = [];
@@ -18,42 +25,44 @@ export class WebRtcLatencyTracker {
         };
     }
 }
+/** Parse only receiver/browser-observable metrics. Server-only stage timings are added after this boundary. */
 export function parseWebRtcLatencySample(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
         return undefined;
     const record = value;
-    const keys = Object.keys(record);
-    if (keys.some((key) => key !== "path" && key !== "rttMs" && key !== "firstFrameMs"))
+    const allowed = new Set(["path", ...BROWSER_LATENCY_FIELDS]);
+    if (Object.keys(record).some((key) => !allowed.has(key)))
         return undefined;
     if (record.path !== "direct" && record.path !== "relay")
         return undefined;
     const candidate = { path: record.path };
-    if (record.rttMs !== undefined) {
-        if (!validLatency(record.rttMs))
+    for (const key of BROWSER_LATENCY_FIELDS) {
+        const field = record[key];
+        if (field === undefined)
+            continue;
+        if (!validLatency(field))
             return undefined;
-        candidate.rttMs = roundMetric(record.rttMs);
-    }
-    if (record.firstFrameMs !== undefined) {
-        if (!validLatency(record.firstFrameMs))
-            return undefined;
-        candidate.firstFrameMs = roundMetric(record.firstFrameMs);
+        candidate[key] = roundMetric(field);
     }
     return normalizeLatencySample(candidate);
 }
 function normalizeLatencySample(sample) {
     if (sample.path !== "direct" && sample.path !== "relay")
         return undefined;
-    if (sample.rttMs === undefined && sample.firstFrameMs === undefined)
+    if (LATENCY_FIELDS.every((key) => sample[key] === undefined))
         return undefined;
-    if (sample.rttMs !== undefined && !validLatency(sample.rttMs))
-        return undefined;
-    if (sample.firstFrameMs !== undefined && !validLatency(sample.firstFrameMs))
-        return undefined;
-    return {
-        path: sample.path,
-        ...(sample.rttMs !== undefined ? { rttMs: roundMetric(sample.rttMs) } : {}),
-        ...(sample.firstFrameMs !== undefined ? { firstFrameMs: roundMetric(sample.firstFrameMs) } : {})
-    };
+    for (const key of LATENCY_FIELDS) {
+        const value = sample[key];
+        if (value !== undefined && !validLatency(value))
+            return undefined;
+    }
+    const normalized = { path: sample.path };
+    for (const key of LATENCY_FIELDS) {
+        const value = sample[key];
+        if (value !== undefined)
+            normalized[key] = roundMetric(value);
+    }
+    return normalized;
 }
 function validLatency(value) {
     return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_LATENCY_MS;
@@ -65,7 +74,21 @@ function summarize(samples) {
     return {
         samples: samples.length,
         rtt: distribution(samples.flatMap((sample) => sample.rttMs === undefined ? [] : [sample.rttMs])),
-        firstFrame: distribution(samples.flatMap((sample) => sample.firstFrameMs === undefined ? [] : [sample.firstFrameMs]))
+        firstFrame: distribution(samples.flatMap((sample) => sample.firstFrameMs === undefined ? [] : [sample.firstFrameMs])),
+        jitter: distribution(samples.flatMap((sample) => sample.jitterMs === undefined ? [] : [sample.jitterMs])),
+        jitterBuffer: distribution(samples.flatMap((sample) => sample.jitterBufferMs === undefined ? [] : [sample.jitterBufferMs])),
+        jitterBufferTarget: distribution(samples.flatMap((sample) => sample.jitterBufferTargetMs === undefined ? [] : [sample.jitterBufferTargetMs])),
+        jitterBufferMinimum: distribution(samples.flatMap((sample) => sample.jitterBufferMinimumMs === undefined ? [] : [sample.jitterBufferMinimumMs])),
+        avgDecode: distribution(samples.flatMap((sample) => sample.avgDecodeMs === undefined ? [] : [sample.avgDecodeMs])),
+        avgProcessing: distribution(samples.flatMap((sample) => sample.avgProcessingMs === undefined ? [] : [sample.avgProcessingMs])),
+        senderTimelineToDisplay: distribution(samples.flatMap((sample) => sample.senderTimelineToDisplayMs === undefined ? [] : [sample.senderTimelineToDisplayMs])),
+        senderTimelineToReceive: distribution(samples.flatMap((sample) => sample.senderTimelineToReceiveMs === undefined ? [] : [sample.senderTimelineToReceiveMs])),
+        receiveToDisplay: distribution(samples.flatMap((sample) => sample.receiveToDisplayMs === undefined ? [] : [sample.receiveToDisplayMs])),
+        frameDecode: distribution(samples.flatMap((sample) => sample.frameDecodeMs === undefined ? [] : [sample.frameDecodeMs])),
+        compositor: distribution(samples.flatMap((sample) => sample.compositorMs === undefined ? [] : [sample.compositorMs])),
+        inputAck: distribution(samples.flatMap((sample) => sample.inputAckMs === undefined ? [] : [sample.inputAckMs])),
+        hostEncode: distribution(samples.flatMap((sample) => sample.hostEncodeMs === undefined ? [] : [sample.hostEncodeMs])),
+        rtpDrain: distribution(samples.flatMap((sample) => sample.rtpDrainMs === undefined ? [] : [sample.rtpDrainMs]))
     };
 }
 function distribution(values) {

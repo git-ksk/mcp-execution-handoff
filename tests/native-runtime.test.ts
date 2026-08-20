@@ -69,7 +69,7 @@ class FakeNativeRuntime implements NativeTakeoverRuntimeProvider {
   }
 }
 
-function createFixture() {
+function createFixture(targetProcessId?: number) {
   const native = new FakeNativeRuntime();
   const broker = new TakeoverBroker(browser, {
     enabled: true,
@@ -77,7 +77,11 @@ function createFixture() {
     ttlMs: 60_000,
     reconnectIdleMs: 250
   }, native);
-  const locator = broker.createNativeLink({ id: "native-intervention", epoch: 9 }, PRINCIPAL);
+  const locator = broker.createNativeLink(
+    { id: "native-intervention", epoch: 9 },
+    PRINCIPAL,
+    targetProcessId === undefined ? undefined : { processId: targetProcessId }
+  );
   assert.ok(locator);
   const sessionId = new URL(locator).pathname.split("/").at(-1);
   assert.ok(sessionId);
@@ -99,6 +103,14 @@ async function claim(broker: TakeoverBroker, sessionId: string, client = CLIENT_
     body: nativeRequestBody()
   }), PRINCIPAL);
 }
+
+
+test("native runtime binding keeps an optional host target process private and generation-bound", async () => {
+  const { broker, native, sessionId } = createFixture(31337);
+  const response = await claim(broker, sessionId);
+  assert.equal(response.status, 200);
+  assert.equal(native.starts[0]!.binding.targetProcessId, 31337);
+});
 
 test("native endpoint accepts only bounded IP-literal UDP endpoints", () => {
   assert.deepEqual(parseNativeTakeoverClientEndpoint({

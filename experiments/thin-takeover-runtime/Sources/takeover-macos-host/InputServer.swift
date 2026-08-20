@@ -21,7 +21,7 @@ final class SecureInputServer: @unchecked Sendable {
         sessionHash: UInt64,
         epoch: UInt64,
         generation: UInt32,
-        displayID: CGDirectDisplayID,
+        inputBounds: CGRect,
         lease: EphemeralSessionLease
     ) throws {
         self.receiver = try DatagramReceiver(
@@ -46,7 +46,7 @@ final class SecureInputServer: @unchecked Sendable {
             channel: .inputFeedback
         )
         self.lease = lease
-        self.injector = MacOSInputInjector(displayID: displayID)
+        self.injector = MacOSInputInjector(inputBounds: inputBounds)
     }
 
     func run() {
