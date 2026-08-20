@@ -32,20 +32,20 @@ final class ReferenceBootstrapViewController: UIViewController {
         clientHostField.keyboardType = .numbersAndPunctuation
         clientHostField.text = NativeClientNetworkAddress.preferredLANIPv4()
 
-        connectButton.setTitle("Start Native Takeover", for: .normal)
+        connectButton.setTitle("Authorize & Start", for: .normal)
         connectButton.configuration = .filled()
         connectButton.addTarget(self, action: #selector(connectPressed), for: .touchUpInside)
 
         statusLabel.numberOfLines = 0
         statusLabel.font = .preferredFont(forTextStyle: .footnote)
         statusLabel.textColor = .secondaryLabel
-        statusLabel.text = "Paste the short-lived takeover locator. Transport keys stay memory-only."
+        statusLabel.text = "Paste the short-lived takeover locator. Operator cookie and transport keys stay memory-only."
 
         let note = UILabel()
         note.numberOfLines = 0
         note.font = .preferredFont(forTextStyle: .caption1)
         note.textColor = .secondaryLabel
-        note.text = "Reference acceptance app: tap = click, one-finger swipe = scroll, Keyboard = direct standard iOS keyboard input. Backgrounding never resumes the old generation."
+        note.text = "Reference acceptance app: existing operator login → fresh native claim; tap = click; one-finger swipe = scroll; Keyboard = direct iOS keyboard input. Backgrounding never resumes the old generation."
 
         let stack = UIStackView(arrangedSubviews: [locatorField, clientHostField, connectButton, statusLabel, note])
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -69,14 +69,34 @@ final class ReferenceBootstrapViewController: UIViewController {
             return
         }
 
+        setConnecting(true, message: "Authorizing the Human operator…")
+        do {
+            let auth = try NativeOperatorWebAuthenticator(locator: locator) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let cookieHeader):
+                    self.claim(locator: locator, clientHost: clientHost, cookieHeader: cookieHeader)
+                case .failure:
+                    self.setConnecting(false, message: "Operator authorization was cancelled or failed. No native generation was claimed.")
+                }
+            }
+            let navigation = UINavigationController(rootViewController: auth)
+            navigation.modalPresentationStyle = .fullScreen
+            present(navigation, animated: true)
+        } catch {
+            setConnecting(false, message: "The takeover locator cannot be used for operator authorization.")
+        }
+    }
+
+    private func claim(locator: URL, clientHost: String, cookieHeader: String) {
         setConnecting(true, message: "Claiming a fresh native generation…")
         Task { [weak self] in
             guard let self else { return }
             do {
-                // The reference app intentionally does not ask for or persist an operator token.
-                // Production embeddings can construct TakeoverBrokerClient with an in-memory
-                // authenticationHeaders closure supplied by their authenticated gateway flow.
-                let broker = try TakeoverBrokerClient(locator: locator)
+                let broker = try TakeoverBrokerClient(
+                    locator: locator,
+                    authenticationHeaders: { [cookieHeader] in ["Cookie": cookieHeader] }
+                )
                 let binding = try await broker.claim(clientHost: clientHost)
                 self.activeBroker = broker
                 self.activeClientHost = clientHost
@@ -85,7 +105,7 @@ final class ReferenceBootstrapViewController: UIViewController {
             } catch {
                 self.activeBroker = nil
                 self.activeClientHost = nil
-                self.setConnecting(false, message: "Native claim failed. The locator may be expired, unauthenticated, already claimed, or unreachable.")
+                self.setConnecting(false, message: "Native claim failed. The locator may be expired, already claimed, or the runtime may be unreachable.")
             }
         }
     }
