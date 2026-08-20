@@ -115,7 +115,7 @@ public final class VideoToolboxH264Decoder: @unchecked Sendable {
     }
 
     public func decode(avccSample: Data, metadata: NativeVideoFrameMetadata) throws {
-        guard !avccSample.isEmpty else { throw NativeH264DecoderError.blockBuffer(paramErr) }
+        guard !avccSample.isEmpty else { throw NativeH264DecoderError.blockBuffer(OSStatus(paramErr)) }
         guard let formatDescription, let session else { throw NativeH264DecoderError.decoderNotConfigured }
 
         var block: CMBlockBuffer?
@@ -133,7 +133,7 @@ public final class VideoToolboxH264Decoder: @unchecked Sendable {
         guard status == kCMBlockBufferNoErr, let block else { throw NativeH264DecoderError.blockBuffer(status) }
 
         status = avccSample.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return paramErr }
+            guard let base = raw.baseAddress else { return OSStatus(paramErr) }
             return CMBlockBufferReplaceDataBytes(
                 with: base,
                 blockBuffer: block,
@@ -229,7 +229,7 @@ public final class VideoToolboxH264Decoder: @unchecked Sendable {
         }
         defer { allocations.forEach { $0.deallocate() } }
 
-        var pointers: [UnsafePointer<UInt8>?] = allocations.map { UnsafePointer($0) }
+        let pointers: [UnsafePointer<UInt8>] = allocations.map { UnsafePointer($0) }
         var format: CMFormatDescription?
         let status = pointers.withUnsafeBufferPointer { pointerBuffer in
             sizes.withUnsafeBufferPointer { sizeBuffer in
@@ -243,7 +243,7 @@ public final class VideoToolboxH264Decoder: @unchecked Sendable {
                 )
             }
         }
-        guard status == noErr, let format = format as? CMVideoFormatDescription else {
+        guard status == noErr, let format else {
             throw NativeH264DecoderError.formatDescription(status)
         }
         return format
