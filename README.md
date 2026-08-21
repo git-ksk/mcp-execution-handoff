@@ -82,11 +82,13 @@ A consumer must apply the stricter effective result. In particular, `require_fre
 
 ## Credential-safe external Human surface
 
-Some identity providers reject or forbid credential entry in software-controlled or embedded browser contexts. In that case, consumers should not make the automation-adjacent `browser-takeover` transport more evasive. Instead, use the `CredentialSafeHumanSurfaceRuntime` with a pluggable external Human provider.
+Some identity providers reject or forbid credential entry in software-controlled or embedded browser contexts. In that case, consumers must not make an automation-adjacent transport more evasive. `CredentialSafeHumanSurfaceRuntime` coordinates a pluggable Human-only surface, but the concrete provider determines the browser trust boundary.
 
-The `CredentialSafeHumanSurfaceRuntime` deliberately does **not** implement a remote desktop. A provider may point the operator to an existing remote-access product or another normal-browser Human surface. The consumer remains responsible for suspending its automation runtime completely before credential entry, launching the same dedicated non-default browser profile without CDP/remote-debugging/automation attachment, and refusing to restore automation until the external session is revoked and the profile is no longer owned by the normal browser process.
+For providers that require a normal non-automated browser, the consumer must suspend automation completely, launch the same dedicated non-default profile without CDP/remote-debugging attachment, and refuse to restore automation until the external session is revoked and the profile lock is released.
 
-A browser-backed consumer should follow this lifecycle:
+For a hosted browser execution plane where the target service permits browser automation infrastructure, `HostedBrowserTakeoverProvider` can instead wrap the existing bounded `TakeoverBroker` as an `ExternalHumanSurfaceProvider`. It does **not** make CDP invisible or equivalent to a normal browser: the consumer must fence Agent authority, expose only its narrow Human frame/input adapter, and validate the real target-service sign-in flow before relying on this mode. Human-entered credential text may transit the consumer's in-memory Human transport/input adapter, but it must never enter MCP/model results, durable state, diagnostics, or logs.
+
+The normal-browser lifecycle is:
 
 ```text
 automation profile + CDP
@@ -101,6 +103,8 @@ automation profile + CDP
   -> fresh readiness / semantic validation
   -> never replay stale pre-auth state
 ```
+
+A hosted browser consumer may keep the browser process alive only if Agent CDP authority is fully detached/fenced while Human authority owns the intervention. After `Done`, it revokes the broker generation, detaches Human CDP authority, establishes a fresh Agent connection, and performs fresh readiness/semantic validation. Browser/profile persistence remains a consumer/deployment responsibility and is not continuity state for Handoff.
 
 `selectHumanSurface()` is a small policy helper for consumers to route configured reasons such as sign-in/consent to `credential_safe_external` while leaving other interventions on `automation_adjacent`. The core does not decide which reasons are identity-sensitive.
 
