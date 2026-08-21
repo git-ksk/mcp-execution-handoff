@@ -58,7 +58,9 @@ The library does not decide how a consumer authenticates a user. The consumer mu
 
 ## Credential-safe external Human surface
 
-The external Human surface is a control-plane adapter, not a remote-desktop implementation. It exists for providers that require credential entry in a normal browser or otherwise reject automation-adjacent execution environments.
+The external Human surface is a control-plane adapter. It can point at a truly external normal-browser provider, or at the bounded Handoff browser broker when a hosted execution plane deliberately keeps the browser co-located. These modes have different browser trust boundaries and must not be conflated.
+
+`HostedBrowserTakeoverProvider` is a small bridge from the existing `TakeoverBroker` to the generic `ExternalHumanSurfaceProvider` contract. It adds no CDP, Chrome, Maps, or provider-specific concept to Handoff: frame/input implementation remains a consumer adapter. This mode is appropriate only where the target service permits the hosted browser shape and after real sign-in acceptance. It is not a bypass for providers that require a non-automated browser.
 
 A consumer first enters the normal handoff lifecycle and gives exclusive authority to the Human. Only then may `CredentialSafeHumanSurfaceRuntime.begin()` create an external operator session. The runtime binds that session to the active intervention id, resource epoch, and principal binding. Only one session may be active, and a duplicate begin is idempotent only for the same binding.
 

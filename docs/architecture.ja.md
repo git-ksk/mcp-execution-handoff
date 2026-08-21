@@ -51,13 +51,15 @@ authentication方式自体はlibraryの責務外です。consumerがstableかつ
 
 ## Credential-safe external Human surface
 
-external Human surfaceはcontrol-plane adapterであり、remote desktop実装ではありません。normal browserでのcredential entryを要求するproviderやautomation-adjacent execution environmentを拒否するprovider向けの境界です。
+external Human surfaceはcontrol-plane adapterです。normal browserを使う完全external providerにも、hosted execution planeでbounded Handoff browser brokerを使うproviderにも接続できます。この2つはbrowser trust boundaryが異なるため同一視しません。
+
+`HostedBrowserTakeoverProvider` は既存 `TakeoverBroker` をgeneric `ExternalHumanSurfaceProvider` contractへ橋渡しする小さなproviderです。Handoff側へCDP / Chrome / Maps / target-provider固有概念を追加せず、frame/input実装はconsumer adapterに残します。このmodeはtarget serviceがhosted browser shapeを許容し、実sign-in acceptanceを通した場合だけ利用します。non-automated browserを要求するproviderのbypassには使いません。
 
 consumerはまず通常handoff lifecycleへ入り、Humanへexclusive authorityを渡します。その後にだけ `CredentialSafeHumanSurfaceRuntime.begin()` でexternal operator sessionを作れます。sessionはactive intervention id / resource epoch / principal bindingへbindされ、同時activeは1つだけです。同じbindingでのduplicate beginだけidempotentです。
 
-provider出力から保持するのはprovider kind / intervention id / epoch / principal binding / session id / operator locator / optional expiryのbounded fieldのみです。追加provider dataは保持しません。credential、browser cookie、token、screenshot、DOM/network data、provider固有opaque metadataをcontinuity materialとして使ってはいけません。
+provider出力から保持するのはprovider kind / intervention id / epoch / principal binding / session id / operator locator / optional expiryのbounded fieldのみです。追加provider dataは保持しません。credential、browser cookie、token、screenshot、DOM/network data、provider固有opaque metadataをcontinuity materialとして使ってはいけません。Hosted broker経由のHuman入力payloadもdurable state / diagnostic / MCP/model output / logへ残しません。
 
-automationを戻す前にconsumerはexternal sessionをrevokeし、normal browser終了やdedicated profile lock解放などconsumer固有boundaryを確認します。その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。
+automationを戻す前にconsumerはexternal sessionをrevokeし、そのmode固有のexecution boundaryを確認します。normal-browser providerならbrowser終了とprofile lock解放、hosted browser providerならHuman CDP authority detachとfresh Agent connectionが必要です。その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。
 
 どのintervention reasonにこのsurfaceが必要かをpackageは決めません。`selectHumanSurface()` でconsumerごとのidentity-sensitive reason setを設定し、provider固有policyをgeneric coreへ持ち込みません。
 

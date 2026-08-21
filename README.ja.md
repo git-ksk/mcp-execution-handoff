@@ -51,25 +51,31 @@ consumerは常に厳しい方を採用します。`require_fresh_semantic_action
 
 ## Credential-safe external Human surface
 
-Identity providerによっては、software-controlled / embedded browser上でのcredential entry自体を拒否・禁止します。その場合、automation-adjacentな `browser-takeover` をstealth化するのではなく、`CredentialSafeHumanSurfaceRuntime` とpluggable external Human providerを使います。
+identity providerによってはsoftware-controlled / embedded browserでのcredential入力を拒否・禁止します。その場合、automation-adjacent transportを回避的に強化してはいけません。`CredentialSafeHumanSurfaceRuntime` はpluggableなHuman-only surfaceをcoordinationしますが、browser trust boundaryは具体providerごとに異なります。
 
-`CredentialSafeHumanSurfaceRuntime` 自体はremote desktopを実装しません。providerは既存remote-access製品やnormal-browser Human surfaceへのoperator locatorを返せます。consumerはcredential entry前にautomation runtimeを完全停止し、同じdedicated non-default profileをCDP / remote-debugging / automation attachmentなしのnormal browserで起動し、external sessionをrevokeしてnormal browserがprofileを解放するまでautomationを再開しない責任を持ちます。
+normal non-automated browserを要求するproviderでは、consumerはcredential入力前にautomationを完全停止し、同じ専用non-default profileをCDP / remote-debugging attachmentなしで起動し、external session revokeとprofile lock解放が確認できるまでautomationを復元しません。
+
+hosted browser execution planeでtarget serviceがbrowser automation infrastructureを許容する場合は、`HostedBrowserTakeoverProvider` で既存のbounded `TakeoverBroker` を `ExternalHumanSurfaceProvider` として利用できます。これはCDPを隠したりnormal browser相当に変えるものではありません。consumerはAgent authorityをfenceし、Human向けの狭いframe/input adapterだけを公開し、実際のtarget-service sign-in acceptanceを通してから利用します。Humanが入力したcredential textはconsumerのin-memory Human transport/input adapterを通る可能性がありますが、MCP/model result・durable state・diagnostic・logへ入れてはいけません。
+
+normal-browser pathは次のlifecycleです。
 
 ```text
 automation profile + CDP
   -> identity-sensitive intervention
-  -> Human authority exclusive
-  -> automation browser完全停止
-  -> same dedicated profileをnormal browserで起動（CDPなし）
-  -> external provider経由でHuman認証
-  -> external provider session revoke/close
-  -> normal browser終了 + profile lock解放確認
-  -> automation browser再起動
+  -> Human authority becomes exclusive
+  -> stop automation browser completely
+  -> open same dedicated profile in normal browser (no CDP)
+  -> Human authenticates through an external provider
+  -> revoke/close external provider session
+  -> close normal browser and verify profile lock release
+  -> relaunch automation browser
   -> fresh readiness / semantic validation
-  -> stale pre-auth stateをreplayしない
+  -> never replay stale pre-auth state
 ```
 
-`selectHumanSurface()` は、consumerが設定したsign-in / consent等のreasonだけを `credential_safe_external` に振り分ける小さなpolicy helperです。どのreasonがidentity-sensitiveかをgeneric coreは決めません。
+hosted browser consumerがbrowser processを維持する場合も、Human authority中はAgent CDP authorityを完全detach/fenceする必要があります。`Done` 後はbroker generationをrevokeし、Human CDP authorityをdetachしてからfreshなAgent connectionを確立し、readiness / semantic stateを再検証します。Browser/profile persistenceはconsumer/deployment責務であり、Handoff continuity stateにはしません。
+
+`selectHumanSurface()` はsign-in / consent等のconfigured reasonを `credential_safe_external` へrouteし、その他を `automation_adjacent` に残す小さなpolicy helperです。どのreasonがidentity-sensitiveかはcoreでは決めません。
 
 ## Browser takeover
 
