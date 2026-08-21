@@ -298,31 +298,27 @@ The same committed harness also provides a public-relay mode without changing th
 
 When a target process is bound, the macOS WebRTC host now raises the unique AX window whose frame matches the captured `inputBounds` and activates that application before accepting each Human input. If the target window cannot be resolved uniquely or activated, the input fails closed. This keeps window-scoped capture and Human input on the same target even when another Mac application was frontmost before the remote action.
 
-The browser transport is implementation-complete enough for physical acceptance, but the following must still be verified on a real iPhone Safari against the Mac host:
+Physical acceptance is now recorded for the current transport baseline:
 
-1. open the short-lived locator directly in Safari;
-2. confirm the intended host capture surface renders as live video without the legacy Scroll / Tab / Send controls; for a target-process consumer such as Maps, verify that only the dedicated Chrome window is visible and desktop/menu-bar/Dock/other-app pixels are absent;
-3. tap and one-finger swipe directly on the video and verify Mac input;
-4. tap an editable field and verify the iOS keyboard can send text and Backspace;
-5. press Done and confirm further input is immediately impossible;
-6. background Safari and return to foreground, confirming the stale peer/generation does not revive and recovery uses a fresh generation;
-7. re-run the existing Native physical path to confirm no regression.
+1. same-Wi-Fi iPhone Safari selected a direct path;
+2. cellular/4G iPhone Safari selected TURN relay after direct connectivity was unavailable;
+3. the target-process path showed only the dedicated Chrome window and restored that exact target window before Human input even when another Mac app was frontmost;
+4. tap/focus, text, Backspace, and scrolling worked on the physical Safari surface;
+5. Done/revoke invalidated the locator and stale reuse was rejected;
+6. identifier-free diagnostics confirmed bounded direct/relay path and latency state without retaining candidate strings, IP addresses, SDP, credentials, framebuffer bytes, or Human input.
 
 The default remains direct-only when no ICE credential provider is configured. With the Cloudflare Realtime TURN adapter configured, normal ICE negotiation uses `iceTransportPolicy: all`: host/direct and server-reflexive candidates remain eligible, and relay is selected only when the ICE candidate pair cannot establish a direct path. Relay allocation is transport reachability, **not** Human authentication or proof that the target service accepted credentials.
 
 The browser control plane is intentionally two-stage: (1) claim/reconnect rotates and binds the exact intervention / epoch / principal / client-generation / expiry tuple and prepares short-lived ICE material; (2) only that generation may submit its bounded offer. Reconnect always creates a fresh peer, fresh generation, and fresh ICE session. TURN credentials, SDP, candidates, DTLS/SRTP key material, framebuffer bytes, and raw Human input remain process-memory/no-store signaling data and are never MCP/model/checkpoint/log artifacts.
 
-The main remaining work now requires physical devices / real networks:
+Remaining physical/mobile work is narrower and tracked separately:
 
-1. same-Wi-Fi Safari acceptance and verification that the selected path reports `direct`;
-2. iPhone 5G / external Wi-Fi / CGNAT acceptance and verification that direct failure falls through to Cloudflare TURN and reports `relay`;
-3. direct tap / one-finger swipe / iOS keyboard text, Backspace and Enter over both viable paths;
-4. immediate Done revoke → input/capture stop and stale peer rejection;
-5. background/foreground with a real fresh control-plane generation and fresh ICE session;
-6. direct RTT vs relay RTT and first-frame latency using identifier-free in-memory samples;
-7. real Wi-Fi/cellular MTU, steady/burst loss and congestion behavior;
-8. re-run the existing Native physical path and compare its committed sources/binaries for regression;
-9. decide from evidence whether bounded IDR recovery is sufficient or whether small FEC / codec-NAL-aware fragmentation is justified.
+1. keyboard-aware `visualViewport` composition so the focused target stays visible above the iOS software keyboard;
+2. bounded portrait/landscape target sizing or safe client-side fit/letterbox behavior;
+3. explicit Safari reload/reconnect UX with fresh-generation rotation and stale-page fencing;
+4. real Wi-Fi/cellular MTU, steady/burst loss, and congestion characterization;
+5. Native Thin Takeover physical-path regression/acceptance;
+6. decide from evidence whether bounded IDR recovery is sufficient or whether small FEC / codec-NAL-aware fragmentation is justified.
 
 Do not add an unbounded reliable-video queue to hide loss.
 
