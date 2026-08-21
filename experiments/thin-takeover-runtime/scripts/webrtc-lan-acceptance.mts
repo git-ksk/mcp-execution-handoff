@@ -19,16 +19,31 @@ function defaultLanHost(): string {
   throw new Error("No private IPv4 LAN address found; set HANDOFF_LAN_HOST explicitly");
 }
 
+const MODE = process.env.HANDOFF_ACCEPT_MODE === "public-relay" ? "public-relay" : "lan-direct";
 const LAN_HOST = process.env.HANDOFF_LAN_HOST || defaultLanHost();
-const BROKER_PORT = 8877;
+const PUBLIC_ORIGIN = MODE === "public-relay"
+  ? process.env.HANDOFF_PUBLIC_ORIGIN
+  : `http://${LAN_HOST}:8877`;
+if (!PUBLIC_ORIGIN) throw new Error("HANDOFF_PUBLIC_ORIGIN is required for public-relay acceptance");
+const publicUrl = new URL(PUBLIC_ORIGIN);
+if (MODE === "public-relay" && publicUrl.protocol !== "https:") {
+  throw new Error("public-relay acceptance requires an https HANDOFF_PUBLIC_ORIGIN");
+}
+const BROKER_PORT = MODE === "public-relay" ? 18789 : 8877;
+const BROKER_HOST = MODE === "public-relay" ? "127.0.0.1" : "0.0.0.0";
 const TARGET_PORT = 8891;
-const PRINCIPAL = "lan-acceptance-principal";
+const PRINCIPAL = MODE === "public-relay" ? "public-relay-acceptance-principal" : "lan-acceptance-principal";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const HOST = path.resolve(SCRIPT_DIR, "../.build/release/takeover-webrtc-host");
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
-if (process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID || process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN) {
+const hasTurnKeyId = Boolean(process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID);
+const hasTurnToken = Boolean(process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN);
+if (MODE === "lan-direct" && (hasTurnKeyId || hasTurnToken)) {
   throw new Error("Refusing LAN direct acceptance while TURN credentials are present");
+}
+if (MODE === "public-relay" && (!hasTurnKeyId || !hasTurnToken)) {
+  throw new Error("public-relay acceptance requires both Cloudflare TURN credential variables");
 }
 
 const profile = await mkdtemp(path.join(os.tmpdir(), "handoff-lan-acceptance-"));
@@ -79,14 +94,19 @@ const adapter: TakeoverBrowserAdapter = {
 const runtime = new SpawnedWebRtcRuntimeProvider({ hostExecutable: HOST });
 const broker = new TakeoverBroker(adapter, {
   enabled: true,
-  publicBaseUrl: `http://${LAN_HOST}:${BROKER_PORT}`,
+  publicBaseUrl: PUBLIC_ORIGIN,
   ttlMs: 180_000,
   reconnectIdleMs: 2_000
 }, undefined, runtime);
 
 function localOnly(req: IncomingMessage): boolean {
   const address = req.socket.remoteAddress || "";
-  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+  const loopbackSocket = address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+  const host = (req.headers.host || "").toLowerCase();
+  const loopbackHost = host === `127.0.0.1:${BROKER_PORT}`
+    || host === `localhost:${BROKER_PORT}`
+    || host === `[::1]:${BROKER_PORT}`;
+  return loopbackSocket && loopbackHost;
 }
 
 async function control(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
@@ -136,8 +156,7 @@ async function control(req: IncomingMessage, res: ServerResponse, pathname: stri
 
 const brokerServer = createServer(async (req, res) => {
   try {
-    const base = `http://${req.headers.host || `${LAN_HOST}:${BROKER_PORT}`}`;
-    const url = new URL(req.url || "/", base);
+    const url = new URL(req.url || "/", PUBLIC_ORIGIN);
     if (await control(req, res, url.pathname)) return;
     const chunks: Buffer[] = [];
     let total = 0;
@@ -169,10 +188,10 @@ const brokerServer = createServer(async (req, res) => {
 });
 await new Promise<void>((resolve, reject) => {
   brokerServer.once("error", reject);
-  brokerServer.listen(BROKER_PORT, "0.0.0.0", resolve);
+  brokerServer.listen(BROKER_PORT, BROKER_HOST, resolve);
 });
 
-console.log(`Handoff LAN acceptance ready: http://${LAN_HOST}:${BROKER_PORT}`);
+console.log(`Handoff WebRTC acceptance ready: mode=${MODE} origin=${PUBLIC_ORIGIN}`);
 console.log(`Fresh locator control: http://127.0.0.1:${BROKER_PORT}/__new`);
 
 async function shutdown() {
