@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { once } from "node:events";
 import type { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
@@ -196,22 +196,6 @@ class LatestFrameWriter {
 }
 
 
-async function terminateChild(child: ChildProcess, timeoutMs = 300): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const firstExit = once(child, "exit").then(() => true, () => true);
-  child.kill("SIGTERM");
-  const exited = await Promise.race([
-    firstExit,
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs))
-  ]);
-  if (exited || child.exitCode !== null || child.signalCode !== null) return;
-  const finalExit = once(child, "exit").then(() => undefined, () => undefined);
-  child.kill("SIGKILL");
-  await Promise.race([
-    finalExit,
-    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))
-  ]);
-}
 
 function boundedEnvironment(display: string): NodeJS.ProcessEnv {
   return { DISPLAY: display, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
@@ -279,8 +263,7 @@ class LinuxWindowInput {
   constructor(
     private readonly geometry: LinuxWindowGeometry,
     private readonly display: string,
-    private readonly xdotool: string,
-    private readonly xclip: string
+    private readonly xdotool: string
   ) {}
 
   async apply(input: LinuxHostInput): Promise<void> {
@@ -318,7 +301,7 @@ class LinuxWindowInput {
       await runCommand(this.xdotool, ["key", "--clearmodifiers", key], this.display);
       return;
     }
-    await this.pasteText(input.text!);
+    await this.typeText(input.text!);
   }
 
   private async scrollAxis(delta: number, negativeButton: number, positiveButton: number): Promise<void> {
@@ -328,38 +311,18 @@ class LinuxWindowInput {
     await runCommand(this.xdotool, ["click", "--window", String(this.geometry.windowId), "--repeat", String(repeats), String(button)], this.display);
   }
 
-  private async pasteText(text: string): Promise<void> {
-    const owner = spawn(this.xclip, ["-selection", "clipboard", "-in", "-quiet"], {
+  private async typeText(text: string): Promise<void> {
+    const child = spawn(this.xdotool, ["type", "--clearmodifiers", "--delay", "5", "--file", "-"], {
       env: boundedEnvironment(this.display),
       stdio: ["pipe", "ignore", "ignore"]
     });
-    owner.once("error", () => undefined);
-    owner.stdin.on("error", () => undefined);
-    owner.stdin.end(Buffer.from(text, "utf8"));
-    await new Promise((resolve) => setTimeout(resolve, 35));
-    try {
-      await runCommand(this.xdotool, ["key", "--clearmodifiers", "ctrl+v"], this.display);
-      // Keep the foreground selection owner alive long enough for Chromium to request the
-      // clipboard payload. `-loops 1` can be consumed by a non-paste TARGETS request and
-      // silently drop ownership before Chromium asks for the actual text.
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    } finally {
-      await terminateChild(owner);
-      await this.clearClipboard();
-    }
+    child.once("error", () => undefined);
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(Buffer.from(text, "utf8"));
+    const [code] = await once(child, "close") as [number | null, NodeJS.Signals | null];
+    if (code !== 0) throw new Error("Linux WebRTC host text injection failed");
   }
 
-  private async clearClipboard(): Promise<void> {
-    const clear = spawn(this.xclip, ["-selection", "clipboard", "-in", "-quiet"], {
-      env: boundedEnvironment(this.display),
-      stdio: ["pipe", "ignore", "ignore"]
-    });
-    clear.once("error", () => undefined);
-    clear.stdin.on("error", () => undefined);
-    clear.stdin.end(Buffer.alloc(0));
-    await new Promise((resolve) => setTimeout(resolve, 35));
-    await terminateChild(clear);
-  }
 }
 
 function classifyFfmpegFailure(stderr: string): "x11" | "encoder" | "option" | "other" {
@@ -484,11 +447,10 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   if (!display || !/^:\d+(?:\.\d+)?$/.test(display)) throw new Error("TAKEOVER_WEBRTC_DISPLAY_NAME must be a local X11 display such as :99");
 
   const xdotool = absoluteTool("xdotool", "TAKEOVER_LINUX_XDOTOOL");
-  const xclip = absoluteTool("xclip", "TAKEOVER_LINUX_XCLIP");
   const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
   const geometry = await resolveExactWindow(targetPid, display, xdotool);
   process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
-  const input = new LinuxWindowInput(geometry, display, xdotool, xclip);
+  const input = new LinuxWindowInput(geometry, display, xdotool);
   let stopped = false;
   let stopHost!: () => Promise<void>;
   const capture = new LinuxCapture(geometry, display, ffmpeg, new LatestFrameWriter(), () => {

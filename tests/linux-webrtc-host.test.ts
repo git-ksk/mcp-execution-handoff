@@ -68,6 +68,9 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /windowactivate/);
   assert.match(host, /input\.kind === "tap" \|\| input\.kind === "scroll"/);
   assert.match(host, /windowfocus/);
+  assert.match(host, /spawn\(this\.xdotool, \["type", "--clearmodifiers", "--delay", "5", "--file", "-"\]/);
+  assert.match(host, /child\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
+  assert.doesNotMatch(host, /xclip|TAKEOVER_LINUX_XCLIP/);
   assert.match(host, /this\.geometry\.x \+ localX/);
   assert.match(host, /this\.geometry\.y \+ localY/);
   assert.match(host, /\["mousemove", "--sync", String\(x\), String\(y\)\]/);
@@ -75,15 +78,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_focus_ready/);
   assert.match(host, /linux_stage=input_tap_sent/);
   assert.match(host, /linux_stage=input_failure/);
-  assert.match(host, /owner\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
-  assert.match(host, /\["-selection", "clipboard", "-in", "-quiet"\]/);
-  assert.doesNotMatch(host, /"-loops", "1"/);
-  assert.match(host, /await terminateChild\(owner\)/);
-  assert.match(host, /await terminateChild\(clear\)/);
-  assert.match(host, /\["key", "--clearmodifiers", "ctrl\+v"\]/);
   assert.match(host, /\["key", "--clearmodifiers", key\]/);
   assert.doesNotMatch(host, /\["key", "--window"/);
-  assert.match(host, /clearClipboard/);
   assert.match(host, /if \(this\.child === current\) this\.child = undefined;[\s\S]*current\.kill\("SIGTERM"\)/);
   assert.match(host, /if \(!this\.stopping && this\.child === child && code !== 0\)/);
   assert.doesNotMatch(host, /\["type"[^\]]*text/);

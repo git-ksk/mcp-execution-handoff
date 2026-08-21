@@ -79,7 +79,7 @@ async function main(): Promise<void> {
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
   ]);
-  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xclip", "/usr/bin/ffmpeg"]) {
+  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/ffmpeg"]) {
     assert.equal(await exists(executable), true, `${executable} is required`);
   }
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
@@ -248,12 +248,6 @@ async function main(): Promise<void> {
     process.stdout.write("LINUX_WEBRTC_STAGE enter-submit\n");
     await waitFor("enter-submit", () => inputUses >= 4 && endedUses >= 4 && submitted === marker);
 
-    const clipboard = spawnSync("/usr/bin/xclip", ["-selection", "clipboard", "-o"], {
-      env: xEnv,
-      encoding: "utf8",
-      timeout: 1_000
-    });
-    assert.ok(clipboard.status !== 0 || clipboard.stdout === "", "Human text remained in the X11 clipboard");
     assert.ok(rtpPackets > 0, "no H264 RTP reached the WebRTC peer");
     process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses}\n`);
   } finally {

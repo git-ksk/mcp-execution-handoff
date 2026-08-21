@@ -40,7 +40,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Install Linux normal-browser takeover dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool xclip openbox ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool openbox ffmpeg
       - name: Verify runner Chrome
         run: command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser
       - run: npm run accept:webrtc:linux
