@@ -34,8 +34,20 @@ async function waitForX(displayNumber: number): Promise<void> {
   await waitFor("xvfb-socket", () => exists(socket), 5_000);
 }
 
-function stop(child: ChildProcess | undefined): void {
-  if (child && child.exitCode === null) child.kill("SIGTERM");
+async function stopAndWait(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode !== null) return;
+  child.kill("SIGTERM");
+  await Promise.race([
+    once(child, "exit").catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 1_000))
+  ]);
+  if (child.exitCode === null) {
+    child.kill("SIGKILL");
+    await Promise.race([
+      once(child, "exit").catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 500))
+    ]);
+  }
 }
 
 async function cmdline(pid: number): Promise<string> {
@@ -218,12 +230,11 @@ async function main(): Promise<void> {
   } finally {
     await client.close().catch(() => undefined);
     await provider.revoke("linux-host-acceptance").catch(() => undefined);
-    stop(chrome);
-    stop(openbox);
-    stop(xvfb);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await stopAndWait(chrome);
+    await stopAndWait(openbox);
+    await stopAndWait(xvfb);
     server.close();
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined);
   }
 }
 
