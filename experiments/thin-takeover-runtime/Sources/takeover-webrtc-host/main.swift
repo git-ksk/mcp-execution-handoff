@@ -413,11 +413,14 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
 }
 
 private final class HumanInputInjector: @unchecked Sendable {
-    private let source = CGEventSource(stateID: .hidSystemState)
+    // This host posts synthetic events from within the logged-in user session. Apple documents
+    // combinedSessionState for that case; hidSystemState is for HID-interpreting daemons/drivers.
+    private let source = CGEventSource(stateID: .combinedSessionState)
     private let inputBounds: CGRect
+    private let targetProcessID: pid_t?
     private let writer: LatestOutputWriter
-    init(inputBounds: CGRect, writer: LatestOutputWriter) {
-        self.inputBounds = inputBounds; self.writer = writer
+    init(inputBounds: CGRect, targetProcessID: pid_t?, writer: LatestOutputWriter) {
+        self.inputBounds = inputBounds; self.targetProcessID = targetProcessID; self.writer = writer
     }
 
     func apply(_ object: [String: Any]) {
@@ -445,15 +448,23 @@ private final class HumanInputInjector: @unchecked Sendable {
                 down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
                 up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
             }
-            down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+            postKeyboard(down); postKeyboard(up)
         case "key":
             guard let key = object["key"] as? String else { return }
             let code: CGKeyCode
             switch key { case "Backspace": code = 51; case "Enter": code = 36; default: return }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) else { return }
-            down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+            postKeyboard(down); postKeyboard(up)
         default: return
+        }
+    }
+
+    private func postKeyboard(_ event: CGEvent) {
+        if let targetProcessID {
+            event.postToPid(targetProcessID)
+        } else {
+            event.post(tap: .cghidEventTap)
         }
     }
 
@@ -582,7 +593,7 @@ struct WebRtcMacHost {
                 writer.submitFrame(record)
             }
         }
-        let injector = HumanInputInjector(inputBounds: surface.inputBounds, writer: writer)
+        let injector = HumanInputInjector(inputBounds: surface.inputBounds, targetProcessID: targetProcessID, writer: writer)
         InputReader(stop: stop, injector: injector, requestIDR: { encoder.requestIDR() }).start()
         if let targetProcessID {
             EditableRegionPublisher(targetProcessID: targetProcessID, inputBounds: surface.inputBounds, writer: controlWriter).start(stop: stop)

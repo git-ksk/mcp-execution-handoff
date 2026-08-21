@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { TakeoverGrant } from "./session.js";
 import { type WebRtcBrowserIceConfiguration, type WebRtcTakeoverRuntimeBinding } from "./webrtc-ice.js";
 import { type WebRtcLatencyComparison, type WebRtcLatencySample } from "./webrtc-latency.js";
+import { type WebRtcDiagnosticEvent, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 export type { WebRtcTakeoverRuntimeBinding } from "./webrtc-ice.js";
 export interface WebRtcSessionDescription {
     type: "offer" | "answer";
@@ -32,6 +33,8 @@ export interface WebRtcTakeoverRuntimeProvider {
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void;
     latencySnapshot(): WebRtcLatencyComparison;
+    recordDiagnostic(event: WebRtcDiagnosticEvent): void;
+    diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
 }
@@ -61,11 +64,14 @@ export declare class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRunti
     private readonly active;
     private readonly prepared;
     private readonly latency;
+    private readonly diagnostics;
     private readonly spawnProcess;
     constructor(config: SpawnedWebRtcRuntimeProviderConfig);
     prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration>;
     recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void;
     latencySnapshot(): WebRtcLatencyComparison;
+    recordDiagnostic(event: WebRtcDiagnosticEvent): void;
+    diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     start(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     revoke(takeoverSessionId: string): Promise<void>;

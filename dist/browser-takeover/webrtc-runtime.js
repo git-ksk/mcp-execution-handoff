@@ -4,6 +4,7 @@ import { isAbsolute } from "node:path";
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, random16, useH264 } from "werift";
 import { CloudflareRealtimeTurnCredentialProvider, cloneIceServers, directOnlyIceSession } from "./webrtc-ice.js";
 import { WebRtcLatencyTracker } from "./webrtc-latency.js";
+import { WebRtcDiagnosticsTracker, webRtcCandidateCountsFromSdp } from "./webrtc-diagnostics.js";
 const MAX_SIGNALING_SDP_BYTES = 128 * 1024;
 const MAX_DATA_CHANNEL_MESSAGE_BYTES = 4 * 1024;
 const MAX_TEXT_BYTES = 4 * 1024;
@@ -56,6 +57,7 @@ export class SpawnedWebRtcRuntimeProvider {
     active = new Map();
     prepared = new Map();
     latency = new WebRtcLatencyTracker();
+    diagnostics = new WebRtcDiagnosticsTracker();
     spawnProcess;
     #iceCredentialProvider;
     constructor(config) {
@@ -111,6 +113,12 @@ export class SpawnedWebRtcRuntimeProvider {
     latencySnapshot() {
         return this.latency.snapshot();
     }
+    recordDiagnostic(event) {
+        this.diagnostics.record(event);
+    }
+    diagnosticsSnapshot() {
+        return this.diagnostics.snapshot();
+    }
     async start(binding, offer, hooks) {
         if (offer.type !== "offer" || Buffer.byteLength(offer.sdp, "utf8") > MAX_SIGNALING_SDP_BYTES) {
             throw new WebRtcTakeoverRuntimeError("WEBRTC_OFFER_INVALID", "WebRTC offer is invalid");
@@ -161,6 +169,7 @@ export class SpawnedWebRtcRuntimeProvider {
             this.active.set(binding.takeoverSessionId, runtime);
             this.attachHost(runtime);
             this.attachPeer(runtime);
+            const answerStartedAt = Date.now();
             await peer.setRemoteDescription(offer);
             const sender = peer.addTrack(track);
             runtime.sender = sender;
@@ -172,6 +181,11 @@ export class SpawnedWebRtcRuntimeProvider {
             const local = peer.localDescription;
             if (!local?.sdp)
                 throw new Error("WebRTC answer missing local SDP");
+            this.recordDiagnostic({
+                stage: "server.answer.ready",
+                candidateCounts: webRtcCandidateCountsFromSdp(local.sdp),
+                durationMs: Date.now() - answerStartedAt
+            });
             return { type: "answer", sdp: local.sdp };
         }
         catch (error) {
@@ -247,6 +261,9 @@ export class SpawnedWebRtcRuntimeProvider {
             });
         });
         runtime.peer.connectionStateChange.subscribe((state) => {
+            if (state === "new" || state === "connecting" || state === "connected" || state === "disconnected" || state === "failed" || state === "closed") {
+                this.recordDiagnostic({ stage: "server.peer.state", state });
+            }
             if (state === "connected") {
                 const keyframe = runtime.preconnectKeyframe;
                 delete runtime.preconnectKeyframe;

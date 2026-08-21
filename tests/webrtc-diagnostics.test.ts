@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  WebRtcDiagnosticsTracker,
+  parseBrowserWebRtcDiagnosticEvent,
+  webRtcCandidateCountsFromSdp
+} from "../src/browser-takeover/webrtc-diagnostics.js";
+
+test("candidate diagnostics reduce SDP to bounded type counts only", () => {
+  const sdp = [
+    "v=0",
+    "a=candidate:1 1 udp 1 10.0.0.1 5000 typ host",
+    "a=candidate:2 1 udp 1 198.51.100.7 5001 typ srflx raddr 10.0.0.1 rport 5000",
+    "a=candidate:3 1 udp 1 203.0.113.8 5002 typ relay",
+    "a=candidate:4 1 udp 1 hidden.local 5003 typ host"
+  ].join("\r\n");
+  const counts = webRtcCandidateCountsFromSdp(sdp);
+  assert.deepEqual(counts, { host: 2, srflx: 1, prflx: 0, relay: 1 });
+  assert.doesNotMatch(JSON.stringify(counts), /10\.0\.0\.1|198\.51\.100\.7|203\.0\.113\.8|hidden\.local|candidate:/);
+});
+
+test("browser diagnostic parser fails closed on network, SDP and credential-shaped extra fields", () => {
+  const safe = {
+    stage: "browser.gather.complete",
+    candidateCounts: { host: 1, srflx: 1, prflx: 0, relay: 0 },
+    durationMs: 12.34
+  };
+  assert.deepEqual(parseBrowserWebRtcDiagnosticEvent(safe), { ...safe, durationMs: 12.3 });
+  for (const extra of [
+    { address: "192.0.2.1" },
+    { candidate: "candidate:raw" },
+    { sdp: "v=0" },
+    { username: "turn-user" },
+    { credential: "secret" },
+    { sessionId: "session-id" }
+  ]) {
+    assert.equal(parseBrowserWebRtcDiagnosticEvent({ ...safe, ...extra }), undefined);
+  }
+});
+
+test("diagnostic tracker remains bounded and snapshot cannot mutate stored events", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  for (let i = 0; i < 140; i += 1) tracker.record({ stage: "broker.prepare.request" });
+  const snapshot = tracker.snapshot();
+  assert.equal(snapshot.events.length, 128);
+  snapshot.events[0]!.stage = "broker.connect.request";
+  assert.equal(tracker.snapshot().events[0]!.stage, "broker.prepare.request");
+});

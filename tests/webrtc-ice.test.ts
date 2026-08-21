@@ -3,6 +3,7 @@ import test from "node:test";
 import { randomBytes } from "node:crypto";
 import {
   CloudflareRealtimeTurnCredentialProvider,
+  directOnlyIceSession,
   type WebRtcTakeoverRuntimeBinding
 } from "../src/browser-takeover/webrtc-ice.js";
 
@@ -17,6 +18,15 @@ function binding(): WebRtcTakeoverRuntimeBinding {
     expiresAt: 1_700_000_060_000
   };
 }
+
+test("direct-only keeps the browser host-only and makes the server STUN trust boundary explicit", async () => {
+  const session = directOnlyIceSession();
+  assert.equal(session.browser.relay, "disabled");
+  assert.deepEqual(session.browser.iceServers, []);
+  assert.deepEqual(session.serverIceServers, [{ urls: "stun:stun.cloudflare.com:3478" }]);
+  assert.doesNotMatch(JSON.stringify(session.serverIceServers), /stun\.l\.google\.com/i);
+  await session.revoke();
+});
 
 test("Cloudflare TURN adapter issues separate short-lived peer credentials and revokes both without identity tags", async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = [];

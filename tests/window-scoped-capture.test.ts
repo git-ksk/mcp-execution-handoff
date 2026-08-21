@@ -36,6 +36,11 @@ test("browser WebRTC host uses the same target-PID window-only capture and input
   assert.match(host, /configuration\.sourceRect = sourceRect/);
   assert.match(host, /inputBounds: window\.frame/);
   assert.match(host, /private let inputBounds: CGRect/);
+  assert.match(host, /CGEventSource\(stateID: \.combinedSessionState\)/);
+  assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
+  assert.match(host, /private let targetProcessID: pid_t\?/);
+  assert.match(host, /event\.postToPid\(targetProcessID\)/);
+  assert.match(host, /HumanInputInjector\(inputBounds: surface\.inputBounds, targetProcessID: targetProcessID, writer: writer\)/);
 });
 
 test("Node runtime passes target PID only through the private macOS helper environment", () => {

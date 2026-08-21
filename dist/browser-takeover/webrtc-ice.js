@@ -1,4 +1,5 @@
 const CLOUDFLARE_TURN_ORIGIN = "https://rtc.live.cloudflare.com";
+const CLOUDFLARE_STUN_URL = "stun:stun.cloudflare.com:3478";
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 48 * 60 * 60;
 const MAX_ICE_SERVERS = 16;
 const MAX_ICE_URLS_PER_SERVER = 16;
@@ -123,8 +124,12 @@ export class CloudflareRealtimeTurnCredentialProvider {
 }
 export function directOnlyIceSession(relay = "disabled") {
     return {
+        // Keep the browser host-only: this client waits for ICE gathering rather than trickling, so a
+        // browser-side STUN timeout would directly delay takeover startup. The server gets one explicit
+        // STUN server to override werift's hidden third-party fallback while preserving direct-first
+        // ICE and the same Cloudflare trust boundary used by the optional TURN fallback.
         browser: { iceServers: [], relay },
-        serverIceServers: [],
+        serverIceServers: [{ urls: CLOUDFLARE_STUN_URL }],
         async revoke() { }
     };
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 import { TakeoverBroker, type TakeoverBrowserAdapter } from "../src/browser-takeover/broker.js";
 import type { WebRtcBrowserIceConfiguration } from "../src/browser-takeover/webrtc-ice.js";
 import type { WebRtcLatencyComparison, WebRtcLatencySample } from "../src/browser-takeover/webrtc-latency.js";
+import type { WebRtcDiagnosticEvent, WebRtcDiagnosticsSnapshot } from "../src/browser-takeover/webrtc-diagnostics.js";
 import type {
   WebRtcRuntimeHooks,
   WebRtcSessionDescription,
@@ -22,6 +23,7 @@ class FakeWebRtcRuntime implements WebRtcTakeoverRuntimeProvider {
   starts: Array<{ binding: WebRtcTakeoverRuntimeBinding; hooks: WebRtcRuntimeHooks }> = [];
   revokes: string[] = [];
   latency: WebRtcLatencySample[] = [];
+  diagnostics: WebRtcDiagnosticEvent[] = [];
   nextIce: WebRtcBrowserIceConfiguration = { iceServers: [], relay: "disabled" };
 
   async prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration> {
@@ -53,6 +55,14 @@ class FakeWebRtcRuntime implements WebRtcTakeoverRuntimeProvider {
   latencySnapshot(): WebRtcLatencyComparison {
     const empty = { samples: 0, rtt: { count: 0 }, firstFrame: { count: 0 } };
     return { direct: empty, relay: empty };
+  }
+
+  recordDiagnostic(event: WebRtcDiagnosticEvent): void {
+    this.diagnostics.push(structuredClone(event));
+  }
+
+  diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot {
+    return { events: structuredClone(this.diagnostics) };
   }
 
   async revoke(takeoverSessionId: string): Promise<void> {
@@ -133,6 +143,28 @@ async function connect(
   ), PRINCIPAL);
 }
 
+async function diagnostic(
+  broker: TakeoverBroker,
+  sessionId: string,
+  clientBinding: string,
+  capability: string,
+  body: unknown
+) {
+  return broker.handle(new Request(
+    `http://localhost/takeover/api/webrtc-diagnostics/${sessionId}`,
+    {
+      method: "POST",
+      headers: {
+        origin: ORIGIN,
+        "content-type": "application/json",
+        "x-takeover-client": clientBinding,
+        "x-mcp-takeover-capability": capability
+      },
+      body: JSON.stringify(body)
+    }
+  ), PRINCIPAL);
+}
+
 async function prepareAndConnect(
   broker: TakeoverBroker,
   sessionId: string,
@@ -192,6 +224,11 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /Live · /);
   assert.match(script, /candidateType==='relay'/);
   assert.match(script, /webrtc-metrics/);
+  assert.match(script, /webrtc-diagnostics/);
+  assert.match(script, /iceCandidateCounts/);
+  assert.match(script, /browser\.gather\.complete/);
+  assert.match(script, /void postDiagnostic\(\{stage:'browser\.gather\.complete'/);
+  assert.doesNotMatch(script, /await postDiagnostic\(\{stage:'browser\.gather\.complete'/);
   assert.match(script, /jitterBufferDelay/);
   assert.match(script, /jitterBufferTargetDelay/);
   assert.match(script, /jitterBufferMinimumDelay/);
@@ -204,7 +241,18 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /senderTimelineToReceiveMs/);
   assert.match(script, /inputAckMs/);
   assert.match(script, /inputMetricsSamplesSent>=6/);
-  assert.match(script, /pointerType==='touch'\?18:8/);
+  assert.match(script, /touchEventsAvailable='ontouchstart' in window/);
+  assert.match(script, /addEventListener\('touchstart'/);
+  assert.match(script, /addEventListener\('touchmove'/);
+  assert.match(script, /addEventListener\('touchend'/);
+  assert.match(script, /passive:false/);
+  assert.match(script, /touchWithId/);
+  assert.match(script, /sendGestureScroll/);
+  assert.match(script, /deltaY:Math\.max\(-2000,Math\.min\(2000,dy\*2\)\)/);
+  assert.doesNotMatch(script, /deltaY:Math\.max\(-2000,Math\.min\(2000,-dy\*2\)\)/);
+  assert.match(script, /finishGesture/);
+  assert.match(script, /if\(touchEventsAvailable&&event\.pointerType==='touch'\)return/);
+  assert.match(script, /video\.setPointerCapture/);
   assert.match(script, /editableRegions/);
   assert.match(script, /applyEditableRegions/);
   assert.match(script, /pointIsEditable/);
@@ -351,6 +399,62 @@ test("TURN issuance unavailable remains explicit direct-only preparation instead
   assert.deepEqual(body.webrtcIce, { iceServers: [], relay: "unavailable" });
   const connected = await connect(broker, sessionId, CLIENT_A, body.capability);
   assert.equal(connected.status, 200);
+});
+
+test("setup diagnostics are bounded to non-identifying stage, candidate-type counts, state and timing", async () => {
+  const { broker, runtime, sessionId } = fixture();
+  const preparation = await prepare(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(preparation.status, 200);
+  const grant = await preparation.json() as { capability: string };
+
+  assert.deepEqual(runtime.diagnostics.map((event) => event.stage), [
+    "broker.prepare.request",
+    "broker.prepare.success"
+  ]);
+
+  const accepted = await diagnostic(broker, sessionId, CLIENT_A, grant.capability, {
+    stage: "browser.gather.complete",
+    candidateCounts: { host: 1, srflx: 1, prflx: 0, relay: 0 },
+    durationMs: 23.456
+  });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(runtime.diagnostics.at(-1), {
+    stage: "browser.gather.complete",
+    candidateCounts: { host: 1, srflx: 1, prflx: 0, relay: 0 },
+    durationMs: 23.5
+  });
+
+  const leakedAddress = await diagnostic(broker, sessionId, CLIENT_A, grant.capability, {
+    stage: "browser.gather.complete",
+    candidateCounts: { host: 1, srflx: 1, prflx: 0, relay: 0 },
+    address: "192.0.2.1"
+  });
+  assert.equal(leakedAddress.status, 400);
+
+  const leakedCandidate = await diagnostic(broker, sessionId, CLIENT_A, grant.capability, {
+    stage: "browser.gather.complete",
+    candidateCounts: { host: 1, srflx: 1, prflx: 0, relay: 0 },
+    candidate: "candidate body must never cross this boundary"
+  });
+  assert.equal(leakedCandidate.status, 400);
+
+  const badState = await diagnostic(broker, sessionId, CLIENT_A, grant.capability, {
+    stage: "browser.peer.state",
+    state: "checking"
+  });
+  assert.equal(badState.status, 400);
+});
+
+test("broker diagnostics distinguish prepare from connect without storing session identity", async () => {
+  const { broker, runtime, sessionId } = fixture();
+  await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  assert.deepEqual(runtime.diagnostics.map((event) => event.stage), [
+    "broker.prepare.request",
+    "broker.prepare.success",
+    "broker.connect.request",
+    "broker.connect.success"
+  ]);
+  assert.doesNotMatch(JSON.stringify(runtime.diagnostics), /session|principal|client|intervention|192\.0\.2\.1|candidate:/i);
 });
 
 test("latency endpoint accepts only bounded path metrics and never accepts network identifiers", async () => {

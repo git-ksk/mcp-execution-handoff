@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const client = new RTCPeerConnection({ codecs: { video: [useH264()] }, iceServers: [], maxMessageSize: 4_096 });
   client.addTransceiver("video", { direction: "recvonly" });
   const critical = client.createDataChannel("human-critical", { ordered: true });
-  client.createDataChannel("human-realtime", { ordered: false, maxRetransmits: 0 });
+  const realtime = client.createDataChannel("human-realtime", { ordered: false, maxRetransmits: 0 });
   let rtpPackets = 0;
   let inputUses = 0;
   let endedUses = 0;
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       disconnected() { disconnected += 1; }
     });
     await client.setRemoteDescription(answer);
-    await waitFor(() => client.connectionState === "connected" && critical.readyState === "open");
+    await waitFor(() => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
     await waitFor(() => rtpPackets > 0);
     provider.recordLatency("runtime-session-1", { path: "direct", rttMs: 1 });
     const latency = provider.latencySnapshot();
@@ -88,9 +88,14 @@ async function main(): Promise<void> {
     if (inputUses !== 0 || endedUses !== 0) throw new Error("editable-region metadata reached the Human input authority gate");
     critical.send(JSON.stringify({ kind: "tap", x: 0.25, y: 0.75 }));
     await waitFor(() => inputUses === 1 && endedUses === 1);
+    realtime.send(JSON.stringify({ kind: "scroll", deltaX: 0, deltaY: 620 }));
+    await waitFor(() => inputUses === 2 && endedUses === 2);
+    realtime.send(JSON.stringify({ kind: "scroll", deltaX: 0, deltaY: 2_001 }));
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    if (inputUses !== 2) throw new Error("invalid realtime Human input reached authority gate");
     critical.send(JSON.stringify({ kind: "tap", x: 2, y: 0.5 }));
     await new Promise((resolve) => setTimeout(resolve, 75));
-    if (inputUses !== 1) throw new Error("invalid Human input reached authority gate");
+    if (inputUses !== 2) throw new Error("invalid Human input reached authority gate");
     if (disconnected !== 0) throw new Error("unexpected disconnect during live probe");
   } finally {
     await client.close().catch(() => undefined);

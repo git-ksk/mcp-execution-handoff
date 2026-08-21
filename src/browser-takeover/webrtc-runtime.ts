@@ -27,6 +27,12 @@ import {
   type WebRtcLatencyComparison,
   type WebRtcLatencySample
 } from "./webrtc-latency.js";
+import {
+  WebRtcDiagnosticsTracker,
+  webRtcCandidateCountsFromSdp,
+  type WebRtcDiagnosticEvent,
+  type WebRtcDiagnosticsSnapshot
+} from "./webrtc-diagnostics.js";
 export type { WebRtcTakeoverRuntimeBinding } from "./webrtc-ice.js";
 
 const MAX_SIGNALING_SDP_BYTES = 128 * 1024;
@@ -67,6 +73,8 @@ export interface WebRtcTakeoverRuntimeProvider {
   ): Promise<WebRtcSessionDescription>;
   recordLatency(takeoverSessionId: string, sample: WebRtcLatencySample): void;
   latencySnapshot(): WebRtcLatencyComparison;
+  recordDiagnostic(event: WebRtcDiagnosticEvent): void;
+  diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
   revoke(takeoverSessionId: string): Promise<void>;
   revokeForIntervention(interventionId: string): Promise<void>;
 }
@@ -166,6 +174,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
   private readonly active = new Map<string, ActiveWebRtcRuntime>();
   private readonly prepared = new Map<string, PreparedWebRtcRuntime>();
   private readonly latency = new WebRtcLatencyTracker();
+  private readonly diagnostics = new WebRtcDiagnosticsTracker();
   private readonly spawnProcess: typeof spawn;
   #iceCredentialProvider: WebRtcIceCredentialProvider | undefined;
 
@@ -227,6 +236,14 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     return this.latency.snapshot();
   }
 
+  recordDiagnostic(event: WebRtcDiagnosticEvent): void {
+    this.diagnostics.record(event);
+  }
+
+  diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot {
+    return this.diagnostics.snapshot();
+  }
+
   async start(
     binding: WebRtcTakeoverRuntimeBinding,
     offer: WebRtcSessionDescription,
@@ -286,6 +303,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       this.attachHost(runtime);
       this.attachPeer(runtime);
 
+      const answerStartedAt = Date.now();
       await peer.setRemoteDescription(offer);
       const sender = peer.addTrack(track);
       runtime.sender = sender;
@@ -296,6 +314,11 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       await peer.setLocalDescription(answer);
       const local = peer.localDescription;
       if (!local?.sdp) throw new Error("WebRTC answer missing local SDP");
+      this.recordDiagnostic({
+        stage: "server.answer.ready",
+        candidateCounts: webRtcCandidateCountsFromSdp(local.sdp),
+        durationMs: Date.now() - answerStartedAt
+      });
       return { type: "answer", sdp: local.sdp };
     } catch (error) {
       if (host) host.kill("SIGTERM");
@@ -374,6 +397,9 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       });
     });
     runtime.peer.connectionStateChange.subscribe((state) => {
+      if (state === "new" || state === "connecting" || state === "connected" || state === "disconnected" || state === "failed" || state === "closed") {
+        this.recordDiagnostic({ stage: "server.peer.state", state });
+      }
       if (state === "connected") {
         const keyframe = runtime.preconnectKeyframe;
         delete runtime.preconnectKeyframe;
