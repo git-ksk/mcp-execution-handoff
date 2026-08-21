@@ -22,7 +22,11 @@ const ALL_STAGES = new Set([
     "host.window.ready",
     "host.capture.started",
     "host.frame.ready",
-    "host.capture.failure"
+    "host.capture.failure",
+    "host.capture.failure.x11",
+    "host.capture.failure.encoder",
+    "host.capture.failure.option",
+    "host.capture.failure.other"
 ]);
 /**
  * Bounded process-memory-only WebRTC setup diagnostics.
@@ -96,7 +100,11 @@ function normalizeWebRtcDiagnosticEvent(event) {
         "host.window.ready": ["stage"],
         "host.capture.started": ["stage"],
         "host.frame.ready": ["stage"],
-        "host.capture.failure": ["stage"]
+        "host.capture.failure": ["stage"],
+        "host.capture.failure.x11": ["stage"],
+        "host.capture.failure.encoder": ["stage"],
+        "host.capture.failure.option": ["stage"],
+        "host.capture.failure.other": ["stage"]
     };
     const eventRecord = event;
     if (Object.keys(eventRecord).some((key) => !allowedByStage[event.stage].includes(key)))

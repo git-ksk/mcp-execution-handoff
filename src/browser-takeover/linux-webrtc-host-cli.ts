@@ -324,6 +324,14 @@ class LinuxWindowInput {
   }
 }
 
+function classifyFfmpegFailure(stderr: string): "x11" | "encoder" | "option" | "other" {
+  const value = stderr.toLowerCase();
+  if (/x11|display|xcb|cannot open|failed to capture|window/.test(value)) return "x11";
+  if (/encoder|libx264|codec|pixel format/.test(value)) return "encoder";
+  if (/option|unrecognized|invalid argument|filter|scale/.test(value)) return "option";
+  return "other";
+}
+
 class LinuxCapture {
   private child: ChildProcessByStdio<null, Readable, Readable> | undefined;
   private stopping = false;
@@ -396,16 +404,20 @@ class LinuxCapture {
     });
     child.stdout.on("data", (chunk: Buffer) => parser.push(chunk));
     child.stdout.once("end", () => parser.end());
-    child.stderr.on("data", () => undefined); // Never forward browser/capture diagnostics northbound.
+    let ffmpegDiagnostic = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (ffmpegDiagnostic.length < 4_096) ffmpegDiagnostic += chunk.toString("utf8").slice(0, 4_096 - ffmpegDiagnostic.length);
+    }); // Classified locally only; raw ffmpeg stderr is never forwarded northbound.
     child.once("error", () => {
       if (!this.stopping) {
-        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_failure\n");
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_failure_other\n");
         this.onFailure();
       }
     });
     child.once("exit", (code) => {
       if (!this.stopping && this.child === child && code !== 0) {
-        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_failure\n");
+        const category = classifyFfmpegFailure(ffmpegDiagnostic);
+        process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_failure_${category}\n`);
         this.onFailure();
       }
     });
