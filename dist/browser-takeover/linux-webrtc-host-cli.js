@@ -259,11 +259,14 @@ class LinuxWindowInput {
         await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
         if (input.kind === "tap") {
-            const x = Math.max(0, Math.min(this.geometry.width - 1, Math.round(this.geometry.width * input.x)));
-            const y = Math.max(0, Math.min(this.geometry.height - 1, Math.round(this.geometry.height * input.y)));
-            await runCommand(this.xdotool, ["mousemove", "--sync", "--window", String(this.geometry.windowId), String(x), String(y)], this.display);
-            // Use XTest at the already-verified pointer location. Chromium may ignore direct
-            // XSendEvent-style --window clicks even when xdotool reports success.
+            const localX = Math.max(0, Math.min(this.geometry.width - 1, Math.round(this.geometry.width * input.x)));
+            const localY = Math.max(0, Math.min(this.geometry.height - 1, Math.round(this.geometry.height * input.y)));
+            const x = this.geometry.x + localX;
+            const y = this.geometry.y + localY;
+            // Move through XTest using root coordinates derived from the exact target window. This avoids
+            // reparenting/window-decoration differences in --window-relative pointer semantics while
+            // keeping the point strictly inside the already-resolved browser window.
+            await runCommand(this.xdotool, ["mousemove", "--sync", String(x), String(y)], this.display);
             await runCommand(this.xdotool, ["click", "1"], this.display);
             process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
             return;

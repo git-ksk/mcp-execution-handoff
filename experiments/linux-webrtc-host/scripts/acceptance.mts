@@ -105,7 +105,7 @@ async function main(): Promise<void> {
       res.end("<!doctype html><html><body>submitted</body></html>");
       return;
     }
-    res.end(`<!doctype html><html><body style="margin:0"><button onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button></body></html>`);
+    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button></body></html>`);
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -165,6 +165,14 @@ async function main(): Promise<void> {
       const result = spawnSync("/usr/bin/xdotool", ["search", "--onlyvisible", "--pid", String(chrome!.pid)], { env: xEnv, encoding: "utf8" });
       return result.status === 0 && result.stdout.trim().split(/\s+/).filter(Boolean).length === 1;
     }, 30_000);
+    const windowIds = spawnSync("/usr/bin/xdotool", ["search", "--onlyvisible", "--pid", String(chrome.pid)], { env: xEnv, encoding: "utf8" })
+      .stdout.trim().split(/\s+/).filter(Boolean);
+    assert.equal(windowIds.length, 1);
+    await waitFor("acceptance-page-title", () => {
+      const title = spawnSync("/usr/bin/xdotool", ["getwindowname", windowIds[0]!], { env: xEnv, encoding: "utf8" });
+      return title.status === 0 && title.stdout.includes("Handoff Linux Acceptance");
+    }, 20_000);
+    process.stdout.write("LINUX_WEBRTC_STAGE page-ready\n");
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
 
