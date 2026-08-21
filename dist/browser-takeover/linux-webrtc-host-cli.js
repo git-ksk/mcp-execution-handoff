@@ -176,6 +176,24 @@ class LatestFrameWriter {
             this.submit(latest);
     }
 }
+async function terminateChild(child, timeoutMs = 300) {
+    if (child.exitCode !== null || child.signalCode !== null)
+        return;
+    const firstExit = once(child, "exit").then(() => true, () => true);
+    child.kill("SIGTERM");
+    const exited = await Promise.race([
+        firstExit,
+        new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))
+    ]);
+    if (exited || child.exitCode !== null || child.signalCode !== null)
+        return;
+    const finalExit = once(child, "exit").then(() => undefined, () => undefined);
+    child.kill("SIGKILL");
+    await Promise.race([
+        finalExit,
+        new Promise((resolve) => setTimeout(resolve, timeoutMs))
+    ]);
+}
 function boundedEnvironment(display) {
     return { DISPLAY: display, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
 }
@@ -312,8 +330,7 @@ class LinuxWindowInput {
             await new Promise((resolve) => setTimeout(resolve, 150));
         }
         finally {
-            if (owner.exitCode === null)
-                owner.kill("SIGTERM");
+            await terminateChild(owner);
             await this.clearClipboard();
         }
     }
@@ -326,8 +343,7 @@ class LinuxWindowInput {
         clear.stdin.on("error", () => undefined);
         clear.stdin.end(Buffer.alloc(0));
         await new Promise((resolve) => setTimeout(resolve, 35));
-        if (clear.exitCode === null)
-            clear.kill("SIGTERM");
+        await terminateChild(clear);
     }
 }
 function classifyFfmpegFailure(stderr) {

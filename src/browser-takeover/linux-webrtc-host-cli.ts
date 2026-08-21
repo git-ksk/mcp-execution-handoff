@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process";
 import { once } from "node:events";
 import type { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
@@ -195,6 +195,24 @@ class LatestFrameWriter {
   }
 }
 
+
+async function terminateChild(child: ChildProcess, timeoutMs = 300): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const firstExit = once(child, "exit").then(() => true, () => true);
+  child.kill("SIGTERM");
+  const exited = await Promise.race([
+    firstExit,
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs))
+  ]);
+  if (exited || child.exitCode !== null || child.signalCode !== null) return;
+  const finalExit = once(child, "exit").then(() => undefined, () => undefined);
+  child.kill("SIGKILL");
+  await Promise.race([
+    finalExit,
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))
+  ]);
+}
+
 function boundedEnvironment(display: string): NodeJS.ProcessEnv {
   return { DISPLAY: display, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
 }
@@ -326,7 +344,7 @@ class LinuxWindowInput {
       // silently drop ownership before Chromium asks for the actual text.
       await new Promise((resolve) => setTimeout(resolve, 150));
     } finally {
-      if (owner.exitCode === null) owner.kill("SIGTERM");
+      await terminateChild(owner);
       await this.clearClipboard();
     }
   }
@@ -340,7 +358,7 @@ class LinuxWindowInput {
     clear.stdin.on("error", () => undefined);
     clear.stdin.end(Buffer.alloc(0));
     await new Promise((resolve) => setTimeout(resolve, 35));
-    if (clear.exitCode === null) clear.kill("SIGTERM");
+    await terminateChild(clear);
   }
 }
 

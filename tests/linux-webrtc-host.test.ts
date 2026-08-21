@@ -78,6 +78,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /owner\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
   assert.match(host, /\["-selection", "clipboard", "-in", "-quiet"\]/);
   assert.doesNotMatch(host, /"-loops", "1"/);
+  assert.match(host, /await terminateChild\(owner\)/);
+  assert.match(host, /await terminateChild\(clear\)/);
   assert.match(host, /\["key", "--clearmodifiers", "ctrl\+v"\]/);
   assert.match(host, /\["key", "--clearmodifiers", key\]/);
   assert.doesNotMatch(host, /\["key", "--window"/);
