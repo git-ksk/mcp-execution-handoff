@@ -164,7 +164,7 @@ async function main(): Promise<void> {
       if (chrome?.exitCode !== null) throw new Error(`normal Chrome exited before window readiness: ${chromeError.slice(0, 500)}`);
       const result = spawnSync("/usr/bin/xdotool", ["search", "--onlyvisible", "--pid", String(chrome!.pid)], { env: xEnv, encoding: "utf8" });
       return result.status === 0 && result.stdout.trim().split(/\s+/).filter(Boolean).length === 1;
-    });
+    }, 30_000);
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
 
