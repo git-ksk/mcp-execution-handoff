@@ -311,7 +311,7 @@ class LinuxWindowInput {
   }
 
   private async pasteText(text: string): Promise<void> {
-    const owner = spawn(this.xclip, ["-selection", "clipboard", "-in", "-loops", "1"], {
+    const owner = spawn(this.xclip, ["-selection", "clipboard", "-in", "-quiet"], {
       env: boundedEnvironment(this.display),
       stdio: ["pipe", "ignore", "ignore"]
     });
@@ -321,7 +321,10 @@ class LinuxWindowInput {
     await new Promise((resolve) => setTimeout(resolve, 35));
     try {
       await runCommand(this.xdotool, ["key", "--clearmodifiers", "ctrl+v"], this.display);
-      await Promise.race([once(owner, "exit").catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 250))]);
+      // Keep the foreground selection owner alive long enough for Chromium to request the
+      // clipboard payload. `-loops 1` can be consumed by a non-paste TARGETS request and
+      // silently drop ownership before Chromium asks for the actual text.
+      await new Promise((resolve) => setTimeout(resolve, 150));
     } finally {
       if (owner.exitCode === null) owner.kill("SIGTERM");
       await this.clearClipboard();
@@ -329,7 +332,7 @@ class LinuxWindowInput {
   }
 
   private async clearClipboard(): Promise<void> {
-    const clear = spawn(this.xclip, ["-selection", "clipboard", "-in"], {
+    const clear = spawn(this.xclip, ["-selection", "clipboard", "-in", "-quiet"], {
       env: boundedEnvironment(this.display),
       stdio: ["pipe", "ignore", "ignore"]
     });
