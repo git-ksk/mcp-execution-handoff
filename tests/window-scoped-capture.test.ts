@@ -40,6 +40,12 @@ test("browser WebRTC host uses the same target-PID window-only capture and input
   assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
   assert.match(host, /private let targetProcessID: pid_t\?/);
   assert.match(host, /event\.postToPid\(targetProcessID\)/);
+  assert.match(host, /guard activateTargetWindowForInput\(\) else \{ return \}/);
+  assert.match(host, /NSRunningApplication\(processIdentifier: targetProcessID\)/);
+  assert.match(host, /kAXWindowsAttribute/);
+  assert.match(host, /abs\(frame\.minX - inputBounds\.minX\) <= 2/);
+  assert.match(host, /AXUIElementPerformAction\(window, kAXRaiseAction as CFString\)/);
+  assert.match(host, /application\.activate\(options: \[\]\)/);
   assert.match(host, /HumanInputInjector\(inputBounds: surface\.inputBounds, targetProcessID: targetProcessID, writer: writer\)/);
 });
 

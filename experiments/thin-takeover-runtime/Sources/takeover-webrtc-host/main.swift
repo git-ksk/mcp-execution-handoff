@@ -2,6 +2,7 @@ import Foundation
 import TakeoverCore
 
 #if os(macOS)
+import AppKit
 import ApplicationServices
 import CoreGraphics
 import Darwin
@@ -425,6 +426,7 @@ private final class HumanInputInjector: @unchecked Sendable {
 
     func apply(_ object: [String: Any]) {
         guard let kind = object["kind"] as? String else { return }
+        guard activateTargetWindowForInput() else { return }
         switch kind {
         case "tap":
             guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return }
@@ -466,6 +468,47 @@ private final class HumanInputInjector: @unchecked Sendable {
         } else {
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    private func activateTargetWindowForInput() -> Bool {
+        guard let targetProcessID else { return true }
+        guard let application = NSRunningApplication(processIdentifier: targetProcessID) else { return false }
+        let appElement = AXUIElementCreateApplication(targetProcessID)
+        var windowsRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
+              let windows = windowsRaw as? [AXUIElement] else { return false }
+        let matches = windows.filter { window in
+            guard let frame = axFrame(window) else { return false }
+            return abs(frame.minX - inputBounds.minX) <= 2
+                && abs(frame.minY - inputBounds.minY) <= 2
+                && abs(frame.width - inputBounds.width) <= 2
+                && abs(frame.height - inputBounds.height) <= 2
+        }
+        guard matches.count == 1, let window = matches.first else { return false }
+        guard AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else { return false }
+        _ = application.activate(options: [])
+        for attempt in 0..<5 {
+            if application.isActive { return true }
+            if attempt < 4 { usleep(20_000) }
+        }
+        return application.isActive
+    }
+
+    private func axFrame(_ element: AXUIElement) -> CGRect? {
+        var positionRaw: CFTypeRef?
+        var sizeRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionRaw) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRaw) == .success,
+              let positionRaw, let sizeRaw,
+              CFGetTypeID(positionRaw) == AXValueGetTypeID(),
+              CFGetTypeID(sizeRaw) == AXValueGetTypeID() else { return nil }
+        let positionValue = unsafeDowncast(positionRaw, to: AXValue.self)
+        let sizeValue = unsafeDowncast(sizeRaw, to: AXValue.self)
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(positionValue, .cgPoint, &point),
+              AXValueGetValue(sizeValue, .cgSize, &size) else { return nil }
+        return CGRect(origin: point, size: size)
     }
 
     private func number(_ value: Any?) -> Double? { (value as? NSNumber)?.doubleValue }

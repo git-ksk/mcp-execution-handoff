@@ -286,6 +286,16 @@ The project optimizes for **freshness under bounded loss**:
 
 ### WebRTC Safari physical acceptance
 
+The canonical same-LAN physical acceptance harness is committed at `scripts/webrtc-lan-acceptance.mts`. Run it from the repository root with:
+
+```bash
+npm run accept:webrtc:lan
+```
+
+The command rebuilds the release `takeover-webrtc-host` first, starts a disposable normal Chrome window backed by a loopback-only target page, and exposes only the Handoff broker on the selected private LAN address. It intentionally refuses to start if Cloudflare TURN credentials are present so this baseline remains an unambiguous direct-path check. Fresh locator creation, diagnostics, revoke, and lifecycle controls stay loopback-only (`/__new`, `/__diag`, `/__revoke`, `/__lifecycle`). This harness is the regression baseline; do not replace it with ad-hoc `--app=file://...` targets for Safari input acceptance.
+
+When a target process is bound, the macOS WebRTC host now raises the unique AX window whose frame matches the captured `inputBounds` and activates that application before accepting each Human input. If the target window cannot be resolved uniquely or activated, the input fails closed. This keeps window-scoped capture and Human input on the same target even when another Mac application was frontmost before the remote action.
+
 The browser transport is implementation-complete enough for physical acceptance, but the following must still be verified on a real iPhone Safari against the Mac host:
 
 1. open the short-lived locator directly in Safari;
