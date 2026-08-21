@@ -278,7 +278,7 @@ class LinuxWindowInput {
         }
         if (input.kind === "key") {
             const key = input.key === "Backspace" ? "BackSpace" : "Return";
-            await runCommand(this.xdotool, ["key", "--window", String(this.geometry.windowId), "--clearmodifiers", key], this.display);
+            await runCommand(this.xdotool, ["key", "--clearmodifiers", key], this.display);
             return;
         }
         await this.pasteText(input.text);
@@ -300,7 +300,7 @@ class LinuxWindowInput {
         owner.stdin.end(Buffer.from(text, "utf8"));
         await new Promise((resolve) => setTimeout(resolve, 35));
         try {
-            await runCommand(this.xdotool, ["key", "--window", String(this.geometry.windowId), "--clearmodifiers", "ctrl+v"], this.display);
+            await runCommand(this.xdotool, ["key", "--clearmodifiers", "ctrl+v"], this.display);
             await Promise.race([once(owner, "exit").catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 250))]);
         }
         finally {
