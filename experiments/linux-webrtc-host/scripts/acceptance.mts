@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     res.setHeader("content-type", "text/html; charset=utf-8");
     if (url.pathname === "/form") {
       formOpened = true;
-      res.end(`<!doctype html><html><body style="margin:0;font-family:sans-serif"><form action="/submitted" method="get"><input name="value" autofocus autocomplete="off" style="position:fixed;left:15%;top:30%;width:70%;height:70px;font-size:24px"><button type="submit" style="position:fixed;left:35%;top:55%;width:30%;height:70px">Submit</button></form></body></html>`);
+      res.end(`<!doctype html><html><body style="margin:0;font-family:sans-serif"><form action="/submitted" method="get"><input name="value" autocomplete="off" style="position:fixed;inset:0;width:100%;height:100%;box-sizing:border-box;font-size:32px"></form></body></html>`);
       return;
     }
     if (url.pathname === "/submitted") {
@@ -225,15 +225,20 @@ async function main(): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
 
+    critical.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
+    process.stdout.write("LINUX_WEBRTC_STAGE tap-input\n");
+    await waitFor("tap-input", () => inputUses >= 2 && endedUses >= 2);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
     const marker = `handoff-linux-${process.pid}-dummy`;
     critical.send(JSON.stringify({ kind: "text", text: marker }));
     process.stdout.write("LINUX_WEBRTC_STAGE text-input\n");
-    await waitFor("text-input", () => inputUses >= 2 && endedUses >= 2);
+    await waitFor("text-input", () => inputUses >= 3 && endedUses >= 3);
     await new Promise((resolve) => setTimeout(resolve, 400));
     assert.equal(await markerInAnyProcess(marker), false, "Human text leaked into a process command line");
     critical.send(JSON.stringify({ kind: "key", key: "Enter" }));
     process.stdout.write("LINUX_WEBRTC_STAGE enter-submit\n");
-    await waitFor("enter-submit", () => inputUses >= 3 && endedUses >= 3 && submitted === marker);
+    await waitFor("enter-submit", () => inputUses >= 4 && endedUses >= 4 && submitted === marker);
 
     const clipboard = spawnSync("/usr/bin/xclip", ["-selection", "clipboard", "-o"], {
       env: xEnv,
