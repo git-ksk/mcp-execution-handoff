@@ -205,6 +205,7 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(html, /webkit-playsinline/);
   assert.match(html, /opacity:0/);
   assert.match(html, />Done<\/button>/);
+  assert.match(html, /id="keyboard-open"/);
   assert.match(html, /\/takeover\/webrtc-client\.js/);
   assert.doesNotMatch(html, />.*Scroll.*<\/button>/i);
   assert.doesNotMatch(html, />Tab<\/button>/i);
@@ -258,6 +259,9 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /pointIsEditable/);
   assert.match(script, /performance\.now\(\)-editableRegionsAt>1000/);
   assert.match(script, /if\(g\.editable\)/);
+  assert.match(script, /armKeyboardFallback/);
+  assert.match(script, /keyboardOpen\.style\.display='block'/);
+  assert.match(script, /keyboardOpen\.addEventListener\('click'/);
   assert.doesNotMatch(script, /probeEditable|phase==='probe'/);
   assert.match(script, /reportInputAck/);
   assert.doesNotMatch(script, /frameAgeMs|captureToReceiveMs/);

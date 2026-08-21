@@ -18,7 +18,18 @@ const ALL_STAGES = new Set([
     "server.answer.ready",
     "broker.connect.success",
     "broker.connect.failure",
-    "server.peer.state"
+    "server.peer.state",
+    "host.window.ready",
+    "host.capture.started",
+    "host.frame.ready",
+    "host.input.focus.ready",
+    "host.input.tap.sent",
+    "host.input.failure",
+    "host.capture.failure",
+    "host.capture.failure.x11",
+    "host.capture.failure.encoder",
+    "host.capture.failure.option",
+    "host.capture.failure.other"
 ]);
 /**
  * Bounded process-memory-only WebRTC setup diagnostics.
@@ -88,7 +99,18 @@ function normalizeWebRtcDiagnosticEvent(event) {
         "server.answer.ready": ["stage", "candidateCounts", "durationMs"],
         "broker.connect.success": ["stage", "durationMs"],
         "broker.connect.failure": ["stage", "durationMs"],
-        "server.peer.state": ["stage", "state"]
+        "server.peer.state": ["stage", "state"],
+        "host.window.ready": ["stage"],
+        "host.capture.started": ["stage"],
+        "host.frame.ready": ["stage"],
+        "host.input.focus.ready": ["stage"],
+        "host.input.tap.sent": ["stage"],
+        "host.input.failure": ["stage"],
+        "host.capture.failure": ["stage"],
+        "host.capture.failure.x11": ["stage"],
+        "host.capture.failure.encoder": ["stage"],
+        "host.capture.failure.option": ["stage"],
+        "host.capture.failure.other": ["stage"]
     };
     const eventRecord = event;
     if (Object.keys(eventRecord).some((key) => !allowedByStage[event.stage].includes(key)))
