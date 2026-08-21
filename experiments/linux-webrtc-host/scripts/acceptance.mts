@@ -269,7 +269,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
+main().then(() => {
+  // All browser/WebRTC/helper cleanup is awaited above. Werift may keep an internal timer handle
+  // alive after peer.close(); do not let that third-party timer turn a completed acceptance into
+  // an indefinitely running CI job.
+  process.exit(0);
+}).catch((error) => {
   process.stderr.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_FAIL ${error instanceof Error ? error.message : "unknown"}\n`);
   process.exit(1);
 });
