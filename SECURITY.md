@@ -16,12 +16,13 @@ Reports are especially useful for:
 - one-client lease bypass, implicit reload/tab/device transfer, reconnect-handle replay/theft, or stale client-generation acceptance,
 - CSP / origin / cache / referrer boundary regressions,
 - any path where Human completion is interpreted as approval for a different consequential action,
-- external Human session overlap with restored Agent/automation authority, cross-principal/epoch reuse, or sensitive provider metadata retention.
+- external Human session overlap with restored Agent/automation authority, cross-principal/epoch reuse, or sensitive provider metadata retention,
+- credential-safe Human input being routed through an automation-managed browser instead of the required normal-browser boundary, exact-window scope widening, or Human text appearing in argv/clipboard after completion,
 - WebRTC stale-generation revival, implicit background/foreground reconnect, legacy frame/input fallback, transport data leaking into logs/durable control-plane state, or unreviewed STUN/TURN trust-boundary changes.
 
 ## Non-goals that must remain non-goals
 
-Do not add or report a missing feature for CAPTCHA/challenge solving, anti-bot bypass, stealth/fingerprint spoofing, proxy rotation, credential/OTP/MFA/payment-data transport through MCP, raw CDP exposure, arbitrary browser automation, or automatic replay/approval of consequential actions. Credential-safe external Human surfaces exist to leave an automation-incompatible credential surface, not to disguise automation as a supported login environment.
+Do not add or report a missing feature for CAPTCHA/challenge solving, anti-bot bypass, stealth/fingerprint spoofing, proxy rotation, credential/OTP/MFA/payment-data transport through MCP, raw CDP exposure, arbitrary browser automation, or automatic replay/approval of consequential actions. Credential-safe external Human surfaces exist to leave an automation-incompatible credential surface, not to disguise automation as a supported login environment. For such credential surfaces, changing OS does not relax the rule: stop the automation browser and use the same dedicated profile in a normal browser without remote-debugging/automation authority.
 
 ## Sensitive data
 

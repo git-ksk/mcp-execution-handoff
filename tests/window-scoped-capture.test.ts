@@ -49,9 +49,10 @@ test("browser WebRTC host uses the same target-PID window-only capture and input
   assert.match(host, /HumanInputInjector\(inputBounds: surface\.inputBounds, targetProcessID: targetProcessID, writer: writer\)/);
 });
 
-test("Node runtime passes target PID only through the private macOS helper environment", () => {
+test("Node runtime passes target PID and optional display only through the private helper environment", () => {
   const native = source("src/browser-takeover/native-runtime.ts");
   const webrtc = source("src/browser-takeover/webrtc-runtime.ts");
   assert.match(native, /env\.THIN_TAKEOVER_TARGET_PID = String\(binding\.targetProcessId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_PID = String\(binding\.targetProcessId\)/);
+  assert.match(webrtc, /env\.TAKEOVER_WEBRTC_DISPLAY_NAME = this\.config\.displayName/);
 });

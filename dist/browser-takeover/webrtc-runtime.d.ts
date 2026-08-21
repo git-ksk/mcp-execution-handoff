@@ -48,6 +48,7 @@ export interface SpawnedWebRtcRuntimeProviderConfig {
     hostExecutable: string;
     hostArgs?: string[];
     displayId?: number;
+    displayName?: string;
     spawnProcess?: typeof spawn;
 }
 /**

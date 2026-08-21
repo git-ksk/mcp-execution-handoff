@@ -13,6 +13,9 @@
   },
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md", "README.ja.md", "SECURITY.md", "SECURITY.ja.md", "CONTRIBUTING.md", "CONTRIBUTING.ja.md", "LICENSE"],
+  "bin": {
+    "mcp-handoff-linux-webrtc-host": "./dist/browser-takeover/linux-webrtc-host-cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -20,7 +23,8 @@
     "check": "npm run typecheck && npm test",
     "prepack": "npm run check && npm run build",
     "accept:webrtc:lan": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts",
-    "accept:webrtc:public-relay": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && HANDOFF_ACCEPT_MODE=public-relay tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts"
+    "accept:webrtc:public-relay": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && HANDOFF_ACCEPT_MODE=public-relay tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts",
+    "accept:webrtc:linux": "node --import tsx experiments/linux-webrtc-host/scripts/acceptance.mts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

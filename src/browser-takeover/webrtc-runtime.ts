@@ -159,6 +159,7 @@ export interface SpawnedWebRtcRuntimeProviderConfig {
   hostExecutable: string;
   hostArgs?: string[];
   displayId?: number;
+  displayName?: string;
   spawnProcess?: typeof spawn;
 }
 
@@ -181,6 +182,9 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
   constructor(private readonly config: SpawnedWebRtcRuntimeProviderConfig) {
     if (!config.hostExecutable.trim() || !isAbsolute(config.hostExecutable)) {
       throw new Error("WebRTC host executable must be an absolute path");
+    }
+    if (config.displayName !== undefined && !/^:\d+(?:\.\d+)?$/.test(config.displayName)) {
+      throw new Error("WebRTC Linux display name must be a local X11 display such as :99");
     }
     this.spawnProcess = config.spawnProcess ?? spawn;
     this.#iceCredentialProvider = iceCredentialProviderFromEnvironment(process.env);
@@ -376,6 +380,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS: String(binding.expiresAt)
     };
     if (this.config.displayId !== undefined) env.TAKEOVER_WEBRTC_DISPLAY_ID = String(this.config.displayId);
+    if (this.config.displayName !== undefined) env.TAKEOVER_WEBRTC_DISPLAY_NAME = this.config.displayName;
     if (binding.targetProcessId !== undefined) env.TAKEOVER_WEBRTC_TARGET_PID = String(binding.targetProcessId);
     return this.spawnProcess(this.config.hostExecutable, this.config.hostArgs ?? [], {
       env,

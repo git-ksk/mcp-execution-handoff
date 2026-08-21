@@ -27,3 +27,20 @@ jobs:
         if: matrix.node == 24
         shell: bash
         run: git diff --exit-code -- dist
+
+  linux-normal-browser-webrtc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Install Linux normal-browser takeover dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool xclip openbox ffmpeg
+      - name: Verify runner Chrome
+        run: command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser
+      - run: npm run accept:webrtc:linux
