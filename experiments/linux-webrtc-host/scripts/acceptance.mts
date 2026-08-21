@@ -34,6 +34,14 @@ async function waitForX(displayNumber: number): Promise<void> {
   await waitFor("xvfb-socket", () => exists(socket), 5_000);
 }
 
+
+async function within<T>(label: string, promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Linux WebRTC acceptance timed out at ${label}`)), timeoutMs))
+  ]);
+}
+
 async function stopAndWait(child: ChildProcess | undefined): Promise<void> {
   if (!child || child.exitCode !== null) return;
   child.kill("SIGTERM");
@@ -236,13 +244,21 @@ async function main(): Promise<void> {
     assert.ok(rtpPackets > 0, "no H264 RTP reached the WebRTC peer");
     process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses}\n`);
   } finally {
-    await client.close().catch(() => undefined);
-    await provider.revoke("linux-host-acceptance").catch(() => undefined);
-    await stopAndWait(chrome);
-    await stopAndWait(openbox);
-    await stopAndWait(xvfb);
-    server.close();
+    process.stdout.write("LINUX_WEBRTC_STAGE cleanup-client\n");
+    await within("cleanup-client", client.close().catch(() => undefined));
+    process.stdout.write("LINUX_WEBRTC_STAGE cleanup-provider\n");
+    await within("cleanup-provider", provider.revoke("linux-host-acceptance").catch(() => undefined));
+    process.stdout.write("LINUX_WEBRTC_STAGE cleanup-chrome\n");
+    await within("cleanup-chrome", stopAndWait(chrome));
+    await within("cleanup-openbox", stopAndWait(openbox));
+    await within("cleanup-xvfb", stopAndWait(xvfb));
+    process.stdout.write("LINUX_WEBRTC_STAGE cleanup-server\n");
+    server.closeAllConnections?.();
+    if (server.listening) {
+      await within("cleanup-server", new Promise<void>((resolve) => server.close(() => resolve())));
+    }
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined);
+    process.stdout.write("LINUX_WEBRTC_STAGE cleanup-complete\n");
   }
 }
 
