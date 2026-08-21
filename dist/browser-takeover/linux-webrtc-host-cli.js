@@ -252,11 +252,18 @@ class LinuxWindowInput {
         this.xclip = xclip;
     }
     async apply(input) {
+        // Ask the window manager to activate the exact target first, then confirm X input focus.
+        // This mirrors the macOS host's explicit raise/activate boundary and avoids relying on
+        // pointer movement alone to make Chromium the active input target.
+        await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
         await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
         if (input.kind === "tap") {
             const x = Math.max(0, Math.min(this.geometry.width - 1, Math.round(this.geometry.width * input.x)));
             const y = Math.max(0, Math.min(this.geometry.height - 1, Math.round(this.geometry.height * input.y)));
-            await runCommand(this.xdotool, ["mousemove", "--window", String(this.geometry.windowId), String(x), String(y), "click", "1"], this.display);
+            await runCommand(this.xdotool, ["mousemove", "--sync", "--window", String(this.geometry.windowId), String(x), String(y)], this.display);
+            await runCommand(this.xdotool, ["click", "--window", String(this.geometry.windowId), "1"], this.display);
+            process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
             return;
         }
         if (input.kind === "scroll") {
@@ -497,7 +504,9 @@ export async function linuxWebRtcHostMain() {
                 capture.requestIDR();
                 continue;
             }
-            inputChain = inputChain.then(() => input.apply(command)).catch(() => undefined);
+            inputChain = inputChain
+                .then(() => input.apply(command))
+                .catch(() => { process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_failure\n"); });
         }
     });
     process.stdin.once("end", () => { void stopHost(); });

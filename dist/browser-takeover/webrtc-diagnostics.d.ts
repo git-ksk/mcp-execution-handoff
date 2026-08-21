@@ -1,6 +1,6 @@
 export type WebRtcDiagnosticCandidateType = "host" | "srflx" | "prflx" | "relay";
 export type WebRtcDiagnosticPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
-export type WebRtcDiagnosticStage = "broker.prepare.request" | "broker.prepare.success" | "broker.prepare.failure" | "browser.gather.complete" | "browser.peer.state" | "broker.connect.request" | "server.answer.ready" | "broker.connect.success" | "broker.connect.failure" | "server.peer.state" | "host.window.ready" | "host.capture.started" | "host.frame.ready" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other";
+export type WebRtcDiagnosticStage = "broker.prepare.request" | "broker.prepare.success" | "broker.prepare.failure" | "browser.gather.complete" | "browser.peer.state" | "broker.connect.request" | "server.answer.ready" | "broker.connect.success" | "broker.connect.failure" | "server.peer.state" | "host.window.ready" | "host.capture.started" | "host.frame.ready" | "host.input.focus.ready" | "host.input.tap.sent" | "host.input.failure" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other";
 export interface WebRtcDiagnosticCandidateCounts {
     host: number;
     srflx: number;

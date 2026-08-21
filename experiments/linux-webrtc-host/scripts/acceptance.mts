@@ -189,7 +189,12 @@ async function main(): Promise<void> {
 
     critical.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.55 }));
     process.stdout.write("LINUX_WEBRTC_STAGE tap-form\n");
-    await waitFor("tap-form", () => inputUses >= 1 && endedUses >= 1 && formOpened);
+    try {
+      await waitFor("tap-form", () => inputUses >= 1 && endedUses >= 1 && formOpened);
+    } catch (error) {
+      const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
+      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     const marker = `handoff-linux-${process.pid}-dummy`;
