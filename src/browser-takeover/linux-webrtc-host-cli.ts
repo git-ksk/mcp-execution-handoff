@@ -329,6 +329,7 @@ class LinuxCapture {
   private stopping = false;
   private startedAt = performance.now();
   private restartPromise = Promise.resolve();
+  private frameDiagnosticSent = false;
 
   constructor(
     private readonly geometry: LinuxWindowGeometry,
@@ -384,7 +385,12 @@ class LinuxCapture {
     ];
     const child = spawn(this.ffmpeg, args, { env: boundedEnvironment(this.display), stdio: ["ignore", "pipe", "pipe"] });
     this.child = child;
+    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_started\n");
     const parser = new AnnexBAccessUnitParser((units, keyframe) => {
+      if (!this.frameDiagnosticSent) {
+        this.frameDiagnosticSent = true;
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=frame_ready\n");
+      }
       const timestamp = Math.max(0, Math.floor((performance.now() - this.startedAt) * 90)) >>> 0;
       this.writer.submit(frameRecord(avccFromNalUnits(units), timestamp, keyframe, output.width, output.height));
     });
@@ -392,10 +398,16 @@ class LinuxCapture {
     child.stdout.once("end", () => parser.end());
     child.stderr.on("data", () => undefined); // Never forward browser/capture diagnostics northbound.
     child.once("error", () => {
-      if (!this.stopping) this.onFailure();
+      if (!this.stopping) {
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_failure\n");
+        this.onFailure();
+      }
     });
     child.once("exit", (code) => {
-      if (!this.stopping && this.child === child && code !== 0) this.onFailure();
+      if (!this.stopping && this.child === child && code !== 0) {
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_failure\n");
+        this.onFailure();
+      }
     });
   }
 }
@@ -422,6 +434,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   const xclip = absoluteTool("xclip", "TAKEOVER_LINUX_XCLIP");
   const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
   const geometry = await resolveExactWindow(targetPid, display, xdotool);
+  process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
   const input = new LinuxWindowInput(geometry, display, xdotool, xclip);
   let stopped = false;
   let stopHost!: () => Promise<void>;

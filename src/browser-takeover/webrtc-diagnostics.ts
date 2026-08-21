@@ -10,7 +10,11 @@ export type WebRtcDiagnosticStage =
   | "server.answer.ready"
   | "broker.connect.success"
   | "broker.connect.failure"
-  | "server.peer.state";
+  | "server.peer.state"
+  | "host.window.ready"
+  | "host.capture.started"
+  | "host.frame.ready"
+  | "host.capture.failure";
 
 export interface WebRtcDiagnosticCandidateCounts {
   host: number;
@@ -50,7 +54,11 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "server.answer.ready",
   "broker.connect.success",
   "broker.connect.failure",
-  "server.peer.state"
+  "server.peer.state",
+  "host.window.ready",
+  "host.capture.started",
+  "host.frame.ready",
+  "host.capture.failure"
 ]);
 
 /**
@@ -120,7 +128,11 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "server.answer.ready": ["stage", "candidateCounts", "durationMs"],
     "broker.connect.success": ["stage", "durationMs"],
     "broker.connect.failure": ["stage", "durationMs"],
-    "server.peer.state": ["stage", "state"]
+    "server.peer.state": ["stage", "state"],
+    "host.window.ready": ["stage"],
+    "host.capture.started": ["stage"],
+    "host.frame.ready": ["stage"],
+    "host.capture.failure": ["stage"]
   };
   const eventRecord = event as unknown as Record<string, unknown>;
   if (Object.keys(eventRecord).some((key) => !allowedByStage[event.stage].includes(key))) return undefined;

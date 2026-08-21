@@ -433,7 +433,8 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     );
     const metricParser = new HostMetricParser(
       (hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; },
-      (regions) => this.sendEditableRegions(runtime, regions)
+      (regions) => this.sendEditableRegions(runtime, regions),
+      (stage) => this.recordDiagnostic({ stage })
     );
     stdout.on("data", (chunk: Buffer) => parser.push(chunk));
     stdout.once("end", () => parser.end());
@@ -761,7 +762,8 @@ class HostMetricParser {
 
   constructor(
     private readonly onHostEncode: (hostEncodeMs: number) => void,
-    private readonly onEditableRegions: (regions: number[][]) => void
+    private readonly onEditableRegions: (regions: number[][]) => void,
+    private readonly onHostStage: (stage: "host.window.ready" | "host.capture.started" | "host.frame.ready" | "host.capture.failure") => void
   ) {}
 
   push(chunk: Buffer): void {
@@ -777,6 +779,17 @@ class HostMetricParser {
       if (matched) {
         const tenths = Number(matched[1]);
         if (Number.isSafeInteger(tenths) && tenths >= 0 && tenths <= 65_535) this.onHostEncode(tenths / 10);
+        continue;
+      }
+      const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(window_ready|capture_started|frame_ready|capture_failure)$/.exec(line);
+      if (diagnostic) {
+        const stages = {
+          window_ready: "host.window.ready",
+          capture_started: "host.capture.started",
+          frame_ready: "host.frame.ready",
+          capture_failure: "host.capture.failure"
+        } as const;
+        this.onHostStage(stages[diagnostic[1] as keyof typeof stages]);
         continue;
       }
       const regionsLine = /^MCP_HANDOFF_CONTROL editable_regions=(.*)$/.exec(line);

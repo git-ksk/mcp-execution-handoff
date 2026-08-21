@@ -292,7 +292,7 @@ export class SpawnedWebRtcRuntimeProvider {
         if (!stdout || !stderr)
             throw new Error("WebRTC host pipes are unavailable");
         const parser = new HostRecordParser((frame) => this.writeFrame(runtime, frame), (editable) => this.sendEditableFeedback(runtime, editable, "tap"), () => void this.end(runtime.binding.takeoverSessionId, true));
-        const metricParser = new HostMetricParser((hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; }, (regions) => this.sendEditableRegions(runtime, regions));
+        const metricParser = new HostMetricParser((hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; }, (regions) => this.sendEditableRegions(runtime, regions), (stage) => this.recordDiagnostic({ stage }));
         stdout.on("data", (chunk) => parser.push(chunk));
         stdout.once("end", () => parser.end());
         stderr.on("data", (chunk) => metricParser.push(chunk));
@@ -633,10 +633,12 @@ function splitAvcc(sample) {
 class HostMetricParser {
     onHostEncode;
     onEditableRegions;
+    onHostStage;
     text = "";
-    constructor(onHostEncode, onEditableRegions) {
+    constructor(onHostEncode, onEditableRegions, onHostStage) {
         this.onHostEncode = onHostEncode;
         this.onEditableRegions = onEditableRegions;
+        this.onHostStage = onHostStage;
     }
     push(chunk) {
         if (chunk.length === 0)
@@ -655,6 +657,17 @@ class HostMetricParser {
                 const tenths = Number(matched[1]);
                 if (Number.isSafeInteger(tenths) && tenths >= 0 && tenths <= 65_535)
                     this.onHostEncode(tenths / 10);
+                continue;
+            }
+            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(window_ready|capture_started|frame_ready|capture_failure)$/.exec(line);
+            if (diagnostic) {
+                const stages = {
+                    window_ready: "host.window.ready",
+                    capture_started: "host.capture.started",
+                    frame_ready: "host.frame.ready",
+                    capture_failure: "host.capture.failure"
+                };
+                this.onHostStage(stages[diagnostic[1]]);
                 continue;
             }
             const regionsLine = /^MCP_HANDOFF_CONTROL editable_regions=(.*)$/.exec(line);

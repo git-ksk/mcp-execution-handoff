@@ -180,7 +180,12 @@ async function main(): Promise<void> {
     await client.setRemoteDescription(answer);
     await waitFor("webrtc-connected", () => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
     process.stdout.write("LINUX_WEBRTC_STAGE rtp\n");
-    await waitFor("rtp", () => rtpPackets > 0);
+    try {
+      await waitFor("rtp", () => rtpPackets > 0);
+    } catch (error) {
+      const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
+      throw new Error(`${error instanceof Error ? error.message : "RTP timeout"}; diagnostics=${stages}`);
+    }
 
     critical.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.55 }));
     process.stdout.write("LINUX_WEBRTC_STAGE tap-form\n");

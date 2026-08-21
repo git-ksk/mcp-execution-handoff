@@ -18,7 +18,11 @@ const ALL_STAGES = new Set([
     "server.answer.ready",
     "broker.connect.success",
     "broker.connect.failure",
-    "server.peer.state"
+    "server.peer.state",
+    "host.window.ready",
+    "host.capture.started",
+    "host.frame.ready",
+    "host.capture.failure"
 ]);
 /**
  * Bounded process-memory-only WebRTC setup diagnostics.
@@ -88,7 +92,11 @@ function normalizeWebRtcDiagnosticEvent(event) {
         "server.answer.ready": ["stage", "candidateCounts", "durationMs"],
         "broker.connect.success": ["stage", "durationMs"],
         "broker.connect.failure": ["stage", "durationMs"],
-        "server.peer.state": ["stage", "state"]
+        "server.peer.state": ["stage", "state"],
+        "host.window.ready": ["stage"],
+        "host.capture.started": ["stage"],
+        "host.frame.ready": ["stage"],
+        "host.capture.failure": ["stage"]
     };
     const eventRecord = event;
     if (Object.keys(eventRecord).some((key) => !allowedByStage[event.stage].includes(key)))
