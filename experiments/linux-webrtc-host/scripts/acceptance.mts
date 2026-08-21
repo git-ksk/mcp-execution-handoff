@@ -98,6 +98,7 @@ async function main(): Promise<void> {
   ]));
 
   let formOpened = false;
+  let typedLength = 0;
   let submitted: string | undefined;
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -105,7 +106,13 @@ async function main(): Promise<void> {
     res.setHeader("content-type", "text/html; charset=utf-8");
     if (url.pathname === "/form") {
       formOpened = true;
-      res.end(`<!doctype html><html><body style="margin:0;font-family:sans-serif"><form action="/submitted" method="get"><input name="value" autocomplete="off" style="position:fixed;inset:0;width:100%;height:100%;box-sizing:border-box;font-size:32px"></form></body></html>`);
+      res.end(`<!doctype html><html><body style="margin:0;font-family:sans-serif"><form action="/submitted" method="get"><input id="field" name="value" autocomplete="off" style="position:fixed;inset:0;width:100%;height:100%;box-sizing:border-box;font-size:32px"></form><script>const f=document.getElementById('field');f.addEventListener('input',()=>fetch('/typed?length='+encodeURIComponent(String(f.value.length)),{cache:'no-store'}).catch(()=>{}));</script></body></html>`);
+      return;
+    }
+    if (url.pathname === "/typed") {
+      const length = Number(url.searchParams.get("length"));
+      if (Number.isSafeInteger(length) && length >= 0 && length <= 4_096) typedLength = length;
+      res.end("ok");
       return;
     }
     if (url.pathname === "/submitted") {
@@ -234,7 +241,8 @@ async function main(): Promise<void> {
     critical.send(JSON.stringify({ kind: "text", text: marker }));
     process.stdout.write("LINUX_WEBRTC_STAGE text-input\n");
     await waitFor("text-input", () => inputUses >= 3 && endedUses >= 3);
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await waitFor("text-field-value", () => typedLength === marker.length);
+    process.stdout.write("LINUX_WEBRTC_STAGE text-field-value\n");
     assert.equal(await markerInAnyProcess(marker), false, "Human text leaked into a process command line");
     critical.send(JSON.stringify({ kind: "key", key: "Enter" }));
     process.stdout.write("LINUX_WEBRTC_STAGE enter-submit\n");

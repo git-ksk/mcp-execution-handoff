@@ -256,7 +256,12 @@ class LinuxWindowInput {
         // This mirrors the macOS host's explicit raise/activate boundary and avoids relying on
         // pointer movement alone to make Chromium the active input target.
         await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
-        await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+        // Pointer operations may establish browser focus. Text/key operations must preserve the
+        // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
+        // the top-level X11 window here can steal that internal focus before paste/Enter.
+        if (input.kind === "tap" || input.kind === "scroll") {
+            await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+        }
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
         if (input.kind === "tap") {
             const localX = Math.max(0, Math.min(this.geometry.width - 1, Math.round(this.geometry.width * input.x)));

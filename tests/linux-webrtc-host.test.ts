@@ -66,6 +66,7 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /candidates\.length === 1/);
   assert.match(host, /-window_id/);
   assert.match(host, /windowactivate/);
+  assert.match(host, /input\.kind === "tap" \|\| input\.kind === "scroll"/);
   assert.match(host, /windowfocus/);
   assert.match(host, /this\.geometry\.x \+ localX/);
   assert.match(host, /this\.geometry\.y \+ localY/);
