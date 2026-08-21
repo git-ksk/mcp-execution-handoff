@@ -4,7 +4,9 @@
   "private": true,
   "description": "Security-oriented execution handoff primitives for MCP workflows that require explicit human intervention.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "exports": {
     ".": "./dist/index.js",
     "./core": "./dist/core/index.js",
@@ -12,9 +14,19 @@
     "./browser-takeover": "./dist/browser-takeover/index.js"
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist", "README.md", "README.ja.md", "SECURITY.md", "SECURITY.ja.md", "CONTRIBUTING.md", "CONTRIBUTING.ja.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "README.ja.md",
+    "SECURITY.md",
+    "SECURITY.ja.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTING.ja.md",
+    "LICENSE"
+  ],
   "bin": {
-    "mcp-handoff-linux-webrtc-host": "./dist/browser-takeover/linux-webrtc-host-cli.js"
+    "mcp-handoff-linux-webrtc-host": "./dist/browser-takeover/linux-webrtc-host-cli.js",
+    "handoff-linux-webrtc-host": "dist/browser-takeover/linux-webrtc-host-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -35,9 +47,19 @@
     "tsx": "4.23.12",
     "typescript": "7.0.2"
   },
-  "keywords": ["mcp", "execution-handoff", "human-in-the-loop", "browser-takeover"],
-  "repository": { "type": "git", "url": "git+https://github.com/git-ksk/mcp-execution-handoff.git" },
+  "keywords": [
+    "mcp",
+    "execution-handoff",
+    "human-in-the-loop",
+    "browser-takeover"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git-ksk/mcp-execution-handoff.git"
+  },
   "homepage": "https://github.com/git-ksk/mcp-execution-handoff#readme",
-  "bugs": { "url": "https://github.com/git-ksk/mcp-execution-handoff/issues" },
+  "bugs": {
+    "url": "https://github.com/git-ksk/mcp-execution-handoff/issues"
+  },
   "license": "MIT"
 }
