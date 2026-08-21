@@ -69,6 +69,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /owner\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
   assert.match(host, /"ctrl\+v"/);
   assert.match(host, /clearClipboard/);
+  assert.match(host, /if \(this\.child === current\) this\.child = undefined;[\s\S]*current\.kill\("SIGTERM"\)/);
+  assert.match(host, /if \(!this\.stopping && this\.child === child && code !== 0\)/);
   assert.doesNotMatch(host, /\["type"[^\]]*text/);
   assert.doesNotMatch(host, /shell:\s*true/);
   assert.doesNotMatch(host, /console\.(?:log|error)[^\n]*text/);

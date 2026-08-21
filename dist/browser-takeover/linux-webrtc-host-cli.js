@@ -348,6 +348,10 @@ class LinuxCapture {
         this.restartPromise = this.restartPromise.then(async () => {
             const current = this.child;
             if (current && current.exitCode === null) {
+                // Fence this encoder generation before intentionally terminating it. The exit listener
+                // treats only the currently-owned encoder as an unexpected capture failure.
+                if (this.child === current)
+                    this.child = undefined;
                 current.kill("SIGTERM");
                 await Promise.race([once(current, "exit").catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 300))]);
                 if (current.exitCode === null)
