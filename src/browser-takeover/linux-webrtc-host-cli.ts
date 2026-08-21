@@ -276,7 +276,9 @@ class LinuxWindowInput {
       const x = Math.max(0, Math.min(this.geometry.width - 1, Math.round(this.geometry.width * input.x!)));
       const y = Math.max(0, Math.min(this.geometry.height - 1, Math.round(this.geometry.height * input.y!)));
       await runCommand(this.xdotool, ["mousemove", "--sync", "--window", String(this.geometry.windowId), String(x), String(y)], this.display);
-      await runCommand(this.xdotool, ["click", "--window", String(this.geometry.windowId), "1"], this.display);
+      // Use XTest at the already-verified pointer location. Chromium may ignore direct
+      // XSendEvent-style --window clicks even when xdotool reports success.
+      await runCommand(this.xdotool, ["click", "1"], this.display);
       process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
       return;
     }

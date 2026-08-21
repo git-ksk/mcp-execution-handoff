@@ -68,7 +68,7 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /windowactivate/);
   assert.match(host, /windowfocus/);
   assert.match(host, /mousemove", "--sync", "--window"/);
-  assert.match(host, /"click", "--window"/);
+  assert.match(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
   assert.match(host, /linux_stage=input_focus_ready/);
   assert.match(host, /linux_stage=input_tap_sent/);
   assert.match(host, /linux_stage=input_failure/);
