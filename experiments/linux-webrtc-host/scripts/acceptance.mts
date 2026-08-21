@@ -20,18 +20,18 @@ async function firstExecutable(values: string[]): Promise<string> {
   throw new Error(`required executable not found: ${values.join(", ")}`);
 }
 
-async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 12_000): Promise<void> {
+async function waitFor(label: string, predicate: () => boolean | Promise<boolean>, timeoutMs = 12_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error("Linux WebRTC acceptance timed out");
+  throw new Error(`Linux WebRTC acceptance timed out at ${label}`);
 }
 
 async function waitForX(displayNumber: number): Promise<void> {
   const socket = `/tmp/.X11-unix/X${displayNumber}`;
-  await waitFor(() => exists(socket), 5_000);
+  await waitFor("xvfb-socket", () => exists(socket), 5_000);
 }
 
 function stop(child: ChildProcess | undefined): void {
@@ -147,7 +147,8 @@ async function main(): Promise<void> {
     chrome.once("error", () => undefined);
     assert.ok(chrome.pid);
 
-    await waitFor(async () => {
+    process.stdout.write("LINUX_WEBRTC_STAGE chrome-window\n");
+    await waitFor("chrome-window", async () => {
       if (chrome?.exitCode !== null) throw new Error(`normal Chrome exited before window readiness: ${chromeError.slice(0, 500)}`);
       const result = spawnSync("/usr/bin/xdotool", ["search", "--onlyvisible", "--pid", String(chrome!.pid)], { env: xEnv, encoding: "utf8" });
       return result.status === 0 && result.stdout.trim().split(/\s+/).filter(Boolean).length === 1;
@@ -165,29 +166,36 @@ async function main(): Promise<void> {
       expiresAt: Date.now() + 60_000,
       targetProcessId: chrome.pid
     };
+    process.stdout.write("LINUX_WEBRTC_STAGE provider-prepare\n");
     await provider.prepare(binding);
     const offer = await client.createOffer();
     await client.setLocalDescription(offer);
     assert.ok(client.localDescription?.sdp);
+    process.stdout.write("LINUX_WEBRTC_STAGE provider-start\n");
     const answer = await provider.start(binding, { type: "offer", sdp: client.localDescription.sdp }, {
       beginInput() { inputUses += 1; return () => { endedUses += 1; }; },
       disconnected() { /* acceptance observes explicit teardown below */ }
     });
+    process.stdout.write("LINUX_WEBRTC_STAGE client-remote-description\n");
     await client.setRemoteDescription(answer);
-    await waitFor(() => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
-    await waitFor(() => rtpPackets > 0);
+    await waitFor("webrtc-connected", () => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
+    process.stdout.write("LINUX_WEBRTC_STAGE rtp\n");
+    await waitFor("rtp", () => rtpPackets > 0);
 
     critical.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.55 }));
-    await waitFor(() => inputUses >= 1 && endedUses >= 1 && formOpened);
+    process.stdout.write("LINUX_WEBRTC_STAGE tap-form\n");
+    await waitFor("tap-form", () => inputUses >= 1 && endedUses >= 1 && formOpened);
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     const marker = `handoff-linux-${process.pid}-dummy`;
     critical.send(JSON.stringify({ kind: "text", text: marker }));
-    await waitFor(() => inputUses >= 2 && endedUses >= 2);
+    process.stdout.write("LINUX_WEBRTC_STAGE text-input\n");
+    await waitFor("text-input", () => inputUses >= 2 && endedUses >= 2);
     await new Promise((resolve) => setTimeout(resolve, 400));
     assert.equal(await markerInAnyProcess(marker), false, "Human text leaked into a process command line");
     critical.send(JSON.stringify({ kind: "key", key: "Enter" }));
-    await waitFor(() => inputUses >= 3 && endedUses >= 3 && submitted === marker);
+    process.stdout.write("LINUX_WEBRTC_STAGE enter-submit\n");
+    await waitFor("enter-submit", () => inputUses >= 3 && endedUses >= 3 && submitted === marker);
 
     const clipboard = spawnSync("/usr/bin/xclip", ["-selection", "clipboard", "-o"], {
       env: xEnv,
