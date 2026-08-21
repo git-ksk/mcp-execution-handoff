@@ -21,6 +21,7 @@ interface TakeoverRecord extends TakeoverLocator {
   clientGeneration: number;
   lastSeenAt?: number;
   inFlight: number;
+  released: boolean;
 }
 
 export class TakeoverSessionError extends Error {
@@ -73,7 +74,8 @@ export class TakeoverSessionManager {
       expiresAt: this.now() + this.ttlMs,
       revoked: false,
       clientGeneration: 0,
-      inFlight: 0
+      inFlight: 0,
+      released: false
     };
     this.records.set(record.id, record);
     return this.locator(record);
@@ -92,7 +94,8 @@ export class TakeoverSessionManager {
     if (record.clientBinding === undefined) {
       record.clientBinding = clientBinding;
       record.clientGeneration = 1;
-    } else if (!this.same(record.clientBinding, clientBinding)) {
+      record.released = false;
+    } else if (record.released || !this.same(record.clientBinding, clientBinding)) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
     }
     record.lastSeenAt = this.now();
@@ -112,14 +115,51 @@ export class TakeoverSessionManager {
     if (!record.clientBinding || !record.lastSeenAt || record.clientGeneration < 1) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
     }
-    if (record.inFlight > 0 || this.now() - record.lastSeenAt < this.reconnectIdleMs) {
+    if (record.inFlight > 0 || (!record.released && this.now() - record.lastSeenAt < this.reconnectIdleMs)) {
       throw new TakeoverSessionError("TAKEOVER_CLIENT_ACTIVE", "Takeover client is still active");
     }
     this.assertReconnectHandle(record, reconnectHandle);
     record.clientBinding = nextClientBinding;
     record.clientGeneration += 1;
     record.lastSeenAt = this.now();
+    record.released = false;
     return this.grant(record);
+  }
+
+  releaseClientGeneration(
+    id: string,
+    principalBinding: string,
+    clientBinding: string,
+    clientGeneration: number
+  ): void {
+    const record = this.requireActive(id);
+    this.assertPrincipal(record, principalBinding);
+    this.assertClient(record, clientBinding);
+    if (record.clientGeneration !== clientGeneration) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover generation is stale");
+    }
+    record.released = true;
+  }
+
+  beginBoundUse(
+    id: string,
+    principalBinding: string,
+    clientBinding: string,
+    clientGeneration: number
+  ): Omit<TakeoverGrant, "capability" | "reconnectHandle"> {
+    const record = this.requireActive(id);
+    this.assertPrincipal(record, principalBinding);
+    this.assertClient(record, clientBinding);
+    if (record.released || record.clientGeneration !== clientGeneration) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover generation is stale");
+    }
+    record.inFlight += 1;
+    record.lastSeenAt = this.now();
+    return {
+      ...this.locator(record),
+      clientBinding: record.clientBinding!,
+      clientGeneration: record.clientGeneration
+    };
   }
 
   beginUse(
@@ -167,6 +207,9 @@ export class TakeoverSessionManager {
     const record = this.requireActive(id);
     this.assertPrincipal(record, principalBinding);
     this.assertClient(record, clientBinding);
+    if (record.released) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover generation is stale");
+    }
     const expected = Buffer.from(this.capabilityFor(record), "utf8");
     const supplied = Buffer.from(capability, "utf8");
     if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {

@@ -18,10 +18,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
-    "prepack": "npm run check && npm run build"
+    "prepack": "npm run check && npm run build",
+    "accept:webrtc:lan": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts",
+    "accept:webrtc:public-relay": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && HANDOFF_ACCEPT_MODE=public-relay tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0"
+    "@modelcontextprotocol/server": "2.0.0",
+    "werift": "^0.24.4"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

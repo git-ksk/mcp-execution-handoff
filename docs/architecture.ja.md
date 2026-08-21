@@ -67,6 +67,10 @@ optional brokerはtransport/sessionだけを担当します。public locatorにc
 
 新しいbindingは既存leaseを暗黙reclaimできません。native clientは明示的なclaim/reconnect APIを利用できます。reconnectにはsame authenticated principal、generation-bound reconnect handle、旧leaseがidleであることが必要です。成功時はclient generationをincrementし、capabilityとreconnect handleを両方rotateするため、旧client generationは即時fenceされます。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credential materialは含めません。
 
+WebRTC browser transportではICEをdirect-firstのまま維持し、signaling/data-plane policy全体をHandoffが担当します。Safariはhost candidateのみ、Node/werift peerは明示Cloudflare STUNを使い、dependency内部のdefaultが別third-partyへ暗黙切替されないようにします。TURN設定時もfallback-onlyで、generation範囲内のshort-lived peer credentialを使います。network diagnosticはcandidate type/count・peer state・bounded timingだけを保持し、candidate文字列 / address / SDP / credentialは対象外です。
+
+touch対応SafariではTouch Eventsをgestureのauthoritative streamとし、touch Pointer Eventsの二重送信を抑止します。macOS hostはlogin session内プロセスに適した `CGEventSource(stateID: .combinedSessionState)` を使います。tap/scrollはsession event tap、target-bound keyboard inputは対象PIDが解決できる場合にそのPIDへpostします。これによりconsumer APIを広げず、window-scoped capture/inputとbrowser gesture semanticsを一致させます。
+
 brokerはtakeover可能surfaceを拡張できません。consumer browser adapterが自身のallowlistとcurrent epochで各操作を検証します。
 
 ## Consequential action

@@ -23,3 +23,7 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: Verify committed dist is current
+        if: matrix.node == 24
+        shell: bash
+        run: git diff --exit-code -- dist

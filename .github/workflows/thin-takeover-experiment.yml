@@ -1,0 +1,71 @@
+name: Thin Takeover Experiment
+
+on:
+  pull_request:
+    paths:
+      - "experiments/thin-takeover-runtime/**"
+      - ".github/workflows/thin-takeover-experiment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-arm64:
+    runs-on: macos-26
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: experiments/thin-takeover-runtime
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+      - name: Toolchain
+        run: |
+          uname -a
+          xcodebuild -version
+          swift --version
+      - name: Test portable and native-client core
+        run: swift test
+      - name: Build release package
+        run: swift build -c release
+      - name: Force macOS host compile
+        run: swift build -c release --product takeover-macos-host
+      - name: Force native client library compile
+        run: swift build -c release --product TakeoverNativeClient
+      - name: iOS native client compile smoke
+        run: xcodebuild -scheme TakeoverNativeClient -destination 'generic/platform=iOS' -configuration Release CODE_SIGNING_ALLOWED=NO build
+      - name: iPhone reference app compile smoke
+        run: >-
+          xcodebuild
+          -project ReferenceApps/TakeoverReferenceApp/TakeoverReferenceApp.xcodeproj
+          -scheme TakeoverReferenceApp
+          -destination 'generic/platform=iOS'
+          -configuration Release
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - name: Frame AEAD benchmark 32 KiB
+        run: swift run -c release takeover-crypto-bench 32000 2000
+      - name: Frame AEAD benchmark 128 KiB
+        run: swift run -c release takeover-crypto-bench 131072 1000
+      - name: VideoToolbox 720p encode benchmark
+        run: swift run -c release takeover-vt-bench 1280 720 180 20
+      - name: VideoToolbox 1080p encode benchmark
+        run: swift run -c release takeover-vt-bench 1920 1080 180 20
+      - name: VideoToolbox 720p hardware codec round trip
+        run: swift run -c release takeover-vt-codec-bench 1280 720 120 20
+      - name: VideoToolbox 1080p hardware codec round trip
+        run: swift run -c release takeover-vt-codec-bench 1920 1080 120 20
+      - name: Native secure client 720p pipeline
+        run: swift run -c release takeover-native-client-pipeline-bench 1280 720 60
+      - name: Native secure client 1080p pipeline
+        run: swift run -c release takeover-native-client-pipeline-bench 1920 1080 30
+      - name: Packetization benchmark
+        run: swift run -c release takeover-packet-bench 2000 131072
+      - name: Typical frame loopback
+        run: swift run -c release takeover-loopback 400 32000 1 131072
+      - name: Keyframe constrained-buffer stress
+        run: swift run -c release takeover-loopback 200 131072 16 131072
+      - name: Keyframe one-frame-buffer stress
+        run: swift run -c release takeover-loopback 200 131072 16 262144

@@ -17,6 +17,7 @@ Reports are especially useful for:
 - CSP / origin / cache / referrer boundary regressions,
 - any path where Human completion is interpreted as approval for a different consequential action,
 - external Human session overlap with restored Agent/automation authority, cross-principal/epoch reuse, or sensitive provider metadata retention.
+- WebRTC stale-generation revival, implicit background/foreground reconnect, legacy frame/input fallback, transport data leaking into logs/durable control-plane state, or unreviewed STUN/TURN trust-boundary changes.
 
 ## Non-goals that must remain non-goals
 
@@ -32,7 +33,10 @@ Never commit, log, persist in checkpoints, or place in public issues:
 - CAPTCHA/challenge answers,
 - cookies or browser-profile contents,
 - payment-card or bank data,
-- private endpoints or production credentials.
+- private endpoints or production credentials,
+- raw Human input, framebuffer/video payloads, WebRTC key material, raw ICE candidate strings or network addresses, SDP containing sensitive deployment topology, or reconnect/capability secrets.
+
+The direct-only browser peer does not contact STUN. The Node/werift peer explicitly uses Cloudflare STUN to avoid an implicit dependency default; this can expose server-side network metadata to Cloudflare and is therefore part of the reviewed transport trust boundary. Handoff diagnostics must never retain the resulting raw candidate/address data.
 
 Checkpoint signing keys must be generated and stored outside the repository.
 
