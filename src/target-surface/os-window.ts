@@ -90,8 +90,8 @@ export function normalizedPointInWindow<TId>(
   }
 
   const insideOffset = (extent: number, normalized: number) => {
-    if (normalized < 1) return extent * normalized;
-    return Math.max(0, extent - Math.min(1, extent));
+    const maxInside = Math.max(0, extent - Math.min(1, extent));
+    return Math.min(extent * normalized, maxInside);
   };
 
   return {
