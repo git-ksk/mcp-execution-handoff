@@ -56,7 +56,7 @@ test("OS window primitives map normalized Human input inside the exact target bo
   const geometry = { id: 7, x: 100, y: 200, width: 1000, height: 800 };
   assert.deepEqual(normalizedPointInWindow(geometry, 0, 0), { x: 100, y: 200 });
   assert.deepEqual(normalizedPointInWindow(geometry, 0.5, 0.5), { x: 600, y: 600 });
-  assert.deepEqual(normalizedPointInWindow(geometry, 1, 1), { x: 1100, y: 1000 });
+  assert.deepEqual(normalizedPointInWindow(geometry, 1, 1), { x: 1099, y: 999 });
   assert.throws(() => normalizedPointInWindow(geometry, -0.01, 0.5));
   assert.throws(() => normalizedPointInWindow(geometry, 0.5, 1.01));
 });
