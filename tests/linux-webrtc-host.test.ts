@@ -64,6 +64,9 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /TAKEOVER_WEBRTC_TARGET_PID/);
   assert.match(host, /search", "--onlyvisible", "--pid"/);
   assert.match(host, /candidates\.length === 1/);
+  assert.match(host, /if \(candidates\.length > 1\) observedMultiple = true/);
+  assert.doesNotMatch(host, /if \(candidates\.length > 1\) throw/);
+  assert.match(host, /did not converge to exactly one eligible window/);
   assert.match(host, /-window_id/);
   assert.match(host, /windowactivate/);
   assert.match(host, /input\.kind === "tap" \|\| input\.kind === "scroll"/);

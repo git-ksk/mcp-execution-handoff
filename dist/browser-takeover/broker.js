@@ -380,8 +380,16 @@ export class TakeoverBroker {
                 this.webRtcRuntime.recordDiagnostic({ stage: "broker.connect.success", durationMs: Date.now() - connectStartedAt });
                 return json(200, { webrtc: answer });
             }
-            catch {
+            catch (error) {
                 this.webRtcRuntime.recordDiagnostic({ stage: "broker.connect.failure", durationMs: Date.now() - connectStartedAt });
+                const runtimeCode = error instanceof WebRtcTakeoverRuntimeError ? error.code : "WEBRTC_RUNTIME_UNEXPECTED";
+                const startStage = error instanceof WebRtcTakeoverRuntimeError ? error.startStage : undefined;
+                const startReason = error instanceof WebRtcTakeoverRuntimeError ? error.startReason : undefined;
+                const diagnosticStages = this.webRtcRuntime.diagnosticsSnapshot().events
+                    .slice(-16)
+                    .map((event) => event.stage)
+                    .join(",");
+                console.error(`[mcp-execution-handoff] WebRTC connect failed code=${runtimeCode}${startStage ? ` stage=${startStage}` : ""}${startReason ? ` reason=${startReason}` : ""} diagnostics=${diagnosticStages || "none"}`);
                 try {
                     this.sessions.releaseClientGeneration(id, boundPrincipal, clientBinding, binding.clientGeneration);
                 }
