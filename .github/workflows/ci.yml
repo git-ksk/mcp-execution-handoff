@@ -4,7 +4,7 @@ on:
     branches: [main]
   pull_request:
 permissions:
-  contents: write
+  contents: read
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -23,25 +23,6 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
-      - name: Sync generated dist to this same-repository branch
-        if: matrix.node == 24 && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'refactor/issue-47-host-window-reuse'
-        shell: bash
-        env:
-          TARGET_BRANCH: ${{ github.head_ref }}
-        run: |
-          tmpdir="$(mktemp -d)"
-          cp -R dist "$tmpdir/dist"
-          git fetch origin "$TARGET_BRANCH"
-          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
-          rm -rf dist
-          cp -R "$tmpdir/dist" dist
-          git add -f dist
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "build: sync generated dist"
-            git push origin "HEAD:$TARGET_BRANCH"
-          fi
       - name: Verify committed dist is current
         if: matrix.node == 24
         run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
