@@ -143,19 +143,27 @@ The Native path above remains unchanged. An additional install-free Safari trans
 - WebRTC-only input is broker-generation-gated before entering a bounded local helper pipe;
 - WebRTC browser capture is capped at 1280×720 / 30 fps and uses Constrained Baseline H.264 (`42c01f`) for the initial Safari acceptance path; encoder admission stays at one in-flight frame plus one latest pending encoded frame;
 - server-side implicit third-party STUN remains disabled; when an explicit ICE credential provider is configured, host/direct candidates remain eligible and short-lived STUN/TURN candidates are added for WAN fallback without switching the default policy to relay-only;
-- Cloudflare Realtime TURN is the first supported credential-provider adapter: the long-lived TURN key token stays server-side, while separate short-lived browser/server ICE credentials are issued only after the Handoff client generation is bound and are revoked with that generation;
+- Cloudflare Realtime TURN and self-hosted coturn are optional credential-provider adapters: long-lived provider secrets stay server-side, while separate short-lived browser/server ICE credentials are issued only after the Handoff client generation is bound; Cloudflare credentials are actively revoked, while coturn TURN REST credentials expire at the generation deadline because coturn has no per-credential revoke API;
 - no TURN provider means the existing direct-only `iceServers: []` behavior; credential issuance failure remains direct-only with relay explicitly unavailable rather than silently widening trust.
 
 The macOS helper is built as `takeover-webrtc-host`. It carries only ephemeral framebuffer/H.264 and bounded Human input. It does not receive MCP/model context, and its environment is reduced to expiry plus optional display/target-process selection rather than inheriting the parent process environment. When a consumer supplies a target process, the helper requires exactly one eligible window and crops capture/input to that window; it never broadens an ambiguous target to the desktop.
 
-WAN relay configuration is owned by the Handoff runtime deployment, not by Maps or another consumer. `SpawnedWebRtcRuntimeProvider` recognizes both of the following server-side variables together:
+WAN relay configuration is owned by the Handoff runtime deployment, not by Maps or another consumer. `SpawnedWebRtcRuntimeProvider` accepts exactly zero or one provider family. Cloudflare uses both server-side variables together:
 
 ```text
 MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID
 MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN
 ```
 
-Neither variable is forwarded to the browser or helper. If neither is present, the runtime remains direct-only. Supplying only one is an invalid, fail-closed startup configuration. Production deployment should inject the API token from its normal server-side secret boundary rather than commit it to source or configuration files.
+Self-hosted coturn TURN REST mode uses:
+
+```text
+MCP_HANDOFF_COTURN_SHARED_SECRET
+MCP_HANDOFF_COTURN_TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349?transport=tcp
+MCP_HANDOFF_COTURN_STUN_URLS=stun:turn.example.com:3478   # optional
+```
+
+The coturn server must use `use-auth-secret` with the same high-entropy `static-auth-secret` (or equivalent dynamic secret). Handoff generates `timestamp:random` usernames and base64 HMAC-SHA1 credentials locally; it does not call a credential web API. Provider secrets are never forwarded to the browser or helper. If no provider family is present, the runtime remains direct-only. Partial configuration or simultaneous Cloudflare+coturn configuration is an invalid, fail-closed startup state. Production deployment should inject the Cloudflare API token or coturn shared secret from its normal server-side secret boundary rather than commit it to source or configuration files.
 
 ## Validation
 
@@ -295,6 +303,14 @@ npm run accept:webrtc:lan
 The command rebuilds the release `takeover-webrtc-host` first, starts a disposable normal Chrome window backed by a loopback-only target page, and exposes only the Handoff broker on the selected private LAN address. It intentionally refuses to start if Cloudflare TURN credentials are present so this baseline remains an unambiguous direct-path check. Fresh locator creation, diagnostics, revoke, and lifecycle controls stay loopback-only (`/__new`, `/__diag`, `/__revoke`, `/__lifecycle`). This harness is the regression baseline; do not replace it with ad-hoc `--app=file://...` targets for Safari input acceptance.
 
 The same committed harness also provides a public-relay mode without changing the target/runtime shape. Build the release host first, load the server-side TURN variables into the process environment, set `HANDOFF_PUBLIC_ORIGIN` to the reviewed HTTPS Handoff origin, and run `npm run accept:webrtc:public-relay`. Public-relay binds the broker only to `127.0.0.1:18789` for the reviewed Tunnel origin and requires both TURN credential variables. Control endpoints require both a loopback socket and loopback Host, so requests forwarded by a public Tunnel remain ineligible even though the local cloudflared hop originates on loopback.
+
+The self-hosted coturn adapter has a separate container acceptance that proves the generated TURN REST credentials against a real pinned coturn image and forces both Werift peers to `iceTransportPolicy: relay`. It publishes no host ports, uses an isolated temporary Docker network and random test-only shared secret, asserts that both local descriptions contain relay candidates only, sends one bounded DataChannel probe, then removes the containers, network, and secret file:
+
+```bash
+npm run accept:webrtc:coturn-relay
+```
+
+This acceptance is intentionally relay-only so it proves coturn interoperability; production Handoff remains direct-first with `iceTransportPolicy: all`.
 
 When a target process is bound, the macOS WebRTC host now raises the unique AX window whose frame matches the captured `inputBounds` and activates that application before accepting each Human input. If the target window cannot be resolved uniquely or activated, the input fails closed. This keeps window-scoped capture and Human input on the same target even when another Mac application was frontmost before the remote action.
 
