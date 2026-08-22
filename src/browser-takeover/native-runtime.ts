@@ -18,6 +18,7 @@ export interface NativeTakeoverRuntimeBinding {
   clientGeneration: number;
   expiresAt: number;
   targetProcessId?: number;
+  targetWindowId?: number;
 }
 
 export interface NativeTakeoverNetworkBootstrap {
@@ -92,7 +93,11 @@ export function parseNativeTakeoverClientEndpoint(value: unknown): NativeTakeove
   return { clientHost, videoPort, inputFeedbackPort };
 }
 
-export function nativeBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): NativeTakeoverRuntimeBinding {
+export function nativeBindingFromGrant(
+  grant: TakeoverGrant,
+  targetProcessId?: number,
+  targetWindowId?: number
+): NativeTakeoverRuntimeBinding {
   return {
     takeoverSessionId: grant.id,
     interventionId: grant.interventionId,
@@ -100,7 +105,8 @@ export function nativeBindingFromGrant(grant: TakeoverGrant, targetProcessId?: n
     principalBinding: grant.principalBinding,
     clientGeneration: grant.clientGeneration,
     expiresAt: grant.expiresAt,
-    ...(targetProcessId === undefined ? {} : { targetProcessId })
+    ...(targetProcessId === undefined ? {} : { targetProcessId }),
+    ...(targetWindowId === undefined ? {} : { targetWindowId })
   };
 }
 
@@ -167,6 +173,12 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
     binding: NativeTakeoverRuntimeBinding,
     endpoint: NativeTakeoverClientEndpoint
   ): Promise<NativeTakeoverClientBootstrap> {
+    if (binding.targetWindowId !== undefined && binding.targetProcessId === undefined) {
+      throw new NativeTakeoverRuntimeError(
+        "NATIVE_RUNTIME_START_FAILED",
+        "native target window requires a target process"
+      );
+    }
     const existing = this.active.get(binding.takeoverSessionId);
     if (existing) {
       if (existing.binding.clientGeneration === binding.clientGeneration) {
@@ -193,6 +205,7 @@ export class InheritedFdNativeRuntimeProvider implements NativeTakeoverRuntimePr
     };
     if (this.config.displayId !== undefined) env.THIN_TAKEOVER_DISPLAY_ID = String(this.config.displayId);
     if (binding.targetProcessId !== undefined) env.THIN_TAKEOVER_TARGET_PID = String(binding.targetProcessId);
+    if (binding.targetWindowId !== undefined) env.THIN_TAKEOVER_TARGET_WINDOW_ID = String(binding.targetWindowId);
     delete env.THIN_TAKEOVER_SESSION_KEY_HEX;
 
     const args = [

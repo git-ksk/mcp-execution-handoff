@@ -6,6 +6,7 @@ export interface TakeoverInterventionRef {
 }
 export interface TakeoverHostTarget {
     processId: number;
+    windowId?: number;
 }
 export interface TakeoverBrowserAdapter {
     captureHumanTakeoverFrame(interventionId: string, epoch: number): Promise<{
@@ -36,6 +37,7 @@ export declare class TakeoverBroker {
     private readonly nativeOnlySessions;
     private readonly webRtcOnlySessions;
     private readonly nativeTargetProcessIds;
+    private readonly nativeTargetWindowIds;
     private readonly webRtcTargetProcessIds;
     constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined, webRtcRuntime?: WebRtcTakeoverRuntimeProvider | undefined);
     isEnabled(): boolean;

@@ -69,7 +69,7 @@ class FakeNativeRuntime implements NativeTakeoverRuntimeProvider {
   }
 }
 
-function createFixture(targetProcessId?: number) {
+function createFixture(targetProcessId?: number, targetWindowId?: number) {
   const native = new FakeNativeRuntime();
   const broker = new TakeoverBroker(browser, {
     enabled: true,
@@ -80,7 +80,10 @@ function createFixture(targetProcessId?: number) {
   const locator = broker.createNativeLink(
     { id: "native-intervention", epoch: 9 },
     PRINCIPAL,
-    targetProcessId === undefined ? undefined : { processId: targetProcessId }
+    targetProcessId === undefined ? undefined : {
+      processId: targetProcessId,
+      ...(targetWindowId === undefined ? {} : { windowId: targetWindowId })
+    }
   );
   assert.ok(locator);
   const sessionId = new URL(locator).pathname.split("/").at(-1);
@@ -110,6 +113,29 @@ test("native runtime binding keeps an optional host target process private and g
   const response = await claim(broker, sessionId);
   assert.equal(response.status, 200);
   assert.equal(native.starts[0]!.binding.targetProcessId, 31337);
+});
+
+test("native runtime binding keeps an exact optional host window private and generation-bound", async () => {
+  const { broker, native, sessionId } = createFixture(31337, 4242);
+  const response = await claim(broker, sessionId);
+  assert.equal(response.status, 200);
+  assert.equal(native.starts[0]!.binding.targetProcessId, 31337);
+  assert.equal(native.starts[0]!.binding.targetWindowId, 4242);
+});
+
+test("native broker rejects invalid exact host window targets", () => {
+  const native = new FakeNativeRuntime();
+  const broker = new TakeoverBroker(browser, {
+    enabled: true,
+    publicBaseUrl: "https://takeover.example",
+    ttlMs: 60_000,
+    reconnectIdleMs: 250
+  }, native);
+  assert.equal(broker.createNativeLink(
+    { id: "bad-window", epoch: 9 },
+    PRINCIPAL,
+    { processId: 31337, windowId: 0 }
+  ), undefined);
 });
 
 test("native endpoint accepts only bounded IP-literal UDP endpoints", () => {
