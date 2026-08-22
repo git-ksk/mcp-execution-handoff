@@ -1,13 +1,22 @@
-# Contributing（日本語）
+# コントリビューションガイド
 
 [English](CONTRIBUTING.md)
 
-public contractはconsumer-specific policyより小さく保ちます。
+> 英語版が正本です。内容に差がある場合は英語版を優先してください。
 
-PR前に `npm ci --ignore-scripts`、`npm run check`、`npm run build`、`npm audit --audit-level=moderate` を実行してください。security boundary変更にはdeterministic negative testを追加し、テスト目的でlive CAPTCHA/challengeを意図的に発生させません。
+このプロジェクトでは、公開する共通契約を、各利用側が持つ個別ポリシーよりも小さく保つことを重視しています。
 
-`core` へMaps/Cinema/provider/Chrome/CDP/product固有semanticを入れず、browser takeoverはoptional transport-onlyに保ちます。principal binding、epoch fencing、one-client lease、capability expiry/revocation、CSP、durable checkpoint制約を弱めません。Human completionを別action approvalとして扱いません。secret/token/private endpoint/credential/OTP/MFA/payment data/challenge answerをfixture/log/docsへ入れません。
+PRを作成する前に、次を確認してください。
 
-英語docsをcanonicalとし、security/architecture semanticsを変更した場合は主要日本語docsも同期します。
+1. `npm ci --ignore-scripts`、`npm run check`、`npm run build`、`npm audit --audit-level=moderate` を実行する。
+2. セキュリティ境界を変更する場合は、失敗すべきケースを確認する決定的なネガティブテストを追加する。
+3. テスト目的で実サービスのCAPTCHAやチャレンジを意図的に発生させない。
+4. `core` にMaps、Cinema、特定provider、Chrome/CDP、製品固有の意味や判定を持ち込まない。
+5. browser takeoverは任意機能かつtransport層だけに保つ。
+6. principal binding、epoch fencing、単一クライアントlease、capabilityの有効期限・失効、CSP、永続checkpointの制約を弱めない。
+7. 人間が手動作業を完了したことを、別の操作への承認として扱わない。
+8. secret、token、private endpoint、credential、OTP/MFA値、決済情報、challenge answerをfixture、log、docsへ入れない。
 
-新しいgeneric public APIやscope拡張を提案する前に、[Positioning](docs/positioning.ja.md) と [Roadmap](ROADMAP.ja.md) を確認してください。MCP標準mechanismと重複する案、または1 consumerだけの都合で必要な案は、generic contractとしての十分な実証が得られるまでconsumer-localに残します。
+英語ドキュメントが正本です。セキュリティやアーキテクチャ上の意味を変更した場合は、主要な日本語ドキュメントも同時に更新してください。
+
+新しい汎用public APIを提案したり、プロジェクトの対象範囲を広げたりする前に、[位置づけ](docs/positioning.ja.md) と [ロードマップ](ROADMAP.ja.md) を確認してください。MCP標準ですでに提供されている仕組みと重複する案や、1つの利用側だけに必要な案は、汎用契約として十分な実例が集まるまでは利用側に留めます。
