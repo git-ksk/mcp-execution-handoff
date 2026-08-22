@@ -75,7 +75,7 @@ export function rectContains<TOuterId, TInnerId>(
     inner.y + inner.height <= outer.y + outer.height;
 }
 
-/** Map a normalized Human pointer coordinate into the exact bounded window. */
+/** Map a normalized Human pointer coordinate strictly inside the exact bounded window. */
 export function normalizedPointInWindow<TId>(
   geometry: BoundedWindowGeometry<TId>,
   normalizedX: number,
@@ -88,9 +88,15 @@ export function normalizedPointInWindow<TId>(
       normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) {
     throw new Error("bounded window normalized coordinate is invalid");
   }
+
+  const insideOffset = (extent: number, normalized: number) => {
+    if (normalized < 1) return extent * normalized;
+    return Math.max(0, extent - Math.min(1, extent));
+  };
+
   return {
-    x: geometry.x + geometry.width * normalizedX,
-    y: geometry.y + geometry.height * normalizedY
+    x: geometry.x + insideOffset(geometry.width, normalizedX),
+    y: geometry.y + insideOffset(geometry.height, normalizedY)
   };
 }
 
