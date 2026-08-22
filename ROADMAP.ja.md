@@ -15,6 +15,25 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
+### 現在の作業状態 — 2026-08-23
+
+v0.1.0以降は、Handoffをgenericなcomputer-use / remote-desktop productへ広げることなく、元のbrowser consumer以外でもhandoff contractを再利用できるかを実consumerで検証しています。
+
+着地済みの土台:
+
+- architectureを Handoff Semantics / Human Interaction Policy / Target Surface / Transport の4軸に整理済み
+- 現在のproven Target Surfaceは `browser` と bounded `os_window`
+- internal bounded OS/window primitiveとして exact-one selection、ambiguity時のfail-closed、bounded capture sizing、target内に必ず収まるnormalized Human input mappingを実装済み
+- Linux browser hostは既存のexact-window security boundaryとreal-browser WebRTC behaviorを維持したまま、そのOS/window primitiveを再利用済み
+- CIはUbuntu / macOS / WindowsのNode/Browser portabilityを実行し、Linuxではreal ChromeによるWebRTC acceptanceを継続
+- generated artifactのdriftもcross-platformで検出
+
+現在の検証方針:
+
+- Issue #47では `git-ksk/computer-use-mcp-gateway`（CUMG）/ Cuaを、non-browser `os_window` の第一dogfood候補として使う。最初のdogfood loopは残るmacOS host抽出より先に開始してよく、macOS側の抽出境界はsynthetic prerequisiteではなく実際のintegration frictionを見て確定する。
+- Issue #48ではbounded PTY sessionを使った `terminal` Target Surfaceをexperimental/internalでprototypeし、CUMGをdogfood候補にする。`terminal` は実利用で境界が証明されるまでstable public Target Surface kindにはしない。
+- broadなpublic `OsWindowAdapter` / `TerminalAdapter` やpublic Target Surface enum拡張は、dogfoodで再利用可能なshapeが確認できるまで固定しない。
+
 ## 基本原則
 
 1. **標準を優先する。** MCP-nativeなMRTR、Elicitation、Tasksなどを優先し、同じ意味を持つ独自protocolを安易に増やさない。
@@ -33,25 +52,32 @@ npm packageは引き続き `private: true` です。npmへの公開はroadmap上
 - 現在のcontractを維持するspec alignment fix
 - docs / diagnostics改善
 - Maps / Japan Cinemaで見つかったregression coverage
+- Target Surface内部をrefactorしている間もcross-platform portability gateとreal-browser acceptanceを維持
 - pre-1.0で避けられないbreaking fixがある場合のmigration note
 
-完了条件: documented security invariantを維持し、両consumerでgreenであること。
+完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
 
-## v0.2 — 3つ目のconsumerでcontractを検証
+## v0.2 — 3つ目のconsumerとTarget Surface contractを検証
 
 候補scope:
 
-- 可能なら性質の異なるworkflow/domainの3つ目の実consumerでcontractを検証
-- public API追加前にadapter frictionを記録
-- authority / epoch / ownership / resume policy / request-state bindingのcompatibility fixtureをformalize
-- consumer固有semanticを漏らさず公開できるextension pointを整理
+- 性質の異なるworkflow/domainの3つ目の実consumerでcontractを検証し、CUMGを第一dogfood候補とする
+- stableなsurface adapterを公開する前に、browser-takeover host外でbounded `os_window` を再利用できるか検証
+- `terminal` / PTY handoffをinternalでprototypeし、実dogfoodからTerminalが独立した再利用可能Target Surfaceなのか、より小さいsession/stream abstractionの方が正しいのか判断
+- public API追加前にadapter friction / surface frictionを記録
+- authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalize
+- consumer / Cua / browser / PTY / transport固有semanticを漏らさず公開できるextension pointを整理
+
+Target Surface追加は引き続きevidence-basedとする。既存の `browser` / `os_window` と比べて、authority boundary、capture/input model、lifecycle、postcondition handlingのいずれかが本質的に異なる場合のみ新categoryを追加する。単に別app・別OS・別deviceであるだけでは追加理由にしない。
 
 完了条件:
 
 - 3つの実consumerでdeterministic testがgreen
 - 3つ目のconsumerのためにgeneric `src/` へproduct-specific conceptを入れず再利用できる
-- adapter都合でsecurity invariantを弱めない
-- 新しいpublic surfaceには少なくとも2つの独立した実use caseがある
+- bounded OS/window dogfoodで1つのexact targetに対する Agent → Human → verifying → Agent を実証、または具体的blockerを文書化
+- Terminal/PTYの結果として、`terminal` をproven categoryへ昇格するか、experimentalのままにするか、より小さいabstractionへ置き換えるかを明記
+- adapterやTarget Surface都合でsecurity invariantを弱めない
+- 新しいpublic surfaceには少なくとも2つの独立した実use caseとdocumented compatibility strategyがある
 
 npm publicationは **v0.2の完了条件ではありません**。
 
@@ -76,7 +102,7 @@ npm publicationは **v0.2の完了条件ではありません**。
 
 - MCP MRTR / Elicitation / Tasksの進化を追跡し、標準で置き換えられる独自plumbingを削減
 - 実用上可能な範囲で複数MCP client/server implementationと検証
-- browser-takeover transport mechanicsとcore lifecycle semanticsの分離をさらに明確化
+- browser-takeover transport mechanics、core lifecycle semantics、Target Surface mechanicsの分離をさらに明確化
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - generic remote-desktop productへ広げず、low-latency push/latest-frame transportとminimal native Human Takeover reference clientを検証
 
@@ -105,11 +131,12 @@ WebSocket experimentの主なacceptance questionは、HTTPS-only managed runtime
 - core authority / epoch / ownership / resume / checkpoint semanticsをstable contractとして文書化
 - compatibility / migration policyを文書化し、実運用で確認済み
 - 3つ以上の実consumerでgeneric boundaryを検証し、複数application domainを含む
+- Target Surface boundaryをsynthetic exampleだけでなく実consumerで検証済み
 - MCP標準との重複を再監査し、不要なprotocol duplicationがない
 - browser takeoverがoptional / transport-onlyのまま
 - Human completionと重大操作のapprovalが分離されたまま
 - automatic replayがconsumer policyで明示的に制限されたまま
-- CI / Dependency Review / CodeQL / secret scanning / security reportingが運用中
+- CI / cross-platform portability gate / Dependency Review / CodeQL / secret scanning / security reportingが運用中
 - documented invariantを無効化する既知security issueが未解決でない
 
 ## npm publication gate
@@ -134,6 +161,7 @@ npm初回公開versionは `0.1.x` / `0.2.0` / それ以降のどれでもよく�
 - anti-bot evasion / stealth / fingerprint spoofing / proxy rotation
 - credential / OTP / MFA / payment dataのMCP transport
 - generic browser automation engine
+- generic remote-desktop / device-wide computer-use infrastructure
 - 重大操作のautomatic approval / replay
 - generic coreへのprovider-specific policy
 
