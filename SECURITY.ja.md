@@ -1,15 +1,72 @@
-# Security Policy（日本語）
+# セキュリティポリシー
 
 [English](SECURITY.md)
 
-このprojectではExecution Handoffとbrowser takeoverをsecurity-sensitiveなcontrol-plane capabilityとして扱います。
+> 英語版が正本です。内容に差がある場合は英語版を優先してください。
 
-principal / invocation / args binding bypass、Agent/Human authority重複、stale epoch受理、checkpoint改ざんやsecret/content永続化、takeover capabilityのleak/replay/expiry/revocation不備、one-client lease bypass、reload/tab/deviceによるimplicit transfer、reconnect handleのreplay/theft、stale client generation受理、CSP/origin/cache/referrer境界の退行、Human completionを別のconsequential action approvalとして扱える経路に加えて、credential-safe external Human sessionとAgent/automation authorityの重複、principal/epochを跨いだexternal session再利用、sensitive provider metadataの保持も重要なsecurity report対象です。
+## このプロジェクトが守るセキュリティ境界
 
-CAPTCHA/challenge solving、anti-bot bypass、stealth/fingerprint spoofing、proxy rotation、credential/OTP/MFA/payment dataのMCP transport、raw CDP、arbitrary browser automation、consequential actionのautomatic replay/approvalは非目標です。credential-safe external Human surfaceはautomation-incompatibleなcredential surfaceから離脱するための境界であり、automationをsupported login environmentに偽装する機能ではありません。この種のcredential surfaceではOSが変わっても要件を緩めず、automation browserを停止してsame dedicated profileをremote-debugging / automation authorityなしのnormal browserで開きます。Human textをargvへ載せたり、完了後clipboardへ残したり、exact-window scopeをdesktopへ広げる経路もsecurity regressionです。
+`mcp-execution-handoff` では、実行権限の引き継ぎとbrowser takeoverを、セキュリティ上重要なcontrol-plane機能として扱います。
 
-password、OAuth/session/access token、OTP/MFA/verification code、CAPTCHA answer、cookie/browser profile、payment data、private endpoint、production credentialをcommit/log/checkpoint/public issueへ含めないでください。Checkpoint signing keyもrepository外で管理します。
+特に、次のような問題は重要な脆弱性報告の対象です。
 
-WebRTC transportでは、background/foregroundやpeer disconnectでstale generationを暗黙復活させる経路、legacy frame/input UIへのfallback、transport dataがlog/durable control-plane stateへ流れる経路、未reviewのSTUN/TURN trust-boundary変更もsecurity boundaryとして扱います。raw Human input、framebuffer/video payload、WebRTC key material、raw ICE candidate文字列 / network address、sensitiveなdeployment topologyを含み得るSDP、reconnect/capability secretもcommit / log / checkpointへ保存しません。direct-only browser peerはSTUNへ接続しません。Node/werift peerはdependencyの暗黙defaultを避けるためCloudflare STUNを明示利用し、server側network metadataがCloudflareへ見える可能性があるためreview対象のtransport trust boundaryとします。そのraw candidate/address dataをHandoff diagnosticへ保持してはいけません。
+- principal、呼び出し内容、引数へのbindingを回避できる
+- AgentとHumanが同時に実行権限を持てる
+- 古いresource epochを受理してしまう
+- checkpointを改ざんできる、またはsecretや実行内容がcheckpointへ保存される
+- takeover capabilityの漏えい、再利用、有効期限、失効処理に不備がある
+- 単一クライアントleaseを回避できる
+- reload、新しいtab、別deviceへの切り替えでleaseが暗黙移譲される
+- reconnect handleを盗用・再利用できる、または古いclient generationを受理する
+- CSP、origin、cache、referrerの境界が弱くなる
+- Humanが手動作業を終えたことを、別の重大操作への承認として扱える
+- external Human sessionとAgent/automation authorityが重複する
+- external sessionを別principalや別epochで再利用できる
+- providerから返された機微なmetadataを不要に保持する
+- credential-safeなHuman入力を、本来必要なnormal-browser境界ではなくautomation-managed browserへ流せる
+- exact-window限定のcapture/input範囲がdesktop全体などへ広がる
+- Humanが入力した文字列がprocess argvや、処理完了後のclipboardに残る
+- WebRTCで古いgenerationが復活する、background/foregroundで暗黙reconnectする、legacy frame/inputへfallbackする
+- transport dataがlogや永続control-plane stateへ漏れる
+- STUN/TURNのtrust boundaryがレビューなしに変わる
 
-GitHub Private Vulnerability Reportingが有効な場合はそれを利用してください。利用できない場合、exploit detailsやsecretをpublic issueへ書かず、private reporting channelを求める最小限のissueだけを作成してください。
+## 非目標として維持するもの
+
+次の機能はこのプロジェクトの対象外です。未実装であること自体は機能不足ではありません。
+
+- CAPTCHA / challenge solvingやbypass
+- anti-bot回避
+- stealth / fingerprint spoofing
+- proxy rotation
+- credential、OTP、MFA、決済情報をMCP経由で運ぶこと
+- raw CDPの公開
+- 任意のbrowser automation
+- 重大操作の自動再実行や自動承認
+
+credential-safe external Human surfaceは、automationと相性の悪いcredential入力画面から安全に離脱するための境界です。automationを「対応済みの通常ブラウザ」に見せかけるための機能ではありません。この種の画面ではOSが変わってもルールは同じです。automation browserを停止し、同じ専用profileをremote-debuggingやautomation authorityなしのnormal browserで開きます。
+
+## 機微情報の扱い
+
+次の情報をrepository、log、checkpoint、public Issueへ入れないでください。
+
+- passwordや認証secret
+- OAuth / session / access token
+- OTP / MFA / verification code
+- CAPTCHA / challenge answer
+- cookieやbrowser profileの内容
+- card番号やbank dataなどの決済情報
+- private endpointやproduction credential
+- raw Human input
+- framebuffer / video payload
+- WebRTC key material
+- raw ICE candidate文字列やnetwork address
+- 機微なdeployment topologyを含み得るSDP
+- reconnect secretやcapability secret
+
+browser側のdirect-only peerはSTUNへ接続しません。Node/werift peerはdependencyの暗黙defaultを避けるため、Cloudflare STUNを明示的に使います。この通信ではserver側のnetwork metadataがCloudflareへ見える可能性があるため、レビュー対象のtransport trust boundaryとして扱います。Handoffのdiagnosticへraw candidateやaddressを残してはいけません。
+
+checkpoint signing keyはrepository外で生成・保管してください。
+
+## 脆弱性の報告
+
+GitHub Private Vulnerability Reportingが有効な場合は、それを利用してください。利用できない場合でも、exploitの詳細やsecretをpublic Issueへ書かないでください。privateな報告経路を求める最小限のIssueだけを作成してください。
