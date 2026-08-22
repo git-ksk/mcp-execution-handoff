@@ -4,7 +4,7 @@
 
 > 英語版が正本です。内容に差がある場合は英語版を優先してください。
 
-最終確認: 2026-08-15
+最終確認: 2026-08-23
 
 `mcp-execution-handoff` は、汎用的なHuman-in-the-loop framework、approval product、workflow engine、browser automation systemを目指すプロジェクトではありません。
 
@@ -26,6 +26,19 @@ MCPで動く処理の途中で、Agentだけでは進められない、または
 - 「Humanが手動作業を終えた」と「Humanが重大操作を承認した」を厳格に分離すること
 
 これらはこのプロジェクトのcompatibility contractです。他のframeworkでも同様のpolicyを構成できる可能性はあります。この文書は責任範囲を説明するもので、独占的な発明や優越性を主張するものではありません。
+
+## Taxonomy: coreと周辺軸の分離
+
+本プロジェクトでは、次の4軸を分けて扱います。
+
+1. **Handoff Semantics** — authority、epoch、ownership、replay/resume、recovery。security-orientedな不変のcoreであり、差別化の中心です。
+2. **Human Interaction Policy** — Humanがどのtrust boundaryで操作するか。現在の実装値は `automation_adjacent` と `credential_safe_external` です。既存TypeScript APIでは `HumanSurfaceKind` と呼びます。
+3. **Target Surface** — Humanが何を操作するか。現在実績があるのはbrowserと、scopeを限定したOS/window surfaceです。
+4. **Transport** — Human control/media pathをどう届けるか。NativeやWebRTCなどが該当し、direct ICEかTURN fallbackかはWebRTC connectivityの違いです。
+
+この4つは同じレベルの「takeover type」ではありません。特にbrowser takeoverはcoreそのものではなく、core semanticsの周囲にあるoptionalなHuman-control surface/transport capabilityです。architectureでは **Target Surface** を正式用語とし、policy軸は実際の操作対象と混同しないよう **Human Interaction Policy** と呼びます。
+
+canonicalな4軸モデルとsupport条件は [アーキテクチャ](architecture.ja.md#4軸のhandoff-taxonomy) を参照してください。
 
 ## MCP標準との関係
 
