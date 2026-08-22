@@ -206,6 +206,7 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(html, /opacity:0/);
   assert.match(html, />Done<\/button>/);
   assert.match(html, /id="keyboard-open"/);
+  assert.match(html, /aria-pressed="false"/);
   assert.match(html, /id="keyboard-backspace"/);
   assert.match(html, /aria-label="Backspace"/);
   assert.match(html, /\/takeover\/webrtc-client\.js/);
@@ -260,7 +261,7 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /applyEditableRegions/);
   assert.match(script, /pointIsEditable/);
   assert.match(script, /performance\.now\(\)-editableRegionsAt>1000/);
-  assert.match(script, /if\(g\.editable\)/);
+  assert.match(script, /g\.editable\|\|keyboardMode/);
   assert.match(script, /armKeyboardFallback/);
   assert.match(script, /if\(touchEventsAvailable\)\{if\(!stopped\)setKeyboardControlsVisible\(true\);return\}/);
   assert.match(script, /setKeyboardControlsVisible\(touchEventsAvailable\)/);
@@ -268,8 +269,13 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /function focusKeyboard\(\)/);
   assert.match(script, /keyboard\.focus\(\{preventScroll:true\}\)/);
   assert.match(script, /keyboard\.focus\(\)/);
-  assert.match(script, /keyboardOpen\.addEventListener\('click',function\(\)\{if\(stopped\)return;focusKeyboard\(\)\}\)/);
+  assert.match(script, /let .*keyboardMode=false/);
+  assert.match(script, /function setKeyboardMode\(enabled\)/);
+  assert.match(script, /keyboardOpen\.setAttribute\('aria-pressed',enabled\?'true':'false'\)/);
+  assert.match(script, /else if\(!keyboardMode\)\{keyboard\.blur\(\)\}/);
+  assert.match(script, /keyboardOpen\.addEventListener\('click',[\s\S]*setKeyboardMode\(!keyboardMode\)/);
   assert.match(script, /keyboardBackspace\.addEventListener\('click'/);
+  assert.match(script, /sendCritical\(\{kind:'key',key:'Backspace'\}\)\)setKeyboardMode\(true\)/);
   assert.match(script, /sendCritical\(\{kind:'key',key:'Backspace'\}\)/);
   assert.doesNotMatch(script, /probeEditable|phase==='probe'/);
   assert.match(script, /reportInputAck/);
