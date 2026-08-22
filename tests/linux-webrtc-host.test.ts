@@ -64,7 +64,6 @@ test("Linux host emits the existing WebRTC host frame wire and caps video geomet
   assert.equal(record.readUInt16BE(12), 700);
 });
 
-
 test("Linux host CLI recognizes an npm-style symlink entrypoint without widening execution", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "handoff-cli-entry-"));
   try {
@@ -79,11 +78,15 @@ test("Linux host CLI recognizes an npm-style symlink entrypoint without widening
     await rm(root, { recursive: true, force: true });
   }
 });
+
 test("Linux host keeps Human text off argv and binds capture/input to one target window", () => {
   const host = readFileSync("src/browser-takeover/linux-webrtc-host-cli.ts", "utf8");
   assert.match(host, /TAKEOVER_WEBRTC_TARGET_PID/);
   assert.match(host, /search", "--onlyvisible", "--pid"/);
   assert.match(host, /candidates\.length === 1/);
+  assert.match(host, /selectExactBoundedWindow/);
+  assert.match(host, /normalizedPointInWindow/);
+  assert.match(host, /scaledEvenWindowSize/);
   assert.match(host, /if \(candidates\.length > 1\) observedMultiple = true/);
   assert.doesNotMatch(host, /if \(candidates\.length > 1\) throw/);
   assert.match(host, /did not converge to exactly one eligible window/);
@@ -94,8 +97,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /spawn\(this\.xdotool, \["type", "--clearmodifiers", "--delay", "5", "--file", "-"\]/);
   assert.match(host, /child\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
   assert.doesNotMatch(host, /xclip|TAKEOVER_LINUX_XCLIP/);
-  assert.match(host, /this\.geometry\.x \+ localX/);
-  assert.match(host, /this\.geometry\.y \+ localY/);
+  assert.match(host, /Math\.round\(point\.x\)/);
+  assert.match(host, /Math\.round\(point\.y\)/);
   assert.match(host, /\["mousemove", "--sync", String\(x\), String\(y\)\]/);
   assert.match(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
   assert.match(host, /linux_stage=input_focus_ready/);

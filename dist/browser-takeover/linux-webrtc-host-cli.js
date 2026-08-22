@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { normalizedPointInWindow, scaledEvenWindowSize, selectExactBoundedWindow } from "../target-surface/os-window.js";
 const MAX_HOST_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT_LINE_BYTES = 4 * 1024;
 const MAX_PENDING_INPUT_BYTES = 8 * 1024;
@@ -37,12 +38,7 @@ export function scaledVideoSize(width, height) {
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 2 || height < 2) {
         throw new Error("Linux WebRTC host received invalid window geometry");
     }
-    const scale = Math.min(1, DEFAULT_MAX_WIDTH / width, DEFAULT_MAX_HEIGHT / height);
-    const even = (value) => {
-        const rounded = Math.max(2, Math.floor(value));
-        return rounded % 2 === 0 ? rounded : rounded - 1;
-    };
-    return { width: even(width * scale), height: even(height * scale) };
+    return scaledEvenWindowSize(width, height, DEFAULT_MAX_WIDTH, DEFAULT_MAX_HEIGHT);
 }
 export function avccFromNalUnits(units) {
     const total = units.reduce((sum, unit) => sum + 4 + unit.byteLength, 0);
@@ -210,8 +206,22 @@ async function resolveExactWindow(targetPid, display, xdotool) {
             if (geometry)
                 candidates.push(geometry);
         }
-        if (candidates.length === 1)
-            return candidates[0];
+        if (candidates.length === 1) {
+            const selected = selectExactBoundedWindow(candidates.map((candidate) => ({
+                id: candidate.windowId,
+                x: candidate.x,
+                y: candidate.y,
+                width: candidate.width,
+                height: candidate.height
+            })), { minWidth: MIN_WINDOW_WIDTH, minHeight: MIN_WINDOW_HEIGHT });
+            return {
+                windowId: selected.id,
+                x: selected.x,
+                y: selected.y,
+                width: selected.width,
+                height: selected.height
+            };
+        }
         // A normal Chromium launch can briefly expose more than one top-level X11 window while the
         // browser/session manager settles. Never choose among ambiguous windows; keep waiting within
         // the existing bounded readiness interval and proceed only after exactly one remains.
@@ -270,10 +280,15 @@ class LinuxWindowInput {
         }
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
         if (input.kind === "tap") {
-            const localX = Math.max(0, Math.min(this.geometry.width - 1, Math.round(this.geometry.width * input.x)));
-            const localY = Math.max(0, Math.min(this.geometry.height - 1, Math.round(this.geometry.height * input.y)));
-            const x = this.geometry.x + localX;
-            const y = this.geometry.y + localY;
+            const point = normalizedPointInWindow({
+                id: this.geometry.windowId,
+                x: this.geometry.x,
+                y: this.geometry.y,
+                width: this.geometry.width,
+                height: this.geometry.height
+            }, input.x, input.y);
+            const x = Math.round(point.x);
+            const y = Math.round(point.y);
             // Move through XTest using root coordinates derived from the exact target window. This avoids
             // reparenting/window-decoration differences in --window-relative pointer semantics while
             // keeping the point strictly inside the already-resolved browser window.
