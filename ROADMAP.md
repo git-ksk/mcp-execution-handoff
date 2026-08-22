@@ -78,6 +78,20 @@ Candidate scope:
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
 - validate a low-latency push/latest-frame transport and a minimal native Human Takeover reference client without turning the project into a generic remote-desktop product.
 
+### Transport family direction
+
+Human takeover transports should remain replaceable siblings behind the same broker authority/lifecycle contract rather than becoming consumer-specific forks. The intended family is:
+
+- **Native** — dedicated native operator client; highest control/performance potential, but requires an installed app.
+- **WebRTC** — primary browser low-latency transport. Prefer direct ICE when reachable and use an optional TURN provider only as WAN/NAT fallback. TURN is infrastructure, not a core Handoff requirement.
+- **WebSocket** — first candidate for an HTTPS-only managed-runtime path (including Cloud Run-style deployments) that can avoid TURN entirely. It should reuse the existing exact-window host helpers, one-client lease, generation fencing, revoke semantics, and bounded latest-frame policy.
+- **HTTP streaming + bounded input requests** — a simpler correctness/deployability fallback or diagnostic path if it proves useful; not the performance target.
+- **WebTransport / HTTP/3** — a future low-latency browser candidate when the deployment platform exposes a suitable end-to-end path. It must remain an optional transport rather than changing core semantics.
+
+Transport-specific mechanisms such as ICE/SDP/RTP/DataChannel, WebSocket framing/backpressure, or future WebTransport streams/datagrams must stay inside the transport implementation. Consumers should continue to depend on locator/start/reconnect/revoke-style lifecycle semantics, not the underlying network protocol.
+
+For the WebSocket experiment, the key acceptance question is whether an HTTPS-only managed runtime can provide usable physical-mobile Human takeover without unbounded TCP/video backlog. A slow client must preserve bounded memory and latest-frame/drop semantics, and reconnect must rotate generation rather than revive stale authority. Track this work in Issue #40.
+
 The exact version number for each item will be chosen when the work is concrete. The project may use `0.5`, `0.6`, `0.10`, and later pre-1.0 releases as needed.
 
 ## v1.0 — stable contract milestone
