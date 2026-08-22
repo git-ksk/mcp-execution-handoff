@@ -206,6 +206,8 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(html, /opacity:0/);
   assert.match(html, />Done<\/button>/);
   assert.match(html, /id="keyboard-open"/);
+  assert.match(html, /id="keyboard-backspace"/);
+  assert.match(html, /aria-label="Backspace"/);
   assert.match(html, /\/takeover\/webrtc-client\.js/);
   assert.doesNotMatch(html, />.*Scroll.*<\/button>/i);
   assert.doesNotMatch(html, />Tab<\/button>/i);
@@ -260,12 +262,15 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /performance\.now\(\)-editableRegionsAt>1000/);
   assert.match(script, /if\(g\.editable\)/);
   assert.match(script, /armKeyboardFallback/);
-  assert.match(script, /if\(touchEventsAvailable\)\{if\(!stopped\)keyboardOpen\.style\.display='block';return\}/);
-  assert.match(script, /keyboardOpen\.style\.display=touchEventsAvailable\?'block':'none'/);
+  assert.match(script, /if\(touchEventsAvailable\)\{if\(!stopped\)setKeyboardControlsVisible\(true\);return\}/);
+  assert.match(script, /setKeyboardControlsVisible\(touchEventsAvailable\)/);
+  assert.match(script, /keyboardBackspace\.style\.display=display/);
   assert.match(script, /function focusKeyboard\(\)/);
   assert.match(script, /keyboard\.focus\(\{preventScroll:true\}\)/);
   assert.match(script, /keyboard\.focus\(\)/);
   assert.match(script, /keyboardOpen\.addEventListener\('click',function\(\)\{if\(stopped\)return;focusKeyboard\(\)\}\)/);
+  assert.match(script, /keyboardBackspace\.addEventListener\('click'/);
+  assert.match(script, /sendCritical\(\{kind:'key',key:'Backspace'\}\)/);
   assert.doesNotMatch(script, /probeEditable|phase==='probe'/);
   assert.match(script, /reportInputAck/);
   assert.doesNotMatch(script, /frameAgeMs|captureToReceiveMs/);
@@ -282,6 +287,8 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /insertFromPaste/);
   assert.match(script, /keydown/);
   assert.match(script, /deleteContentBackward/);
+  assert.match(script, /const MARK='_'/);
+  assert.match(script, /value\.startsWith\(MARK\)\?value\.slice\(MARK\.length\):value/);
   assert.match(script, /insertLineBreak/);
   assert.match(script, /event\.preventDefault\(\)/);
   assert.match(script, /visibilitychange/);
