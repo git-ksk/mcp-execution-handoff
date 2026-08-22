@@ -26,6 +26,62 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- credential-safe external Human provider coordinator
 ```
 
+## 4軸のHandoff taxonomy
+
+アーキテクチャでは、Handoffを4つの独立した軸で整理します。これらは組み合わせて使いますが、同じ意味の言葉ではなく、すべての組み合わせが必ずsupportされるわけでもありません。
+
+### 1. Handoff Semantics
+
+「誰が実行権限を持つか」「どのstateがまだ有効か」「どの条件なら再開できるか」を決める不変のcoreです。Agent/Human authorityの排他、resource epoch fencing、principal/invocation ownership binding、限定されたcheckpoint、resume/replay policy、stale reconnect拒否、`reissue_and_revalidate` によるrecoveryなどを含みます。
+
+Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはtakeover typeではありません。
+
+### 2. Human Interaction Policy
+
+「どのtrust/safety boundaryの中でHumanに操作させるか」を表す軸です。現在の実装値は次の2つです。
+
+- `automation_adjacent` — automation-managedな実行surfaceに隣接したままHuman controlを行う
+- `credential_safe_external` — automation-managedなcredential surfaceを使うべきでないintervention向けに、Human-onlyな外部boundaryへcontrolを移す
+
+既存TypeScript APIではこれらを `HumanSurfaceKind` と呼びます。ただしdocsでは、実際に操作するsurface（browser / OS window）と混同しないよう、**Human Interaction Policy** を正式な説明用語として使います。このtaxonomyのためだけにpublic APIをrenameする必要はありません。
+
+### 3. Target Surface
+
+「Humanが何を操作するか」を表す軸です。現在実績のあるcategoryは次のとおりです。
+
+- `browser` — browser execution/window/session surface
+- `os_window` — scopeを限定したOS application/window surface
+
+terminal/PTYや別のnative-application abstractionは、実consumerで必要性が証明されるまでnon-contractualな将来候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
+
+### 4. Transport
+
+「Human control/media pathをどう届けるか」を表す軸です。現在および将来のfamilyにはNative、WebRTC、将来のWebSocket / HTTP streaming / WebTransportなどがあります。WebRTCの中ではdirect ICEを優先し、TURNは必要時だけ使うfallback connectivity infrastructureです。そのため `WebRTC direct` と `WebRTC + TURN` はTarget Surfaceの種類ではなく、transport/connectivity上の結果です。
+
+```text
+Execution Handoff
+|
++-- Handoff Semantics
+|    authority / epoch / ownership / replay / recovery
+|
++-- Human Interaction Policy
+|    automation_adjacent
+|    credential_safe_external
+|
++-- Target Surface
+|    browser
+|    os_window
+|
++-- Transport
+     Native
+     WebRTC
+       +-- direct
+       +-- TURN fallback
+     future: WebSocket / HTTP streaming / WebTransport
+```
+
+現在の実例には `browser + automation_adjacent + WebRTC`、`browser/os_window + credential_safe_external + WebRTC` があります。architecture上で組み合わせ可能でも、それだけでsupport済みとはみなしません。各consumer/provider/host pathでacceptance evidenceがある場合だけsupport済みと扱います。
+
 ## ライフサイクル
 
 1. consumerが、Humanによる手動対応が必要なsurfaceを検出する。

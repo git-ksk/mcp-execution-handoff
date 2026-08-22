@@ -2,7 +2,7 @@
 
 [日本語](positioning.ja.md)
 
-Last reviewed: 2026-08-15.
+Last reviewed: 2026-08-23.
 
 `mcp-execution-handoff` is intentionally **not** a general human-in-the-loop framework, approval product, workflow engine, or browser automation system. It is a small security-oriented control-plane runtime for transferring execution authority from an Agent to a Human during an MCP-driven operation and deciding how execution may safely resume afterward.
 
@@ -22,6 +22,19 @@ When an MCP-driven operation reaches a step that cannot or should not be complet
 - a hard separation between “the Human finished the manual step” and “the Human approved a consequential action.”
 
 These invariants are part of this project's compatibility contract. Other frameworks may be configurable to implement similar policies; this document describes scope, not a claim of exclusive invention or superiority.
+
+## Taxonomy: what is core and what is not
+
+The project uses four separate architectural axes:
+
+1. **Handoff Semantics** — authority, epoch, ownership, replay/resume, and recovery. This is the security-oriented invariant core and the primary differentiation.
+2. **Human Interaction Policy** — the trust boundary under which the Human interacts. Current implementation values are `automation_adjacent` and `credential_safe_external` (named `HumanSurfaceKind` in the existing TypeScript API).
+3. **Target Surface** — what the Human controls. Current proven categories are browser and bounded OS/window surfaces.
+4. **Transport** — how Human control/media is delivered, such as Native or WebRTC. Direct ICE vs TURN is WebRTC connectivity behavior, not a takeover type.
+
+These axes must not be conflated. In particular, browser takeover is an optional Human-control surface/transport capability around the core semantics; it is not the definition of the product. Architecture terminology uses **Target Surface** rather than overloading “takeover type,” and uses **Human Interaction Policy** in documentation to avoid confusing policy with the controlled surface.
+
+See [Architecture](architecture.md#four-axis-handoff-taxonomy) for the canonical model and supported-combination guidance.
 
 ## Relationship to MCP itself
 

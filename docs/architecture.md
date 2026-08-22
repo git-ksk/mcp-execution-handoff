@@ -24,6 +24,62 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- credential-safe external Human provider coordinator
 ```
 
+## Four-axis handoff taxonomy
+
+The architecture uses four separate axes. They compose, but they are not interchangeable terms and not every combination is necessarily supported.
+
+### 1. Handoff Semantics
+
+This is the invariant core: who owns execution authority, which state is still valid, and under what conditions execution may resume. It includes Agent/Human authority exclusivity, resource-epoch fencing, principal/invocation ownership binding, bounded checkpoints, replay/resume policy, stale reconnect rejection, and recovery by `reissue_and_revalidate`.
+
+Handoff Semantics are target- and transport-agnostic. They are not a takeover type.
+
+### 2. Human Interaction Policy
+
+This describes the trust/safety boundary under which the Human may interact. The current implementation values are:
+
+- `automation_adjacent` — Human control remains adjacent to the automation-managed execution surface;
+- `credential_safe_external` — Human control moves to an external Human-only boundary suitable for interventions that must not reuse the automation-managed credential surface.
+
+The existing TypeScript API calls these values `HumanSurfaceKind`. Documentation uses **Human Interaction Policy** to avoid confusing this policy axis with the actual target surface. No public API rename is required for this taxonomy.
+
+### 3. Target Surface
+
+This describes what execution surface the Human controls. The currently proven categories are:
+
+- `browser` — a browser execution/window/session surface;
+- `os_window` — a bounded OS application/window surface.
+
+Future categories such as terminal/PTY or another native-application abstraction remain non-contractual until a real consumer proves the need. Architecture terminology prefers **Target Surface**; “takeover type” may be used informally, but should not replace the canonical term.
+
+### 4. Transport
+
+This describes how Human control/media is delivered. Current and planned transport families include Native, WebRTC, and future WebSocket/HTTP-streaming/WebTransport siblings. Within WebRTC, direct ICE is preferred when viable and TURN is fallback connectivity infrastructure. `WebRTC direct` and `WebRTC + TURN` are therefore transport/connectivity outcomes, not Target Surface kinds.
+
+```text
+Execution Handoff
+|
++-- Handoff Semantics
+|    authority / epoch / ownership / replay / recovery
+|
++-- Human Interaction Policy
+|    automation_adjacent
+|    credential_safe_external
+|
++-- Target Surface
+|    browser
+|    os_window
+|
++-- Transport
+     Native
+     WebRTC
+       +-- direct
+       +-- TURN fallback
+     future: WebSocket / HTTP streaming / WebTransport
+```
+
+Current examples include `browser + automation_adjacent + WebRTC` and `browser/os_window + credential_safe_external + WebRTC`. A combination is supported only when the relevant consumer/provider/host path has its own acceptance evidence; architectural composability does not imply blanket support.
+
 ## Lifecycle
 
 1. Consumer detects a surface that requires Human intervention.
