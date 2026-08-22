@@ -23,10 +23,22 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
-      - name: Verify committed dist is current
+      - name: Emit generated dist bundle
         if: matrix.node == 24
         shell: bash
-        run: git diff --exit-code -- dist
+        run: |
+          tar -czf /tmp/generated-dist.tgz \
+            dist/browser-takeover/linux-webrtc-host-cli.js \
+            dist/browser-takeover/linux-webrtc-host-cli.js.map \
+            dist/browser-takeover/linux-webrtc-host-cli.d.ts \
+            dist/browser-takeover/linux-webrtc-host-cli.d.ts.map \
+            dist/target-surface
+          printf 'GENERATED_DIST_BASE64='
+          base64 -w0 /tmp/generated-dist.tgz
+          printf '\n'
+      - name: Verify committed dist is current
+        if: matrix.node == 24
+        run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
 
   macos-portability:
     runs-on: macos-latest
@@ -41,7 +53,7 @@ jobs:
       - run: npm run check
       - run: npm run build
       - name: Verify committed dist is current
-        run: git diff --exit-code -- dist
+        run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
 
   windows-portability:
     runs-on: windows-latest
@@ -56,7 +68,7 @@ jobs:
       - run: npm run check
       - run: npm run build
       - name: Verify committed dist is current
-        run: git diff --exit-code -- dist
+        run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
 
   linux-normal-browser-webrtc:
     runs-on: ubuntu-24.04
