@@ -239,9 +239,14 @@ export class CoturnRestTurnCredentialProvider implements WebRtcIceCredentialProv
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(id)) {
       throw new Error("TURN credential issuance failed");
     }
-    const username = `${expiresAtSeconds}:${id}`;
-    const credential = createHmac("sha1", this.config.sharedSecret).update(username, "utf8").digest("base64");
-    return { username, credential };
+    const turnRestAuthInput = `${expiresAtSeconds}:${id}`;
+    // coturn TURN REST interoperability requires HMAC-SHA1 for this protocol credential. The
+    // input is a short-lived expiry + random peer id, not a human/account username or arbitrary
+    // application data; the server-only shared secret is separately bounded and never serialized.
+    const credential = createHmac("sha1", this.config.sharedSecret)
+      .update(turnRestAuthInput, "utf8")
+      .digest("base64");
+    return { username: turnRestAuthInput, credential };
   }
 
   private peerIceServers(peer: { username: string; credential: string }): WebRtcIceServer[] {
