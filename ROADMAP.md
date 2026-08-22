@@ -13,6 +13,25 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
+### Current working state — 2026-08-23
+
+The post-v0.1.0 work is now actively validating whether the handoff contract remains reusable beyond the original browser consumers without widening Handoff into a generic computer-use or remote-desktop product.
+
+Landed foundation:
+
+- the four-axis architecture distinguishes Handoff Semantics, Human Interaction Policy, Target Surface, and Transport;
+- `browser` and bounded `os_window` are the currently proven Target Surface categories;
+- internal bounded OS/window primitives now provide exact-one selection, fail-closed ambiguity handling, bounded capture sizing, and strictly in-bounds normalized Human input mapping;
+- the Linux browser host reuses those OS/window primitives while preserving the existing exact-window security boundary and real-browser WebRTC behavior;
+- CI now exercises Ubuntu, macOS, and Windows Node/Browser portability, with Linux real-Chrome WebRTC acceptance retained;
+- generated-artifact drift is checked cross-platform.
+
+Current validation direction:
+
+- Issue #47 uses `git-ksk/computer-use-mcp-gateway` (CUMG) / Cua as the primary non-browser `os_window` dogfood candidate. The first dogfood loop may begin before the remaining macOS host extraction; that extraction should be guided by observed integration friction rather than treated as a synthetic prerequisite.
+- Issue #48 prototypes `terminal` as an experimental/internal Target Surface using a bounded PTY session and CUMG as a dogfood candidate. `terminal` is not a stable public Target Surface kind until real use proves the boundary.
+- No broad public `OsWindowAdapter`, `TerminalAdapter`, or public Target Surface enum expansion should be frozen before dogfood evidence demonstrates a reusable shape.
+
 ## Guiding principles
 
 1. **Standards first.** Prefer MCP-native MRTR, elicitation, Tasks, and related protocol mechanisms instead of inventing parallel protocol semantics.
@@ -31,25 +50,32 @@ Focus:
 - specification-alignment fixes that preserve the current contract;
 - documentation and diagnostics improvements;
 - regression coverage from Maps and Japan Cinema;
+- maintain cross-platform portability gates and real-browser acceptance while target-surface internals are refactored;
 - migration notes for any unavoidable pre-1.0 breaking fix.
 
-Exit condition: each patch must preserve the documented security invariants and remain green in both real consumers.
+Exit condition: each patch must preserve the documented security invariants and remain green in both established real consumers.
 
-## v0.2 — third-adapter contract validation
+## v0.2 — third-adapter and Target Surface contract validation
 
 Candidate scope:
 
-- validate the contract with a third real adapter, preferably from a materially different workflow/domain;
-- record adapter friction before adding new public APIs;
-- formalize compatibility fixtures for authority, epoch, ownership, resume policy, and request-state binding;
-- clarify which extension points are stable enough to expose without leaking consumer semantics.
+- validate the contract with a third real adapter from a materially different workflow/domain, with CUMG as the leading dogfood candidate;
+- validate bounded `os_window` reuse outside the browser-takeover host path before exposing a stable surface adapter;
+- prototype `terminal` / PTY handoff internally and use real dogfood to decide whether Terminal is a distinct reusable Target Surface or whether a smaller session/stream abstraction is more correct;
+- record adapter and surface friction before adding new public APIs;
+- formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;
+- clarify which extension points are stable enough to expose without leaking consumer, Cua, browser, PTY, or transport semantics.
+
+Target Surface admission remains evidence-based: a new category should be added only when its authority boundary, capture/input model, lifecycle, or postcondition handling is materially different from the existing `browser` / `os_window` categories. A different app, OS, or device alone is not sufficient.
 
 Exit criteria:
 
 - three real adapters pass deterministic consumer tests;
 - the third adapter demonstrates reuse without product-specific concepts entering generic `src/`;
-- no security invariant is weakened to accommodate an adapter;
-- any new public surface has at least two independent real use cases.
+- bounded OS/window dogfood demonstrates Agent → Human → verifying → Agent over one exact target, or concrete blockers are documented;
+- Terminal/PTY findings state whether `terminal` should become a proven category, remain experimental, or be replaced by a smaller abstraction;
+- no security invariant is weakened to accommodate an adapter or Target Surface;
+- any new public surface has at least two independent real use cases and a documented compatibility strategy.
 
 npm publication is **not** an exit criterion for v0.2.
 
@@ -74,7 +100,7 @@ Candidate scope:
 
 - track MCP MRTR, elicitation, and Tasks evolution and remove redundant project-specific plumbing when the standard subsumes it;
 - test against multiple MCP client/server implementations where practical;
-- further separate browser-takeover transport mechanics from core lifecycle semantics;
+- further separate browser-takeover transport mechanics from core lifecycle semantics and Target Surface mechanics;
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
 - validate a low-latency push/latest-frame transport and a minimal native Human Takeover reference client without turning the project into a generic remote-desktop product.
 
@@ -103,11 +129,12 @@ Minimum exit criteria:
 - core authority/epoch/ownership/resume/checkpoint semantics are documented as stable;
 - compatibility and migration policy is documented and exercised;
 - at least three real adapters have validated the generic boundary, with more than one application domain represented;
+- Target Surface boundaries have been validated with real consumers rather than only synthetic examples;
 - MCP-standard alignment has been re-audited so the library is not duplicating protocol features unnecessarily;
 - browser takeover remains optional and transport-only;
 - Human completion remains distinct from consequential-action approval;
 - automatic replay remains explicitly constrained by consumer policy;
-- CI, dependency review, CodeQL, secret scanning, and security reporting remain operational;
+- CI, cross-platform portability gates, dependency review, CodeQL, secret scanning, and security reporting remain operational;
 - no unresolved known security issue invalidates a documented invariant.
 
 ## npm publication gate
@@ -134,6 +161,7 @@ The roadmap does not include:
 - anti-bot evasion, stealth, fingerprint spoofing, or proxy rotation;
 - credential/OTP/MFA/payment-data transport through MCP;
 - a generic browser automation engine;
+- generic remote-desktop/device-wide computer-use infrastructure;
 - automatic approval or replay of consequential actions;
 - provider-specific policies in generic core.
 
