@@ -24,3 +24,28 @@ test("acceptance control endpoints require both loopback transport and loopback 
   assert.match(source, /return loopbackSocket && loopbackHost/);
   assert.match(source, /if \(!localOnly\(req\)\)/);
 });
+
+const coturnHarness = () => readFileSync("experiments/coturn-turn/scripts/relay-acceptance.mjs", "utf8");
+const coturnContainerHarness = () => readFileSync("experiments/coturn-turn/scripts/container-acceptance.sh", "utf8");
+
+test("coturn relay acceptance proves real relay use without exposing a host port", () => {
+  const source = coturnHarness();
+  const container = coturnContainerHarness();
+  assert.match(source, /iceTransportPolicy: "relay"/);
+  assert.match(source, /candidateTypes/);
+  assert.match(source, /assert\.deepEqual\(\[\.\.\.candidateTypes\(caller\.localDescription\.sdp\)\], \["relay"\]\)/);
+  assert.match(source, /COTURN_RELAY_ACCEPTANCE_PASS/);
+  assert.doesNotMatch(source, /console\.log\([^\n]*(?:credential|sharedSecret|sdp)/i);
+
+  assert.match(container, /--use-auth-secret/);
+  assert.match(container, /--static-auth-secret="\$SECRET"/);
+  assert.match(container, /coturn\/coturn@sha256:[a-f0-9]{64}/);
+  assert.match(container, /node:22-bookworm-slim@sha256:[a-f0-9]{64}/);
+  assert.match(container, /SUFFIX=\$\$/);
+  assert.match(container, /docker network create/);
+  assert.match(container, /Relay ports initialization done/);
+  assert.doesNotMatch(container, /(?:^|\s)-p(?:\s|=)/m);
+  assert.match(container, /umask 077/);
+  assert.match(container, /mktemp/);
+  assert.match(container, /rm -f "\$SECRET_FILE"/);
+});

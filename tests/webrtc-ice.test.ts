@@ -3,6 +3,7 @@ import test from "node:test";
 import { randomBytes } from "node:crypto";
 import {
   CloudflareRealtimeTurnCredentialProvider,
+  CoturnRestTurnCredentialProvider,
   directOnlyIceSession,
   type WebRtcTakeoverRuntimeBinding
 } from "../src/browser-takeover/webrtc-ice.js";
@@ -119,4 +120,82 @@ test("Cloudflare TURN adapter fails generically and revokes partial issuance", a
 
   await assert.rejects(() => provider.issue(binding()), /^Error: TURN credential issuance failed$/);
   assert.equal(requests.filter((url) => url.endsWith("/revoke")).length, 1);
+});
+
+
+test("coturn REST adapter issues independent generation-bounded HMAC-SHA1 credentials without identity tags", async () => {
+  const ids = ["browser_random_peer_123456", "server_random_peer_123456"];
+  const secret = "0123456789abcdef0123456789abcdef";
+  const provider = new CoturnRestTurnCredentialProvider({
+    turnUrls: [
+      "turn:turn.example.test:3478?transport=udp",
+      "turns:turn.example.test:5349?transport=tcp"
+    ],
+    stunUrls: ["stun:turn.example.test:3478"],
+    sharedSecret: secret,
+    now: () => 1_700_000_000_000,
+    randomId: () => ids.shift()!
+  });
+
+  const session = await provider.issue(binding());
+  assert.equal(session.browser.relay, "available");
+  assert.equal(session.browser.iceServers.length, 2);
+  assert.equal(session.serverIceServers.length, 2);
+  const browserTurn = session.browser.iceServers[1]!;
+  const serverTurn = session.serverIceServers[1]!;
+  assert.equal(browserTurn.username, "1700000060:browser_random_peer_123456");
+  assert.equal(serverTurn.username, "1700000060:server_random_peer_123456");
+  assert.notEqual(browserTurn.username, serverTurn.username);
+  assert.deepEqual(browserTurn.urls, [
+    "turn:turn.example.test:3478?transport=udp",
+    "turns:turn.example.test:5349?transport=tcp"
+  ]);
+  assert.deepEqual(session.browser.iceServers[0], { urls: "stun:turn.example.test:3478" });
+  assert.equal(browserTurn.credential, "CVhPNYLGD0hhpf1yLDzwF/gnS9c=");
+  assert.equal(serverTurn.credential, "1reFC0HjdhXsdRUjCLgoEvlpShc=");
+  assert.notEqual(browserTurn.credential, serverTurn.credential);
+  assert.doesNotMatch(String(browserTurn.username), /principal|intervention|client|session/i);
+  await session.revoke();
+  await session.revoke();
+});
+
+test("coturn REST adapter rejects weak secrets, embedded credentials, expired generations, and duplicate peer ids", async () => {
+  assert.throws(() => new CoturnRestTurnCredentialProvider({
+    turnUrls: ["turn:turn.example.test:3478"],
+    sharedSecret: "too-short"
+  }), /coturn shared secret is invalid/);
+  assert.throws(() => new CoturnRestTurnCredentialProvider({
+    turnUrls: ["turn:user@turn.example.test:3478"],
+    sharedSecret: "0123456789abcdef0123456789abcdef"
+  }), /coturn turn URLs are invalid/);
+  for (const invalidUrl of [
+    "turn:turn.example.test:70000",
+    "turn:turn.example.test:3478?credential=secret",
+    "turn:turn.example.test:3478/path"
+  ]) {
+    assert.throws(() => new CoturnRestTurnCredentialProvider({
+      turnUrls: [invalidUrl],
+      sharedSecret: "0123456789abcdef0123456789abcdef"
+    }), /coturn turn URLs are invalid/);
+  }
+  assert.throws(() => new CoturnRestTurnCredentialProvider({
+    turnUrls: ["turn:turn.example.test:3478"],
+    stunUrls: ["stun:turn.example.test:3478?transport=udp"],
+    sharedSecret: "0123456789abcdef0123456789abcdef"
+  }), /coturn stun URLs are invalid/);
+
+  const expired = new CoturnRestTurnCredentialProvider({
+    turnUrls: ["turn:turn.example.test:3478"],
+    sharedSecret: "0123456789abcdef0123456789abcdef",
+    now: () => binding().expiresAt
+  });
+  await assert.rejects(() => expired.issue(binding()), /WebRTC generation is expired/);
+
+  const duplicate = new CoturnRestTurnCredentialProvider({
+    turnUrls: ["turn:turn.example.test:3478"],
+    sharedSecret: "0123456789abcdef0123456789abcdef",
+    now: () => 1_700_000_000_000,
+    randomId: () => "same_random_peer_123456"
+  });
+  await assert.rejects(() => duplicate.issue(binding()), /TURN credential issuance failed/);
 });

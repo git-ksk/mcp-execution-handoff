@@ -63,7 +63,11 @@ credential-safe external Human surfaceは、automationと相性の悪いcredenti
 - 機微なdeployment topologyを含み得るSDP
 - reconnect secretやcapability secret
 
-browser側のdirect-only peerはSTUNへ接続しません。Node/werift peerはdependencyの暗黙defaultを避けるため、Cloudflare STUNを明示的に使います。この通信ではserver側のnetwork metadataがCloudflareへ見える可能性があるため、レビュー対象のtransport trust boundaryとして扱います。Handoffのdiagnosticへraw candidateやaddressを残してはいけません。
+relay provider未設定時、browser側のdirect-only peerはSTUNへ接続しません。Node/werift peerはdependencyの暗黙defaultを避けるため、review済みの明示STUNだけを使います。この通信ではserver側のnetwork metadataがSTUN operatorへ見える可能性があるため、transport trust boundaryとして扱います。Handoffのdiagnosticへraw candidateやaddressを残してはいけません。
+
+Cloudflare Realtime TURNとself-hosted coturnは、どちらもHandoff runtimeが所有するoptional relay trust boundaryです。provider secretはserver-sideだけに保持し、browser/helper/MCP context/log/analytics/durable stateへ出してはいけません。coturnの `MCP_HANDOFF_COTURN_SHARED_SECRET` はlong-lived secretとしてCloudflare API tokenと同等に保護します。TURN URLへcredentialを埋め込むことは禁止し、Cloudflareとcoturnを同時設定した場合や片側だけの不完全設定はfail-closedにします。
+
+coturn TURN REST credentialは `timestamp:random` usernameを使い、principal / intervention / client / account / target-service identifierを含めません。Handoff generationのsuspend/disconnect/Done/Cancel/expiry/reconnectではmedia/input authorityを即時revokeします。Cloudflare credentialはactive revokeできますが、coturnにはcredential単位のrevoke APIがないため、ランダム化されたcoturn credentialはgeneration expiryまでの短いTTLで自然失効します。そのcredential単体ではHandoff signaling、DataChannel authority、target-service authenticationを復元できません。
 
 checkpoint signing keyはrepository外で生成・保管してください。
 

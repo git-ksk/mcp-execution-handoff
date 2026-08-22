@@ -36,7 +36,8 @@
     "prepack": "npm run check && npm run build",
     "accept:webrtc:lan": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts",
     "accept:webrtc:public-relay": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && HANDOFF_ACCEPT_MODE=public-relay tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts",
-    "accept:webrtc:linux": "node --import tsx experiments/linux-webrtc-host/scripts/acceptance.mts"
+    "accept:webrtc:linux": "node --import tsx experiments/linux-webrtc-host/scripts/acceptance.mts",
+    "accept:webrtc:coturn-relay": "npm run build && sh experiments/coturn-turn/scripts/container-acceptance.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

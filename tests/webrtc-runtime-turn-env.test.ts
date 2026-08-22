@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { SpawnedWebRtcRuntimeProvider } from "../src/browser-takeover/webrtc-runtime.js";
+
+const NAMES = [
+  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
+  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
+  "MCP_HANDOFF_COTURN_SHARED_SECRET",
+  "MCP_HANDOFF_COTURN_TURN_URLS",
+  "MCP_HANDOFF_COTURN_STUN_URLS"
+] as const;
+
+function clear(): void { for (const name of NAMES) delete process.env[name]; }
+function runtime(): SpawnedWebRtcRuntimeProvider {
+  return new SpawnedWebRtcRuntimeProvider({ hostExecutable: process.execPath });
+}
+function binding() {
+  return {
+    takeoverSessionId: "turn-env-session", interventionId: "turn-env-intervention", epoch: 1,
+    principalBinding: "turn-env-principal", clientBinding: "turn-env-client-binding-1234567890",
+    clientGeneration: 1, expiresAt: Date.now() + 60_000
+  };
+}
+
+test("runtime selects coturn from complete env and fails closed on partial or conflicting TURN providers", async () => {
+  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  try {
+    clear();
+    process.env.MCP_HANDOFF_COTURN_SHARED_SECRET = "0123456789abcdef0123456789abcdef";
+    process.env.MCP_HANDOFF_COTURN_TURN_URLS = "turn:turn.example.test:3478?transport=udp, turns:turn.example.test:5349?transport=tcp";
+    process.env.MCP_HANDOFF_COTURN_STUN_URLS = "stun:turn.example.test:3478";
+    const provider = runtime();
+    const ice = await provider.prepare(binding());
+    assert.equal(ice.relay, "available");
+    assert.equal(ice.iceServers.length, 2);
+    assert.deepEqual(ice.iceServers[0], { urls: "stun:turn.example.test:3478" });
+    await provider.revoke("turn-env-session");
+
+    clear();
+    process.env.MCP_HANDOFF_COTURN_SHARED_SECRET = "0123456789abcdef0123456789abcdef";
+    assert.throws(() => runtime(), /coturn TURN configuration is incomplete/);
+
+    clear();
+    process.env.MCP_HANDOFF_COTURN_SHARED_SECRET = "0123456789abcdef0123456789abcdef";
+    process.env.MCP_HANDOFF_COTURN_TURN_URLS = "turn:turn.example.test:3478";
+    process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID = "configured-cloudflare-key";
+    assert.throws(() => runtime(), /Multiple TURN providers are configured/);
+  } finally {
+    clear();
+    for (const [name, value] of original) if (value !== undefined) process.env[name] = value;
+  }
+});

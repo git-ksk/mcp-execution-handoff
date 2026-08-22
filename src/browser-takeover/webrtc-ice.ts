@@ -1,3 +1,5 @@
+import { createHmac, randomBytes } from "node:crypto";
+
 export interface WebRtcTakeoverRuntimeBinding {
   takeoverSessionId: string;
   interventionId: string;
@@ -40,6 +42,17 @@ export interface CloudflareRealtimeTurnCredentialProviderConfig {
   fetchImpl?: typeof fetch;
   now?: () => number;
   maxCredentialTtlSeconds?: number;
+}
+
+export interface CoturnRestTurnCredentialProviderConfig {
+  /** TURN/TURNS relay endpoints served by coturn. Credentials must not be embedded in the URLs. */
+  turnUrls: string[];
+  /** Optional STUN/STUNS endpoints. These do not carry credentials. */
+  stunUrls?: string[];
+  /** Server-side shared secret configured with coturn use-auth-secret/static-auth-secret. */
+  sharedSecret: string;
+  now?: () => number;
+  randomId?: () => string;
 }
 
 const CLOUDFLARE_TURN_ORIGIN = "https://rtc.live.cloudflare.com";
@@ -174,6 +187,82 @@ export class CloudflareRealtimeTurnCredentialProvider implements WebRtcIceCreden
   }
 }
 
+export class CoturnRestTurnCredentialProvider implements WebRtcIceCredentialProvider {
+  private readonly turnUrls: string[];
+  private readonly stunUrls: string[];
+  private readonly now: () => number;
+  private readonly randomId: () => string;
+
+  constructor(private readonly config: CoturnRestTurnCredentialProviderConfig) {
+    this.turnUrls = parseConfiguredIceUrls(config.turnUrls, "turn");
+    this.stunUrls = parseConfiguredIceUrls(config.stunUrls ?? [], "stun", true);
+    if (
+      typeof config.sharedSecret !== "string" ||
+      Buffer.byteLength(config.sharedSecret, "utf8") < 32 ||
+      Buffer.byteLength(config.sharedSecret, "utf8") > MAX_ICE_CREDENTIAL_BYTES ||
+      /\s/.test(config.sharedSecret)
+    ) {
+      throw new Error("coturn shared secret is invalid");
+    }
+    this.now = config.now ?? Date.now;
+    this.randomId = config.randomId ?? (() => randomBytes(18).toString("base64url"));
+  }
+
+  async issue(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcPreparedIceSession> {
+    const now = this.now();
+    const remainingMs = binding.expiresAt - now;
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      throw new Error("WebRTC generation is expired");
+    }
+    const expiresAtSeconds = Math.ceil(binding.expiresAt / 1_000);
+    const browser = this.issuePeerCredential(expiresAtSeconds);
+    const server = this.issuePeerCredential(expiresAtSeconds);
+    if (browser.username === server.username) {
+      throw new Error("TURN credential issuance failed");
+    }
+    return {
+      browser: {
+        iceServers: this.peerIceServers(browser),
+        relay: "available"
+      },
+      serverIceServers: this.peerIceServers(server),
+      revoke: async () => {
+        // coturn TURN REST credentials have no per-credential revoke API. Handoff revokes the
+        // generation immediately; the randomized TURN credential remains usable only until the
+        // same generation expiry encoded in its username.
+      }
+    };
+  }
+
+  private issuePeerCredential(expiresAtSeconds: number): { username: string; credential: string } {
+    const id = this.randomId();
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(id)) {
+      throw new Error("TURN credential issuance failed");
+    }
+    const turnRestAuthInput = `${expiresAtSeconds}:${id}`;
+    // coturn TURN REST interoperability requires HMAC-SHA1 for this protocol credential. The
+    // input is a short-lived expiry + random peer id, not a human/account username or arbitrary
+    // application data; the server-only shared secret is separately bounded and never serialized.
+    const credential = createHmac("sha1", this.config.sharedSecret)
+      .update(turnRestAuthInput, "utf8")
+      .digest("base64");
+    return { username: turnRestAuthInput, credential };
+  }
+
+  private peerIceServers(peer: { username: string; credential: string }): WebRtcIceServer[] {
+    const servers: WebRtcIceServer[] = [];
+    if (this.stunUrls.length > 0) {
+      servers.push({ urls: this.stunUrls.length === 1 ? this.stunUrls[0]! : [...this.stunUrls] });
+    }
+    servers.push({
+      urls: this.turnUrls.length === 1 ? this.turnUrls[0]! : [...this.turnUrls],
+      username: peer.username,
+      credential: peer.credential
+    });
+    return servers;
+  }
+}
+
 export function directOnlyIceSession(relay: WebRtcRelayAvailability = "disabled"): WebRtcPreparedIceSession {
   return {
     // Keep the browser host-only: this client waits for ICE gathering rather than trickling, so a
@@ -253,6 +342,66 @@ function parseCloudflareIceServers(value: unknown): IssuedCloudflareIceServers {
   }
   if (!hasTurn || turnUsernames.size === 0) throw new Error("TURN credential response is invalid");
   return { iceServers, turnUsernames: [...turnUsernames] };
+}
+
+function parseConfiguredIceUrls(values: readonly string[], kind: "turn" | "stun", allowEmpty = false): string[] {
+  if (!Array.isArray(values) || (!allowEmpty && values.length < 1) || values.length > MAX_ICE_URLS_PER_SERVER) {
+    throw new Error(`coturn ${kind} URLs are invalid`);
+  }
+  const urls: string[] = [];
+  for (const raw of values) {
+    if (
+      typeof raw !== "string" || raw.length < 1 || Buffer.byteLength(raw, "utf8") > MAX_ICE_URL_BYTES ||
+      !isConfiguredIceUrl(raw, kind)
+    ) {
+      throw new Error(`coturn ${kind} URLs are invalid`);
+    }
+    urls.push(raw);
+  }
+  return urls;
+}
+
+function isConfiguredIceUrl(raw: string, kind: "turn" | "stun"): boolean {
+  if (/\s|@|#|\//.test(raw)) return false;
+  const scheme = kind === "turn" ? /^(turns?):/i : /^(stuns?):/i;
+  const match = scheme.exec(raw);
+  if (!match) return false;
+  let endpoint = raw.slice(match[0].length);
+  const queryIndex = endpoint.indexOf("?");
+  if (queryIndex >= 0) {
+    if (kind !== "turn" || !/^transport=(?:udp|tcp)$/i.test(endpoint.slice(queryIndex + 1))) return false;
+    endpoint = endpoint.slice(0, queryIndex);
+  }
+  if (!endpoint) return false;
+
+  let host = endpoint;
+  let port: string | undefined;
+  if (endpoint.startsWith("[")) {
+    const close = endpoint.indexOf("]");
+    if (close <= 1 || !/^[0-9A-Fa-f:.]+$/.test(endpoint.slice(1, close))) return false;
+    const suffix = endpoint.slice(close + 1);
+    if (suffix) {
+      if (!suffix.startsWith(":")) return false;
+      port = suffix.slice(1);
+    }
+    host = endpoint.slice(0, close + 1);
+  } else {
+    const firstColon = endpoint.indexOf(":");
+    const lastColon = endpoint.lastIndexOf(":");
+    if (firstColon !== lastColon) return false;
+    if (lastColon >= 0) {
+      host = endpoint.slice(0, lastColon);
+      port = endpoint.slice(lastColon + 1);
+    }
+    if (!/^[A-Za-z0-9.-]+$/.test(host) || host.startsWith(".") || host.endsWith(".")) return false;
+  }
+  if (!host) return false;
+  if (port !== undefined) {
+    if (!/^[0-9]{1,5}$/.test(port)) return false;
+    const numericPort = Number(port);
+    if (numericPort < 1 || numericPort > 65_535) return false;
+  }
+  return true;
 }
 
 function parseIceUrls(value: unknown): string[] {

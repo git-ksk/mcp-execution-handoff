@@ -35,6 +35,16 @@ export interface CloudflareRealtimeTurnCredentialProviderConfig {
     now?: () => number;
     maxCredentialTtlSeconds?: number;
 }
+export interface CoturnRestTurnCredentialProviderConfig {
+    /** TURN/TURNS relay endpoints served by coturn. Credentials must not be embedded in the URLs. */
+    turnUrls: string[];
+    /** Optional STUN/STUNS endpoints. These do not carry credentials. */
+    stunUrls?: string[];
+    /** Server-side shared secret configured with coturn use-auth-secret/static-auth-secret. */
+    sharedSecret: string;
+    now?: () => number;
+    randomId?: () => string;
+}
 /**
  * Cloudflare Realtime TURN adapter for the Handoff WebRTC transport.
  *
@@ -54,6 +64,17 @@ export declare class CloudflareRealtimeTurnCredentialProvider implements WebRtcI
     private generate;
     private revokeUsernames;
     private headers;
+}
+export declare class CoturnRestTurnCredentialProvider implements WebRtcIceCredentialProvider {
+    private readonly config;
+    private readonly turnUrls;
+    private readonly stunUrls;
+    private readonly now;
+    private readonly randomId;
+    constructor(config: CoturnRestTurnCredentialProviderConfig);
+    issue(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcPreparedIceSession>;
+    private issuePeerCredential;
+    private peerIceServers;
 }
 export declare function directOnlyIceSession(relay?: WebRtcRelayAvailability): WebRtcPreparedIceSession;
 export declare function cloneIceServers(servers: readonly WebRtcIceServer[]): WebRtcIceServer[];

@@ -130,9 +130,9 @@ background、peer disconnect、explicit suspendではpeerを破棄し、そのcl
 
 物理iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方をacceptance済みです。window-scoped video、別Mac appがfrontmostな状態からのtarget-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しています。Mobile viewport / keyboard compositionと明示reload/reconnect UXはfollow-upであり、transport baselineの前提条件ではありません。
 
-direct-first ICEは両peerで明示します。Safari/browser側はhost-only (`iceServers: []`) のままとし、STUN不達がnon-trickle browser gatheringの待ち時間を増やさないようにします。Node/werift側は `stun:stun.cloudflare.com:3478` を明示し、dependencyの暗黙default STUNをreview済みのCloudflare network-metadata trust boundaryへ置き換えます。
+direct-first ICEは両peerで明示します。relay provider未設定時はSafari/browser側をhost-only (`iceServers: []`) に保ち、Node/werift側だけreview済みの明示STUNを使ってdependencyの暗黙default STUNを排除します。optional TURNはfallback専用で、productionでは `iceTransportPolicy: all` を維持しrelay-onlyにはしません。
 
-このSTUN requestではserver側public network addressがCloudflareへ見える可能性がありますが、principal / intervention / client identifierは送りません。optionalなCloudflare Realtime TURNはpeerごとのshort-lived credentialを使うfallback専用で、`iceTransportPolicy: all` を維持しrelay-onlyにはしません。
+HandoffはCloudflare Realtime TURNとself-hosted coturn TURN RESTの両方をoptional providerとして扱えます。どちらもgeneration binding後にbrowser/server別のshort-lived credentialを発行し、TURN usernameやmetadataへprincipal / intervention / client identityを含めません。coturn adapterは `timestamp:random` usernameと `base64(HMAC-SHA1(shared-secret, username))` を使い、coturnの `use-auth-secret` と互換にします。coturnにはcredential単位の即時revoke APIがないため、Handoff authorityは即時revokeしつつ、relay credential自体は同じgeneration expiryまでで自然失効させます。
 
 raw candidate文字列、IP address、SDP、credential、framebuffer、Human inputはdiagnosticやdurable control-plane artifactへ保存しません。diagnosticはcandidate type/count、peer state、bounded timingに限定します。
 
