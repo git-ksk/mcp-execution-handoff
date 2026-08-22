@@ -35,7 +35,7 @@ jobs:
           git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
           rm -rf dist
           cp -R "$tmpdir/dist" dist
-          git add dist
+          git add -f dist
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
