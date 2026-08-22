@@ -10,7 +10,9 @@ test("macOS Native host scopes target-PID capture and input to the same exact wi
   const host = source("experiments/thin-takeover-runtime/Sources/takeover-macos-host/MacHost.swift");
   const input = source("experiments/thin-takeover-runtime/Sources/takeover-macos-host/InputInjector.swift");
   assert.match(host, /THIN_TAKEOVER_TARGET_PID/);
+  assert.match(host, /THIN_TAKEOVER_TARGET_WINDOW_ID/);
   assert.match(host, /window\.owningApplication\?\.processID == targetProcessID/);
+  assert.match(host, /targetWindowID == nil \|\| window\.windowID == targetWindowID/);
   assert.match(host, /window\.windowLayer == 0/);
   assert.match(host, /windows\.count == 1/);
   assert.match(host, /SCContentFilter\(display: display, including: \[window\]\)/);
@@ -20,6 +22,11 @@ test("macOS Native host scopes target-PID capture and input to the same exact wi
   assert.match(host, /config\.sourceRect = sourceRect/);
   assert.match(host, /inputBounds: window\.frame/);
   assert.match(input, /private let inputBounds: CGRect/);
+  assert.match(input, /private let targetProcessID: pid_t\?/);
+  assert.match(input, /event\.postToPid\(targetProcessID\)/);
+  assert.match(input, /guard activateTargetWindowForInput\(\) else/);
+  assert.match(input, /matches\.count == 1/);
+  assert.match(input, /AXUIElementPerformAction\(window, kAXRaiseAction as CFString\)/);
   assert.doesNotMatch(input, /CGDisplayBounds\(displayID\)/);
 });
 
@@ -53,6 +60,7 @@ test("Node runtime passes target PID and optional display only through the priva
   const native = source("src/browser-takeover/native-runtime.ts");
   const webrtc = source("src/browser-takeover/webrtc-runtime.ts");
   assert.match(native, /env\.THIN_TAKEOVER_TARGET_PID = String\(binding\.targetProcessId\)/);
+  assert.match(native, /env\.THIN_TAKEOVER_TARGET_WINDOW_ID = String\(binding\.targetWindowId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_PID = String\(binding\.targetProcessId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_DISPLAY_NAME = this\.config\.displayName/);
 });

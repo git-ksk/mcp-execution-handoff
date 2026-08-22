@@ -35,7 +35,7 @@ export function parseNativeTakeoverClientEndpoint(value) {
     }
     return { clientHost, videoPort, inputFeedbackPort };
 }
-export function nativeBindingFromGrant(grant, targetProcessId) {
+export function nativeBindingFromGrant(grant, targetProcessId, targetWindowId) {
     return {
         takeoverSessionId: grant.id,
         interventionId: grant.interventionId,
@@ -43,7 +43,8 @@ export function nativeBindingFromGrant(grant, targetProcessId) {
         principalBinding: grant.principalBinding,
         clientGeneration: grant.clientGeneration,
         expiresAt: grant.expiresAt,
-        ...(targetProcessId === undefined ? {} : { targetProcessId })
+        ...(targetProcessId === undefined ? {} : { targetProcessId }),
+        ...(targetWindowId === undefined ? {} : { targetWindowId })
     };
 }
 /**
@@ -87,6 +88,9 @@ export class InheritedFdNativeRuntimeProvider {
         this.spawnProcess = config.spawnProcess ?? spawn;
     }
     async begin(binding, endpoint) {
+        if (binding.targetWindowId !== undefined && binding.targetProcessId === undefined) {
+            throw new NativeTakeoverRuntimeError("NATIVE_RUNTIME_START_FAILED", "native target window requires a target process");
+        }
         const existing = this.active.get(binding.takeoverSessionId);
         if (existing) {
             if (existing.binding.clientGeneration === binding.clientGeneration) {
@@ -111,6 +115,8 @@ export class InheritedFdNativeRuntimeProvider {
             env.THIN_TAKEOVER_DISPLAY_ID = String(this.config.displayId);
         if (binding.targetProcessId !== undefined)
             env.THIN_TAKEOVER_TARGET_PID = String(binding.targetProcessId);
+        if (binding.targetWindowId !== undefined)
+            env.THIN_TAKEOVER_TARGET_WINDOW_ID = String(binding.targetWindowId);
         delete env.THIN_TAKEOVER_SESSION_KEY_HEX;
         const args = [
             endpoint.clientHost,

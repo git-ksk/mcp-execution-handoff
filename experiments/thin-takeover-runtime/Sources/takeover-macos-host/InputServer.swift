@@ -22,6 +22,7 @@ final class SecureInputServer: @unchecked Sendable {
         epoch: UInt64,
         generation: UInt32,
         inputBounds: CGRect,
+        targetProcessID: pid_t?,
         lease: EphemeralSessionLease
     ) throws {
         self.receiver = try DatagramReceiver(
@@ -46,7 +47,7 @@ final class SecureInputServer: @unchecked Sendable {
             channel: .inputFeedback
         )
         self.lease = lease
-        self.injector = MacOSInputInjector(inputBounds: inputBounds)
+        self.injector = MacOSInputInjector(inputBounds: inputBounds, targetProcessID: targetProcessID)
     }
 
     func run() {

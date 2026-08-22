@@ -34,6 +34,7 @@ private struct HostSessionConfiguration {
     let feedbackBindHost: String
     let displayID: CGDirectDisplayID?
     let targetProcessID: pid_t?
+    let targetWindowID: CGWindowID?
 
     static func load() throws -> HostSessionConfiguration {
         let env = ProcessInfo.processInfo.environment
@@ -86,6 +87,15 @@ private struct HostSessionConfiguration {
             targetProcessID = nil
         }
 
+        let targetWindowID: CGWindowID?
+        if let text = env["THIN_TAKEOVER_TARGET_WINDOW_ID"] {
+            guard targetProcessID != nil else { throw HostConfigurationError.invalid("THIN_TAKEOVER_TARGET_WINDOW_ID") }
+            guard let value = UInt32(text), value > 0 else { throw HostConfigurationError.invalid("THIN_TAKEOVER_TARGET_WINDOW_ID") }
+            targetWindowID = CGWindowID(value)
+        } else {
+            targetWindowID = nil
+        }
+
         return HostSessionConfiguration(
             rootKey: rootKey,
             sessionHash: sessionHash,
@@ -96,7 +106,8 @@ private struct HostSessionConfiguration {
             controlBindHost: controlBindHost,
             feedbackBindHost: feedbackBindHost,
             displayID: displayID,
-            targetProcessID: targetProcessID
+            targetProcessID: targetProcessID,
+            targetWindowID: targetWindowID
         )
     }
 
@@ -147,17 +158,20 @@ private struct CaptureSurface {
 private func selectCaptureSurface(
     from content: SCShareableContent,
     requestedDisplay: CGDirectDisplayID?,
-    targetProcessID: pid_t?
+    targetProcessID: pid_t?,
+    targetWindowID: CGWindowID?
 ) throws -> CaptureSurface {
     if let targetProcessID {
         let windows = content.windows.filter { window in
             guard window.owningApplication?.processID == targetProcessID,
                   window.isOnScreen,
-                  window.windowLayer == 0 else { return false }
+                  window.windowLayer == 0,
+                  targetWindowID == nil || window.windowID == targetWindowID else { return false }
             return window.frame.width >= 160 && window.frame.height >= 120
         }
         guard windows.count == 1, let window = windows.first else {
-            throw HostConfigurationError.unavailable("Target browser process must own exactly one capturable on-screen window")
+            let boundary = targetWindowID == nil ? "process" : "process/window"
+            throw HostConfigurationError.unavailable("Target \(boundary) must resolve to exactly one capturable on-screen window")
         }
         let containingDisplays = content.displays.filter { $0.frame.contains(window.frame) }
         guard containingDisplays.count == 1, let display = containingDisplays.first else {
@@ -496,7 +510,8 @@ struct MacHost {
         let surface = try selectCaptureSurface(
             from: content,
             requestedDisplay: sessionConfiguration.displayID,
-            targetProcessID: sessionConfiguration.targetProcessID
+            targetProcessID: sessionConfiguration.targetProcessID,
+            targetWindowID: sessionConfiguration.targetWindowID
         )
         let nativeWidth = surface.pixelWidth
         let nativeHeight = surface.pixelHeight
@@ -540,6 +555,7 @@ struct MacHost {
             epoch: sessionConfiguration.epoch,
             generation: sessionConfiguration.generation,
             inputBounds: surface.inputBounds,
+            targetProcessID: sessionConfiguration.targetProcessID,
             lease: lease
         )
         let controlServer = try SecureControlServer(

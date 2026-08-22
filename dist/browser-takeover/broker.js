@@ -156,6 +156,7 @@ export class TakeoverBroker {
     nativeOnlySessions = new Map();
     webRtcOnlySessions = new Map();
     nativeTargetProcessIds = new Map();
+    nativeTargetWindowIds = new Map();
     webRtcTargetProcessIds = new Map();
     constructor(browser, config, nativeRuntime, webRtcRuntime) {
         this.browser = browser;
@@ -180,7 +181,8 @@ export class TakeoverBroker {
     createNativeLink(intervention, principalBinding, target) {
         if (!this.nativeRuntime || !this.config.enabled || !this.config.publicBaseUrl || !principalBinding)
             return undefined;
-        if (target && (!Number.isSafeInteger(target.processId) || target.processId < 1))
+        if (target && (!Number.isSafeInteger(target.processId) || target.processId < 1
+            || (target.windowId !== undefined && (!Number.isSafeInteger(target.windowId) || target.windowId < 1))))
             return undefined;
         const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
         if (this.webRtcOnlySessions.has(locator.id))
@@ -189,14 +191,19 @@ export class TakeoverBroker {
             if (currentIntervention === intervention.id && sessionId !== locator.id) {
                 this.nativeOnlySessions.delete(sessionId);
                 this.nativeTargetProcessIds.delete(sessionId);
+                this.nativeTargetWindowIds.delete(sessionId);
             }
         }
         this.nativeOnlySessions.set(locator.id, intervention.id);
-        if (target)
+        if (target) {
             this.nativeTargetProcessIds.set(locator.id, target.processId);
+            if (target.windowId !== undefined)
+                this.nativeTargetWindowIds.set(locator.id, target.windowId);
+        }
         const expiryCleanup = setTimeout(() => {
             this.nativeOnlySessions.delete(locator.id);
             this.nativeTargetProcessIds.delete(locator.id);
+            this.nativeTargetWindowIds.delete(locator.id);
         }, this.config.ttlMs + 1_000);
         expiryCleanup.unref();
         return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
@@ -544,7 +551,7 @@ export class TakeoverBroker {
             }
             try {
                 const native = this.nativeRuntime && endpoint
-                    ? await this.nativeRuntime.begin(nativeBindingFromGrant(grant, this.nativeTargetProcessIds.get(id)), endpoint)
+                    ? await this.nativeRuntime.begin(nativeBindingFromGrant(grant, this.nativeTargetProcessIds.get(id), this.nativeTargetWindowIds.get(id)), endpoint)
                     : undefined;
                 return json(200, this.publicGrant(grant, native));
             }
@@ -555,6 +562,7 @@ export class TakeoverBroker {
                 this.sessions.revoke(id);
                 this.nativeOnlySessions.delete(id);
                 this.nativeTargetProcessIds.delete(id);
+                this.nativeTargetWindowIds.delete(id);
                 await this.nativeRuntime?.revoke(id).catch(() => undefined);
                 return json(503, { error: "native_runtime_unavailable" });
             }
@@ -615,6 +623,9 @@ export class TakeoverBroker {
             this.sessions.revoke(id);
             this.nativeOnlySessions.delete(id);
             this.webRtcOnlySessions.delete(id);
+            this.nativeTargetProcessIds.delete(id);
+            this.nativeTargetWindowIds.delete(id);
+            this.webRtcTargetProcessIds.delete(id);
             try {
                 await this.nativeRuntime?.revoke(id);
             }
@@ -682,6 +693,7 @@ export class TakeoverBroker {
             if (currentIntervention === interventionId) {
                 this.nativeOnlySessions.delete(sessionId);
                 this.nativeTargetProcessIds.delete(sessionId);
+                this.nativeTargetWindowIds.delete(sessionId);
             }
         }
     }
