@@ -196,6 +196,7 @@ async function runCommand(executable, args, display) {
 }
 async function resolveExactWindow(targetPid, display, xdotool) {
     const deadline = Date.now() + 7_000;
+    let observedMultiple = false;
     while (Date.now() < deadline) {
         const rawIds = await runCommand(xdotool, ["search", "--onlyvisible", "--pid", String(targetPid)], display).catch(() => "");
         const ids = [...new Set(parseWindowIds(rawIds))];
@@ -210,9 +211,15 @@ async function resolveExactWindow(targetPid, display, xdotool) {
         }
         if (candidates.length === 1)
             return candidates[0];
+        // A normal Chromium launch can briefly expose more than one top-level X11 window while the
+        // browser/session manager settles. Never choose among ambiguous windows; keep waiting within
+        // the existing bounded readiness interval and proceed only after exactly one remains.
         if (candidates.length > 1)
-            throw new Error("Linux WebRTC host found multiple eligible windows for the target browser PID");
+            observedMultiple = true;
         await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (observedMultiple) {
+        throw new Error("Linux WebRTC host did not converge to exactly one eligible window for the target browser PID");
     }
     throw new Error("Linux WebRTC host could not resolve exactly one eligible window for the target browser PID");
 }
@@ -431,15 +438,33 @@ export async function linuxWebRtcHostMain() {
     const targetPid = Number(process.env.TAKEOVER_WEBRTC_TARGET_PID);
     const expiresAt = Number(process.env.TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS);
     const display = process.env.TAKEOVER_WEBRTC_DISPLAY_NAME?.trim();
-    if (!Number.isSafeInteger(targetPid) || targetPid <= 0)
+    if (!Number.isSafeInteger(targetPid) || targetPid <= 0) {
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=target_missing\n");
         throw new Error("TAKEOVER_WEBRTC_TARGET_PID is required");
+    }
+    try {
+        process.kill(targetPid, 0);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=target_alive\n");
+    }
+    catch {
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=target_missing\n");
+        throw new Error("TAKEOVER_WEBRTC_TARGET_PID is unavailable");
+    }
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
         throw new Error("TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS is invalid or expired");
     if (!display || !/^:\d+(?:\.\d+)?$/.test(display))
         throw new Error("TAKEOVER_WEBRTC_DISPLAY_NAME must be a local X11 display such as :99");
     const xdotool = absoluteTool("xdotool", "TAKEOVER_LINUX_XDOTOOL");
     const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
-    const geometry = await resolveExactWindow(targetPid, display, xdotool);
+    let geometry;
+    try {
+        geometry = await resolveExactWindow(targetPid, display, xdotool);
+    }
+    catch (error) {
+        const multiple = error instanceof Error && /did not converge/.test(error.message);
+        process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${multiple ? "window_failure_multiple" : "window_failure_none"}\n`);
+        throw error;
+    }
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
     const input = new LinuxWindowInput(geometry, display, xdotool);
     let stopped = false;

@@ -11,7 +11,11 @@ export type WebRtcDiagnosticStage =
   | "broker.connect.success"
   | "broker.connect.failure"
   | "server.peer.state"
+  | "host.target.alive"
+  | "host.target.missing"
   | "host.window.ready"
+  | "host.window.failure.none"
+  | "host.window.failure.multiple"
   | "host.capture.started"
   | "host.frame.ready"
   | "host.input.focus.ready"
@@ -62,7 +66,11 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "broker.connect.success",
   "broker.connect.failure",
   "server.peer.state",
+  "host.target.alive",
+  "host.target.missing",
   "host.window.ready",
+  "host.window.failure.none",
+  "host.window.failure.multiple",
   "host.capture.started",
   "host.frame.ready",
   "host.input.focus.ready",
@@ -143,7 +151,11 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "broker.connect.success": ["stage", "durationMs"],
     "broker.connect.failure": ["stage", "durationMs"],
     "server.peer.state": ["stage", "state"],
+    "host.target.alive": ["stage"],
+    "host.target.missing": ["stage"],
     "host.window.ready": ["stage"],
+    "host.window.failure.none": ["stage"],
+    "host.window.failure.multiple": ["stage"],
     "host.capture.started": ["stage"],
     "host.frame.ready": ["stage"],
     "host.input.focus.ready": ["stage"],

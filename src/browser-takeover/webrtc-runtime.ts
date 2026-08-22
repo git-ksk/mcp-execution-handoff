@@ -79,6 +79,24 @@ export interface WebRtcTakeoverRuntimeProvider {
   revokeForIntervention(interventionId: string): Promise<void>;
 }
 
+export type WebRtcRuntimeStartStage =
+  | "host_spawn"
+  | "host_ready"
+  | "remote_description"
+  | "track_setup"
+  | "answer_create"
+  | "local_description"
+  | "answer_finalize";
+
+export type WebRtcRuntimeStartReason =
+  | "peer_closed"
+  | "host_not_ready"
+  | "answer_state"
+  | "transceiver_missing"
+  | "sctp_missing"
+  | "invalid_media_kind"
+  | "other";
+
 export class WebRtcTakeoverRuntimeError extends Error {
   constructor(
     public readonly code:
@@ -87,7 +105,9 @@ export class WebRtcTakeoverRuntimeError extends Error {
       | "WEBRTC_ICE_NOT_PREPARED"
       | "WEBRTC_RUNTIME_START_FAILED"
       | "WEBRTC_RUNTIME_REVOKE_FAILED",
-    message: string
+    message: string,
+    public readonly startStage?: WebRtcRuntimeStartStage,
+    public readonly startReason?: WebRtcRuntimeStartReason
   ) {
     super(message);
     this.name = "WebRtcTakeoverRuntimeError";
@@ -128,6 +148,13 @@ interface EncodedHostFrame {
   avcc: Buffer;
 }
 
+interface HostReadyGate {
+  promise: Promise<void>;
+  resolve(): void;
+  reject(): void;
+  settled: boolean;
+}
+
 interface ActiveWebRtcRuntime {
   binding: WebRtcTakeoverRuntimeBinding;
   iceSession: WebRtcPreparedIceSession;
@@ -147,6 +174,7 @@ interface ActiveWebRtcRuntime {
   awaitingVideoKeyframe: boolean;
   pendingFrame?: EncodedHostFrame;
   preconnectKeyframe?: EncodedHostFrame;
+  hostReady?: HostReadyGate;
 }
 
 interface PreparedWebRtcRuntime {
@@ -284,11 +312,13 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     });
     const track = new MediaStreamTrack({ kind: "video" });
     let host: ChildProcess | undefined;
+    let startStage: WebRtcRuntimeStartStage = "host_spawn";
     try {
       host = this.spawnHost(binding);
       await this.waitForSpawn(host);
       const expiryTimer = setTimeout(() => { void this.end(binding.takeoverSessionId, true); }, Math.max(0, binding.expiresAt - Date.now()));
       expiryTimer.unref();
+      const hostReady = this.config.displayName === undefined ? undefined : createHostReadyGate();
       const runtime: ActiveWebRtcRuntime = {
         binding: { ...binding },
         iceSession: prepared.iceSession,
@@ -301,21 +331,35 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         nextSequence: random16(),
         lastIdrRequestAt: 0,
         videoDrainActive: false,
-        awaitingVideoKeyframe: false
+        awaitingVideoKeyframe: false,
+        ...(hostReady ? { hostReady } : {})
       };
       this.active.set(binding.takeoverSessionId, runtime);
       this.attachHost(runtime);
       this.attachPeer(runtime);
 
+      if (runtime.hostReady) {
+        startStage = "host_ready";
+        await Promise.race([
+          runtime.hostReady.promise,
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Linux WebRTC host window is unavailable")), 8_000))
+        ]);
+      }
+
       const answerStartedAt = Date.now();
+      startStage = "remote_description";
       await peer.setRemoteDescription(offer);
+      startStage = "track_setup";
       const sender = peer.addTrack(track);
       runtime.sender = sender;
       sender.onPictureLossIndication.subscribe(() => {
         this.requestIdr(runtime);
       });
+      startStage = "answer_create";
       const answer = await peer.createAnswer();
+      startStage = "local_description";
       await peer.setLocalDescription(answer);
+      startStage = "answer_finalize";
       const local = peer.localDescription;
       if (!local?.sdp) throw new Error("WebRTC answer missing local SDP");
       this.recordDiagnostic({
@@ -335,7 +379,9 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         ? error
         : new WebRtcTakeoverRuntimeError(
             "WEBRTC_RUNTIME_START_FAILED",
-            "WebRTC runtime failed to start"
+            "WebRTC runtime failed to start",
+            startStage,
+            classifyRuntimeStartReason(error)
           );
     }
   }
@@ -434,16 +480,24 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     const metricParser = new HostMetricParser(
       (hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; },
       (regions) => this.sendEditableRegions(runtime, regions),
-      (stage) => this.recordDiagnostic({ stage })
+      (stage) => {
+        this.recordDiagnostic({ stage });
+        if (stage === "host.window.ready") runtime.hostReady?.resolve();
+        if (stage === "host.target.missing" || stage === "host.window.failure.none" || stage === "host.window.failure.multiple") {
+          runtime.hostReady?.reject();
+        }
+      }
     );
     stdout.on("data", (chunk: Buffer) => parser.push(chunk));
     stdout.once("end", () => parser.end());
     stderr.on("data", (chunk: Buffer) => metricParser.push(chunk));
     stderr.once("end", () => metricParser.end());
     runtime.host.once("exit", () => {
+      runtime.hostReady?.reject();
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true);
     });
     runtime.host.once("error", () => {
+      runtime.hostReady?.reject();
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true);
     });
   }
@@ -697,6 +751,39 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
   }
 }
 
+
+function createHostReadyGate(): HostReadyGate {
+  let resolvePromise!: () => void;
+  let rejectPromise!: (error: Error) => void;
+  const gate: HostReadyGate = {
+    settled: false,
+    promise: new Promise<void>((resolve, reject) => { resolvePromise = resolve; rejectPromise = reject; }),
+    resolve() {
+      if (gate.settled) return;
+      gate.settled = true;
+      resolvePromise();
+    },
+    reject() {
+      if (gate.settled) return;
+      gate.settled = true;
+      rejectPromise(new Error("Linux WebRTC host window is unavailable"));
+    }
+  };
+  return gate;
+}
+
+function classifyRuntimeStartReason(error: unknown): WebRtcRuntimeStartReason {
+  const name = error instanceof Error ? error.name : "";
+  const message = error instanceof Error ? error.message : "";
+  if (message === "Linux WebRTC host window is unavailable") return "host_not_ready";
+  if (name === "InvalidStateError" || /peer closed|RTCPeerConnection is closed/i.test(message)) return "peer_closed";
+  if (message === "createAnswer failed" || message === "wrong state") return "answer_state";
+  if (/^Transceiver with mid=.* not found$/.test(message)) return "transceiver_missing";
+  if (message === "sctpTransport not found") return "sctp_missing";
+  if (message === "invalid kind") return "invalid_media_kind";
+  return "other";
+}
+
 function iceCredentialProviderFromEnvironment(env: NodeJS.ProcessEnv): WebRtcIceCredentialProvider | undefined {
   const turnKeyId = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID;
   const turnKeyApiToken = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN;
@@ -763,7 +850,7 @@ class HostMetricParser {
   constructor(
     private readonly onHostEncode: (hostEncodeMs: number) => void,
     private readonly onEditableRegions: (regions: number[][]) => void,
-    private readonly onHostStage: (stage: "host.window.ready" | "host.capture.started" | "host.frame.ready" | "host.input.focus.ready" | "host.input.tap.sent" | "host.input.failure" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other") => void
+    private readonly onHostStage: (stage: "host.target.alive" | "host.target.missing" | "host.window.ready" | "host.window.failure.none" | "host.window.failure.multiple" | "host.capture.started" | "host.frame.ready" | "host.input.focus.ready" | "host.input.tap.sent" | "host.input.failure" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other") => void
   ) {}
 
   push(chunk: Buffer): void {
@@ -781,10 +868,14 @@ class HostMetricParser {
         if (Number.isSafeInteger(tenths) && tenths >= 0 && tenths <= 65_535) this.onHostEncode(tenths / 10);
         continue;
       }
-      const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(window_ready|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
+      const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
       if (diagnostic) {
         const stages = {
+          target_alive: "host.target.alive",
+          target_missing: "host.target.missing",
           window_ready: "host.window.ready",
+          window_failure_none: "host.window.failure.none",
+          window_failure_multiple: "host.window.failure.multiple",
           capture_started: "host.capture.started",
           frame_ready: "host.frame.ready",
           input_focus_ready: "host.input.focus.ready",

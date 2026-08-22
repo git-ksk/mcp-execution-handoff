@@ -38,9 +38,13 @@ export interface WebRtcTakeoverRuntimeProvider {
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
 }
+export type WebRtcRuntimeStartStage = "host_spawn" | "host_ready" | "remote_description" | "track_setup" | "answer_create" | "local_description" | "answer_finalize";
+export type WebRtcRuntimeStartReason = "peer_closed" | "host_not_ready" | "answer_state" | "transceiver_missing" | "sctp_missing" | "invalid_media_kind" | "other";
 export declare class WebRtcTakeoverRuntimeError extends Error {
     readonly code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED";
-    constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string);
+    readonly startStage?: WebRtcRuntimeStartStage | undefined;
+    readonly startReason?: WebRtcRuntimeStartReason | undefined;
+    constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string, startStage?: WebRtcRuntimeStartStage | undefined, startReason?: WebRtcRuntimeStartReason | undefined);
 }
 export declare function webRtcBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): WebRtcTakeoverRuntimeBinding;
 export declare function parseWebRtcOffer(value: unknown): WebRtcSessionDescription;
