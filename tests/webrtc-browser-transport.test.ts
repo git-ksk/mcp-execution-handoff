@@ -242,7 +242,7 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /senderTimelineToReceiveMs/);
   assert.match(script, /inputAckMs/);
   assert.match(script, /inputMetricsSamplesSent>=6/);
-  assert.match(script, /touchEventsAvailable='ontouchstart' in window/);
+  assert.match(script, /touchEventsAvailable=\('ontouchstart' in window\)\|\|\(Number\(navigator\.maxTouchPoints\)\|\|0\)>0/);
   assert.match(script, /addEventListener\('touchstart'/);
   assert.match(script, /addEventListener\('touchmove'/);
   assert.match(script, /addEventListener\('touchend'/);
@@ -260,8 +260,12 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /performance\.now\(\)-editableRegionsAt>1000/);
   assert.match(script, /if\(g\.editable\)/);
   assert.match(script, /armKeyboardFallback/);
-  assert.match(script, /keyboardOpen\.style\.display='block'/);
-  assert.match(script, /keyboardOpen\.addEventListener\('click'/);
+  assert.match(script, /if\(touchEventsAvailable\)\{if\(!stopped\)keyboardOpen\.style\.display='block';return\}/);
+  assert.match(script, /keyboardOpen\.style\.display=touchEventsAvailable\?'block':'none'/);
+  assert.match(script, /function focusKeyboard\(\)/);
+  assert.match(script, /keyboard\.focus\(\{preventScroll:true\}\)/);
+  assert.match(script, /keyboard\.focus\(\)/);
+  assert.match(script, /keyboardOpen\.addEventListener\('click',function\(\)\{if\(stopped\)return;focusKeyboard\(\)\}\)/);
   assert.doesNotMatch(script, /probeEditable|phase==='probe'/);
   assert.match(script, /reportInputAck/);
   assert.doesNotMatch(script, /frameAgeMs|captureToReceiveMs/);
