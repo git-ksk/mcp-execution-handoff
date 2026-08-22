@@ -2,62 +2,97 @@
 
 [English](README.md)
 
-MCP駆動の実行中にHuman interventionが必要になった場合、Agent実行を安全に停止し、Humanへ一時的にauthorityを移し、検証後にpolicyに従ってのみ再開するための小さなTypeScript runtimeです。
+> 英語版が正本です。内容に差がある場合は英語版を優先してください。
 
-**Status:** 2つのreal adapterで再利用性を確認済みのupstreamです。`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npm publishは行っていません。
+MCPで動く処理の途中でHumanによる手動操作が必要になったとき、Agentの実行を安全に止めて一時的にHumanへ権限を移し、明示的な検証とpolicy確認を通過した場合だけ処理を再開するための、小さなTypeScript runtimeです。
 
-## 目的
+**Status:** 再利用可能なupstreamとして検証済みです。`v0.1.0` は最初のsource releaseで、MapsとJapan Cinemaの2つの実consumerでcontractを確認しました。npm packageは引き続き `private: true` で、npmには公開していません。
 
-このruntimeは `git-ksk/maps-browser-mcp` で育ったExecution Handoffをsource of truthとして抽出したものです。`git-ksk/japan-cinema-browser-mcp` をsecond real adapterとして通し、Maps固有概念を持ち込まず成立する最小contractだけをpublicにします。
+## このプロジェクトが必要な理由
 
-public contractは以下に限定します。
+このruntimeは `git-ksk/maps-browser-mcp` で生まれました。その後、2つ目の実consumerである `git-ksk/japan-cinema-browser-mcp` でも、Maps固有の概念を持ち込まず同じcontractが成立することを確認できたため、共通部分をupstreamとして切り出しました。
 
-- Agent / Human execution authorityの排他制御
-- 単調増加するresource epoch
-- 明示的resume policy
-- generic execution adapter contract
-- signed durable control-plane checkpoint
-- MCP MRTR `input_required` requestState binding
-- principal + invocation + canonical argsのownership binding
-- short-lived capability + one-client leaseを持つoptional browser takeover transport
-- normal/non-automated browserを要求するprovider向けのcredential-safe external Human surface coordination
+公開するcontractは意図的に狭くしています。
 
-CAPTCHA solver、challenge bypass、credential relay、payment automation、generic browser agent、DOM/network export、consequential actionの自動approvalは提供しません。
+- AgentとHumanの実行権限を排他的に管理する
+- resource epochを単調増加させ、古いstateを無効化する
+- resume policyを明示する
+- 汎用的なexecution adapter contractを提供する
+- 署名付きのdurable control-plane checkpointを扱う
+- MCP MRTRの `input_required` と `requestState` をbindingする
+- principal、invocation、canonical argumentsへownershipをbindingする
+- short-lived capabilityとone-client leaseを持つoptional browser takeover transportを提供する
+- normal/non-automated browserが必要なprovider向けに、credential-safe external Human surfaceをcoordinationする
 
-## Security invariant
+一方で、CAPTCHA solver、challenge bypass、credential relay、payment automation、generic browser agent、DOM/network export、重大操作のautomatic approvalは提供しません。
 
-- AgentとHumanが同時にexecution authorityを持たない。
-- Human handoffでresource epochを進め、stale stateをfail closedする。
-- handoff ownershipをauthenticated logical principalとexact invocation argumentsへbindする。
-- `awaiting_human` の初期状態を過ぎたunowned interventionを後からrebindしない。
-- durable checkpointはcontrol-plane metadataだけを保存し、raw args、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptを保存しない。
-- restart recoveryは必ず `reissue_and_revalidate` で、stale authorityを復元せず、actionをsilent replayしない。
-- takeover URLはlocatorのみで、capability secretを含めない。
-- capabilityはsession / intervention / resource epoch / principal / remote client binding / expiryへbindする。
-- takeover leaseはremote client generation 1つだけ。reload/new tab/new deviceで新しいbindingになってもactive leaseを暗黙reclaimできない。native reconnectは旧leaseがidleになった後だけ、WebRTC browserはsuspend/disconnect時に現generationを明示releaseしてからreconnectする。どちらも同じauthenticated principal + generation-bound reconnect handleを必須とし、fresh client generationへrotateして旧capability/handleを即時fenceする。
-- `no-store` / `no-referrer` / nonce-bound CSP client asset / bounded inputを維持する。
-- credential-safe external Human controlはHuman authorityが排他的にactiveな間だけ開始でき、automation authorityを戻す前にexternal sessionをrevokeする。
-- external Human providerから保持するのはbounded control-plane field（provider kind / intervention / epoch / principal binding / session id / operator locator / optional expiry）のみで、任意provider metadataは破棄する。
-- **Human takeover完了は別actionのapprovalではない。** consequential actionのapprovalはconsumer側の別経路で明示的に扱う。
-- stateful/consequential actionは、安全なreplayが別途成立しない限りhandoff後に自動replayしない。
+## Packages / modules
 
-詳細は [Architecture 日本語版](docs/architecture.ja.md)、[Positioning 日本語版](docs/positioning.ja.md)、[Roadmap 日本語版](ROADMAP.ja.md)、[Security Policy 日本語版](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
+```text
+src/core/
+  lifecycle.ts     Agent/Human authority, resource epoch, resume policy
+  adapter.ts       minimal execution adapter contract
+  invocation.ts    canonical invocation digest
+  owner.ts         principal + invocation ownership binding
+  checkpoint.ts    signed durable control-plane metadata only
+  runtime.ts       checkpoint/recovery coordinator
+  audit.ts         bounded metadata audit contract
+  human-surface.ts credential-safe external Human provider contract
+
+src/mcp/
+  mrtr.ts          requestState helpers + input_required schema/prompt
+
+src/browser-takeover/
+  session.ts       locator, short-lived capability, one-client lease
+  broker.ts        optional bounded remote browser-control surface
+```
+
+## セキュリティ上の不変条件
+
+- AgentとHumanが同時に実行権限を持たない。
+- Human handoffを開始するとresource epochを進め、古いstateはfail closedする。
+- handoff ownershipは、認証済みlogical principalと正確なinvocation argumentsへbindingする。
+- `awaiting_human` の初期状態を過ぎた後に、owner未設定のinterventionを別ownerへ付け替えない。
+- durable checkpointへ保存するのは限定されたcontrol-plane metadataだけ。raw action arguments、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptは保存しない。
+- restart後のrecoveryは常に `reissue_and_revalidate`。古い実行権限を復元せず、actionを黙って再実行しない。
+- browser takeover URLはlocatorだけを含み、capabilityはauthenticated same-origin bootstrapの後にだけ返す。
+- capabilityはsession、intervention、resource epoch、principal、remote client binding、有効期限へscopeする。
+- takeover leaseを所有できるのは1つのremote client generationだけ。reload/new tab/new deviceによる新しいbindingが、既存leaseを暗黙に奪うことはできない。native reconnectは旧leaseがidleになった後だけ、WebRTC browserはsuspend/disconnect時に現在generationを明示releaseしてからreconnectする。どちらも同じauthenticated principalとgeneration-bound reconnect handleを要求し、新しいclient generationへrotateすると同時に古いcapability/handleを即時無効化する。
+- takeover responseでは `no-store`、`no-referrer`、nonce-bound CSP client asset、bounded inputを維持する。
+- credential-safe external Human controlはHuman authorityがすでに排他的な間だけ開始でき、automation authorityを戻す前にexternal sessionをrevokeする。
+- external Human providerから保持する情報は、provider kind、intervention/epoch/principal binding、session id、operator locator、optional expiryなどの限定されたcontrol-plane fieldだけとし、余分なprovider metadataは破棄する。
+- **Human takeoverの完了は、別actionへの承認ではない。** 重大操作にはconsumer側で別の明示的approval mechanismが必要。
+- stateful / consequential actionは、安全なreplayが別途確認できない限りhandoff後に自動再実行しない。
+
+詳細は [アーキテクチャ](docs/architecture.ja.md)、[位置づけ](docs/positioning.ja.md)、[ロードマップ](ROADMAP.ja.md)、[セキュリティポリシー](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
 
 ## Resume policy
 
-coreは `replay_safe` / `revalidate` / `confirm_before_execute` / `never_replay` を記録します。MCP bridgeはさらに `retry_original` / `require_fresh_semantic_action` のcall-site strategyを記録します。
+coreは次のいずれかを記録します。
 
-consumerは常に厳しい方を採用します。`require_fresh_semantic_action` や `never_replay` がHuman完了だけを理由にautomatic replayへ昇格することはありません。
+- `replay_safe` — 検証後、同じ処理を再実行してよいかconsumerが判断できる
+- `revalidate` — 実行前に現在のsemantic/resource stateをもう一度検証する必要がある
+- `confirm_before_execute` — 重大操作の前に別の明示的approval flowが必要
+- `never_replay` — 中断したactionを自動再実行してはいけない
+
+MCP bridgeはcall-site strategyとして次も記録します。
+
+- `retry_original`
+- `require_fresh_semantic_action`
+
+consumerは常に、より厳しい結果を採用します。特に `require_fresh_semantic_action` や `never_replay` が、Humanが手動作業を終えたという理由だけでautomatic replayへ変わることはありません。
 
 ## Credential-safe external Human surface
 
-identity providerによってはsoftware-controlled / embedded browserでのcredential入力を拒否・禁止します。その場合、automation-adjacent transportを回避的に強化してはいけません。`CredentialSafeHumanSurfaceRuntime` はpluggableなHuman-only surfaceをcoordinationしますが、browser trust boundaryは具体providerごとに異なります。
+identity providerによっては、software-controlled browserやembedded browserでのcredential入力を拒否・禁止します。その場合、automationに隣接したtransportを「より見つかりにくくする」方向へ強化してはいけません。`CredentialSafeHumanSurfaceRuntime` はpluggableなHuman-only surfaceをcoordinationしますが、具体的なbrowser trust boundaryはproviderごとに異なります。
 
-normal non-automated browserを要求するproviderでは、consumerはcredential入力前にautomationを完全停止し、同じ専用non-default profileをCDP / remote-debugging attachmentなしで起動し、external session revokeとprofile lock解放が確認できるまでautomationを復元しません。
+normal non-automated browserを要求するproviderでは、consumerはautomationを完全に停止し、同じ専用non-default profileをCDP / remote-debugging attachmentなしでnormal browserとして起動します。external sessionのrevokeとprofile lockの解放を確認するまでautomationを復元しません。
 
-hosted browser execution planeでtarget serviceがbrowser automation infrastructureを明示的に許容する場合、`HostedBrowserTakeoverProvider` は **automation-compatibleなHuman surface** に限ってbounded `TakeoverBroker` を利用できます。ただしCDPを隠したりnormal browser相当に変えるものではなく、automation-managed browserを拒否するcredential surfaceでnormal-browser boundaryの代替にしてはいけません。Human textはin-memory Human transport/input adapterだけを通し、MCP/model result・durable state・diagnostic・log・process argvへ入れてはいけません。
+hosted browser execution planeでtarget serviceがbrowser automation infrastructureを明示的に許容している場合、`HostedBrowserTakeoverProvider` は **automation-compatibleなHuman surface** に限ってbounded `TakeoverBroker` を利用できます。ただし、CDPを隠したりnormal browser相当に変えたりする機能ではありません。automation-managed browserを拒否するcredential surfaceで、normal-browser boundaryの代わりに使ってはいけません。
 
-normal-browser pathは次のlifecycleです。
+Humanが入力したtextはin-memory Human transport/input adapterだけを通し、MCP/model result、durable state、diagnostic、log、process argvへ入れません。
+
+normal-browser pathのlifecycleは次のとおりです。
 
 ```text
 automation profile + CDP
@@ -73,27 +108,45 @@ automation profile + CDP
   -> never replay stale pre-auth state
 ```
 
-credential-safe browser handoffでは上記lifecycleをOS共通ルールとし、Humanはautomation-managed browserではなくnormal browser processを使います。macOSとLinuxで異なるのはOS/window capture-input helperだけです。Linux helperはtarget PIDに属するX11 windowを厳密に1つだけ解決し、bounded CPU H.264でそのwindowだけをcaptureし、OS/window層でtap / scroll / key / textを配送しつつ、既存WebRTC generation / TURN / revoke machineryを再利用します。Human textはprivate stdin / transient clipboardだけを通し、clipboardは即時clearします。Browser/profile persistenceはconsumer/deployment責務であり、Handoff continuity stateにはしません。
+credential-safe browser handoffでは、このlifecycleをOS共通ルールとして扱います。Humanはautomation-managed browserではなくnormal browser processを使います。macOSとLinuxで異なるのはOS/window capture-input helperだけです。
 
-`selectHumanSurface()` はsign-in / consent等のconfigured reasonを `credential_safe_external` へrouteし、その他を `automation_adjacent` に残す小さなpolicy helperです。どのreasonがidentity-sensitiveかはcoreでは決めません。
+Linux helperはtarget PIDに属するX11 windowを厳密に1つだけ解決し、そのwindowだけをbounded CPU H.264 pipelineでcaptureします。tap / scroll / key / textはOS/window層で配送し、既存のWebRTC generation / TURN / revoke machineryを再利用します。Human textはprivate stdin / transient clipboardだけを通し、clipboardはすぐclearします。Browser/profile persistenceはconsumer/deployment側の責務であり、Handoffのcontinuity stateにはしません。
+
+`selectHumanSurface()` は、sign-in / consentなどconsumerが設定したreasonを `credential_safe_external` へrouteし、それ以外を `automation_adjacent` に残す小さなpolicy helperです。どのreasonがidentity-sensitiveかはcoreでは決めません。
 
 ## Browser takeover
 
-`browser-takeover` はoptionalです。brokerが知るintervention情報は `{ id, epoch }` のみで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
+`browser-takeover` はoptionalです。brokerがinterventionについて知るのは `{ id, epoch }` だけで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
-native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。旧clientがidleで、authenticated principalが一致し、generation-bound reconnect handleが一致した場合だけ新generationへrotateします。成功時は旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含めません。
+native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。以前のclientがidleで、authenticated principalが一致し、generation-bound reconnect handleも一致した場合だけ新generationへrotateできます。成功すると旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含みません。
 
-optionalなWebRTC browser transportはsignaling / H.264 RTP / DataChannel input / Safari lifecycle / reconnect fencingをHandoff内部へ閉じ込めます。macOS hostはScreenCaptureKit / CoreGraphics、Linux hostはisolated X11 display + exact target-window capture + bounded CPU H.264 + OS/window inputを使います。target process指定時はcapture/input対象windowを厳密に1つだけ解決し、解決・activationできない場合はfail closedします。物理Safariのsame-LAN回帰基準は `npm run accept:webrtc:lan` で起動するcommit済みharnessです。 public Tunnel + TURN fallbackの物理回帰は同じtarget/runtime shapeを使う `npm run accept:webrtc:public-relay` で実行し、consumer側へTURN設定を漏らしません。初期Safari acceptance profileは1280×720 / 30 fpsのConstrained Baseline H.264です。WebRTC locatorは選択されたhost capture surfaceを`playsinline` videoへ直接表示し、そのsurfaceへのtap/swipeを直接操作へ変換します。touch対応SafariではTouch Eventsをswipeのauthoritative pathとし、touch Pointer Eventsは二重入力防止のため無視します。consumerはruntimeをtarget processへbindでき、その場合はon-screenの対象windowが厳密に1つだけ解決できることを要求し、ScreenCaptureKit captureとinputを同じwindow boundsへcropしてdesktop全体は公開しません。文字入力とBackspaceはiOS keyboardを使い、旧HTTP frame/input UIのScroll / Tab / Send等へfallbackしません。background / peer disconnect / explicit suspendではpeerを破棄してそのclient generationをreleaseし、foreground復帰はfresh generationを取得してから新peerを作ります。`Done` はtransport teardownより先にbroker generationをrevokeし、認証成功とは扱いません。
+optionalなWebRTC browser transportは、signaling、H.264/RTP、DataChannel input、Safari lifecycle、reconnect fencingをHandoff内部へ閉じ込めます。macOS hostはScreenCaptureKit / CoreGraphics、Linux hostはisolated X11 display + exact target-window capture + bounded CPU H.264 + OS/window inputを使います。
 
-物理iPhone Safari acceptanceはsame-LAN direct WebRTCとcellular/4G TURN relayの両方でPASS済みです。Window-scoped video、別Mac appがfrontmostな状態からのexact target-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しました。Mobile viewport / keyboard compositionと明示reload/reconnect UXはtransport baselineのblockerではなくfollow-upとして追跡します。
+Safari transportは最大1280×720に制限します。現在のacceptanceではmacOS hostは30 fps、Linux CPU hostは既定15 fpsです。WebRTC locatorは選択したhost capture surfaceを `playsinline` videoへ直接表示し、tap/swipeをそのsurfaceへの直接操作へ変換します。hidden browser input bridgeはiOS keyboardを使ってtext/Backspaceを送ります。
 
-direct-first ICEは両peerで明示します。Safari/browser側はhost-only (`iceServers: []`) のままとし、STUN不達がnon-trickle browser gatheringの待ち時間を増やさないようにします。Node/werift側は `stun:stun.cloudflare.com:3478` を明示し、weriftの暗黙default STUNをreview可能なCloudflare network-metadata trust boundaryへ置き換えます。このSTUN requestではserver側public network addressがCloudflareへ見える可能性がありますが、principal / intervention / client identifierは送信しません。optionalなCloudflare Realtime TURNはpeerごとのshort-lived credentialを使うfallbackのみで、`iceTransportPolicy: all` を維持しrelay-onlyにはしません。raw candidate文字列 / IP address / SDP / credential / framebuffer / Human inputはdiagnosticやdurable control-plane artifactにせず、diagnosticはcandidate type/count・peer state・bounded timingだけに限定します。
+touch対応SafariではTouch Eventsをswipeのauthoritative pathとし、touch Pointer Eventsは二重入力防止のため無視します。consumerはruntimeをtarget processへbindingでき、その場合はon-screenの対象windowを厳密に1つだけ解決できることを要求し、captureとinputを同じwindow boundsへ限定してdesktop全体を公開しません。legacy HTTP frame/input UIへfallbackすることもありません。
 
-surface eligibility、native browser restriction、postcondition verification、authentication/principal derivation、sensitive data境界はconsumer adapter側の責務です。
+background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundへ戻る場合はfresh generationを取得してから新peerを作ります。`Done` はtransport teardownより先にbroker generationをrevokeし、認証成功とは扱いません。
+
+物理iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方をacceptance済みです。window-scoped video、別Mac appがfrontmostな状態からのtarget-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しています。Mobile viewport / keyboard compositionと明示reload/reconnect UXはfollow-upであり、transport baselineの前提条件ではありません。
+
+direct-first ICEは両peerで明示します。Safari/browser側はhost-only (`iceServers: []`) のままとし、STUN不達がnon-trickle browser gatheringの待ち時間を増やさないようにします。Node/werift側は `stun:stun.cloudflare.com:3478` を明示し、dependencyの暗黙default STUNをreview済みのCloudflare network-metadata trust boundaryへ置き換えます。
+
+このSTUN requestではserver側public network addressがCloudflareへ見える可能性がありますが、principal / intervention / client identifierは送りません。optionalなCloudflare Realtime TURNはpeerごとのshort-lived credentialを使うfallback専用で、`iceTransportPolicy: all` を維持しrelay-onlyにはしません。
+
+raw candidate文字列、IP address、SDP、credential、framebuffer、Human inputはdiagnosticやdurable control-plane artifactへ保存しません。diagnosticはcandidate type/count、peer state、bounded timingに限定します。
+
+consumerは引き続き次を担当します。
+
+- Human takeoverを許可するsurfaceの判定
+- native browser/device operationの制限
+- postcondition verification
+- authenticationとlogical principalの導出
+- sensitive dataがMCP/tool arguments/logへ流れないようにすること
 
 ## 開発
 
-Node.js 20以上。
+Node.js 20以上が必要です。
 
 ```bash
 npm ci --ignore-scripts
@@ -102,19 +155,19 @@ npm run build
 npm audit --audit-level=moderate
 ```
 
-テスト目的でlive CAPTCHA/challengeを意図的に発生させません。
+テストはdeterministicに保ち、実サービスのCAPTCHA/challengeを意図的に発生させません。
 
 ## Upstream検証結果
 
-2 real adapterによる抽出gateは満たしました。
+2つの実consumerによる抽出gateは満たしています。
 
-- `git-ksk/maps-browser-mcp` がfirst real consumerとしてgreen
-- `git-ksk/japan-cinema-browser-mcp` がsecond real consumerとしてgreen
+- `git-ksk/maps-browser-mcp` が1つ目の実consumerとしてgreen
+- `git-ksk/japan-cinema-browser-mcp` が2つ目の実consumerとしてgreen
 - generic `src/` contractにMaps / Google / Cinema / provider / Chrome / CDP固有概念なし
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` は、2つのreal adapterでの検証後に確定した最初の **source release** です。npm publishは別判断のままで、`private: true` を維持しています。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` は2つの実consumerで検証した後に確定した最初の **source release** です。npm publishは別判断のままで、`private: true` を維持しています。
 
 ## License
 

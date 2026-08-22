@@ -1,10 +1,12 @@
-# Architecture（日本語）
+# アーキテクチャ
 
 [English](architecture.md)
 
-## Boundary
+> 英語版が正本です。内容に差がある場合は英語版を優先してください。
 
-`mcp-execution-handoff` はcontrol-plane libraryであり、execution engineではありません。browser / desktop / terminal / device / provider固有のnative operationはconsumer adapter内に残します。
+## 境界
+
+`mcp-execution-handoff` は、実行そのものを行うengineではなく、実行権限の引き継ぎを管理するcontrol-plane libraryです。browser、desktop、terminal、device、provider固有の実処理は、それぞれのconsumer adapterに残します。
 
 ```text
 MCP / Agent
@@ -24,57 +26,75 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- credential-safe external Human provider coordinator
 ```
 
-## Lifecycle
+## ライフサイクル
 
-1. consumerがHuman intervention必須surfaceを検出する。
-2. `ExecutionHandoffState.begin()` が単一active interventionを作成し、resource epochを進める。
-3. interventionが `awaiting_human` の間に、originating invocationがownerをbindする。
-4. Agent authorityを停止し、Humanだけがcontrolをclaimできる。
-5. Human completionで `verifying` へ移り、epochを再度進める。
-6. consumerがdomain-specific postcondition verificationを行う。
-7. verification結果によりHumanへ戻す、fail/cancelする、または `ready_to_resume` にする。
-8. resume policyに従い、original operationのsafe replay / fresh semantic reissue / never replayをconsumerが決める。
+1. consumerが、Humanによる手動対応が必要なsurfaceを検出する。
+2. `ExecutionHandoffState.begin()` が唯一のactive interventionを作成または返し、resource epochを進める。
+3. interventionが `awaiting_human` の間に、元の呼び出しをownerとしてbindingする。
+4. Agentの実行権限を停止し、Humanだけが排他的にcontrolを取得できる状態にする。
+5. Humanが手動作業を完了すると `verifying` へ進み、epochをもう一度進める。
+6. consumerが、そのdomainに固有の完了条件を検証する。
+7. 検証結果に応じて、再びHumanへ戻す、fail/cancelする、または `ready_to_resume` にする。
+8. resume policyを返し、元の処理を再実行してよいか、意味上の新しい操作としてやり直すべきか、再実行してはいけないかをconsumerが判断する。
 
-coreは「challengeが解けた」「login成功」「transaction承認」を推測しません。これらはadapter policyです。
+core自身は「challengeが解けた」「loginに成功した」「transactionが承認された」とは判断しません。これらはconsumer adapter側のpolicyです。
 
-## Durable recovery
+## 永続checkpointと復旧
 
-checkpointはHMAC保護 + private permissionで、adapter kind / intervention id/status / epoch / resume policy / principal binding / optional action digest / timestamp / expiryだけを保存します。
+file checkpointはHMACで保護し、private permissionで保存します。永続化するのは次のような限定されたcontrol-plane metadataだけです。
 
-raw argsやexecution contentは保存しません。recoveryは `reissue_and_revalidate` のみで、old Agent/Human authority、requestState、browser state、takeover capabilityを復元しません。
+- adapter kind
+- intervention id / status
+- epoch
+- resume policy
+- principal binding
+- optional action digest
+- timestamp
+- expiry
+
+raw argumentsや実行内容は保存しません。restart後の復旧は常に `reissue_and_revalidate` で行い、古いAgent/Human authority、`requestState`、browser state、takeover capabilityは復元しません。
 
 ## MCP bridge
 
-MRTR requestStateはexact tool name、canonical args digest、intervention id、resource epoch、resume strategy、authenticated logical-principal bindingへbindします。
+MRTRの `requestState` は、次の情報へbindingします。
 
-authentication方式自体はlibraryの責務外です。consumerがstableかつnon-secretなprincipal bindingを作って明示的に渡します。
+- exact tool name
+- canonical argument digest
+- intervention id
+- resource epoch
+- resume strategy
+- authenticated logical-principal binding
 
-## Credential-safe external Human surface
+利用者をどう認証するかはlibraryの責務ではありません。consumerがstableかつsecretではないprincipal bindingを作成し、明示的に渡します。
 
-external Human surfaceはcontrol-plane adapterです。normal browserを使う完全external providerにも、hosted execution planeでbounded Handoff browser brokerを使うproviderにも接続できます。この2つはbrowser trust boundaryが異なるため同一視しません。
+## credential-safe external Human surface
 
-`HostedBrowserTakeoverProvider` は既存 `TakeoverBroker` をgeneric `ExternalHumanSurfaceProvider` contractへ橋渡しする小さなproviderです。Handoff側へCDP / Chrome / Maps / target-provider固有概念を追加せず、frame/input実装はconsumer adapterに残します。このmodeはtarget serviceがhosted browser shapeを許容し、実sign-in acceptanceを通した場合だけ利用します。non-automated browserを要求するproviderのbypassには使いません。
+external Human surfaceはcontrol-plane adapterです。完全に外部のnormal browserを使うproviderにも、hosted execution plane上で限定されたHandoff browser brokerを使うproviderにも接続できます。この2つはbrowserのtrust boundaryが異なるため、同じものとして扱いません。
 
-consumerはまず通常handoff lifecycleへ入り、Humanへexclusive authorityを渡します。その後にだけ `CredentialSafeHumanSurfaceRuntime.begin()` でexternal operator sessionを作れます。sessionはactive intervention id / resource epoch / principal bindingへbindされ、同時activeは1つだけです。同じbindingでのduplicate beginだけidempotentです。
+`HostedBrowserTakeoverProvider` は既存の `TakeoverBroker` と、汎用的な `ExternalHumanSurfaceProvider` contractを橋渡しする小さなproviderです。Handoff側にCDP、Chrome、Maps、target provider固有の概念は追加しません。frame/inputの実装もconsumer adapter側に残します。この方式を使えるのは、target serviceがhosted browserの形を許容し、実際のsign-in acceptanceを通している場合だけです。non-automated browserを要求するproviderの回避策として使ってはいけません。
 
-provider出力から保持するのはprovider kind / intervention id / epoch / principal binding / session id / operator locator / optional expiryのbounded fieldのみです。追加provider dataは保持しません。credential、browser cookie、token、screenshot、DOM/network data、provider固有opaque metadataをcontinuity materialとして使ってはいけません。Hosted broker経由のHuman入力payloadもdurable state / diagnostic / MCP/model output / logへ残しません。
+consumerはまず通常のhandoff lifecycleへ入り、Humanへ排他的なauthorityを渡します。その後にだけ `CredentialSafeHumanSurfaceRuntime.begin()` でexternal operator sessionを開始できます。このsessionはactive intervention id、resource epoch、principal bindingへ紐づきます。同時にactiveにできるsessionは1つだけで、同じbindingによるduplicate beginのみidempotentです。
 
-automationを戻す前にconsumerはexternal sessionをrevokeし、そのmode固有のexecution boundaryを確認します。normal-browser providerならbrowser終了とprofile lock解放、hosted browser providerならHuman CDP authority detachとfresh Agent connectionが必要です。その後Human completionを既存の `verifying -> ready_to_resume` lifecycleへ進めます。authentication successはfresh browser stateから再検証し、pre-auth semantic actionをstale replayしません。
+providerから受け取って保持する情報は、provider kind、intervention id、epoch、principal binding、session id、operator locator、optional expiryに限定します。余分なprovider dataは保持しません。credential、cookie、token、screenshot、DOM/network data、provider固有のopaque metadataをcontinuity dataとして使ってはいけません。
 
-どのintervention reasonにこのsurfaceが必要かをpackageは決めません。`selectHumanSurface()` でconsumerごとのidentity-sensitive reason setを設定し、provider固有policyをgeneric coreへ持ち込みません。
+automationへ権限を戻す前に、consumerはexternal sessionをrevokeし、その方式に固有のexecution boundaryが閉じたことを確認します。normal-browser providerならbrowser終了と専用profile lockの解放、hosted browser providerならHuman側CDP authorityのdetachとfresh Agent connectionが必要です。その後、既存の `verifying -> ready_to_resume` lifecycleへ進めます。認証成功はfresh browser stateから再検証し、認証前の古いsemantic actionをそのまま再実行しません。
+
+どのintervention reasonでこのsurfaceを使うかはpackage側では決めません。`selectHumanSurface()` を使ってconsumerごとにidentity-sensitiveなreasonを設定し、provider固有policyをgeneric coreへ持ち込みません。
 
 ## Browser takeover
 
-optional brokerはtransport/sessionだけを担当します。public locatorにcapabilityは含めません。同一origin bootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneはcapability + principal binding + client binding一致が必須です。
+optional brokerが担当するのはtransportとsession管理だけです。public locatorにはcapabilityを含めません。同一originのbootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneの各requestでは、capability、principal binding、client bindingがすべて一致する必要があります。
 
-新しいbindingは既存leaseを暗黙reclaimできません。native clientは明示的なclaim/reconnect APIを利用できます。reconnectにはsame authenticated principal、generation-bound reconnect handle、旧leaseがidleであることが必要です。成功時はclient generationをincrementし、capabilityとreconnect handleを両方rotateするため、旧client generationは即時fenceされます。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credential materialは含めません。
+新しいbindingが、すでに所有されているleaseを暗黙に奪うことはできません。native clientは明示的なclaim/reconnect APIを使えます。reconnectには、同じauthenticated principal、generation-bound reconnect handle、そして以前のleaseがidleであることが必要です。成功するとclient generationを進め、capabilityとreconnect handleを両方rotateします。これにより古いgenerationは即座に無効になります。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credentialを含めません。
 
-WebRTC browser transportではICEをdirect-firstのまま維持し、signaling/data-plane policy全体をHandoffが担当します。Safariはhost candidateのみ、Node/werift peerは明示Cloudflare STUNを使い、dependency内部のdefaultが別third-partyへ暗黙切替されないようにします。TURN設定時もfallback-onlyで、generation範囲内のshort-lived peer credentialを使います。network diagnosticはcandidate type/count・peer state・bounded timingだけを保持し、candidate文字列 / address / SDP / credentialは対象外です。
+WebRTC browser transportではdirect-first ICEを維持し、signaling/data-plane policyをHandoff側に閉じ込めます。Safariはhost candidateのみを使い、Node/werift peerはCloudflare STUNを明示的に利用して、dependency内部のdefaultが別third-partyへ勝手に切り替わらないようにします。TURNを設定してもfallback専用で、client generationに紐づくshort-lived peer credentialを使います。network diagnosticにはcandidate type/count、peer state、限定されたtimingだけを残し、candidate文字列、address、SDP、credentialは保存しません。
 
-touch対応SafariではTouch Eventsをgestureのauthoritative streamとし、touch Pointer Eventsの二重送信を抑止します。macOS hostはlogin session内プロセスに適した `CGEventSource(stateID: .combinedSessionState)` を使います。tap/scrollはsession event tap、target-bound keyboard inputは対象PIDが解決できる場合にそのPIDへpostします。これによりconsumer APIを広げず、window-scoped capture/inputとbrowser gesture semanticsを一致させます。
+touch対応SafariではTouch Eventsをgestureの基準とし、touch Pointer Eventsによる二重入力を抑止します。macOS hostでは `CGEventSource(stateID: .combinedSessionState)` を利用し、login中のuser session内で動くprocessに合わせます。tap/scrollはsession event tap、target-bound keyboard inputは対象PIDを解決できる場合にそのPIDへ送ります。consumer APIを広げずに、window単位のcapture/inputとbrowser gestureの意味を一致させるための設計です。
 
-brokerはtakeover可能surfaceを拡張できません。consumer browser adapterが自身のallowlistとcurrent epochで各操作を検証します。
+broker自身はtakeover可能なsurfaceを広げません。consumer browser adapterが自身のallowlistと現在のepochに基づいて各操作を検証します。
 
-## Consequential action
+## 重大操作との分離
 
-handoff completionに結合したgeneric approval APIは置きません。consequential actionを実行するconsumerは、exact final actionとcurrent stateへbindした別のexplicit approval mechanismを持つ必要があります。Human completionはmanual step終了の事実であり、後続actionのapprovalではありません。
+handoff完了と結び付いた汎用approval APIは提供しません。重大な操作を実行するconsumerは、最終的に実行する正確なactionと現在stateへ紐づいた、別の明示的なapproval mechanismを用意する必要があります。
+
+Humanが手動作業を終えたことは「interventionが終わった」という事実でしかなく、その後の操作を承認したことにはなりません。
