@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { once } from "node:events";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 const MAX_HOST_FRAME_BYTES = 8 * 1024 * 1024;
 const MAX_INPUT_LINE_BYTES = 4 * 1024;
 const MAX_PENDING_INPUT_BYTES = 8 * 1024;
@@ -530,7 +531,17 @@ export async function linuxWebRtcHostMain() {
     clearTimeout(expiry);
     await inputChain;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+export function isLinuxWebRtcHostCliEntryPoint(moduleUrl, argvPath) {
+    if (!argvPath)
+        return false;
+    try {
+        return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(argvPath);
+    }
+    catch {
+        return false;
+    }
+}
+if (isLinuxWebRtcHostCliEntryPoint(import.meta.url, process.argv[1])) {
     linuxWebRtcHostMain().catch(() => { process.exitCode = 1; });
 }
 //# sourceMappingURL=linux-webrtc-host-cli.js.map

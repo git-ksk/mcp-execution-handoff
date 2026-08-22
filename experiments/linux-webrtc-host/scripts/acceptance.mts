@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { access, chmod, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -91,6 +91,8 @@ async function main(): Promise<void> {
   const profile = path.join(root, "profile");
   const home = path.join(root, "home");
   const runtimeDir = path.join(root, "runtime");
+  const helperBin = path.join(root, "handoff-linux-webrtc-host");
+  await symlink(helper, helperBin);
   await import("node:fs/promises").then(({ mkdir }) => Promise.all([
     mkdir(profile, { recursive: true, mode: 0o700 }),
     mkdir(home, { recursive: true, mode: 0o700 }),
@@ -134,9 +136,10 @@ async function main(): Promise<void> {
   let xvfb: ChildProcess | undefined;
   let openbox: ChildProcess | undefined;
   let chrome: ChildProcess | undefined;
+  // Exercise the same packaged shebang executable shape used by production consumers.
+  // Direct `process.execPath` spawning would bypass `#!/usr/bin/env node` lookup entirely.
   const provider = new SpawnedWebRtcRuntimeProvider({
-    hostExecutable: process.execPath,
-    hostArgs: [helper],
+    hostExecutable: helperBin,
     displayName: display
   });
   const client = new RTCPeerConnection({ codecs: { video: [useH264()] }, iceServers: [], maxMessageSize: 4_096 });
