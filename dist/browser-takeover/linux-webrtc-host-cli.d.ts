@@ -36,4 +36,5 @@ export declare class AnnexBAccessUnitParser {
     private emitCurrent;
 }
 export declare function linuxWebRtcHostMain(): Promise<void>;
+export declare function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean;
 //# sourceMappingURL=linux-webrtc-host-cli.d.ts.map

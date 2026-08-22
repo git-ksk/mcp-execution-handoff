@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import {
   AnnexBAccessUnitParser,
   avccFromNalUnits,
   frameRecord,
+  isLinuxWebRtcHostCliEntryPoint,
   parseWindowGeometry,
   parseWindowIds,
   scaledVideoSize
@@ -59,6 +64,21 @@ test("Linux host emits the existing WebRTC host frame wire and caps video geomet
   assert.equal(record.readUInt16BE(12), 700);
 });
 
+
+test("Linux host CLI recognizes an npm-style symlink entrypoint without widening execution", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "handoff-cli-entry-"));
+  try {
+    const target = path.join(root, "linux-webrtc-host-cli.js");
+    const bin = path.join(root, "handoff-linux-webrtc-host");
+    await writeFile(target, "#!/usr/bin/env node\n", { mode: 0o755 });
+    await symlink(target, bin);
+    assert.equal(isLinuxWebRtcHostCliEntryPoint(pathToFileURL(target).href, bin), true);
+    assert.equal(isLinuxWebRtcHostCliEntryPoint(pathToFileURL(target).href, path.join(root, "missing")), false);
+    assert.equal(isLinuxWebRtcHostCliEntryPoint(pathToFileURL(target).href, undefined), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test("Linux host keeps Human text off argv and binds capture/input to one target window", () => {
   const host = readFileSync("src/browser-takeover/linux-webrtc-host-cli.ts", "utf8");
   assert.match(host, /TAKEOVER_WEBRTC_TARGET_PID/);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { dirname } from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { RTCPeerConnection, useH264 } from "werift";
@@ -106,6 +107,46 @@ test("Linux WebRTC runtime fails closed before answer creation when the target w
       return true;
     });
     assert.equal(provider.diagnosticsSnapshot().events.some((event) => event.stage === "host.target.missing"), true);
+  } finally {
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});
+
+test("spawned WebRTC host receives only bounded runtime env plus the Node executable directory", async () => {
+  const child = new FakeHostProcess();
+  const expectedBinding = binding();
+  let capturedExecutable: string | undefined;
+  let capturedArgs: readonly string[] | undefined;
+  let capturedEnv: NodeJS.ProcessEnv | undefined;
+  const provider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: "/fake/handoff-linux-webrtc-host",
+    displayName: ":99",
+    spawnProcess: ((executable: string, args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
+      capturedExecutable = executable;
+      capturedArgs = args;
+      capturedEnv = options.env;
+      return child;
+    }) as never
+  });
+  const { client, offer } = await clientOffer();
+  try {
+    const started = provider.start(expectedBinding, offer, hooks);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=target_missing\n");
+    await assert.rejects(started, WebRtcTakeoverRuntimeError);
+
+    assert.equal(capturedExecutable, "/fake/handoff-linux-webrtc-host");
+    assert.deepEqual(capturedArgs, []);
+    assert.ok(capturedEnv);
+    assert.equal(capturedEnv.PATH, dirname(process.execPath));
+    assert.equal(capturedEnv.TAKEOVER_WEBRTC_DISPLAY_NAME, ":99");
+    assert.equal(capturedEnv.TAKEOVER_WEBRTC_TARGET_PID, "31337");
+    assert.equal(capturedEnv.TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS, String(expectedBinding.expiresAt));
+    assert.deepEqual(
+      Object.keys(capturedEnv).sort(),
+      ["PATH", "TAKEOVER_WEBRTC_DISPLAY_NAME", "TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS", "TAKEOVER_WEBRTC_TARGET_PID"].sort()
+    );
   } finally {
     await client.close().catch(() => undefined);
     await provider.revoke("host-ready-session").catch(() => undefined);

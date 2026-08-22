@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, random16, useH264 } from "werift";
 import { CloudflareRealtimeTurnCredentialProvider, cloneIceServers, directOnlyIceSession } from "./webrtc-ice.js";
 import { WebRtcLatencyTracker } from "./webrtc-latency.js";
@@ -257,6 +257,10 @@ export class SpawnedWebRtcRuntimeProvider {
     }
     spawnHost(binding) {
         const env = {
+            // Keep the helper environment bounded while allowing packaged Node entrypoints that use
+            // `#!/usr/bin/env node` to resolve the exact runtime family that spawned this provider.
+            // Never inherit the parent PATH: it can contain user-controlled shims or unrelated tools.
+            PATH: dirname(process.execPath),
             TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS: String(binding.expiresAt)
         };
         if (this.config.displayId !== undefined)

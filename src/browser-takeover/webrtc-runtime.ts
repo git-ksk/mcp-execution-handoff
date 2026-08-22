@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import {
   MediaStreamTrack,
@@ -423,6 +423,10 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
 
   private spawnHost(binding: WebRtcTakeoverRuntimeBinding): ChildProcess {
     const env: NodeJS.ProcessEnv = {
+      // Keep the helper environment bounded while allowing packaged Node entrypoints that use
+      // `#!/usr/bin/env node` to resolve the exact runtime family that spawned this provider.
+      // Never inherit the parent PATH: it can contain user-controlled shims or unrelated tools.
+      PATH: dirname(process.execPath),
       TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS: String(binding.expiresAt)
     };
     if (this.config.displayId !== undefined) env.TAKEOVER_WEBRTC_DISPLAY_ID = String(this.config.displayId);
