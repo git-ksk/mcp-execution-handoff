@@ -13,7 +13,7 @@ private enum DogfoodClientError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .invalidArguments: return "usage: takeover-macos-dogfood-client <locator> <x:0-10000> <y:0-10000>"
+        case .invalidArguments: return "usage: takeover-macos-dogfood-client <locator> <x:0-1000000> <y:0-1000000>"
         case .invalidLocator: return "invalid local takeover locator"
         case .claimFailed(let status): return "native takeover claim failed (HTTP \(status))"
         case .malformedGrant: return "native takeover grant malformed"
@@ -62,7 +62,7 @@ private struct LocalNativeClient {
               locator.query == nil,
               locator.fragment == nil else { throw DogfoodClientError.invalidLocator }
         let parts = locator.pathComponents.filter { $0 != "/" }
-        guard parts.count == 2, parts[0] == "takeover", (0...10_000).contains(x), (0...10_000).contains(y) else {
+        guard parts.count == 2, parts[0] == "takeover", (0...1_000_000).contains(x), (0...1_000_000).contains(y) else {
             throw DogfoodClientError.invalidLocator
         }
         var origin = URLComponents()
