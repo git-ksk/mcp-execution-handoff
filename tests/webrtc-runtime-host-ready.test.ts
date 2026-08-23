@@ -114,6 +114,25 @@ test("Linux WebRTC runtime fails closed before answer creation when the target w
   }
 });
 
+test("runtime start error preserves the explicit end cause after expiry cleanup", async () => {
+  const child = new FakeHostProcess();
+  const provider = providerWith(child);
+  const { client, offer } = await clientOffer();
+  const expiringBinding = { ...binding(), expiresAt: Date.now() + 40 };
+  try {
+    await assert.rejects(provider.start(expiringBinding, offer, hooks), (error: unknown) => {
+      assert.ok(error instanceof WebRtcTakeoverRuntimeError);
+      assert.equal(error.code, "WEBRTC_RUNTIME_START_FAILED");
+      assert.equal(error.startStage, "host_ready");
+      assert.equal(error.startEndCause, "expiry");
+      return true;
+    });
+  } finally {
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});
+
 test("spawned WebRTC host receives only bounded runtime env plus the Node executable directory", async () => {
   const child = new FakeHostProcess();
   const expectedBinding = binding();
