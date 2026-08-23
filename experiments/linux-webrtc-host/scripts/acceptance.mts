@@ -99,6 +99,7 @@ async function main(): Promise<void> {
     mkdir(runtimeDir, { recursive: true, mode: 0o700 })
   ]));
 
+  let pageInteractive = false;
   let formOpened = false;
   let typedLength = 0;
   let submitted: string | undefined;
@@ -106,6 +107,11 @@ async function main(): Promise<void> {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     res.setHeader("cache-control", "no-store");
     res.setHeader("content-type", "text/html; charset=utf-8");
+    if (url.pathname === "/ready") {
+      pageInteractive = true;
+      res.end("ok");
+      return;
+    }
     if (url.pathname === "/form") {
       formOpened = true;
       res.end(`<!doctype html><html><body style="margin:0;font-family:sans-serif"><form action="/submitted" method="get"><input id="field" name="value" autocomplete="off" style="position:fixed;inset:0;width:100%;height:100%;box-sizing:border-box;font-size:32px"></form><script>const f=document.getElementById('field');f.addEventListener('input',()=>fetch('/typed?length='+encodeURIComponent(String(f.value.length)),{cache:'no-store'}).catch(()=>{}));</script></body></html>`);
@@ -122,7 +128,7 @@ async function main(): Promise<void> {
       res.end("<!doctype html><html><body>submitted</body></html>");
       return;
     }
-    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button></body></html>`);
+    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button><script>window.addEventListener('load',()=>fetch('/ready',{cache:'no-store'}).catch(()=>{}),{once:true});</script></body></html>`);
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -190,6 +196,7 @@ async function main(): Promise<void> {
       const title = spawnSync("/usr/bin/xdotool", ["getwindowname", windowIds[0]!], { env: xEnv, encoding: "utf8" });
       return title.status === 0 && title.stdout.includes("Handoff Linux Acceptance");
     }, 20_000);
+    await waitFor("page-interactive", () => pageInteractive, 20_000);
     process.stdout.write("LINUX_WEBRTC_STAGE page-ready\n");
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
