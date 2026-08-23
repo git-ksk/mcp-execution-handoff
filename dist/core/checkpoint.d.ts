@@ -24,8 +24,15 @@ export declare class SignedFileHandoffCheckpointStore {
     private readonly now;
     constructor(filePath: string, signingKey: Buffer, now?: () => number);
     write(checkpoint: HandoffCheckpoint): void;
+    private loadVerified;
     load(): HandoffCheckpoint | undefined;
     recover(): HandoffRecoveryRecord | undefined;
+    /**
+     * Read a MAC-verified checkpoint for an explicit local operator revalidation flow even after its
+     * normal recovery TTL elapsed. This never restores Agent or Human authority; consumers must
+     * independently prove the original owner binding and reissue/revalidate before any resume.
+     */
+    recoverForOperatorRevalidation(): HandoffRecoveryRecord | undefined;
     clear(): void;
     private mac;
 }
