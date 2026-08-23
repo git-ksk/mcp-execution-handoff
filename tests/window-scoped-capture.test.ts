@@ -67,3 +67,11 @@ test("Node runtime passes target PID and optional display only through the priva
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_WINDOW_ID = String\(binding\.targetWindowId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_DISPLAY_NAME = this\.config\.displayName/);
 });
+
+
+test("macOS dogfood target exposes verification through the exact window title", () => {
+  const target = source("experiments/thin-takeover-runtime/Sources/takeover-macos-dogfood-target/main.swift");
+  assert.match(target, /CUMG Handoff Dogfood Target — agent_ready/);
+  assert.match(target, /CUMG Handoff Dogfood Target — human_clicked/);
+  assert.match(target, /window\?\.title = "CUMG Handoff Dogfood Target — human_clicked"/);
+});
