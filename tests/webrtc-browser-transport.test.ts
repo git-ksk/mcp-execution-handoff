@@ -76,6 +76,28 @@ class FakeWebRtcRuntime implements WebRtcTakeoverRuntimeProvider {
   }
 }
 
+class DeferredStartWebRtcRuntime extends FakeWebRtcRuntime {
+  private releaseStart!: () => void;
+  private markStartEntered!: () => void;
+  readonly startEntered = new Promise<void>((resolve) => { this.markStartEntered = resolve; });
+  private readonly startGate = new Promise<void>((resolve) => { this.releaseStart = resolve; });
+
+  override async start(
+    binding: WebRtcTakeoverRuntimeBinding,
+    _offer: WebRtcSessionDescription,
+    hooks: WebRtcRuntimeHooks
+  ): Promise<WebRtcSessionDescription> {
+    this.starts.push({ binding, hooks });
+    this.markStartEntered();
+    await this.startGate;
+    return { type: "answer", sdp: "v=0\r\na=fake-answer\r\n" };
+  }
+
+  finishStart(): void {
+    this.releaseStart();
+  }
+}
+
 function noOpBrowser(): TakeoverBrowserAdapter {
   return {
     async captureHumanTakeoverFrame() {
@@ -382,6 +404,48 @@ test("WebRTC prepare binds ICE to generation before offer and legacy frame/input
     method: "POST", headers: { origin: ORIGIN, "x-takeover-client": CLIENT_A }
   }), PRINCIPAL);
   assert.equal(obsoleteOneStep.status, 404);
+});
+
+test("background suspend waits for an in-flight WebRTC connect before revoking that generation", async () => {
+  const runtime = new DeferredStartWebRtcRuntime();
+  const broker = new TakeoverBroker(
+    noOpBrowser(),
+    { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 5_000 },
+    undefined,
+    runtime
+  );
+  const link = broker.createWebRtcLink({ id: "webrtc-connect-suspend-race", epoch: 12 }, PRINCIPAL);
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1);
+  assert.ok(sessionId);
+
+  const preparation = await prepare(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(preparation.status, 200);
+  const grant = await preparation.json() as { capability: string };
+
+  const connecting = connect(broker, sessionId, CLIENT_A, grant.capability);
+  await runtime.startEntered;
+  let suspendSettled = false;
+  const suspending = broker.handle(new Request(`http://localhost/takeover/api/webrtc-suspend/${sessionId}`, {
+    method: "POST",
+    headers: {
+      origin: ORIGIN,
+      "x-takeover-client": CLIENT_A,
+      "x-mcp-takeover-capability": grant.capability
+    }
+  }), PRINCIPAL).then((response) => { suspendSettled = true; return response; });
+
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(suspendSettled, false, "suspend must not revoke the peer while answer creation is in flight");
+  assert.deepEqual(runtime.revokes, []);
+
+  runtime.finishStart();
+  const connected = await connecting;
+  const suspended = await suspending;
+  assert.equal(connected.status, 200);
+  assert.equal(suspended.status, 200);
+  assert.deepEqual(await suspended.json(), { suspended: true, reconnectRequired: true });
+  assert.deepEqual(runtime.revokes, [sessionId]);
 });
 
 test("background suspend fences stale capability and reconnect prepares a fresh generation", async () => {

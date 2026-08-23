@@ -217,6 +217,8 @@ export class TakeoverBroker {
   private readonly nativeTargetWindowIds = new Map<string, number>();
   private readonly webRtcTargetProcessIds = new Map<string, number>();
   private readonly webRtcTargetWindowIds = new Map<string, number>();
+  // A Safari page lifecycle suspend must never revoke the peer while its answer is still being built.
+  private readonly webRtcConnectInFlight = new Map<string, Promise<void>>();
 
   constructor(
     private readonly browser: TakeoverBrowserAdapter,
@@ -459,6 +461,9 @@ export class TakeoverBroker {
         ...(this.webRtcTargetProcessIds.has(id) ? { targetProcessId: this.webRtcTargetProcessIds.get(id)! } : {}),
         ...(this.webRtcTargetWindowIds.has(id) ? { targetWindowId: this.webRtcTargetWindowIds.get(id)! } : {})
       };
+      let settleConnect!: () => void;
+      const connectInFlight = new Promise<void>((resolve) => { settleConnect = resolve; });
+      this.webRtcConnectInFlight.set(id, connectInFlight);
       try {
         const answer = await this.webRtcRuntime.start(binding, offer, this.webRtcHooks(binding));
         this.webRtcRuntime.recordDiagnostic({ stage: "broker.connect.success", durationMs: Date.now() - connectStartedAt });
@@ -480,6 +485,9 @@ export class TakeoverBroker {
         } catch {}
         await this.webRtcRuntime.revoke(id).catch(() => undefined);
         return json(503, { error: "webrtc_runtime_unavailable", reconnectRequired: true });
+      } finally {
+        settleConnect();
+        if (this.webRtcConnectInFlight.get(id) === connectInFlight) this.webRtcConnectInFlight.delete(id);
       }
     }
 
@@ -544,6 +552,9 @@ export class TakeoverBroker {
         request.headers.get("authorization")
       );
       if (!capability) return json(404, { error: "takeover_unavailable" });
+      const connectInFlight = this.webRtcConnectInFlight.get(id);
+      // pagehide/visibilitychange may race the initial connect on iOS Safari. Drain answer creation first.
+      if (connectInFlight) await connectInFlight;
       let grant: ReturnType<TakeoverSessionManager["verify"]>;
       try {
         grant = this.sessions.verify(id, capability, boundPrincipal, clientBinding);

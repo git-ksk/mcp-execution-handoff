@@ -159,6 +159,8 @@ export class TakeoverBroker {
     nativeTargetWindowIds = new Map();
     webRtcTargetProcessIds = new Map();
     webRtcTargetWindowIds = new Map();
+    // A Safari page lifecycle suspend must never revoke the peer while its answer is still being built.
+    webRtcConnectInFlight = new Map();
     constructor(browser, config, nativeRuntime, webRtcRuntime) {
         this.browser = browser;
         this.config = config;
@@ -391,6 +393,9 @@ export class TakeoverBroker {
                 ...(this.webRtcTargetProcessIds.has(id) ? { targetProcessId: this.webRtcTargetProcessIds.get(id) } : {}),
                 ...(this.webRtcTargetWindowIds.has(id) ? { targetWindowId: this.webRtcTargetWindowIds.get(id) } : {})
             };
+            let settleConnect;
+            const connectInFlight = new Promise((resolve) => { settleConnect = resolve; });
+            this.webRtcConnectInFlight.set(id, connectInFlight);
             try {
                 const answer = await this.webRtcRuntime.start(binding, offer, this.webRtcHooks(binding));
                 this.webRtcRuntime.recordDiagnostic({ stage: "broker.connect.success", durationMs: Date.now() - connectStartedAt });
@@ -412,6 +417,11 @@ export class TakeoverBroker {
                 catch { }
                 await this.webRtcRuntime.revoke(id).catch(() => undefined);
                 return json(503, { error: "webrtc_runtime_unavailable", reconnectRequired: true });
+            }
+            finally {
+                settleConnect();
+                if (this.webRtcConnectInFlight.get(id) === connectInFlight)
+                    this.webRtcConnectInFlight.delete(id);
             }
         }
         if (operation === "webrtc-diagnostics") {
@@ -484,6 +494,10 @@ export class TakeoverBroker {
             const capability = this.readCapability(request.headers.get("x-mcp-takeover-capability"), request.headers.get("authorization"));
             if (!capability)
                 return json(404, { error: "takeover_unavailable" });
+            const connectInFlight = this.webRtcConnectInFlight.get(id);
+            // pagehide/visibilitychange may race the initial connect on iOS Safari. Drain answer creation first.
+            if (connectInFlight)
+                await connectInFlight;
             let grant;
             try {
                 grant = this.sessions.verify(id, capability, boundPrincipal, clientBinding);
