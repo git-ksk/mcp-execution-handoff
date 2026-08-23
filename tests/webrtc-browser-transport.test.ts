@@ -88,7 +88,7 @@ function noOpBrowser(): TakeoverBrowserAdapter {
   };
 }
 
-function fixture(targetProcessId?: number) {
+function fixture(targetProcessId?: number, targetWindowId?: number) {
   const runtime = new FakeWebRtcRuntime();
   const broker = new TakeoverBroker(
     noOpBrowser(),
@@ -99,7 +99,10 @@ function fixture(targetProcessId?: number) {
   const link = broker.createWebRtcLink(
     { id: "webrtc-intervention", epoch: 11 },
     PRINCIPAL,
-    targetProcessId === undefined ? undefined : { processId: targetProcessId }
+    targetProcessId === undefined ? undefined : {
+      processId: targetProcessId,
+      ...(targetWindowId === undefined ? {} : { windowId: targetWindowId })
+    }
   );
   assert.ok(link);
   const sessionId = new URL(link).pathname.split("/").at(-1);
@@ -188,12 +191,29 @@ async function prepareAndConnect(
 }
 
 
-test("WebRTC runtime binding keeps an optional host target process private and generation-bound", async () => {
-  const { broker, runtime, sessionId } = fixture(4242);
+test("WebRTC runtime binding keeps an exact optional host process/window private and generation-bound", async () => {
+  const { broker, runtime, sessionId } = fixture(4242, 7331);
   const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
   assert.equal(grant.clientGeneration, 1);
   assert.equal(runtime.prepares[0]!.targetProcessId, 4242);
+  assert.equal(runtime.prepares[0]!.targetWindowId, 7331);
   assert.equal(runtime.starts[0]!.binding.targetProcessId, 4242);
+  assert.equal(runtime.starts[0]!.binding.targetWindowId, 7331);
+});
+
+test("WebRTC broker rejects invalid exact host window targets", () => {
+  const runtime = new FakeWebRtcRuntime();
+  const broker = new TakeoverBroker(
+    noOpBrowser(),
+    { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    undefined,
+    runtime
+  );
+  assert.equal(broker.createWebRtcLink(
+    { id: "webrtc-invalid-window", epoch: 1 },
+    PRINCIPAL,
+    { processId: 4242, windowId: 0 }
+  ), undefined);
 });
 
 test("WebRTC locator renders direct touch UI and direct-first relay-capable client without legacy buttons", async () => {

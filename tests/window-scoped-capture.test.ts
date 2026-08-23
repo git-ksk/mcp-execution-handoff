@@ -14,6 +14,7 @@ test("macOS Native host scopes target-PID capture and input to the same exact wi
   assert.match(host, /window\.owningApplication\?\.processID == targetProcessID/);
   assert.match(host, /targetWindowID == nil \|\| window\.windowID == targetWindowID/);
   assert.match(host, /window\.windowLayer == 0/);
+  assert.match(host, /targetWindowID == nil \|\| window\.windowID == targetWindowID/);
   assert.match(host, /windows\.count == 1/);
   assert.match(host, /SCContentFilter\(display: display, including: \[window\]\)/);
   assert.match(host, /containingDisplays\.count == 1/);
@@ -33,6 +34,7 @@ test("macOS Native host scopes target-PID capture and input to the same exact wi
 test("browser WebRTC host uses the same target-PID window-only capture and input boundary", () => {
   const host = source("experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift");
   assert.match(host, /TAKEOVER_WEBRTC_TARGET_PID/);
+  assert.match(host, /TAKEOVER_WEBRTC_TARGET_WINDOW_ID/);
   assert.match(host, /window\.owningApplication\?\.processID == targetProcessID/);
   assert.match(host, /window\.windowLayer == 0/);
   assert.match(host, /windows\.count == 1/);
@@ -62,5 +64,6 @@ test("Node runtime passes target PID and optional display only through the priva
   assert.match(native, /env\.THIN_TAKEOVER_TARGET_PID = String\(binding\.targetProcessId\)/);
   assert.match(native, /env\.THIN_TAKEOVER_TARGET_WINDOW_ID = String\(binding\.targetWindowId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_PID = String\(binding\.targetProcessId\)/);
+  assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_WINDOW_ID = String\(binding\.targetWindowId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_DISPLAY_NAME = this\.config\.displayName/);
 });

@@ -115,7 +115,14 @@ export class WebRtcTakeoverRuntimeError extends Error {
   }
 }
 
-export function webRtcBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number): WebRtcTakeoverRuntimeBinding {
+export function webRtcBindingFromGrant(
+  grant: TakeoverGrant,
+  targetProcessId?: number,
+  targetWindowId?: number
+): WebRtcTakeoverRuntimeBinding {
+  if (targetWindowId !== undefined && targetProcessId === undefined) {
+    throw new WebRtcTakeoverRuntimeError("WEBRTC_OFFER_INVALID", "WebRTC target window requires a target process");
+  }
   return {
     takeoverSessionId: grant.id,
     interventionId: grant.interventionId,
@@ -124,7 +131,8 @@ export function webRtcBindingFromGrant(grant: TakeoverGrant, targetProcessId?: n
     clientBinding: grant.clientBinding,
     clientGeneration: grant.clientGeneration,
     expiresAt: grant.expiresAt,
-    ...(targetProcessId === undefined ? {} : { targetProcessId })
+    ...(targetProcessId === undefined ? {} : { targetProcessId }),
+    ...(targetWindowId === undefined ? {} : { targetWindowId })
   };
 }
 
@@ -433,6 +441,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     if (this.config.displayId !== undefined) env.TAKEOVER_WEBRTC_DISPLAY_ID = String(this.config.displayId);
     if (this.config.displayName !== undefined) env.TAKEOVER_WEBRTC_DISPLAY_NAME = this.config.displayName;
     if (binding.targetProcessId !== undefined) env.TAKEOVER_WEBRTC_TARGET_PID = String(binding.targetProcessId);
+    if (binding.targetWindowId !== undefined) env.TAKEOVER_WEBRTC_TARGET_WINDOW_ID = String(binding.targetWindowId);
     return this.spawnProcess(this.config.hostExecutable, this.config.hostArgs ?? [], {
       env,
       // stdout is the stable frame/control wire. stderr is a bounded, never-forwarded diagnostic
@@ -837,7 +846,8 @@ function sameBinding(left: WebRtcTakeoverRuntimeBinding, right: WebRtcTakeoverRu
     && left.clientBinding === right.clientBinding
     && left.clientGeneration === right.clientGeneration
     && left.expiresAt === right.expiresAt
-    && left.targetProcessId === right.targetProcessId;
+    && left.targetProcessId === right.targetProcessId
+    && left.targetWindowId === right.targetWindowId;
 }
 
 function parseHumanInput(value: unknown, realtime: boolean): WebRtcHumanInput | undefined {

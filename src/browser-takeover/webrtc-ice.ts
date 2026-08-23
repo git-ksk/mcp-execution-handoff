@@ -9,6 +9,7 @@ export interface WebRtcTakeoverRuntimeBinding {
   clientGeneration: number;
   expiresAt: number;
   targetProcessId?: number;
+  targetWindowId?: number;
 }
 
 export interface WebRtcIceServer {

@@ -47,6 +47,12 @@ private func loadTargetProcessID() throws -> pid_t? {
     return pid_t(value)
 }
 
+private func loadTargetWindowID(targetProcessID: pid_t?) throws -> CGWindowID? {
+    guard let text = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_TARGET_WINDOW_ID"] else { return nil }
+    guard targetProcessID != nil, let value = UInt32(text), value > 0 else { throw WebRtcHostError.configuration }
+    return CGWindowID(value)
+}
+
 private struct CaptureSurface {
     let filter: SCContentFilter
     let sourceRect: CGRect?
@@ -58,13 +64,15 @@ private struct CaptureSurface {
 private func selectedCaptureSurface(
     from content: SCShareableContent,
     requestedDisplay: CGDirectDisplayID?,
-    targetProcessID: pid_t?
+    targetProcessID: pid_t?,
+    targetWindowID: CGWindowID?
 ) throws -> CaptureSurface {
     if let targetProcessID {
         let windows = content.windows.filter { window in
             guard window.owningApplication?.processID == targetProcessID,
                   window.isOnScreen,
-                  window.windowLayer == 0 else { return false }
+                  window.windowLayer == 0,
+                  targetWindowID == nil || window.windowID == targetWindowID else { return false }
             return window.frame.width >= 160 && window.frame.height >= 120
         }
         guard windows.count == 1, let window = windows.first else { throw WebRtcHostError.display }
@@ -616,10 +624,12 @@ struct WebRtcMacHost {
         let lease = try makeLease(); let stop = StopState()
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let targetProcessID = try loadTargetProcessID()
+        let targetWindowID = try loadTargetWindowID(targetProcessID: targetProcessID)
         let surface = try selectedCaptureSurface(
             from: content,
             requestedDisplay: loadDisplayID(),
-            targetProcessID: targetProcessID
+            targetProcessID: targetProcessID,
+            targetWindowID: targetWindowID
         )
         let nativeWidth = surface.pixelWidth, nativeHeight = surface.pixelHeight
         guard nativeWidth > 0, nativeHeight > 0 else { throw WebRtcHostError.display }

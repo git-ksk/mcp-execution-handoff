@@ -38,7 +38,8 @@ function binding(): WebRtcTakeoverRuntimeBinding {
     clientBinding: "host-ready-client-1234567890",
     clientGeneration: 1,
     expiresAt: Date.now() + 60_000,
-    targetProcessId: 31337
+    targetProcessId: 31337,
+    targetWindowId: 42424
   };
 }
 
@@ -142,10 +143,11 @@ test("spawned WebRTC host receives only bounded runtime env plus the Node execut
     assert.equal(capturedEnv.PATH, dirname(process.execPath));
     assert.equal(capturedEnv.TAKEOVER_WEBRTC_DISPLAY_NAME, ":99");
     assert.equal(capturedEnv.TAKEOVER_WEBRTC_TARGET_PID, "31337");
+    assert.equal(capturedEnv.TAKEOVER_WEBRTC_TARGET_WINDOW_ID, "42424");
     assert.equal(capturedEnv.TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS, String(expectedBinding.expiresAt));
     assert.deepEqual(
       Object.keys(capturedEnv).sort(),
-      ["PATH", "TAKEOVER_WEBRTC_DISPLAY_NAME", "TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS", "TAKEOVER_WEBRTC_TARGET_PID"].sort()
+      ["PATH", "TAKEOVER_WEBRTC_DISPLAY_NAME", "TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS", "TAKEOVER_WEBRTC_TARGET_PID", "TAKEOVER_WEBRTC_TARGET_WINDOW_ID"].sort()
     );
   } finally {
     await client.close().catch(() => undefined);

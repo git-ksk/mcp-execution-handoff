@@ -24,7 +24,10 @@ export class WebRtcTakeoverRuntimeError extends Error {
         this.name = "WebRtcTakeoverRuntimeError";
     }
 }
-export function webRtcBindingFromGrant(grant, targetProcessId) {
+export function webRtcBindingFromGrant(grant, targetProcessId, targetWindowId) {
+    if (targetWindowId !== undefined && targetProcessId === undefined) {
+        throw new WebRtcTakeoverRuntimeError("WEBRTC_OFFER_INVALID", "WebRTC target window requires a target process");
+    }
     return {
         takeoverSessionId: grant.id,
         interventionId: grant.interventionId,
@@ -33,7 +36,8 @@ export function webRtcBindingFromGrant(grant, targetProcessId) {
         clientBinding: grant.clientBinding,
         clientGeneration: grant.clientGeneration,
         expiresAt: grant.expiresAt,
-        ...(targetProcessId === undefined ? {} : { targetProcessId })
+        ...(targetProcessId === undefined ? {} : { targetProcessId }),
+        ...(targetWindowId === undefined ? {} : { targetWindowId })
     };
 }
 export function parseWebRtcOffer(value) {
@@ -269,6 +273,8 @@ export class SpawnedWebRtcRuntimeProvider {
             env.TAKEOVER_WEBRTC_DISPLAY_NAME = this.config.displayName;
         if (binding.targetProcessId !== undefined)
             env.TAKEOVER_WEBRTC_TARGET_PID = String(binding.targetProcessId);
+        if (binding.targetWindowId !== undefined)
+            env.TAKEOVER_WEBRTC_TARGET_WINDOW_ID = String(binding.targetWindowId);
         return this.spawnProcess(this.config.hostExecutable, this.config.hostArgs ?? [], {
             env,
             // stdout is the stable frame/control wire. stderr is a bounded, never-forwarded diagnostic
@@ -683,7 +689,8 @@ function sameBinding(left, right) {
         && left.clientBinding === right.clientBinding
         && left.clientGeneration === right.clientGeneration
         && left.expiresAt === right.expiresAt
-        && left.targetProcessId === right.targetProcessId;
+        && left.targetProcessId === right.targetProcessId
+        && left.targetWindowId === right.targetWindowId;
 }
 function parseHumanInput(value, realtime) {
     if (!value || typeof value !== "object" || Array.isArray(value))
