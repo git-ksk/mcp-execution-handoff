@@ -40,6 +40,7 @@ export declare class TakeoverBroker {
     private readonly nativeTargetWindowIds;
     private readonly webRtcTargetProcessIds;
     private readonly webRtcTargetWindowIds;
+    private readonly webRtcConnectInFlight;
     constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined, webRtcRuntime?: WebRtcTakeoverRuntimeProvider | undefined);
     isEnabled(): boolean;
     isPath(pathname: string): boolean;
