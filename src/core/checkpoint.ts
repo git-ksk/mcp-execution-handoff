@@ -32,7 +32,7 @@ export class SignedFileHandoffCheckpointStore {
     try { fs.writeFileSync(temp, `${JSON.stringify(envelope)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" }); fs.renameSync(temp, this.filePath); fs.chmodSync(this.filePath, 0o600); }
     finally { try { fs.unlinkSync(temp); } catch {} }
   }
-  load(): HandoffCheckpoint | undefined {
+  private loadVerified(): HandoffCheckpoint | undefined {
     if (!fs.existsSync(this.filePath)) return undefined;
     let parsed: unknown; try { parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8")); } catch { throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint is unreadable"); }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint envelope is invalid");
@@ -40,10 +40,23 @@ export class SignedFileHandoffCheckpointStore {
     if (!isCheckpoint(envelope.checkpoint) || typeof envelope.mac !== "string") throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint envelope is invalid");
     const expected = Buffer.from(this.mac(envelope.checkpoint), "utf8"); const supplied = Buffer.from(envelope.mac, "utf8");
     if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint integrity check failed");
-    if (envelope.checkpoint.expiresAt <= this.now()) throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
     return { ...envelope.checkpoint };
   }
+  load(): HandoffCheckpoint | undefined {
+    const checkpoint = this.loadVerified();
+    if (checkpoint && checkpoint.expiresAt <= this.now()) throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
+    return checkpoint;
+  }
   recover(): HandoffRecoveryRecord | undefined { const checkpoint = this.load(); return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined; }
+  /**
+   * Read a MAC-verified checkpoint for an explicit local operator revalidation flow even after its
+   * normal recovery TTL elapsed. This never restores Agent or Human authority; consumers must
+   * independently prove the original owner binding and reissue/revalidate before any resume.
+   */
+  recoverForOperatorRevalidation(): HandoffRecoveryRecord | undefined {
+    const checkpoint = this.loadVerified();
+    return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined;
+  }
   clear(): void { try { fs.unlinkSync(this.filePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
   private mac(checkpoint: HandoffCheckpoint): string { return createHmac("sha256", this.signingKey).update("mcp-execution-handoff/checkpoint/v1\0").update(JSON.stringify(checkpoint)).digest("base64url"); }
 }

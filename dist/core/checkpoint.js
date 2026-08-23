@@ -53,7 +53,7 @@ export class SignedFileHandoffCheckpointStore {
             catch { }
         }
     }
-    load() {
+    loadVerified() {
         if (!fs.existsSync(this.filePath))
             return undefined;
         let parsed;
@@ -72,11 +72,24 @@ export class SignedFileHandoffCheckpointStore {
         const supplied = Buffer.from(envelope.mac, "utf8");
         if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied))
             throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint integrity check failed");
-        if (envelope.checkpoint.expiresAt <= this.now())
-            throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
         return { ...envelope.checkpoint };
     }
+    load() {
+        const checkpoint = this.loadVerified();
+        if (checkpoint && checkpoint.expiresAt <= this.now())
+            throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
+        return checkpoint;
+    }
     recover() { const checkpoint = this.load(); return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined; }
+    /**
+     * Read a MAC-verified checkpoint for an explicit local operator revalidation flow even after its
+     * normal recovery TTL elapsed. This never restores Agent or Human authority; consumers must
+     * independently prove the original owner binding and reissue/revalidate before any resume.
+     */
+    recoverForOperatorRevalidation() {
+        const checkpoint = this.loadVerified();
+        return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined;
+    }
     clear() { try {
         fs.unlinkSync(this.filePath);
     }
