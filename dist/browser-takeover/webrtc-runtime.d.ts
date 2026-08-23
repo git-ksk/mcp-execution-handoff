@@ -39,12 +39,14 @@ export interface WebRtcTakeoverRuntimeProvider {
     revokeForIntervention(interventionId: string): Promise<void>;
 }
 export type WebRtcRuntimeStartStage = "host_spawn" | "host_ready" | "remote_description" | "track_setup" | "answer_create" | "local_description" | "answer_finalize";
-export type WebRtcRuntimeStartReason = "peer_closed" | "host_not_ready" | "answer_state" | "transceiver_missing" | "sctp_missing" | "invalid_media_kind" | "other";
+export type WebRtcRuntimeStartReason = "peer_closed" | "host_not_ready" | "answer_signaling_state" | "answer_remote_description_missing" | "transceiver_missing" | "sctp_missing" | "invalid_media_kind" | "other";
+export type WebRtcRuntimeSignalingState = "stable" | "have-local-offer" | "have-remote-offer" | "have-local-pranswer" | "have-remote-pranswer" | "closed";
 export declare class WebRtcTakeoverRuntimeError extends Error {
     readonly code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED";
     readonly startStage?: WebRtcRuntimeStartStage | undefined;
     readonly startReason?: WebRtcRuntimeStartReason | undefined;
-    constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string, startStage?: WebRtcRuntimeStartStage | undefined, startReason?: WebRtcRuntimeStartReason | undefined);
+    readonly startSignalingState?: WebRtcRuntimeSignalingState | undefined;
+    constructor(code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED", message: string, startStage?: WebRtcRuntimeStartStage | undefined, startReason?: WebRtcRuntimeStartReason | undefined, startSignalingState?: WebRtcRuntimeSignalingState | undefined);
 }
 export declare function webRtcBindingFromGrant(grant: TakeoverGrant, targetProcessId?: number, targetWindowId?: number): WebRtcTakeoverRuntimeBinding;
 export declare function parseWebRtcOffer(value: unknown): WebRtcSessionDescription;

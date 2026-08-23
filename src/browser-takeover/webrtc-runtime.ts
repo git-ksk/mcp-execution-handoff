@@ -92,11 +92,20 @@ export type WebRtcRuntimeStartStage =
 export type WebRtcRuntimeStartReason =
   | "peer_closed"
   | "host_not_ready"
-  | "answer_state"
+  | "answer_signaling_state"
+  | "answer_remote_description_missing"
   | "transceiver_missing"
   | "sctp_missing"
   | "invalid_media_kind"
   | "other";
+
+export type WebRtcRuntimeSignalingState =
+  | "stable"
+  | "have-local-offer"
+  | "have-remote-offer"
+  | "have-local-pranswer"
+  | "have-remote-pranswer"
+  | "closed";
 
 export class WebRtcTakeoverRuntimeError extends Error {
   constructor(
@@ -108,7 +117,8 @@ export class WebRtcTakeoverRuntimeError extends Error {
       | "WEBRTC_RUNTIME_REVOKE_FAILED",
     message: string,
     public readonly startStage?: WebRtcRuntimeStartStage,
-    public readonly startReason?: WebRtcRuntimeStartReason
+    public readonly startReason?: WebRtcRuntimeStartReason,
+    public readonly startSignalingState?: WebRtcRuntimeSignalingState
   ) {
     super(message);
     this.name = "WebRtcTakeoverRuntimeError";
@@ -390,7 +400,8 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
             "WEBRTC_RUNTIME_START_FAILED",
             "WebRTC runtime failed to start",
             startStage,
-            classifyRuntimeStartReason(error)
+            classifyRuntimeStartReason(error),
+            runtimeSignalingState(peer.signalingState)
           );
     }
   }
@@ -791,11 +802,26 @@ function classifyRuntimeStartReason(error: unknown): WebRtcRuntimeStartReason {
   const message = error instanceof Error ? error.message : "";
   if (message === "Linux WebRTC host window is unavailable") return "host_not_ready";
   if (name === "InvalidStateError" || /peer closed|RTCPeerConnection is closed/i.test(message)) return "peer_closed";
-  if (message === "createAnswer failed" || message === "wrong state") return "answer_state";
+  if (message === "createAnswer failed") return "answer_signaling_state";
+  if (message === "wrong state") return "answer_remote_description_missing";
   if (/^Transceiver with mid=.* not found$/.test(message)) return "transceiver_missing";
   if (message === "sctpTransport not found") return "sctp_missing";
   if (message === "invalid kind") return "invalid_media_kind";
   return "other";
+}
+
+function runtimeSignalingState(value: string): WebRtcRuntimeSignalingState | undefined {
+  switch (value) {
+    case "stable":
+    case "have-local-offer":
+    case "have-remote-offer":
+    case "have-local-pranswer":
+    case "have-remote-pranswer":
+    case "closed":
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function iceCredentialProviderFromEnvironment(env: NodeJS.ProcessEnv): WebRtcIceCredentialProvider | undefined {

@@ -16,11 +16,13 @@ export class WebRtcTakeoverRuntimeError extends Error {
     code;
     startStage;
     startReason;
-    constructor(code, message, startStage, startReason) {
+    startSignalingState;
+    constructor(code, message, startStage, startReason, startSignalingState) {
         super(message);
         this.code = code;
         this.startStage = startStage;
         this.startReason = startReason;
+        this.startSignalingState = startSignalingState;
         this.name = "WebRtcTakeoverRuntimeError";
     }
 }
@@ -225,7 +227,7 @@ export class SpawnedWebRtcRuntimeProvider {
             await prepared.iceSession.revoke().catch(() => undefined);
             throw error instanceof WebRtcTakeoverRuntimeError
                 ? error
-                : new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_START_FAILED", "WebRTC runtime failed to start", startStage, classifyRuntimeStartReason(error));
+                : new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_START_FAILED", "WebRTC runtime failed to start", startStage, classifyRuntimeStartReason(error), runtimeSignalingState(peer.signalingState));
         }
     }
     async reconnect(binding, offer, hooks) {
@@ -633,8 +635,10 @@ function classifyRuntimeStartReason(error) {
         return "host_not_ready";
     if (name === "InvalidStateError" || /peer closed|RTCPeerConnection is closed/i.test(message))
         return "peer_closed";
-    if (message === "createAnswer failed" || message === "wrong state")
-        return "answer_state";
+    if (message === "createAnswer failed")
+        return "answer_signaling_state";
+    if (message === "wrong state")
+        return "answer_remote_description_missing";
     if (/^Transceiver with mid=.* not found$/.test(message))
         return "transceiver_missing";
     if (message === "sctpTransport not found")
@@ -642,6 +646,19 @@ function classifyRuntimeStartReason(error) {
     if (message === "invalid kind")
         return "invalid_media_kind";
     return "other";
+}
+function runtimeSignalingState(value) {
+    switch (value) {
+        case "stable":
+        case "have-local-offer":
+        case "have-remote-offer":
+        case "have-local-pranswer":
+        case "have-remote-pranswer":
+        case "closed":
+            return value;
+        default:
+            return undefined;
+    }
 }
 function iceCredentialProviderFromEnvironment(env) {
     const turnKeyId = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID?.trim();
