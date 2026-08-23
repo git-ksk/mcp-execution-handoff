@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: fix/webrtc-host-exit-diagnostics
+          ref: fix-webrtc-host-exit-diagnostics-v2
           fetch-depth: 0
       - name: Apply staged patch
         run: |
@@ -28,4 +28,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/browser-takeover/webrtc-runtime.ts experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift
           git commit -m "fix: diagnose WebRTC host exits"
-          git push origin HEAD:fix/webrtc-host-exit-diagnostics
+          git push origin HEAD:fix-webrtc-host-exit-diagnostics-v2
