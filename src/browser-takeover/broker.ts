@@ -474,12 +474,13 @@ export class TakeoverBroker {
         const startStage = error instanceof WebRtcTakeoverRuntimeError ? error.startStage : undefined;
         const startReason = error instanceof WebRtcTakeoverRuntimeError ? error.startReason : undefined;
         const startSignalingState = error instanceof WebRtcTakeoverRuntimeError ? error.startSignalingState : undefined;
+        const startEndCause = error instanceof WebRtcTakeoverRuntimeError ? error.startEndCause : undefined;
         const diagnosticStages = this.webRtcRuntime.diagnosticsSnapshot().events
           .slice(-16)
           .map((event) => event.stage)
           .join(",");
         console.error(
-          `[mcp-execution-handoff] WebRTC connect failed code=${runtimeCode}${startStage ? ` stage=${startStage}` : ""}${startReason ? ` reason=${startReason}` : ""}${startSignalingState ? ` signaling_state=${startSignalingState}` : ""} diagnostics=${diagnosticStages || "none"}`
+          `[mcp-execution-handoff] WebRTC connect failed code=${runtimeCode}${startStage ? ` stage=${startStage}` : ""}${startReason ? ` reason=${startReason}` : ""}${startSignalingState ? ` signaling_state=${startSignalingState}` : ""}${startEndCause ? ` end_cause=${startEndCause}` : ""} diagnostics=${diagnosticStages || "none"}`
         );
         try {
           this.sessions.releaseClientGeneration(id, boundPrincipal, clientBinding, binding.clientGeneration);

@@ -17,12 +17,14 @@ export class WebRtcTakeoverRuntimeError extends Error {
     startStage;
     startReason;
     startSignalingState;
-    constructor(code, message, startStage, startReason, startSignalingState) {
+    startEndCause;
+    constructor(code, message, startStage, startReason, startSignalingState, startEndCause) {
         super(message);
         this.code = code;
         this.startStage = startStage;
         this.startReason = startReason;
         this.startSignalingState = startSignalingState;
+        this.startEndCause = startEndCause;
         this.name = "WebRtcTakeoverRuntimeError";
     }
 }
@@ -89,7 +91,7 @@ export class SpawnedWebRtcRuntimeProvider {
         if (existing) {
             // A broker-authorized fresh generation must fence and close the previous peer before new
             // ICE material exists. This also covers reconnect after the broker's idle threshold.
-            await this.end(binding.takeoverSessionId, false);
+            await this.end(binding.takeoverSessionId, false, "generation_replace");
         }
         await this.revokePrepared(binding.takeoverSessionId);
         let iceSession;
@@ -141,7 +143,7 @@ export class SpawnedWebRtcRuntimeProvider {
             throw new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_ALREADY_ACTIVE", "WebRTC runtime for this generation is already active");
         }
         if (existing)
-            await this.end(binding.takeoverSessionId, false);
+            await this.end(binding.takeoverSessionId, false, "generation_replace");
         let prepared = this.prepared.get(binding.takeoverSessionId);
         if (!prepared && !this.#iceCredentialProvider) {
             await this.prepare(binding);
@@ -160,14 +162,17 @@ export class SpawnedWebRtcRuntimeProvider {
         });
         const track = new MediaStreamTrack({ kind: "video" });
         let host;
+        let runtime;
         let startStage = "host_spawn";
         try {
             host = this.spawnHost(binding);
             await this.waitForSpawn(host);
-            const expiryTimer = setTimeout(() => { void this.end(binding.takeoverSessionId, true); }, Math.max(0, binding.expiresAt - Date.now()));
+            const expiryTimer = setTimeout(() => {
+                void this.end(binding.takeoverSessionId, true, "expiry");
+            }, Math.max(0, binding.expiresAt - Date.now()));
             expiryTimer.unref();
             const hostReady = this.config.displayName === undefined ? undefined : createHostReadyGate();
-            const runtime = {
+            runtime = {
                 binding: { ...binding },
                 iceSession: prepared.iceSession,
                 expiryTimer,
@@ -182,13 +187,14 @@ export class SpawnedWebRtcRuntimeProvider {
                 awaitingVideoKeyframe: false,
                 ...(hostReady ? { hostReady } : {})
             };
-            this.active.set(binding.takeoverSessionId, runtime);
-            this.attachHost(runtime);
-            this.attachPeer(runtime);
-            if (runtime.hostReady) {
+            const activeRuntime = runtime;
+            this.active.set(binding.takeoverSessionId, activeRuntime);
+            this.attachHost(activeRuntime);
+            this.attachPeer(activeRuntime);
+            if (activeRuntime.hostReady) {
                 startStage = "host_ready";
                 await Promise.race([
-                    runtime.hostReady.promise,
+                    activeRuntime.hostReady.promise,
                     new Promise((_, reject) => setTimeout(() => reject(new Error("Linux WebRTC host window is unavailable")), 8_000))
                 ]);
             }
@@ -197,9 +203,9 @@ export class SpawnedWebRtcRuntimeProvider {
             await peer.setRemoteDescription(offer);
             startStage = "track_setup";
             const sender = peer.addTrack(track);
-            runtime.sender = sender;
+            activeRuntime.sender = sender;
             sender.onPictureLossIndication.subscribe(() => {
-                this.requestIdr(runtime);
+                this.requestIdr(activeRuntime);
             });
             startStage = "answer_create";
             const answer = await peer.createAnswer();
@@ -217,6 +223,10 @@ export class SpawnedWebRtcRuntimeProvider {
             return { type: "answer", sdp: local.sdp };
         }
         catch (error) {
+            // Snapshot the failure state before cleanup. peer.close() changes signalingState to `closed`,
+            // which would otherwise erase the state that actually caused createAnswer() to fail.
+            const failedSignalingState = runtimeSignalingState(peer.signalingState);
+            const failedEndCause = runtime?.endCause;
             if (host)
                 host.kill("SIGTERM");
             await peer.close().catch(() => undefined);
@@ -227,7 +237,7 @@ export class SpawnedWebRtcRuntimeProvider {
             await prepared.iceSession.revoke().catch(() => undefined);
             throw error instanceof WebRtcTakeoverRuntimeError
                 ? error
-                : new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_START_FAILED", "WebRTC runtime failed to start", startStage, classifyRuntimeStartReason(error), runtimeSignalingState(peer.signalingState));
+                : new WebRtcTakeoverRuntimeError("WEBRTC_RUNTIME_START_FAILED", "WebRTC runtime failed to start", startStage, classifyRuntimeStartReason(error), failedSignalingState, failedEndCause);
         }
     }
     async reconnect(binding, offer, hooks) {
@@ -235,7 +245,7 @@ export class SpawnedWebRtcRuntimeProvider {
     }
     async revoke(takeoverSessionId) {
         await this.revokePrepared(takeoverSessionId);
-        await this.end(takeoverSessionId, false);
+        await this.end(takeoverSessionId, false, "explicit_revoke");
     }
     async revokeForIntervention(interventionId) {
         const ids = new Set();
@@ -313,7 +323,7 @@ export class SpawnedWebRtcRuntimeProvider {
                 return;
             }
             if (state === "failed" || state === "disconnected" || state === "closed") {
-                void this.end(runtime.binding.takeoverSessionId, true);
+                void this.end(runtime.binding.takeoverSessionId, true, "peer_state");
             }
         });
     }
@@ -322,7 +332,7 @@ export class SpawnedWebRtcRuntimeProvider {
         const stderr = runtime.host.stderr;
         if (!stdout || !stderr)
             throw new Error("WebRTC host pipes are unavailable");
-        const parser = new HostRecordParser((frame) => this.writeFrame(runtime, frame), (editable) => this.sendEditableFeedback(runtime, editable, "tap"), () => void this.end(runtime.binding.takeoverSessionId, true));
+        const parser = new HostRecordParser((frame) => this.writeFrame(runtime, frame), (editable) => this.sendEditableFeedback(runtime, editable, "tap"), () => void this.end(runtime.binding.takeoverSessionId, true, "host_protocol"));
         const metricParser = new HostMetricParser((hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; }, (regions) => this.sendEditableRegions(runtime, regions), (stage) => {
             this.recordDiagnostic({ stage });
             if (stage === "host.window.ready")
@@ -338,12 +348,12 @@ export class SpawnedWebRtcRuntimeProvider {
         runtime.host.once("exit", () => {
             runtime.hostReady?.reject();
             if (!runtime.closing)
-                void this.end(runtime.binding.takeoverSessionId, true);
+                void this.end(runtime.binding.takeoverSessionId, true, "host_exit");
         });
         runtime.host.once("error", () => {
             runtime.hostReady?.reject();
             if (!runtime.closing)
-                void this.end(runtime.binding.takeoverSessionId, true);
+                void this.end(runtime.binding.takeoverSessionId, true, "host_error");
         });
     }
     writeFrame(runtime, frame) {
@@ -401,7 +411,7 @@ export class SpawnedWebRtcRuntimeProvider {
         runtime.videoDrainActive = true;
         void this.drainLatestFrames(runtime).catch(() => {
             if (!runtime.closing)
-                void this.end(runtime.binding.takeoverSessionId, true);
+                void this.end(runtime.binding.takeoverSessionId, true, "video_drain");
         });
     }
     async drainLatestFrames(runtime) {
@@ -423,7 +433,7 @@ export class SpawnedWebRtcRuntimeProvider {
                 runtime.videoDrainActive = true;
                 void this.drainLatestFrames(runtime).catch(() => {
                     if (!runtime.closing)
-                        void this.end(runtime.binding.takeoverSessionId, true);
+                        void this.end(runtime.binding.takeoverSessionId, true, "video_drain");
                 });
             }
         }
@@ -548,10 +558,11 @@ export class SpawnedWebRtcRuntimeProvider {
             return;
         channel.send(JSON.stringify({ kind: "editableRegions", regions }));
     }
-    async end(takeoverSessionId, notifyDisconnect) {
+    async end(takeoverSessionId, notifyDisconnect, cause) {
         const runtime = this.active.get(takeoverSessionId);
         if (!runtime || runtime.closing)
             return;
+        runtime.endCause = cause;
         runtime.closing = true;
         this.active.delete(takeoverSessionId);
         clearTimeout(runtime.expiryTimer);
