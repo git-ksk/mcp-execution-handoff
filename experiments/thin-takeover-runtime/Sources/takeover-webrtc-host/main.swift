@@ -11,13 +11,47 @@ import CoreVideo
 import ScreenCaptureKit
 import VideoToolbox
 
-private enum WebRtcHostError: Error { case configuration, permission, display, encoder(OSStatus) }
+private enum WebRtcHostExitReason: String {
+    case stdinEOF = "stdin_eof"
+    case permission
+    case windowResolution = "window_resolution"
+    case captureStart = "capture_start"
+    case encoder
+    case leaseExpiry = "lease_expiry"
+    case explicitStop = "explicit_stop"
+    case unexpected
+}
+
+private enum WebRtcHostError: Error {
+    case configuration, permission, display, captureStart, encoder(OSStatus)
+
+    var exitReason: WebRtcHostExitReason {
+        switch self {
+        case .permission: return .permission
+        case .display: return .windowResolution
+        case .captureStart: return .captureStart
+        case .encoder: return .encoder
+        case .configuration: return .unexpected
+        }
+    }
+}
+
+private func emitHostExitReason(_ reason: WebRtcHostExitReason) {
+    FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC host_exit_reason=\(reason.rawValue)\n".utf8))
+}
 
 private final class StopState: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
-    func stop() { lock.lock(); stopped = true; lock.unlock() }
+    private var reason: WebRtcHostExitReason?
+    func stop(_ reason: WebRtcHostExitReason) {
+        lock.lock()
+        if !stopped { self.reason = reason }
+        stopped = true
+        lock.unlock()
+    }
     var isStopped: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
+    var exitReason: WebRtcHostExitReason? { lock.lock(); defer { lock.unlock() }; return reason }
 }
 
 private func evenDimension(_ value: Double) -> Int {
@@ -584,19 +618,19 @@ private final class InputReader: @unchecked Sendable {
                     guard let base = rawBuffer.baseAddress else { return -1 }
                     return Darwin.read(inputFD, base, rawBuffer.count)
                 }
-                if count == 0 { stop.stop(); break }
+                if count == 0 { stop.stop(.stdinEOF); break }
                 if count < 0 {
                     if errno == EINTR { continue }
-                    stop.stop(); break
+                    stop.stop(.unexpected); break
                 }
                 pending.append(contentsOf: buffer.prefix(count))
-                if pending.count > 8_192 { stop.stop(); break }
+                if pending.count > 8_192 { stop.stop(.unexpected); break }
                 while let newline = pending.firstIndex(of: 0x0A) {
                     let line = pending.prefix(upTo: newline); pending.removeSubrange(...newline)
                     guard !line.isEmpty, line.count <= 4_096,
                           let value = try? JSONSerialization.jsonObject(with: Data(line)),
                           let object = value as? [String: Any], let kind = object["kind"] as? String else { continue }
-                    if kind == "stop" { stop.stop(); return }
+                    if kind == "stop" { stop.stop(.explicitStop); return }
                     if kind == "requestIDR" { requestIDR(); continue }
                     injector.apply(object)
                 }
@@ -620,6 +654,18 @@ private func frameRecord(avcc: Data, timestamp: UInt32, keyframe: Bool, width: I
 @main
 struct WebRtcMacHost {
     static func main() async throws {
+        do {
+            try await run()
+        } catch let error as WebRtcHostError {
+            emitHostExitReason(error.exitReason)
+            throw error
+        } catch {
+            emitHostExitReason(.unexpected)
+            throw error
+        }
+    }
+
+    private static func run() async throws {
         guard CGPreflightScreenCaptureAccess(), AXIsProcessTrusted() else { throw WebRtcHostError.permission }
         let lease = try makeLease(); let stop = StopState()
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -665,9 +711,14 @@ struct WebRtcMacHost {
 
         let output = CaptureOutput(encoder: encoder, lease: lease)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-        try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "takeover.webrtc.capture", qos: .userInteractive))
-        try await stream.startCapture()
+        do {
+            try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "takeover.webrtc.capture", qos: .userInteractive))
+            try await stream.startCapture()
+        } catch {
+            throw WebRtcHostError.captureStart
+        }
         while lease.isActive(), !stop.isStopped { try await Task.sleep(for: .milliseconds(40)) }
+        emitHostExitReason(stop.exitReason ?? (lease.isActive() ? .unexpected : .leaseExpiry))
         lease.revoke(); try? await stream.stopCapture()
     }
 }
