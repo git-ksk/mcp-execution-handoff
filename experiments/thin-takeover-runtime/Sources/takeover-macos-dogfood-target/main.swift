@@ -12,7 +12,7 @@ final class DogfoodTargetDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "CUMG Handoff Dogfood Target"
+        window.title = "CUMG Handoff Dogfood Target — agent_ready"
         window.isReleasedWhenClosed = false
         window.center()
 
@@ -31,6 +31,7 @@ final class DogfoodTargetDelegate: NSObject, NSApplicationDelegate {
         status.font = .monospacedSystemFont(ofSize: 17, weight: .medium)
         status.frame = NSRect(x: 90, y: 155, width: 300, height: 28)
         content.addSubview(status)
+        status.setAccessibilityValue("agent_ready")
         self.statusLabel = status
 
         let button = NSButton(title: "Apply Human Interaction", target: self, action: #selector(applyHumanInteraction))
@@ -56,6 +57,7 @@ final class DogfoodTargetDelegate: NSObject, NSApplicationDelegate {
     @objc private func applyHumanInteraction() {
         statusLabel?.stringValue = "human_clicked"
         statusLabel?.setAccessibilityValue("human_clicked")
+        window?.title = "CUMG Handoff Dogfood Target — human_clicked"
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
