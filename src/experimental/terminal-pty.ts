@@ -135,6 +135,12 @@ export class ExperimentalTerminalPtyAuthority {
   assertAgentObservation(binding: ExperimentalTerminalPtyBinding): void {
     this.requireSession(binding, true);
     this.state.assertAgentAuthority();
+    if (this.agentStateSynchronizationRequired) {
+      throw new ExperimentalTerminalPtyError(
+        "TERMINAL_AGENT_STATE_SYNC_REQUIRED",
+        "Agent terminal observation requires fresh consumer-side state synchronization after Human handoff",
+      );
+    }
   }
 
   assertAgentResize(binding: ExperimentalTerminalPtyBinding): void {

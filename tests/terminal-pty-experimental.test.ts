@@ -97,9 +97,10 @@ test("Done fences Human immediately, drains admitted Human writes, then requires
   const resume = gate.resumeAgent(BINDING, ready.id, ready.epoch);
   assert.equal(resume.resumePolicy, "never_replay");
   assert.equal(resume.agentStateSynchronizationRequired, true);
-  gate.assertAgentObservation(BINDING);
+  assert.throws(() => gate.assertAgentObservation(BINDING), expectCode("TERMINAL_AGENT_STATE_SYNC_REQUIRED"));
   assert.throws(() => gate.assertAgentInput(BINDING), expectCode("TERMINAL_AGENT_STATE_SYNC_REQUIRED"));
   gate.acknowledgeAgentStateSynchronization(BINDING);
+  gate.assertAgentObservation(BINDING);
   gate.assertAgentInput(BINDING);
 });
 
