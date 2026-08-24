@@ -64,6 +64,21 @@ function providerWith(child: FakeHostProcess): SpawnedWebRtcRuntimeProvider {
 
 const hooks = { beginInput: () => () => undefined, disconnected: () => undefined };
 
+function encodedFrameRecord(timestamp = 1): Buffer {
+  const avcc = Buffer.from([0, 0, 0, 1, 0x65]);
+  const payload = Buffer.alloc(9 + avcc.length);
+  payload.writeUInt32BE(timestamp >>> 0, 0);
+  payload[4] = 1;
+  payload.writeUInt16BE(640, 5);
+  payload.writeUInt16BE(360, 7);
+  avcc.copy(payload, 9);
+  const record = Buffer.alloc(5 + payload.length);
+  record[0] = 1;
+  record.writeUInt32BE(payload.length, 1);
+  payload.copy(record, 5);
+  return record;
+}
+
 test("Linux WebRTC runtime waits for exact host window readiness before creating an answer", async () => {
   const child = new FakeHostProcess();
   const provider = providerWith(child);
@@ -79,6 +94,9 @@ test("Linux WebRTC runtime waits for exact host window readiness before creating
     assert.equal(settled, false);
 
     child.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(settled, false);
+    child.stdout.write(encodedFrameRecord());
     const answer = await started;
     assert.equal(answer.type, "answer");
     assert.match(answer.sdp, /^v=0/m);
@@ -86,6 +104,35 @@ test("Linux WebRTC runtime waits for exact host window readiness before creating
       "host.target.alive",
       "host.window.ready"
     ]);
+  } finally {
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});
+
+test("macOS-style WebRTC runtime fails closed before answer creation when the host exits before first media", async () => {
+  const child = new FakeHostProcess();
+  const provider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: "/fake/takeover-webrtc-host",
+    spawnProcess: (() => child) as never
+  });
+  const { client, offer } = await clientOffer();
+  try {
+    const started = provider.start(binding(), offer, hooks);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.exitCode = 1;
+    child.emit("exit", 1, null);
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 1, null);
+    await assert.rejects(started, (error: unknown) => {
+      assert.ok(error instanceof WebRtcTakeoverRuntimeError);
+      assert.equal(error.code, "WEBRTC_RUNTIME_START_FAILED");
+      assert.equal(error.startStage, "media_ready");
+      assert.equal(error.startReason, "media_not_ready");
+      assert.equal(error.startEndCause, "host_exit");
+      return true;
+    });
   } finally {
     await client.close().catch(() => undefined);
     await provider.revoke("host-ready-session").catch(() => undefined);
