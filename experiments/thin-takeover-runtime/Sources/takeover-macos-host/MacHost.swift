@@ -1,5 +1,6 @@
 import Foundation
 import TakeoverCore
+import TakeoverMacOSWindow
 
 #if os(macOS)
 import ApplicationServices
@@ -162,43 +163,24 @@ private func selectCaptureSurface(
     targetWindowID: CGWindowID?
 ) throws -> CaptureSurface {
     if let targetProcessID {
-        let windows = content.windows.filter { window in
-            guard window.owningApplication?.processID == targetProcessID,
-                  window.isOnScreen,
-                  window.windowLayer == 0,
-                  targetWindowID == nil || window.windowID == targetWindowID else { return false }
-            return window.frame.width >= 160 && window.frame.height >= 120
-        }
-        guard windows.count == 1, let window = windows.first else {
+        do {
+            let exact = try MacOSExactWindowCapture.resolve(
+                from: content,
+                targetProcessID: targetProcessID,
+                targetWindowID: targetWindowID
+            )
+            return CaptureSurface(
+                filter: exact.filter,
+                sourceRect: exact.sourceRect,
+                inputBounds: exact.inputBounds,
+                pixelWidth: exact.pixelWidth,
+                pixelHeight: exact.pixelHeight,
+                scope: "window"
+            )
+        } catch {
             let boundary = targetWindowID == nil ? "process" : "process/window"
-            throw HostConfigurationError.unavailable("Target \(boundary) must resolve to exactly one capturable on-screen window")
+            throw HostConfigurationError.unavailable("Target \(boundary) must resolve to exactly one bounded capturable window")
         }
-        let containingDisplays = content.displays.filter { $0.frame.contains(window.frame) }
-        guard containingDisplays.count == 1, let display = containingDisplays.first else {
-            throw HostConfigurationError.unavailable("Target browser window must be fully contained in exactly one capturable display")
-        }
-        let filter = SCContentFilter(display: display, including: [window])
-        let displayLocalBounds = CGRect(origin: .zero, size: display.frame.size)
-        let sourceRect = CGRect(
-            x: window.frame.minX - display.frame.minX,
-            y: window.frame.minY - display.frame.minY,
-            width: window.frame.width,
-            height: window.frame.height
-        )
-        guard displayLocalBounds.contains(sourceRect) else {
-            throw HostConfigurationError.unavailable("Target browser crop is outside the selected display")
-        }
-        let scale = max(1.0, Double(filter.pointPixelScale))
-        let pixelWidth = max(2.0, Double(sourceRect.width) * scale)
-        let pixelHeight = max(2.0, Double(sourceRect.height) * scale)
-        return CaptureSurface(
-            filter: filter,
-            sourceRect: sourceRect,
-            inputBounds: window.frame,
-            pixelWidth: pixelWidth,
-            pixelHeight: pixelHeight,
-            scope: "window"
-        )
     }
 
     let display = try selectDisplay(from: content.displays, requested: requestedDisplay)

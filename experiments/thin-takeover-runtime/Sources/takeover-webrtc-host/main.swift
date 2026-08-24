@@ -1,5 +1,6 @@
 import Foundation
 import TakeoverCore
+import TakeoverMacOSWindow
 
 #if os(macOS)
 import AppKit
@@ -102,35 +103,22 @@ private func selectedCaptureSurface(
     targetWindowID: CGWindowID?
 ) throws -> CaptureSurface {
     if let targetProcessID {
-        let windows = content.windows.filter { window in
-            guard window.owningApplication?.processID == targetProcessID,
-                  window.isOnScreen,
-                  window.windowLayer == 0,
-                  targetWindowID == nil || window.windowID == targetWindowID else { return false }
-            return window.frame.width >= 160 && window.frame.height >= 120
-        }
-        guard windows.count == 1, let window = windows.first else { throw WebRtcHostError.display }
-        let containingDisplays = content.displays.filter { $0.frame.contains(window.frame) }
-        guard containingDisplays.count == 1, let display = containingDisplays.first else {
+        do {
+            let exact = try MacOSExactWindowCapture.resolve(
+                from: content,
+                targetProcessID: targetProcessID,
+                targetWindowID: targetWindowID
+            )
+            return CaptureSurface(
+                filter: exact.filter,
+                sourceRect: exact.sourceRect,
+                inputBounds: exact.inputBounds,
+                pixelWidth: exact.pixelWidth,
+                pixelHeight: exact.pixelHeight
+            )
+        } catch {
             throw WebRtcHostError.display
         }
-        let filter = SCContentFilter(display: display, including: [window])
-        let displayLocalBounds = CGRect(origin: .zero, size: display.frame.size)
-        let sourceRect = CGRect(
-            x: window.frame.minX - display.frame.minX,
-            y: window.frame.minY - display.frame.minY,
-            width: window.frame.width,
-            height: window.frame.height
-        )
-        guard displayLocalBounds.contains(sourceRect) else { throw WebRtcHostError.display }
-        let scale = max(1.0, Double(filter.pointPixelScale))
-        return CaptureSurface(
-            filter: filter,
-            sourceRect: sourceRect,
-            inputBounds: window.frame,
-            pixelWidth: max(2.0, Double(sourceRect.width) * scale),
-            pixelHeight: max(2.0, Double(sourceRect.height) * scale)
-        )
     }
     let display = try selectedDisplay(from: content.displays, requested: requestedDisplay)
     return CaptureSurface(
@@ -514,43 +502,7 @@ private final class HumanInputInjector: @unchecked Sendable {
 
     private func activateTargetWindowForInput() -> Bool {
         guard let targetProcessID else { return true }
-        guard let application = NSRunningApplication(processIdentifier: targetProcessID) else { return false }
-        let appElement = AXUIElementCreateApplication(targetProcessID)
-        var windowsRaw: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
-              let windows = windowsRaw as? [AXUIElement] else { return false }
-        let matches = windows.filter { window in
-            guard let frame = axFrame(window) else { return false }
-            return abs(frame.minX - inputBounds.minX) <= 2
-                && abs(frame.minY - inputBounds.minY) <= 2
-                && abs(frame.width - inputBounds.width) <= 2
-                && abs(frame.height - inputBounds.height) <= 2
-        }
-        guard matches.count == 1, let window = matches.first else { return false }
-        guard AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else { return false }
-        _ = application.activate(options: [])
-        for attempt in 0..<5 {
-            if application.isActive { return true }
-            if attempt < 4 { usleep(20_000) }
-        }
-        return application.isActive
-    }
-
-    private func axFrame(_ element: AXUIElement) -> CGRect? {
-        var positionRaw: CFTypeRef?
-        var sizeRaw: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionRaw) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRaw) == .success,
-              let positionRaw, let sizeRaw,
-              CFGetTypeID(positionRaw) == AXValueGetTypeID(),
-              CFGetTypeID(sizeRaw) == AXValueGetTypeID() else { return nil }
-        let positionValue = unsafeDowncast(positionRaw, to: AXValue.self)
-        let sizeValue = unsafeDowncast(sizeRaw, to: AXValue.self)
-        var point = CGPoint.zero
-        var size = CGSize.zero
-        guard AXValueGetValue(positionValue, .cgPoint, &point),
-              AXValueGetValue(sizeValue, .cgSize, &size) else { return nil }
-        return CGRect(origin: point, size: size)
+        return MacOSExactWindowInput.activate(processID: targetProcessID, inputBounds: inputBounds)
     }
 
     private func number(_ value: Any?) -> Double? { (value as? NSNumber)?.doubleValue }

@@ -25,6 +25,7 @@ let package = Package(
     targets: [
         .target(name: "TakeoverCore"),
         .target(name: "TakeoverNativeClient", dependencies: ["TakeoverCore"]),
+        .target(name: "TakeoverMacOSWindow"),
         .executableTarget(name: "takeover-loopback", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-packet-bench", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-crypto-bench", dependencies: ["TakeoverCore"]),
@@ -32,11 +33,12 @@ let package = Package(
         .executableTarget(name: "takeover-vt-codec-bench", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-control-send", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-native-client-pipeline-bench", dependencies: ["TakeoverCore", "TakeoverNativeClient"]),
-        .executableTarget(name: "takeover-macos-host", dependencies: ["TakeoverCore"]),
+        .executableTarget(name: "takeover-macos-host", dependencies: ["TakeoverCore", "TakeoverMacOSWindow"]),
         .executableTarget(name: "takeover-macos-dogfood-client", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-macos-dogfood-target"),
-        .executableTarget(name: "takeover-webrtc-host", dependencies: ["TakeoverCore"]),
+        .executableTarget(name: "takeover-webrtc-host", dependencies: ["TakeoverCore", "TakeoverMacOSWindow"]),
         .testTarget(name: "TakeoverCoreTests", dependencies: ["TakeoverCore"]),
         .testTarget(name: "TakeoverNativeClientTests", dependencies: ["TakeoverCore", "TakeoverNativeClient"]),
+        .testTarget(name: "TakeoverMacOSWindowTests", dependencies: ["TakeoverMacOSWindow"]),
     ]
 )
