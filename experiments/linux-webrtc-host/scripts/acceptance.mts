@@ -10,6 +10,7 @@ import {
   SpawnedWebRtcRuntimeProvider,
   type WebRtcTakeoverRuntimeBinding
 } from "../../../dist/browser-takeover/webrtc-runtime.js";
+import { waitForLinuxWindowReadiness } from "./window-readiness.ts";
 
 async function exists(value: string): Promise<boolean> {
   return access(value).then(() => true, () => false);
@@ -178,25 +179,43 @@ async function main(): Promise<void> {
     ];
     assert.equal(chromeArgs.some((arg) => /remote-debugging|enable-automation|headless/i.test(arg)), false);
     chrome = spawn(chromeExecutable, chromeArgs, { env: xEnv, stdio: ["ignore", "ignore", "pipe"] });
-    let chromeError = "";
-    chrome.stderr?.on("data", (chunk: Buffer) => { if (chromeError.length < 8_192) chromeError += chunk.toString("utf8"); });
     chrome.once("error", () => undefined);
     assert.ok(chrome.pid);
 
     process.stdout.write("LINUX_WEBRTC_STAGE chrome-window\n");
-    await waitFor("chrome-window", async () => {
-      if (chrome?.exitCode !== null) throw new Error(`normal Chrome exited before window readiness: ${chromeError.slice(0, 500)}`);
-      const result = spawnSync("/usr/bin/xdotool", ["search", "--onlyvisible", "--pid", String(chrome!.pid)], { env: xEnv, encoding: "utf8" });
-      return result.status === 0 && result.stdout.trim().split(/\s+/).filter(Boolean).length === 1;
-    }, 30_000);
-    const windowIds = spawnSync("/usr/bin/xdotool", ["search", "--onlyvisible", "--pid", String(chrome.pid)], { env: xEnv, encoding: "utf8" })
-      .stdout.trim().split(/\s+/).filter(Boolean);
-    assert.equal(windowIds.length, 1);
-    await waitFor("acceptance-page-title", () => {
-      const title = spawnSync("/usr/bin/xdotool", ["getwindowname", windowIds[0]!], { env: xEnv, encoding: "utf8" });
-      return title.status === 0 && title.stdout.includes("Handoff Linux Acceptance");
-    }, 20_000);
-    await waitFor("page-interactive", () => pageInteractive, 20_000);
+    const acceptedWindowId = await waitForLinuxWindowReadiness({
+      expectedTitle: "Handoff Linux Acceptance",
+      timeoutMs: 30_000,
+      stableSamples: 2,
+      observe: () => {
+        const processAlive = chrome?.exitCode === null && chrome?.signalCode === null;
+        if (!processAlive || !chrome?.pid) {
+          return { processAlive: false, candidateIds: [], pageInteractive };
+        }
+        const result = spawnSync(
+          "/usr/bin/xdotool",
+          ["search", "--onlyvisible", "--pid", String(chrome.pid)],
+          { env: xEnv, encoding: "utf8" }
+        );
+        const candidateIds = result.status === 0
+          ? result.stdout.trim().split(/\s+/).filter(Boolean)
+          : [];
+        const candidateTitle = candidateIds.length === 1
+          ? (() => {
+              const title = spawnSync("/usr/bin/xdotool", ["getwindowname", candidateIds[0]!], { env: xEnv, encoding: "utf8" });
+              return title.status === 0 ? title.stdout.slice(0, 160) : undefined;
+            })()
+          : undefined;
+        return {
+          processAlive: true,
+          candidateIds,
+          ...(candidateTitle === undefined ? {} : { candidateTitle }),
+          pageInteractive
+        };
+      }
+    });
+    const acceptedWindowIdNumber = Number(acceptedWindowId);
+    assert.equal(Number.isSafeInteger(acceptedWindowIdNumber) && acceptedWindowIdNumber > 0, true, "accepted X11 window id must be a positive integer");
     process.stdout.write("LINUX_WEBRTC_STAGE page-ready\n");
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
@@ -209,7 +228,8 @@ async function main(): Promise<void> {
       clientBinding: "acceptance-client-binding-1234567890",
       clientGeneration: 1,
       expiresAt: Date.now() + 60_000,
-      targetProcessId: chrome.pid
+      targetProcessId: chrome.pid,
+      targetWindowId: acceptedWindowIdNumber
     };
     process.stdout.write("LINUX_WEBRTC_STAGE provider-prepare\n");
     await provider.prepare(binding);
