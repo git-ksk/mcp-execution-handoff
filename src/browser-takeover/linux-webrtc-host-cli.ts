@@ -338,6 +338,7 @@ class LinuxWindowInput {
       await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
     }
     await this.confirmActiveTarget();
+    await this.confirmInputFocusOwnedByTarget();
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
     if (input.kind === "tap") {
       const point = normalizedPointInWindow(
@@ -399,6 +400,20 @@ class LinuxWindowInput {
       if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
     }
     throw new Error("Linux WebRTC target window did not become active");
+  }
+
+  private async confirmInputFocusOwnedByTarget(): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const focused = await runCommand(this.xdotool, ["getwindowfocus"], this.display).catch(() => "");
+      const focusedWindowId = Number(focused.trim());
+      if (Number.isSafeInteger(focusedWindowId) && focusedWindowId > 0) {
+        if (focusedWindowId === this.geometry.windowId) return;
+        const focusedPid = await runCommand(this.xdotool, ["getwindowpid", String(focusedWindowId)], this.display).catch(() => "");
+        if (Number(focusedPid.trim()) === this.targetPid) return;
+      }
+      if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error("Linux WebRTC input focus is not owned by the target process");
   }
 
   private async scrollAxis(delta: number, negativeButton: number, positiveButton: number): Promise<void> {
