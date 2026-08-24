@@ -36,6 +36,14 @@ export declare class BrowserHandoffAdapter {
     isEnabled(): boolean;
     isPath(pathname: string): boolean;
     /**
+     * Return whether this high-level adapter owns the concrete Browser Handoff route.
+     *
+     * Consumers that also host a low-level `TakeoverBroker` can use this to route only WebRTC
+     * sessions created by this adapter here, while leaving legacy HTTP/native sessions on the other
+     * broker. The shared WebRTC client script is adapter-owned; the legacy client script is not.
+     */
+    ownsPath(pathname: string): boolean;
+    /**
      * Issue one short-lived locator for an exact browser target.
      *
      * Locator issuance only means the control-plane session exists. Runtime/media readiness is

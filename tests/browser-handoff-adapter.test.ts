@@ -47,6 +47,11 @@ test("first-class Browser Handoff issues only a WebRTC locator for an exact targ
 
   const sessionId = url.pathname.split("/").at(-1);
   assert.ok(sessionId);
+  assert.equal(adapter.ownsPath(url.pathname), true);
+  assert.equal(adapter.ownsPath(`/takeover/api/webrtc-connect/${sessionId}`), true);
+  assert.equal(adapter.ownsPath("/takeover/webrtc-client.js"), true);
+  assert.equal(adapter.ownsPath("/takeover/client.js"), false);
+  assert.equal(adapter.ownsPath("/takeover/not-owned-session"), false);
   const legacyBootstrap = await adapter.handle(new Request(
     `http://localhost/takeover/api/bootstrap/${sessionId}`,
     { headers: { "sec-fetch-site": "same-origin", "x-takeover-client": "client-binding-browser-1234" } }
@@ -148,6 +153,14 @@ test("Browser Handoff keeps WebRTC lifecycle routing and bounded diagnostics Han
   assert.equal(latency.direct.samples, 0);
   assert.equal(latency.relay.samples, 0);
 
-  await adapter.revoke("not-active");
+  const locator = adapter.start({
+    intervention: { id: "browser-int-owned", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: ALL_INPUT
+  });
+  assert.equal(adapter.ownsPath(new URL(locator).pathname), true);
+  await adapter.revoke("browser-int-owned");
+  assert.equal(adapter.ownsPath(new URL(locator).pathname), false);
   await adapter.revokeForIntervention("not-active-either");
 });

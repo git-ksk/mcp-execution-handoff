@@ -57,8 +57,13 @@ export class BrowserHandoffAdapterError extends Error {
 export class BrowserHandoffAdapter {
   readonly #runtime: SpawnedWebRtcRuntimeProvider;
   readonly #broker: TakeoverBroker;
+  readonly #ttlMs: number;
+  readonly #sessionIds = new Set<string>();
+  readonly #sessionByIntervention = new Map<string, string>();
+  readonly #expiryTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(config: BrowserHandoffAdapterConfig) {
+    this.#ttlMs = config.takeover.ttlMs;
     this.#runtime = new SpawnedWebRtcRuntimeProvider(config.runtime);
     this.#broker = new TakeoverBroker(
       webRtcOnlyBrowserAdapter(),
@@ -75,6 +80,20 @@ export class BrowserHandoffAdapter {
 
   isPath(pathname: string): boolean {
     return this.#broker.isPath(pathname);
+  }
+
+  /**
+   * Return whether this high-level adapter owns the concrete Browser Handoff route.
+   *
+   * Consumers that also host a low-level `TakeoverBroker` can use this to route only WebRTC
+   * sessions created by this adapter here, while leaving legacy HTTP/native sessions on the other
+   * broker. The shared WebRTC client script is adapter-owned; the legacy client script is not.
+   */
+  ownsPath(pathname: string): boolean {
+    if (!this.isEnabled()) return false;
+    if (pathname === "/takeover/webrtc-client.js") return true;
+    const sessionId = takeoverSessionIdFromPath(pathname);
+    return sessionId !== undefined && this.#sessionIds.has(sessionId);
   }
 
   /**
@@ -109,10 +128,19 @@ export class BrowserHandoffAdapter {
         "Browser WebRTC Handoff is unavailable"
       );
     }
+    const sessionId = takeoverSessionIdFromPath(new URL(locator).pathname);
+    if (!sessionId) {
+      throw new BrowserHandoffAdapterError(
+        "BROWSER_HANDOFF_UNAVAILABLE",
+        "Browser WebRTC Handoff locator is invalid"
+      );
+    }
+    this.#rememberSession(request.intervention.id, sessionId);
     return locator;
   }
 
   async revoke(interventionId: string): Promise<void> {
+    this.#forgetIntervention(interventionId);
     await this.#broker.revokeWebRtcForIntervention(interventionId);
   }
 
@@ -132,6 +160,42 @@ export class BrowserHandoffAdapter {
   latencySnapshot(): WebRtcLatencyComparison {
     return this.#runtime.latencySnapshot();
   }
+
+  #rememberSession(interventionId: string, sessionId: string): void {
+    const previous = this.#sessionByIntervention.get(interventionId);
+    if (previous && previous !== sessionId) this.#forgetSession(previous);
+    this.#sessionIds.add(sessionId);
+    this.#sessionByIntervention.set(interventionId, sessionId);
+    const existingTimer = this.#expiryTimers.get(sessionId);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(() => this.#forgetSession(sessionId), this.#ttlMs + 1_000);
+    timer.unref();
+    this.#expiryTimers.set(sessionId, timer);
+  }
+
+  #forgetIntervention(interventionId: string): void {
+    const sessionId = this.#sessionByIntervention.get(interventionId);
+    if (!sessionId) return;
+    this.#sessionByIntervention.delete(interventionId);
+    this.#forgetSession(sessionId);
+  }
+
+  #forgetSession(sessionId: string): void {
+    this.#sessionIds.delete(sessionId);
+    const timer = this.#expiryTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    this.#expiryTimers.delete(sessionId);
+    for (const [interventionId, currentSessionId] of this.#sessionByIntervention) {
+      if (currentSessionId === sessionId) this.#sessionByIntervention.delete(interventionId);
+    }
+  }
+}
+
+function takeoverSessionIdFromPath(pathname: string): string | undefined {
+  const page = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
+  if (page) return page[1];
+  const api = /^\/takeover\/api\/[a-z0-9-]+\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
+  return api?.[1];
 }
 
 function validTarget(target: TakeoverHostTarget): boolean {

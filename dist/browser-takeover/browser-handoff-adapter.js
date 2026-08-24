@@ -22,7 +22,12 @@ export class BrowserHandoffAdapterError extends Error {
 export class BrowserHandoffAdapter {
     #runtime;
     #broker;
+    #ttlMs;
+    #sessionIds = new Set();
+    #sessionByIntervention = new Map();
+    #expiryTimers = new Map();
     constructor(config) {
+        this.#ttlMs = config.takeover.ttlMs;
         this.#runtime = new SpawnedWebRtcRuntimeProvider(config.runtime);
         this.#broker = new TakeoverBroker(webRtcOnlyBrowserAdapter(), config.takeover, undefined, this.#runtime, config.onComplete ? { completed: config.onComplete } : {});
     }
@@ -31,6 +36,21 @@ export class BrowserHandoffAdapter {
     }
     isPath(pathname) {
         return this.#broker.isPath(pathname);
+    }
+    /**
+     * Return whether this high-level adapter owns the concrete Browser Handoff route.
+     *
+     * Consumers that also host a low-level `TakeoverBroker` can use this to route only WebRTC
+     * sessions created by this adapter here, while leaving legacy HTTP/native sessions on the other
+     * broker. The shared WebRTC client script is adapter-owned; the legacy client script is not.
+     */
+    ownsPath(pathname) {
+        if (!this.isEnabled())
+            return false;
+        if (pathname === "/takeover/webrtc-client.js")
+            return true;
+        const sessionId = takeoverSessionIdFromPath(pathname);
+        return sessionId !== undefined && this.#sessionIds.has(sessionId);
     }
     /**
      * Issue one short-lived locator for an exact browser target.
@@ -50,9 +70,15 @@ export class BrowserHandoffAdapter {
         if (!locator) {
             throw new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser WebRTC Handoff is unavailable");
         }
+        const sessionId = takeoverSessionIdFromPath(new URL(locator).pathname);
+        if (!sessionId) {
+            throw new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser WebRTC Handoff locator is invalid");
+        }
+        this.#rememberSession(request.intervention.id, sessionId);
         return locator;
     }
     async revoke(interventionId) {
+        this.#forgetIntervention(interventionId);
         await this.#broker.revokeWebRtcForIntervention(interventionId);
     }
     /** Alias for consumers that already use broker-style lifecycle naming. */
@@ -68,6 +94,44 @@ export class BrowserHandoffAdapter {
     latencySnapshot() {
         return this.#runtime.latencySnapshot();
     }
+    #rememberSession(interventionId, sessionId) {
+        const previous = this.#sessionByIntervention.get(interventionId);
+        if (previous && previous !== sessionId)
+            this.#forgetSession(previous);
+        this.#sessionIds.add(sessionId);
+        this.#sessionByIntervention.set(interventionId, sessionId);
+        const existingTimer = this.#expiryTimers.get(sessionId);
+        if (existingTimer)
+            clearTimeout(existingTimer);
+        const timer = setTimeout(() => this.#forgetSession(sessionId), this.#ttlMs + 1_000);
+        timer.unref();
+        this.#expiryTimers.set(sessionId, timer);
+    }
+    #forgetIntervention(interventionId) {
+        const sessionId = this.#sessionByIntervention.get(interventionId);
+        if (!sessionId)
+            return;
+        this.#sessionByIntervention.delete(interventionId);
+        this.#forgetSession(sessionId);
+    }
+    #forgetSession(sessionId) {
+        this.#sessionIds.delete(sessionId);
+        const timer = this.#expiryTimers.get(sessionId);
+        if (timer)
+            clearTimeout(timer);
+        this.#expiryTimers.delete(sessionId);
+        for (const [interventionId, currentSessionId] of this.#sessionByIntervention) {
+            if (currentSessionId === sessionId)
+                this.#sessionByIntervention.delete(interventionId);
+        }
+    }
+}
+function takeoverSessionIdFromPath(pathname) {
+    const page = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
+    if (page)
+        return page[1];
+    const api = /^\/takeover\/api\/[a-z0-9-]+\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
+    return api?.[1];
 }
 function validTarget(target) {
     return Number.isSafeInteger(target.processId) && target.processId > 0 &&
