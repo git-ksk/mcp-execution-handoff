@@ -18,6 +18,7 @@ import {
   CoturnRestTurnCredentialProvider,
   cloneIceServers,
   directOnlyIceSession,
+  relayCredentialFailureReason,
   type WebRtcBrowserIceConfiguration,
   type WebRtcIceCredentialProvider,
   type WebRtcPreparedIceSession,
@@ -280,9 +281,14 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     } else {
       try {
         iceSession = await this.#iceCredentialProvider.issue(binding);
-      } catch {
+      } catch (error) {
         // Credential-provider failure does not silently widen trust. Keep LAN/direct eligibility,
-        // but make relay unavailable so a WAN failure is explicit and safe.
+        // but make relay unavailable so a WAN failure is explicit and safe. Record only a bounded
+        // reason code: never provider payloads, credentials, identifiers, candidate data, or URLs.
+        this.diagnostics.record({
+          stage: "relay.credential.unavailable",
+          reason: relayCredentialFailureReason(error)
+        });
         iceSession = directOnlyIceSession("unavailable");
       }
     }

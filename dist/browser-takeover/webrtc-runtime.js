@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { dirname, isAbsolute } from "node:path";
 import { MediaStreamTrack, RTCPeerConnection, RtpHeader, RtpPacket, random16, useH264 } from "werift";
-import { CloudflareRealtimeTurnCredentialProvider, CoturnRestTurnCredentialProvider, cloneIceServers, directOnlyIceSession } from "./webrtc-ice.js";
+import { CloudflareRealtimeTurnCredentialProvider, CoturnRestTurnCredentialProvider, cloneIceServers, directOnlyIceSession, relayCredentialFailureReason } from "./webrtc-ice.js";
 import { WebRtcLatencyTracker } from "./webrtc-latency.js";
 import { WebRtcDiagnosticsTracker, webRtcCandidateCountsFromSdp } from "./webrtc-diagnostics.js";
 const MAX_SIGNALING_SDP_BYTES = 128 * 1024;
@@ -102,9 +102,14 @@ export class SpawnedWebRtcRuntimeProvider {
             try {
                 iceSession = await this.#iceCredentialProvider.issue(binding);
             }
-            catch {
+            catch (error) {
                 // Credential-provider failure does not silently widen trust. Keep LAN/direct eligibility,
-                // but make relay unavailable so a WAN failure is explicit and safe.
+                // but make relay unavailable so a WAN failure is explicit and safe. Record only a bounded
+                // reason code: never provider payloads, credentials, identifiers, candidate data, or URLs.
+                this.diagnostics.record({
+                    stage: "relay.credential.unavailable",
+                    reason: relayCredentialFailureReason(error)
+                });
                 iceSession = directOnlyIceSession("unavailable");
             }
         }

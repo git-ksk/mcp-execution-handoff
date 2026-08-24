@@ -5,6 +5,7 @@ import {
   CloudflareRealtimeTurnCredentialProvider,
   CoturnRestTurnCredentialProvider,
   directOnlyIceSession,
+  relayCredentialFailureReason,
   type WebRtcTakeoverRuntimeBinding
 } from "../src/browser-takeover/webrtc-ice.js";
 
@@ -118,8 +119,49 @@ test("Cloudflare TURN adapter fails generically and revokes partial issuance", a
     now: () => 1_700_000_000_000
   });
 
-  await assert.rejects(() => provider.issue(binding()), /^Error: TURN credential issuance failed$/);
+  await assert.rejects(async () => {
+    try {
+      await provider.issue(binding());
+    } catch (error) {
+      assert.equal(relayCredentialFailureReason(error), "provider_unavailable");
+      assert.doesNotMatch(String(error), /503|turn_key|credential|principal|session/i);
+      throw error;
+    }
+  }, /TURN credential unavailable/);
   assert.equal(requests.filter((url) => url.endsWith("/revoke")).length, 1);
+});
+
+
+test("Cloudflare TURN adapter classifies provider failures without leaking response or secret material", async () => {
+  const cases: Array<{ status?: number; throws?: boolean; body?: string; expected: string }> = [
+    { status: 401, expected: "provider_auth" },
+    { status: 403, expected: "provider_auth" },
+    { status: 429, expected: "provider_rate_limited" },
+    { status: 503, expected: "provider_unavailable" },
+    { status: 404, expected: "provider_rejected" },
+    { throws: true, expected: "provider_unavailable" },
+    { status: 200, body: "not-json", expected: "response_invalid" }
+  ];
+  for (const scenario of cases) {
+    const provider = new CloudflareRealtimeTurnCredentialProvider({
+      turnKeyId: "turn_key_unit_123456",
+      turnKeyApiToken: ["server", "unit", "credential"].join("-"),
+      fetchImpl: async () => {
+        if (scenario.throws) throw new Error("network included secret-shaped material");
+        return new Response(scenario.body ?? "{}", { status: scenario.status ?? 200 });
+      },
+      now: () => 1_700_000_000_000
+    });
+    await assert.rejects(async () => {
+      try {
+        await provider.issue(binding());
+      } catch (error) {
+        assert.equal(relayCredentialFailureReason(error), scenario.expected);
+        assert.equal(String(error), "WebRtcRelayCredentialError: TURN credential unavailable");
+        throw error;
+      }
+    }, /TURN credential unavailable/);
+  }
 });
 
 

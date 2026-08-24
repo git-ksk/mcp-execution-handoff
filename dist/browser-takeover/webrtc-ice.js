@@ -1,4 +1,15 @@
 import { createHmac, randomBytes } from "node:crypto";
+export class WebRtcRelayCredentialError extends Error {
+    reason;
+    constructor(reason, message = "TURN credential unavailable") {
+        super(message);
+        this.reason = reason;
+        this.name = "WebRtcRelayCredentialError";
+    }
+}
+export function relayCredentialFailureReason(error) {
+    return error instanceof WebRtcRelayCredentialError ? error.reason : "unknown";
+}
 const CLOUDFLARE_TURN_ORIGIN = "https://rtc.live.cloudflare.com";
 const CLOUDFLARE_STUN_URL = "stun:stun.cloudflare.com:3478";
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 48 * 60 * 60;
@@ -40,7 +51,7 @@ export class CloudflareRealtimeTurnCredentialProvider {
     async issue(binding) {
         const remainingMs = binding.expiresAt - this.now();
         if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-            throw new Error("WebRTC generation is expired");
+            throw new WebRtcRelayCredentialError("generation_expired");
         }
         const ttl = Math.max(1, Math.min(this.maxTtlSeconds, Math.ceil(remainingMs / 1_000)));
         let browser;
@@ -49,12 +60,14 @@ export class CloudflareRealtimeTurnCredentialProvider {
             browser = await this.generate(ttl);
             server = await this.generate(ttl);
         }
-        catch {
+        catch (error) {
             if (browser)
                 await this.revokeUsernames(browser.turnUsernames).catch(() => undefined);
             if (server)
                 await this.revokeUsernames(server.turnUsernames).catch(() => undefined);
-            throw new Error("TURN credential issuance failed");
+            throw error instanceof WebRtcRelayCredentialError
+                ? error
+                : new WebRtcRelayCredentialError("unknown");
         }
         const usernames = [...new Set([...browser.turnUsernames, ...server.turnUsernames])];
         let revoked = false;
@@ -76,30 +89,48 @@ export class CloudflareRealtimeTurnCredentialProvider {
         };
     }
     async generate(ttl) {
-        const response = await this.fetchImpl(`${CLOUDFLARE_TURN_ORIGIN}/v1/turn/keys/${encodeURIComponent(this.config.turnKeyId)}/credentials/generate-ice-servers`, {
-            method: "POST",
-            headers: this.headers(),
-            body: JSON.stringify({ ttl }),
-            cache: "no-store"
-        });
-        if (!response.ok)
-            throw new Error("TURN credential issuance failed");
+        let response;
+        try {
+            response = await this.fetchImpl(`${CLOUDFLARE_TURN_ORIGIN}/v1/turn/keys/${encodeURIComponent(this.config.turnKeyId)}/credentials/generate-ice-servers`, {
+                method: "POST",
+                headers: this.headers(),
+                body: JSON.stringify({ ttl }),
+                cache: "no-store"
+            });
+        }
+        catch {
+            throw new WebRtcRelayCredentialError("provider_unavailable");
+        }
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 403)
+                throw new WebRtcRelayCredentialError("provider_auth");
+            if (response.status === 429)
+                throw new WebRtcRelayCredentialError("provider_rate_limited");
+            if (response.status >= 500)
+                throw new WebRtcRelayCredentialError("provider_unavailable");
+            throw new WebRtcRelayCredentialError("provider_rejected");
+        }
         const contentLength = Number(response.headers.get("content-length") ?? "0");
         if (Number.isFinite(contentLength) && contentLength > MAX_ICE_RESPONSE_BYTES) {
-            throw new Error("TURN credential response is invalid");
+            throw new WebRtcRelayCredentialError("response_invalid");
         }
         const text = await response.text();
         if (Buffer.byteLength(text, "utf8") > MAX_ICE_RESPONSE_BYTES) {
-            throw new Error("TURN credential response is invalid");
+            throw new WebRtcRelayCredentialError("response_invalid");
         }
         let value;
         try {
             value = JSON.parse(text);
         }
         catch {
-            throw new Error("TURN credential response is invalid");
+            throw new WebRtcRelayCredentialError("response_invalid");
         }
-        return parseCloudflareIceServers(value);
+        try {
+            return parseCloudflareIceServers(value);
+        }
+        catch {
+            throw new WebRtcRelayCredentialError("response_invalid");
+        }
     }
     async revokeUsernames(usernames) {
         let failed = false;

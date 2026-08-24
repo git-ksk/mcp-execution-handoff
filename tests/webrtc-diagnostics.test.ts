@@ -38,6 +38,19 @@ test("browser diagnostic parser fails closed on network, SDP and credential-shap
   }
 });
 
+test("relay credential diagnostics retain only a bounded failure reason", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  tracker.record({ stage: "relay.credential.unavailable", reason: "provider_auth" });
+  assert.deepEqual(tracker.snapshot(), {
+    events: [{ stage: "relay.credential.unavailable", reason: "provider_auth" }]
+  });
+  tracker.record({ stage: "relay.credential.unavailable", reason: "secret-token" as never });
+  assert.equal(tracker.snapshot().events.length, 1);
+  assert.equal(parseBrowserWebRtcDiagnosticEvent({
+    stage: "browser.peer.state", state: "failed", reason: "provider_auth"
+  }), undefined);
+});
+
 test("diagnostic tracker remains bounded and snapshot cannot mutate stored events", () => {
   const tracker = new WebRtcDiagnosticsTracker();
   for (let i = 0; i < 140; i += 1) tracker.record({ stage: "broker.prepare.request" });

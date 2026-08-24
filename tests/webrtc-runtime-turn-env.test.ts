@@ -50,3 +50,28 @@ test("runtime selects coturn from complete env and fails closed on partial or co
     for (const [name, value] of original) if (value !== undefined) process.env[name] = value;
   }
 });
+
+
+test("runtime preserves direct fallback while recording a bounded Cloudflare credential failure reason", async () => {
+  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  const originalFetch = globalThis.fetch;
+  try {
+    clear();
+    process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID = "configured-cloudflare-key";
+    process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN = "server-only-test-token";
+    globalThis.fetch = async () => new Response(JSON.stringify({ sensitive: "must-not-surface" }), { status: 403 });
+    const provider = runtime();
+    const ice = await provider.prepare(binding());
+    assert.equal(ice.relay, "unavailable");
+    assert.deepEqual(ice.iceServers, []);
+    assert.deepEqual(provider.diagnosticsSnapshot(), {
+      events: [{ stage: "relay.credential.unavailable", reason: "provider_auth" }]
+    });
+    assert.doesNotMatch(JSON.stringify(provider.diagnosticsSnapshot()), /sensitive|server-only-test-token|configured-cloudflare-key/);
+    await provider.revoke("turn-env-session");
+  } finally {
+    globalThis.fetch = originalFetch;
+    clear();
+    for (const [name, value] of original) if (value !== undefined) process.env[name] = value;
+  }
+});
