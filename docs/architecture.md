@@ -24,6 +24,8 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- credential-safe external Human provider coordinator
 ```
 
+Consumer integration is **optional, but authoritative when enabled**. A consumer such as CUMG may run without Handoff at all; Handoff is not a mandatory execution dependency. Once a consumer elects to attach Handoff to a bounded operation or Target Surface, however, the consumer must treat Handoff authority as part of its execution boundary: Agent and Human authority must remain mutually exclusive, stale/unknown Handoff state must fail closed, and runtime/transport unavailability must not be converted into a bypass that silently restores Agent control. Domain authorization, operation ledgers, quarantine, and postcondition verification remain consumer-owned; Handoff owns only its canonical authority/epoch/ownership/replay/recovery semantics and must not be duplicated inside the consumer.
+
 ## Four-axis handoff taxonomy
 
 The architecture uses four separate axes. They compose, but they are not interchangeable terms and not every combination is necessarily supported.

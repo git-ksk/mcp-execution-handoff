@@ -26,6 +26,8 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    +---- credential-safe external Human provider coordinator
 ```
 
+consumer integration は **optional ですが、有効化した場合は authoritative** です。CUMG のような consumer は Handoff なしでも通常動作でき、Handoff は必須の execution dependency ではありません。一方、consumer が bounded operation や Target Surface に Handoff を attach した後は、Handoff authority を execution boundary の一部として扱います。Agent/Human authority は常に排他的で、stale/unknown な Handoff state は fail closed とし、runtime/transport unavailable を理由に Handoff を迂回して Agent control を暗黙復帰させてはいけません。domain authorization、operation ledger、quarantine、postcondition verification は consumer が所有し、Handoff は canonical な authority/epoch/ownership/replay/recovery semantics のみを所有します。同じ Handoff state machine を consumer 内へ複製しません。
+
 ## 4軸のHandoff taxonomy
 
 アーキテクチャでは、Handoffを4つの独立した軸で整理します。これらは組み合わせて使いますが、同じ意味の言葉ではなく、すべての組み合わせが必ずsupportされるわけでもありません。
