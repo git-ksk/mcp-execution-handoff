@@ -156,3 +156,22 @@ test("status is privacy bounded and carries no PTY content or private session/pr
     "sessionGeneration",
   ]);
 });
+
+test("staged drain protocol fences before external drain and refuses verification until Human drain is confirmed", () => {
+  const { gate } = fixture();
+  const fenced = gate.beginFence(BINDING);
+  assert.equal(gate.getStatus().authority, "none");
+  assert.throws(() => gate.assertAgentInput(BINDING));
+  const human = gate.claimHumanAfterAgentDrain(BINDING, fenced.id, fenced.epoch);
+  assert.equal(human.status, "human_active");
+
+  const verifying = gate.markHumanDoneFence(BINDING, human.id, human.epoch);
+  assert.equal(gate.getStatus().authority, "none");
+  assert.throws(
+    () => gate.reportVerification(BINDING, verifying.id, verifying.epoch, true),
+    expectCode("TERMINAL_INTERVENTION_STALE"),
+  );
+  gate.confirmHumanWritesDrained(BINDING, verifying.id, verifying.epoch);
+  const ready = gate.reportVerification(BINDING, verifying.id, verifying.epoch, true);
+  assert.equal(ready.status, "ready_to_resume");
+});

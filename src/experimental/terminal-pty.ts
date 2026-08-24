@@ -66,6 +66,7 @@ export class ExperimentalTerminalPtyAuthority {
   private sessionAlive = true;
   private humanDisconnected = false;
   private agentStateSynchronizationRequired = false;
+  private humanWritesDrained = true;
 
   constructor(
     binding: ExperimentalTerminalPtyBinding,
@@ -96,14 +97,28 @@ export class ExperimentalTerminalPtyAuthority {
    * Fence new Agent input/observation immediately, then drain only Agent writes that were already
    * admitted before the fence. Human authority is not claimable until that boundary is complete.
    */
-  async beginHuman(binding: ExperimentalTerminalPtyBinding): Promise<ExecutionIntervention<never, typeof TERMINAL_REASON>> {
+  beginFence(binding: ExperimentalTerminalPtyBinding): ExecutionIntervention<never, typeof TERMINAL_REASON> {
     this.requireSession(binding, true);
     const intervention = this.state.begin({ reason: TERMINAL_REASON, resumePolicy: "never_replay" });
-    await this.fencePort.drainAgentWrites();
+    this.humanWritesDrained = true;
+    return intervention;
+  }
+
+  claimHumanAfterAgentDrain(
+    binding: ExperimentalTerminalPtyBinding,
+    interventionId: string,
+    epoch: number,
+  ): ExecutionIntervention<never, typeof TERMINAL_REASON> {
     this.requireSession(binding, true);
-    this.requireIntervention(intervention.id, intervention.epoch, "awaiting_human");
+    this.requireIntervention(interventionId, epoch, "awaiting_human");
     this.humanDisconnected = false;
-    return this.state.claimHuman(intervention.id);
+    return this.state.claimHuman(interventionId);
+  }
+
+  async beginHuman(binding: ExperimentalTerminalPtyBinding): Promise<ExecutionIntervention<never, typeof TERMINAL_REASON>> {
+    const intervention = this.beginFence(binding);
+    await this.fencePort.drainAgentWrites();
+    return this.claimHumanAfterAgentDrain(binding, intervention.id, intervention.epoch);
   }
 
   assertAgentInput(binding: ExperimentalTerminalPtyBinding): void {
@@ -167,18 +182,39 @@ export class ExperimentalTerminalPtyAuthority {
    * admitted before that fence. Consumer verification happens afterwards and never receives bytes
    * through this Handoff object.
    */
-  async markHumanDone(
+  markHumanDoneFence(
     binding: ExperimentalTerminalPtyBinding,
     interventionId: string,
     epoch: number,
-  ): Promise<ExecutionIntervention<never, typeof TERMINAL_REASON>> {
+  ): ExecutionIntervention<never, typeof TERMINAL_REASON> {
     this.requireSession(binding, false);
     this.requireIntervention(interventionId, epoch, "human_active");
     const verifying = this.state.markHumanComplete(interventionId);
     this.humanDisconnected = false;
     this.agentStateSynchronizationRequired = true;
-    await this.fencePort.drainHumanWrites();
+    this.humanWritesDrained = false;
     return verifying;
+  }
+
+  confirmHumanWritesDrained(
+    binding: ExperimentalTerminalPtyBinding,
+    interventionId: string,
+    epoch: number,
+  ): ExecutionIntervention<never, typeof TERMINAL_REASON> {
+    this.requireSession(binding, false);
+    const verifying = this.requireIntervention(interventionId, epoch, "verifying");
+    this.humanWritesDrained = true;
+    return verifying;
+  }
+
+  async markHumanDone(
+    binding: ExperimentalTerminalPtyBinding,
+    interventionId: string,
+    epoch: number,
+  ): Promise<ExecutionIntervention<never, typeof TERMINAL_REASON>> {
+    const verifying = this.markHumanDoneFence(binding, interventionId, epoch);
+    await this.fencePort.drainHumanWrites();
+    return this.confirmHumanWritesDrained(binding, verifying.id, verifying.epoch);
   }
 
   /**
@@ -193,6 +229,12 @@ export class ExperimentalTerminalPtyAuthority {
   ): ExecutionIntervention<never, typeof TERMINAL_REASON> {
     this.requireSession(binding, false);
     this.requireIntervention(interventionId, epoch, "verifying");
+    if (!this.humanWritesDrained) {
+      throw new ExperimentalTerminalPtyError(
+        "TERMINAL_INTERVENTION_STALE",
+        "Terminal verification is fenced until admitted Human writes are drained",
+      );
+    }
     if (!satisfied) return this.state.getActive()!;
     return this.state.markVerified(interventionId);
   }
@@ -237,6 +279,7 @@ export class ExperimentalTerminalPtyAuthority {
     const active = this.state.getActive();
     if (active?.status === "human_active") {
       this.state.markHumanComplete(active.id);
+      this.humanWritesDrained = true;
     }
     this.humanDisconnected = false;
     return this.getStatus();
