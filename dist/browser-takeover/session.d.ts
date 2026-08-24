@@ -11,6 +11,9 @@ export interface TakeoverGrant extends TakeoverLocator {
     clientBinding: string;
     clientGeneration: number;
 }
+export interface TakeoverCompletionResult extends TakeoverLocator {
+    alreadyCompleted: boolean;
+}
 export declare class TakeoverSessionError extends Error {
     readonly code: "TAKEOVER_NOT_FOUND" | "TAKEOVER_EXPIRED" | "TAKEOVER_FORBIDDEN" | "TAKEOVER_CLIENT_ACTIVE";
     constructor(code: "TAKEOVER_NOT_FOUND" | "TAKEOVER_EXPIRED" | "TAKEOVER_FORBIDDEN" | "TAKEOVER_CLIENT_ACTIVE", message: string);
@@ -25,6 +28,8 @@ export declare class TakeoverSessionManager {
     constructor(ttlMs: number, now?: () => number, createId?: () => string, signingKey?: Buffer, reconnectIdleMs?: number);
     ensure(interventionId: string, epoch: number, principalBinding: string): TakeoverLocator;
     validateLocator(id: string, principalBinding: string): TakeoverLocator;
+    issueCompletionCapability(id: string, principalBinding: string): string;
+    complete(id: string, completionCapability: string, principalBinding: string): TakeoverCompletionResult;
     claimClient(id: string, principalBinding: string, clientBinding: string): TakeoverGrant;
     reconnectClient(id: string, principalBinding: string, reconnectHandle: string, nextClientBinding: string): TakeoverGrant;
     releaseClientGeneration(id: string, principalBinding: string, clientBinding: string, clientGeneration: number): void;
@@ -40,10 +45,13 @@ export declare class TakeoverSessionManager {
     private assertClientBindingShape;
     private assertReconnectHandleShape;
     private assertReconnectHandle;
+    private assertCompletionCapabilityShape;
+    private assertCompletionCapability;
     private same;
     private locator;
     private grant;
     private capabilityFor;
+    private completionCapabilityFor;
     private reconnectHandleFor;
     private pruneExpired;
 }

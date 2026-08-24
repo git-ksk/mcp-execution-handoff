@@ -10,6 +10,7 @@ import {
   avccFromNalUnits,
   frameRecord,
   isLinuxWebRtcHostCliEntryPoint,
+  parseOptionalTargetWindowId,
   parseWindowGeometry,
   parseWindowIds,
   scaledVideoSize
@@ -26,6 +27,14 @@ test("Linux host resolves only bounded exact-window geometry", () => {
   });
   assert.equal(parseWindowGeometry("WINDOW=12\nX=0\nY=0\nWIDTH=100\nHEIGHT=80\n", 12), undefined);
   assert.equal(parseWindowGeometry("WINDOW=13\nX=0\nY=0\nWIDTH=900\nHEIGHT=700\n", 12), undefined);
+});
+
+test("Linux host accepts only a positive explicit target window id", () => {
+  assert.equal(parseOptionalTargetWindowId(undefined), undefined);
+  assert.equal(parseOptionalTargetWindowId("7331"), 7331);
+  assert.throws(() => parseOptionalTargetWindowId("0"), /TARGET_WINDOW_ID/);
+  assert.throws(() => parseOptionalTargetWindowId("-1"), /TARGET_WINDOW_ID/);
+  assert.throws(() => parseOptionalTargetWindowId("not-a-window"), /TARGET_WINDOW_ID/);
 });
 
 test("Linux host H264 parser keeps access units bounded and converts Annex-B to AVCC", () => {
@@ -82,6 +91,8 @@ test("Linux host CLI recognizes an npm-style symlink entrypoint without widening
 test("Linux host keeps Human text off argv and binds capture/input to one target window", () => {
   const host = readFileSync("src/browser-takeover/linux-webrtc-host-cli.ts", "utf8");
   assert.match(host, /TAKEOVER_WEBRTC_TARGET_PID/);
+  assert.match(host, /TAKEOVER_WEBRTC_TARGET_WINDOW_ID/);
+  assert.match(host, /requested window is not owned by the target browser PID/);
   assert.match(host, /search", "--onlyvisible", "--pid"/);
   assert.match(host, /candidates\.length === 1/);
   assert.match(host, /selectExactBoundedWindow/);
@@ -104,6 +115,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_focus_ready/);
   assert.match(host, /linux_stage=input_tap_sent/);
   assert.match(host, /linux_stage=input_failure/);
+  assert.match(host, /target window ownership changed/);
+  assert.match(host, /void stopHost\(\)/);
   assert.match(host, /\["key", "--clearmodifiers", key\]/);
   assert.doesNotMatch(host, /\["key", "--window"/);
   assert.match(host, /if \(this\.child === current\) this\.child = undefined;[\s\S]*current\.kill\("SIGTERM"\)/);

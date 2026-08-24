@@ -24,7 +24,7 @@ export class BrowserHandoffAdapter {
     #broker;
     constructor(config) {
         this.#runtime = new SpawnedWebRtcRuntimeProvider(config.runtime);
-        this.#broker = new TakeoverBroker(webRtcOnlyBrowserAdapter(), config.takeover, undefined, this.#runtime);
+        this.#broker = new TakeoverBroker(webRtcOnlyBrowserAdapter(), config.takeover, undefined, this.#runtime, config.onComplete ? { completed: config.onComplete } : {});
     }
     isEnabled() {
         return this.#broker.isEnabled();
@@ -43,7 +43,10 @@ export class BrowserHandoffAdapter {
         if (!validTarget(request.target)) {
             throw new BrowserHandoffAdapterError("BROWSER_HANDOFF_TARGET_INVALID", "Browser Handoff requires a positive process id and an optional positive window id");
         }
-        const locator = this.#broker.createWebRtcLink(request.intervention, request.principalBinding, request.target);
+        if (!validInputPolicy(request.inputPolicy)) {
+            throw new BrowserHandoffAdapterError("BROWSER_HANDOFF_INPUT_POLICY_INVALID", "Browser Handoff requires an explicit bounded Human input policy");
+        }
+        const locator = this.#broker.createWebRtcLink(request.intervention, request.principalBinding, request.target, request.inputPolicy);
         if (!locator) {
             throw new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser WebRTC Handoff is unavailable");
         }
@@ -69,6 +72,15 @@ export class BrowserHandoffAdapter {
 function validTarget(target) {
     return Number.isSafeInteger(target.processId) && target.processId > 0 &&
         (target.windowId === undefined || (Number.isSafeInteger(target.windowId) && target.windowId > 0));
+}
+function validInputPolicy(policy) {
+    if (!policy || typeof policy !== "object" || Array.isArray(policy))
+        return false;
+    const record = policy;
+    const keys = ["tap", "scroll", "text", "key"];
+    return Object.keys(record).length === keys.length
+        && Object.keys(record).every((key) => keys.includes(key))
+        && keys.every((key) => typeof record[key] === "boolean");
 }
 function webRtcOnlyBrowserAdapter() {
     const unavailable = async () => {

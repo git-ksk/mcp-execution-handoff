@@ -15,8 +15,13 @@ export interface TakeoverGrant extends TakeoverLocator {
   clientGeneration: number;
 }
 
+export interface TakeoverCompletionResult extends TakeoverLocator {
+  alreadyCompleted: boolean;
+}
+
 interface TakeoverRecord extends TakeoverLocator {
   revoked: boolean;
+  completed: boolean;
   clientBinding?: string;
   clientGeneration: number;
   lastSeenAt?: number;
@@ -73,6 +78,7 @@ export class TakeoverSessionManager {
       principalBinding,
       expiresAt: this.now() + this.ttlMs,
       revoked: false,
+      completed: false,
       clientGeneration: 0,
       inFlight: 0,
       released: false
@@ -85,6 +91,36 @@ export class TakeoverSessionManager {
     const record = this.requireActive(id);
     this.assertPrincipal(record, principalBinding);
     return this.locator(record);
+  }
+
+  issueCompletionCapability(id: string, principalBinding: string): string {
+    const record = this.requireActive(id);
+    this.assertPrincipal(record, principalBinding);
+    return this.completionCapabilityFor(record);
+  }
+
+  complete(
+    id: string,
+    completionCapability: string,
+    principalBinding: string
+  ): TakeoverCompletionResult {
+    const record = this.records.get(id);
+    if (!record) throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
+    if (record.expiresAt <= this.now()) {
+      record.revoked = true;
+      throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
+    }
+    if (record.revoked && !record.completed) {
+      throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
+    }
+    this.assertPrincipal(record, principalBinding);
+    this.assertCompletionCapabilityShape(completionCapability);
+    this.assertCompletionCapability(record, completionCapability);
+    const alreadyCompleted = record.completed;
+    record.completed = true;
+    record.revoked = true;
+    record.released = true;
+    return { ...this.locator(record), alreadyCompleted };
   }
 
   claimClient(id: string, principalBinding: string, clientBinding: string): TakeoverGrant {
@@ -280,6 +316,20 @@ export class TakeoverSessionManager {
     }
   }
 
+  private assertCompletionCapabilityShape(completionCapability: string): void {
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(completionCapability)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover completion capability is invalid");
+    }
+  }
+
+  private assertCompletionCapability(record: TakeoverRecord, completionCapability: string): void {
+    const expected = Buffer.from(this.completionCapabilityFor(record), "utf8");
+    const supplied = Buffer.from(completionCapability, "utf8");
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover completion capability is invalid");
+    }
+  }
+
   private same(left: string, right: string): boolean {
     const expected = Buffer.from(left, "utf8");
     const supplied = Buffer.from(right, "utf8");
@@ -331,6 +381,21 @@ export class TakeoverSessionManager {
       .digest("base64url");
   }
 
+  private completionCapabilityFor(record: TakeoverRecord): string {
+    return createHmac("sha256", this.signingKey)
+      .update("mcp-execution-handoff/takeover-completion/v1\0")
+      .update(record.id)
+      .update("\0")
+      .update(record.interventionId)
+      .update("\0")
+      .update(String(record.epoch))
+      .update("\0")
+      .update(record.principalBinding)
+      .update("\0")
+      .update(String(record.expiresAt))
+      .digest("base64url");
+  }
+
   private reconnectHandleFor(record: TakeoverRecord): string {
     if (!record.clientBinding || record.clientGeneration < 1) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover client has not claimed the session");
@@ -356,7 +421,7 @@ export class TakeoverSessionManager {
   private pruneExpired(): void {
     const now = this.now();
     for (const [id, record] of this.records) {
-      if (record.revoked || record.expiresAt <= now) this.records.delete(id);
+      if (record.expiresAt <= now || (record.revoked && !record.completed)) this.records.delete(id);
     }
   }
 }

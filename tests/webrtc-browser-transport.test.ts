@@ -6,6 +6,7 @@ import type { WebRtcLatencyComparison, WebRtcLatencySample } from "../src/browse
 import type { WebRtcDiagnosticEvent, WebRtcDiagnosticsSnapshot } from "../src/browser-takeover/webrtc-diagnostics.js";
 import type {
   WebRtcRuntimeHooks,
+  WebRtcHumanInputPolicy,
   WebRtcSessionDescription,
   WebRtcTakeoverRuntimeBinding,
   WebRtcTakeoverRuntimeProvider
@@ -110,7 +111,11 @@ function noOpBrowser(): TakeoverBrowserAdapter {
   };
 }
 
-function fixture(targetProcessId?: number, targetWindowId?: number) {
+function fixture(
+  targetProcessId?: number,
+  targetWindowId?: number,
+  inputPolicy?: WebRtcHumanInputPolicy
+) {
   const runtime = new FakeWebRtcRuntime();
   const broker = new TakeoverBroker(
     noOpBrowser(),
@@ -124,7 +129,8 @@ function fixture(targetProcessId?: number, targetWindowId?: number) {
     targetProcessId === undefined ? undefined : {
       processId: targetProcessId,
       ...(targetWindowId === undefined ? {} : { windowId: targetWindowId })
-    }
+    },
+    inputPolicy
   );
   assert.ok(link);
   const sessionId = new URL(link).pathname.split("/").at(-1);
@@ -204,6 +210,7 @@ async function prepareAndConnect(
     reconnectHandle: string;
     clientGeneration: number;
     webrtcIce: WebRtcBrowserIceConfiguration;
+    inputPolicy: WebRtcHumanInputPolicy;
   };
   const connected = await connect(broker, sessionId, clientBinding, grant.capability);
   assert.equal(connected.status, 200);
@@ -221,6 +228,33 @@ test("WebRTC runtime binding keeps an exact optional host process/window private
   assert.equal(runtime.prepares[0]!.targetWindowId, 7331);
   assert.equal(runtime.starts[0]!.binding.targetProcessId, 4242);
   assert.equal(runtime.starts[0]!.binding.targetWindowId, 7331);
+});
+
+test("WebRTC input policy is session-bound and server-enforced before host input", async () => {
+  const policy: WebRtcHumanInputPolicy = { tap: true, scroll: false, text: false, key: false };
+  const { broker, runtime, sessionId } = fixture(undefined, undefined, policy);
+  const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  assert.deepEqual(grant.inputPolicy, policy);
+
+  const hooks = runtime.starts[0]!.hooks;
+  const endTap = hooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 });
+  endTap();
+  assert.throws(
+    () => hooks.beginInput({ kind: "text", text: "blocked" }),
+    /not allowed/i
+  );
+  assert.throws(
+    () => hooks.beginInput({ kind: "key", key: "Enter" }),
+    /not allowed/i
+  );
+
+  const widened = broker.createWebRtcLink(
+    { id: "webrtc-intervention", epoch: 11 },
+    PRINCIPAL,
+    undefined,
+    { tap: true, scroll: true, text: true, key: true }
+  );
+  assert.equal(widened, undefined, "an active Browser Handoff policy cannot be widened in place");
 });
 
 test("WebRTC broker rejects invalid exact host window targets", () => {
@@ -345,7 +379,10 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.doesNotMatch(script, /localStorage|sessionStorage/);
   assert.doesNotMatch(script, /takeover\/api\/frame|data-scroll/);
   assert.doesNotMatch(script, /candidate\.address|candidate\.ip|turn\.cloudflare\.com/);
-  assert.match(script, /#done[\s\S]*takeover\/api\/done[\s\S]*finally\{closePeer\(\)/);
+  assert.match(script, /inputPolicy=\{tap:true,scroll:true,text:true,key:true\}/);
+  assert.match(script, /function inputAllowed\(kind\)/);
+  assert.match(script, /x-mcp-takeover-completion/);
+  assert.match(script, /takeover\/api\/complete/);
 });
 
 test("WebRTC prepare binds ICE to generation before offer and legacy frame/input fallback stays closed", async () => {
@@ -361,6 +398,7 @@ test("WebRTC prepare binds ICE to generation before offer and legacy frame/input
     reconnectHandle: string;
     clientGeneration: number;
     webrtcIce: WebRtcBrowserIceConfiguration;
+    inputPolicy: WebRtcHumanInputPolicy;
   };
   assert.equal(grant.clientGeneration, 1);
   assert.equal(grant.webrtcIce.relay, "available");
@@ -454,7 +492,7 @@ test("background suspend fences stale capability and reconnect prepares a fresh 
   assert.equal(first.clientGeneration, 1);
 
   const firstHooks = runtime.starts[0]!.hooks;
-  const endUse = firstHooks.beginInput();
+  const endUse = firstHooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 });
   endUse();
 
   const suspend = await broker.handle(new Request(`http://localhost/takeover/api/webrtc-suspend/${sessionId}`, {
@@ -467,7 +505,7 @@ test("background suspend fences stale capability and reconnect prepares a fresh 
   }), PRINCIPAL);
   assert.equal(suspend.status, 200);
   assert.deepEqual(await suspend.json(), { suspended: true, reconnectRequired: true });
-  assert.throws(() => firstHooks.beginInput(), /stale|unavailable/i);
+  assert.throws(() => firstHooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 }), /stale|unavailable/i);
 
   const staleConnect = await connect(broker, sessionId, CLIENT_A, first.capability);
   assert.equal(staleConnect.status, 404);
@@ -606,6 +644,57 @@ test("latency endpoint accepts only bounded path metrics and never accepts netwo
   }), PRINCIPAL);
   assert.equal(spoofedHostMetric.status, 400);
   assert.equal(runtime.latency.length, 1);
+});
+
+test("completion-only Done survives WebRTC disconnect and reload without reviving stale input", async () => {
+  const { broker, runtime, sessionId, link } = fixture();
+  const initialPage = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
+  assert.equal(initialPage.status, 200);
+  const initialHtml = await initialPage.text();
+  const initialCompletion = /data-completion="([A-Za-z0-9_-]{32,128})"/.exec(initialHtml)?.[1];
+  assert.ok(initialCompletion);
+
+  const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  const oldHooks = runtime.starts[0]!.hooks;
+  oldHooks.disconnected();
+  assert.throws(
+    () => oldHooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 }),
+    /stale|unavailable/i
+  );
+
+  const reloadPage = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
+  assert.equal(reloadPage.status, 200);
+  const reloadHtml = await reloadPage.text();
+  const reloadCompletion = /data-completion="([A-Za-z0-9_-]{32,128})"/.exec(reloadHtml)?.[1];
+  assert.equal(reloadCompletion, initialCompletion);
+
+  const completionAsMediaCapability = await connect(broker, sessionId, CLIENT_B, initialCompletion);
+  assert.equal(completionAsMediaCapability.status, 404);
+
+  const wrongPrincipal = await broker.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": initialCompletion }
+  }), "principal-other");
+  assert.equal(wrongPrincipal.status, 404);
+
+  const completed = await broker.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": initialCompletion }
+  }), PRINCIPAL);
+  assert.equal(completed.status, 200);
+  assert.deepEqual(await completed.json(), { done: true, alreadyDone: false });
+  assert.ok(runtime.revokes.includes(sessionId));
+
+  const duplicate = await broker.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": initialCompletion }
+  }), PRINCIPAL);
+  assert.equal(duplicate.status, 200);
+  assert.deepEqual(await duplicate.json(), { done: true, alreadyDone: true });
+
+  const stalePrepare = await prepare(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(stalePrepare.status, 404);
+  assert.notEqual(grant.capability, initialCompletion);
 });
 
 test("Done revokes broker generation and WebRTC runtime without treating relay as semantic success", async () => {

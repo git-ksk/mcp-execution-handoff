@@ -23,8 +23,14 @@ export type WebRtcHumanInput = {
     kind: "key";
     key: "Backspace" | "Enter";
 };
+export interface WebRtcHumanInputPolicy {
+    tap: boolean;
+    scroll: boolean;
+    text: boolean;
+    key: boolean;
+}
 export interface WebRtcRuntimeHooks {
-    beginInput(): () => void;
+    beginInput(input: WebRtcHumanInput): () => void;
     disconnected(): void;
 }
 export interface WebRtcTakeoverRuntimeProvider {

@@ -11,6 +11,8 @@ import {
   WebRtcTakeoverRuntimeError,
   parseWebRtcOffer,
   webRtcBindingFromGrant,
+  type WebRtcHumanInput,
+  type WebRtcHumanInputPolicy,
   type WebRtcSessionDescription,
   type WebRtcTakeoverRuntimeBinding,
   type WebRtcTakeoverRuntimeProvider
@@ -48,6 +50,15 @@ export interface TakeoverBrokerConfig {
   publicBaseUrl?: string;
   ttlMs: number;
   reconnectIdleMs?: number;
+}
+
+export interface TakeoverCompletionEvent {
+  interventionId: string;
+  epoch: number;
+}
+
+export interface TakeoverBrokerHooks {
+  completed?(event: TakeoverCompletionEvent): void | Promise<void>;
 }
 
 function privateHeaders(contentType: string): HeadersInit {
@@ -122,8 +133,8 @@ function pageHtml(nonce: string): string {
 function webRtcClientScript(): string {
   return `(() => {
 const parts=location.pathname.split('/').filter(Boolean);const sessionId=parts.length?parts[parts.length-1]:'';
-const statusEl=document.querySelector('#status');const video=document.querySelector('#video');const keyboard=document.querySelector('#keyboard');const keyboardOpen=document.querySelector('#keyboard-open');const keyboardBackspace=document.querySelector('#keyboard-backspace');
-let clientBinding=randomClientBinding();let cap='';let reconnectHandle='';let clientGeneration=0;let pc=null;let critical=null;let realtime=null;let stopped=false;let suspended=false;let suspendPromise=Promise.resolve();let gesture=null;let composing=false;let keyboardMode=false;let failureInProgress=false;let initialReconnectUsed=false;let connectionStartedAt=0;let firstFrameMs=null;let metricsSamplesSent=0;let inputMetricsSamplesSent=0;let metricsTimer=0;let latestFrameMetrics={};let lastTapSentAt=0;let relayState='disabled';let relayTimer=0;let editableRegions=[];let editableRegionsAt=0;let keyboardFallbackTimer=0;let iceCandidateCounts={host:0,srflx:0,prflx:0,relay:0};let iceGatherStartedAt=0;
+const statusEl=document.querySelector('#status');const video=document.querySelector('#video');const keyboard=document.querySelector('#keyboard');const keyboardOpen=document.querySelector('#keyboard-open');const keyboardBackspace=document.querySelector('#keyboard-backspace');const doneButton=document.querySelector('#done');let completionCapability=doneButton&&doneButton.dataset?doneButton.dataset.completion||'':'';
+let clientBinding=randomClientBinding();let cap='';let reconnectHandle='';let clientGeneration=0;let inputPolicy={tap:true,scroll:true,text:true,key:true};let pc=null;let critical=null;let realtime=null;let stopped=false;let suspended=false;let suspendPromise=Promise.resolve();let gesture=null;let composing=false;let keyboardMode=false;let failureInProgress=false;let initialReconnectUsed=false;let connectionStartedAt=0;let firstFrameMs=null;let metricsSamplesSent=0;let inputMetricsSamplesSent=0;let metricsTimer=0;let latestFrameMetrics={};let lastTapSentAt=0;let relayState='disabled';let relayTimer=0;let editableRegions=[];let editableRegionsAt=0;let keyboardFallbackTimer=0;let iceCandidateCounts={host:0,srflx:0,prflx:0,relay:0};let iceGatherStartedAt=0;
 const MARK='_';
 const touchEventsAvailable=('ontouchstart' in window)||(Number(navigator.maxTouchPoints)||0)>0;
 function status(text){statusEl.textContent=text}
@@ -132,16 +143,16 @@ function wait(ms){return new Promise(r=>setTimeout(r,ms))}
 function waitIce(peer,relayAvailable){if(peer.iceGatheringState==='complete')return Promise.resolve();return new Promise((resolve)=>{let settled=false;let timer=0;function finish(){if(settled)return;settled=true;if(timer)clearTimeout(timer);peer.removeEventListener('icegatheringstatechange',stateChanged);peer.removeEventListener('icecandidate',candidateReady);resolve()}function stateChanged(){if(peer.iceGatheringState==='complete')finish()}function candidateReady(event){if(!event.candidate){finish();return}if(relayAvailable&&event.candidate.type==='relay')finish()}timer=setTimeout(finish,10000);peer.addEventListener('icegatheringstatechange',stateChanged);peer.addEventListener('icecandidate',candidateReady)})}
 function resetKeyboard(){keyboard.value=MARK;try{keyboard.setSelectionRange(MARK.length,MARK.length)}catch{}}
 function focusKeyboard(){try{keyboard.focus({preventScroll:true})}catch{try{keyboard.focus()}catch{}}resetKeyboard()}function setKeyboardMode(enabled){keyboardMode=enabled;keyboardOpen.setAttribute('aria-pressed',enabled?'true':'false');if(enabled)focusKeyboard();else keyboard.blur()}
-function setKeyboardControlsVisible(visible){const display=visible?'block':'none';keyboardOpen.style.display=display;keyboardBackspace.style.display=display}function armKeyboardFallback(){if(keyboardFallbackTimer)clearTimeout(keyboardFallbackTimer);keyboardFallbackTimer=0;if(touchEventsAvailable){if(!stopped)setKeyboardControlsVisible(true);return}keyboardFallbackTimer=setTimeout(function(){if(!editableRegionsAt&&!stopped)setKeyboardControlsVisible(true)},1200)}
+function setKeyboardControlsVisible(visible){const keyboardAllowed=inputPolicy.text||inputPolicy.key;const display=visible&&keyboardAllowed?'block':'none';keyboardOpen.style.display=display;keyboardBackspace.style.display=display}function armKeyboardFallback(){if(keyboardFallbackTimer)clearTimeout(keyboardFallbackTimer);keyboardFallbackTimer=0;if(touchEventsAvailable){if(!stopped)setKeyboardControlsVisible(true);return}keyboardFallbackTimer=setTimeout(function(){if(!editableRegionsAt&&!stopped)setKeyboardControlsVisible(true)},1200)}
 function clearRelayTimer(){if(relayTimer){clearTimeout(relayTimer);relayTimer=0}}
 function clearMetricsTimer(){if(metricsTimer){clearInterval(metricsTimer);metricsTimer=0}}
 function closePeer(){clearRelayTimer();clearMetricsTimer();lastTapSentAt=0;editableRegions=[];editableRegionsAt=0;keyboardMode=false;keyboardOpen.setAttribute('aria-pressed','false');keyboard.blur();setKeyboardControlsVisible(false);armKeyboardFallback();video.style.opacity='0';if(pc){try{pc.ontrack=null;pc.onconnectionstatechange=null;pc.close()}catch{}pc=null}critical=null;realtime=null}
 function mapPoint(event){const r=video.getBoundingClientRect();const vw=video.videoWidth||1;const vh=video.videoHeight||1;if(!r.width||!r.height)return null;const scale=Math.min(r.width/vw,r.height/vh);const w=vw*scale,h=vh*scale;const left=r.left+(r.width-w)/2,top=r.top+(r.height-h)/2;if(event.clientX<left||event.clientX>left+w||event.clientY<top||event.clientY>top+h)return null;return{x:(event.clientX-left)/w,y:(event.clientY-top)/h}}
 function applyEditableRegions(value){if(!Array.isArray(value)||value.length>32)return;const next=[];for(const item of value){if(!Array.isArray(item)||item.length!==4||!item.every(Number.isSafeInteger))return;const x=item[0],y=item[1],w=item[2],h=item[3];if(x<0||y<0||w<1||h<1||x+w>10000||y+h>10000)return;next.push([x,y,w,h])}editableRegions=next;editableRegionsAt=performance.now();setKeyboardControlsVisible(touchEventsAvailable);if(keyboardFallbackTimer){clearTimeout(keyboardFallbackTimer);keyboardFallbackTimer=0}}
 function pointIsEditable(point){if(!editableRegionsAt||performance.now()-editableRegionsAt>1000)return false;const x=point.x*10000,y=point.y*10000;return editableRegions.some(function(region){return x>=region[0]&&x<=region[0]+region[2]&&y>=region[1]&&y<=region[1]+region[3]})}
-function send(channel,body,maxBuffered){if(stopped||!channel||channel.readyState!=='open'||channel.bufferedAmount>maxBuffered)return false;const text=JSON.stringify(body);if(new TextEncoder().encode(text).byteLength>4096)return false;channel.send(text);return true}
+function inputAllowed(kind){return kind==='tap'?inputPolicy.tap:kind==='scroll'?inputPolicy.scroll:kind==='text'?inputPolicy.text:kind==='key'?inputPolicy.key:false}function send(channel,body,maxBuffered){if(stopped||!inputAllowed(body&&body.kind)||!channel||channel.readyState!=='open'||channel.bufferedAmount>maxBuffered)return false;const text=JSON.stringify(body);if(new TextEncoder().encode(text).byteLength>4096)return false;channel.send(text);return true}
 function sendCritical(body){return send(critical,body,32768)}function sendRealtime(body){return send(realtime,body,4096)}
-async function prepare(mode){const headers={'x-takeover-client':clientBinding};if(mode==='reconnect')headers['x-mcp-takeover-reconnect']=reconnectHandle;const response=await fetch('/takeover/api/webrtc-prepare-'+mode+'/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers});if(!response.ok){const e=new Error('prepare unavailable');e.status=response.status;throw e}const data=await response.json();if(!data.capability||!data.reconnectHandle||!Number.isFinite(data.clientGeneration)||!data.webrtcIce||!Array.isArray(data.webrtcIce.iceServers))throw new Error('invalid prepare response');if(!['disabled','available','unavailable'].includes(data.webrtcIce.relay))throw new Error('invalid relay state');cap=data.capability;reconnectHandle=data.reconnectHandle;clientGeneration=data.clientGeneration;relayState=data.webrtcIce.relay;return data.webrtcIce}
+async function prepare(mode){const headers={'x-takeover-client':clientBinding};if(mode==='reconnect')headers['x-mcp-takeover-reconnect']=reconnectHandle;const response=await fetch('/takeover/api/webrtc-prepare-'+mode+'/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers});if(!response.ok){const e=new Error('prepare unavailable');e.status=response.status;throw e}const data=await response.json();if(!data.capability||!data.reconnectHandle||!Number.isFinite(data.clientGeneration)||!data.webrtcIce||!Array.isArray(data.webrtcIce.iceServers))throw new Error('invalid prepare response');if(!['disabled','available','unavailable'].includes(data.webrtcIce.relay))throw new Error('invalid relay state');const p=data.inputPolicy;if(!p||typeof p!=='object'||['tap','scroll','text','key'].some(function(k){return typeof p[k]!=='boolean'}))throw new Error('invalid input policy');inputPolicy={tap:p.tap,scroll:p.scroll,text:p.text,key:p.key};setKeyboardControlsVisible(false);cap=data.capability;reconnectHandle=data.reconnectHandle;clientGeneration=data.clientGeneration;relayState=data.webrtcIce.relay;return data.webrtcIce}
 function boundedMs(value){const number=Number(value);return Number.isFinite(number)&&number>=0?Math.min(120000,number):undefined}
 function frameDelta(later,earlier){const a=Number(later),b=Number(earlier);return Number.isFinite(a)&&Number.isFinite(b)&&a>=b?boundedMs(a-b):undefined}
 function armMetrics(peer){clearMetricsTimer();metricsTimer=setInterval(function(){if(peer!==pc||stopped||metricsSamplesSent>=12){clearMetricsTimer();return}void reportMetrics(peer,false)},2000)}
@@ -173,13 +184,13 @@ video.addEventListener('pointerup',function(event){if(!gesture||gesture.pointerT
 video.addEventListener('pointercancel',function(){if(gesture&&gesture.pointerType!=='touch')gesture=null});
 keyboard.addEventListener('compositionstart',function(){composing=true});keyboard.addEventListener('compositionend',function(event){composing=false;if(event.data)sendCritical({kind:'text',text:event.data});resetKeyboard()});keyboard.addEventListener('keydown',function(event){if(composing||event.isComposing)return;if(event.key==='Backspace'){if(sendCritical({kind:'key',key:'Backspace'})){event.preventDefault();resetKeyboard()}return}if(event.key==='Enter'){if(sendCritical({kind:'key',key:'Enter'})){event.preventDefault();resetKeyboard()}}});keyboard.addEventListener('beforeinput',function(event){if(composing||event.isComposing)return;if(event.inputType==='deleteContentBackward'){if(sendCritical({kind:'key',key:'Backspace'})){event.preventDefault();resetKeyboard()}return}if(event.inputType==='insertLineBreak'||event.inputType==='insertParagraph'){if(sendCritical({kind:'key',key:'Enter'})){event.preventDefault();resetKeyboard()}return}if((event.inputType==='insertText'||event.inputType==='insertReplacementText'||event.inputType==='insertFromPaste')&&typeof event.data==='string'&&event.data){if(sendCritical({kind:'text',text:event.data})){event.preventDefault();resetKeyboard()}}});keyboard.addEventListener('input',function(){if(composing)return;const value=keyboard.value;if(value===''){sendCritical({kind:'key',key:'Backspace'})}else{let text=value.startsWith(MARK)?value.slice(MARK.length):value;if(text.endsWith('\\n')){text=text.slice(0,-1);if(text)sendCritical({kind:'text',text});sendCritical({kind:'key',key:'Enter'})}else if(text){sendCritical({kind:'text',text})}}resetKeyboard()});
 keyboardOpen.addEventListener('click',function(event){event.preventDefault();if(stopped)return;setKeyboardMode(!keyboardMode)});keyboardBackspace.addEventListener('click',function(event){event.preventDefault();if(stopped)return;if(sendCritical({kind:'key',key:'Backspace'}))setKeyboardMode(true)});
-document.querySelector('#done').addEventListener('click',async function(){if(stopped)return;stopped=true;keyboard.blur();try{await fetch('/takeover/api/done/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding}});status('Remote control closed. Return to the requesting workflow.')}catch{status('Session closed')}finally{closePeer();cap='';reconnectHandle='';clientGeneration=0}});
+doneButton.addEventListener('click',async function(){if(!completionCapability)return;keyboard.blur();const completion=completionCapability;completionCapability='';try{const response=await fetch('/takeover/api/complete/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-completion':completion}});if(!response.ok)throw new Error('completion unavailable');status('Remote control closed. Return to the requesting workflow.')}catch{status('Session closed or completion unavailable')}finally{stopped=true;closePeer();cap='';reconnectHandle='';clientGeneration=0}});
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){void suspend()}else if(document.visibilityState==='visible'&&suspended&&!stopped){void suspendPromise.finally(()=>reconnect().catch(()=>status('Connection unavailable')))}});window.addEventListener('pagehide',function(){void suspend()});window.addEventListener('pageshow',function(event){if(event.persisted&&suspended&&!stopped)void suspendPromise.finally(()=>reconnect().catch(()=>status('Connection unavailable')))});
 resetKeyboard();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});
 })();`;
 }
 
-function webRtcPageHtml(nonce: string): string {
+function webRtcPageHtml(nonce: string, completionCapability: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -192,7 +203,7 @@ function webRtcPageHtml(nonce: string): string {
 </head>
 <body><main>
 <div class="screen"><video id="video" autoplay playsinline webkit-playsinline muted></video></div>
-<div class="top"><span id="status" class="status">Connecting…</span><button id="keyboard-open" class="keyboard-open" type="button" aria-label="Open keyboard" aria-pressed="false">⌨︎</button><button id="keyboard-backspace" class="keyboard-backspace" type="button" aria-label="Backspace">⌫</button><button id="done" class="done">Done</button></div>
+<div class="top"><span id="status" class="status">Connecting…</span><button id="keyboard-open" class="keyboard-open" type="button" aria-label="Open keyboard" aria-pressed="false">⌨︎</button><button id="keyboard-backspace" class="keyboard-backspace" type="button" aria-label="Backspace">⌫</button><button id="done" class="done" data-completion="${completionCapability}">Done</button></div>
 <textarea id="keyboard" class="keyboard" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Remote keyboard"></textarea>
 </main>
 <script nonce="${nonce}" src="/takeover/webrtc-client.js" defer></script>
@@ -206,7 +217,15 @@ interface NativeGrantBody {
   clientGeneration: number;
   native?: NativeTakeoverClientBootstrap;
   webrtc?: WebRtcSessionDescription;
+  inputPolicy?: WebRtcHumanInputPolicy;
 }
+
+const ALLOW_ALL_WEBRTC_INPUT: WebRtcHumanInputPolicy = Object.freeze({
+  tap: true,
+  scroll: true,
+  text: true,
+  key: true
+});
 
 export class TakeoverBroker {
   private readonly sessions: TakeoverSessionManager;
@@ -217,6 +236,8 @@ export class TakeoverBroker {
   private readonly nativeTargetWindowIds = new Map<string, number>();
   private readonly webRtcTargetProcessIds = new Map<string, number>();
   private readonly webRtcTargetWindowIds = new Map<string, number>();
+  private readonly webRtcInputPolicies = new Map<string, WebRtcHumanInputPolicy>();
+  private readonly completionDelivered = new Set<string>();
   // A Safari page lifecycle suspend must never revoke the peer while its answer is still being built.
   private readonly webRtcConnectInFlight = new Map<string, Promise<void>>();
 
@@ -224,7 +245,8 @@ export class TakeoverBroker {
     private readonly browser: TakeoverBrowserAdapter,
     private readonly config: TakeoverBrokerConfig,
     private readonly nativeRuntime?: NativeTakeoverRuntimeProvider,
-    private readonly webRtcRuntime?: WebRtcTakeoverRuntimeProvider
+    private readonly webRtcRuntime?: WebRtcTakeoverRuntimeProvider,
+    private readonly hooks: TakeoverBrokerHooks = {}
   ) {
     this.sessions = new TakeoverSessionManager(
       config.ttlMs,
@@ -287,11 +309,14 @@ export class TakeoverBroker {
   createWebRtcLink(
     intervention: TakeoverInterventionRef,
     principalBinding: string | undefined,
-    target?: TakeoverHostTarget
+    target?: TakeoverHostTarget,
+    inputPolicy?: WebRtcHumanInputPolicy
   ): string | undefined {
     if (!this.webRtcRuntime || !this.config.enabled || !this.config.publicBaseUrl || !principalBinding) return undefined;
     if (target && (!Number.isSafeInteger(target.processId) || target.processId < 1
       || (target.windowId !== undefined && (!Number.isSafeInteger(target.windowId) || target.windowId < 1)))) return undefined;
+    const normalizedInputPolicy = normalizeWebRtcInputPolicy(inputPolicy ?? ALLOW_ALL_WEBRTC_INPUT);
+    if (!normalizedInputPolicy) return undefined;
     const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
     if (this.nativeOnlySessions.has(locator.id)) return undefined;
     for (const [sessionId, currentIntervention] of this.webRtcOnlySessions) {
@@ -299,9 +324,14 @@ export class TakeoverBroker {
         this.webRtcOnlySessions.delete(sessionId);
         this.webRtcTargetProcessIds.delete(sessionId);
         this.webRtcTargetWindowIds.delete(sessionId);
+        this.webRtcInputPolicies.delete(sessionId);
+        this.completionDelivered.delete(sessionId);
       }
     }
+    const existingPolicy = this.webRtcInputPolicies.get(locator.id);
+    if (existingPolicy && !sameWebRtcInputPolicy(existingPolicy, normalizedInputPolicy)) return undefined;
     this.webRtcOnlySessions.set(locator.id, intervention.id);
+    this.webRtcInputPolicies.set(locator.id, normalizedInputPolicy);
     if (target) {
       this.webRtcTargetProcessIds.set(locator.id, target.processId);
       if (target.windowId !== undefined) this.webRtcTargetWindowIds.set(locator.id, target.windowId);
@@ -310,6 +340,8 @@ export class TakeoverBroker {
       this.webRtcOnlySessions.delete(locator.id);
       this.webRtcTargetProcessIds.delete(locator.id);
       this.webRtcTargetWindowIds.delete(locator.id);
+      this.webRtcInputPolicies.delete(locator.id);
+      this.completionDelivered.delete(locator.id);
     }, this.config.ttlMs + 1_000);
     expiryCleanup.unref();
     return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
@@ -358,8 +390,12 @@ export class TakeoverBroker {
     const pageMatch = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (pageMatch) {
       if (request.method !== "GET" && request.method !== "HEAD") return json(405, { error: "method_not_allowed" });
+      let completionCapability: string | undefined;
       try {
         this.sessions.validateLocator(pageMatch[1]!, boundPrincipal);
+        if (this.webRtcOnlySessions.has(pageMatch[1]!)) {
+          completionCapability = this.sessions.issueCompletionCapability(pageMatch[1]!, boundPrincipal);
+        }
       } catch (error) {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
         throw error;
@@ -370,14 +406,56 @@ export class TakeoverBroker {
         "content-security-policy",
         `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src 'self' blob: data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
       );
-      const html = this.webRtcOnlySessions.has(pageMatch[1]!) ? webRtcPageHtml(nonce) : pageHtml(nonce);
+      const html = completionCapability ? webRtcPageHtml(nonce, completionCapability) : pageHtml(nonce);
       return new Response(request.method === "HEAD" ? null : html, { status: 200, headers });
     }
 
-    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-connect|webrtc-diagnostics|webrtc-metrics|webrtc-suspend|frame|input|done|cancel)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
+    const apiMatch = /^\/takeover\/api\/(bootstrap|claim|reconnect|webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-connect|webrtc-diagnostics|webrtc-metrics|webrtc-suspend|frame|input|done|cancel|complete)\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (!apiMatch) return json(404, { error: "not_found" });
     const operation = apiMatch[1]!;
     const id = apiMatch[2]!;
+
+    if (operation === "complete") {
+      if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
+      if (!this.sameOriginMutation(request)) return json(403, { error: "origin_not_allowed" });
+      const completionCapability = this.readCompletionCapability(request.headers.get("x-mcp-takeover-completion"));
+      if (!completionCapability) return json(404, { error: "takeover_unavailable" });
+      const wasNative = this.nativeOnlySessions.has(id);
+      const wasWebRtc = this.webRtcOnlySessions.has(id);
+      let completion;
+      try {
+        completion = this.sessions.complete(id, completionCapability, boundPrincipal);
+      } catch (error) {
+        if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
+        throw error;
+      }
+      this.nativeOnlySessions.delete(id);
+      this.webRtcOnlySessions.delete(id);
+      this.nativeTargetProcessIds.delete(id);
+      this.nativeTargetWindowIds.delete(id);
+      this.webRtcTargetProcessIds.delete(id);
+      this.webRtcTargetWindowIds.delete(id);
+      this.webRtcInputPolicies.delete(id);
+      try {
+        if (wasNative) await this.nativeRuntime?.revoke(id);
+        if (wasWebRtc) await this.webRtcRuntime?.revoke(id);
+      } catch {
+        return json(503, { error: "takeover_runtime_revoke_failed", revoked: true });
+      }
+      if (!this.completionDelivered.has(id)) {
+        try {
+          await this.hooks.completed?.({
+            interventionId: completion.interventionId,
+            epoch: completion.epoch
+          });
+          this.completionDelivered.add(id);
+        } catch {
+          return json(503, { error: "takeover_completion_handler_failed", revoked: true });
+        }
+      }
+      return json(200, { done: true, alreadyDone: completion.alreadyCompleted });
+    }
+
     const clientBinding = this.readClientBinding(request.headers.get("x-takeover-client"));
     if (!clientBinding) return json(404, { error: "takeover_unavailable" });
 
@@ -412,7 +490,11 @@ export class TakeoverBroker {
       try {
         const webrtcIce = await this.webRtcRuntime.prepare(binding);
         this.webRtcRuntime.recordDiagnostic({ stage: "broker.prepare.success", durationMs: Date.now() - prepareStartedAt });
-        return json(200, { ...this.publicGrant(grant), webrtcIce });
+        return json(200, {
+          ...this.publicGrant(grant),
+          webrtcIce,
+          inputPolicy: this.webRtcInputPolicy(id)
+        });
       } catch (error) {
         this.webRtcRuntime.recordDiagnostic({ stage: "broker.prepare.failure", durationMs: Date.now() - prepareStartedAt });
         try {
@@ -693,6 +775,7 @@ export class TakeoverBroker {
       this.nativeTargetWindowIds.delete(id);
       this.webRtcTargetProcessIds.delete(id);
       this.webRtcTargetWindowIds.delete(id);
+      this.webRtcInputPolicies.delete(id);
       try {
         await this.nativeRuntime?.revoke(id);
       } catch {
@@ -736,7 +819,11 @@ export class TakeoverBroker {
 
   private webRtcHooks(binding: WebRtcTakeoverRuntimeBinding) {
     return {
-      beginInput: () => {
+      beginInput: (input: WebRtcHumanInput) => {
+        const inputPolicy = this.webRtcInputPolicy(binding.takeoverSessionId);
+        if (!inputAllowed(inputPolicy, input.kind)) {
+          throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Human input is not allowed for this takeover");
+        }
         const use = this.sessions.beginBoundUse(
           binding.takeoverSessionId,
           binding.principalBinding,
@@ -781,8 +868,15 @@ export class TakeoverBroker {
         this.webRtcOnlySessions.delete(sessionId);
         this.webRtcTargetProcessIds.delete(sessionId);
         this.webRtcTargetWindowIds.delete(sessionId);
+        this.webRtcInputPolicies.delete(sessionId);
+        this.completionDelivered.delete(sessionId);
       }
     }
+  }
+
+  private webRtcInputPolicy(sessionId: string): WebRtcHumanInputPolicy {
+    const policy = this.webRtcInputPolicies.get(sessionId) ?? ALLOW_ALL_WEBRTC_INPUT;
+    return { ...policy };
   }
 
   private publicGrant(
@@ -829,6 +923,11 @@ export class TakeoverBroker {
     return match?.[1];
   }
 
+  private readCompletionCapability(value: string | null): string | undefined {
+    const match = /^([A-Za-z0-9_-]{32,128})$/.exec(value ?? "");
+    return match?.[1];
+  }
+
   private nativeMutationAllowed(request: Request): boolean {
     if (request.headers.get("x-takeover-native-client") !== "1") return false;
     const origin = request.headers.get("origin");
@@ -868,4 +967,23 @@ export class TakeoverBroker {
     }
     throw new Error("unsupported_input");
   }
+}
+
+function normalizeWebRtcInputPolicy(value: WebRtcHumanInputPolicy): WebRtcHumanInputPolicy | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as unknown as Record<string, unknown>;
+  const keys = ["tap", "scroll", "text", "key"] as const;
+  if (Object.keys(record).length !== keys.length || Object.keys(record).some((key) => !keys.includes(key as typeof keys[number]))) {
+    return undefined;
+  }
+  for (const key of keys) if (typeof record[key] !== "boolean") return undefined;
+  return { tap: value.tap, scroll: value.scroll, text: value.text, key: value.key };
+}
+
+function sameWebRtcInputPolicy(left: WebRtcHumanInputPolicy, right: WebRtcHumanInputPolicy): boolean {
+  return left.tap === right.tap && left.scroll === right.scroll && left.text === right.text && left.key === right.key;
+}
+
+function inputAllowed(policy: WebRtcHumanInputPolicy, kind: WebRtcHumanInput["kind"]): boolean {
+  return policy[kind];
 }

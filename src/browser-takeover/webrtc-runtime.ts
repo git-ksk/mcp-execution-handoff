@@ -55,8 +55,15 @@ export type WebRtcHumanInput =
   | { kind: "text"; text: string }
   | { kind: "key"; key: "Backspace" | "Enter" };
 
+export interface WebRtcHumanInputPolicy {
+  tap: boolean;
+  scroll: boolean;
+  text: boolean;
+  key: boolean;
+}
+
 export interface WebRtcRuntimeHooks {
-  beginInput(): () => void;
+  beginInput(input: WebRtcHumanInput): () => void;
   disconnected(): void;
 }
 
@@ -712,7 +719,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     let endUse: (() => void) | undefined;
     try {
       if (!this.canWriteHostInput(runtime, bytes.byteLength, label === "human-realtime")) return;
-      endUse = runtime.hooks.beginInput();
+      endUse = runtime.hooks.beginInput(input);
       this.writeHostInput(runtime, input);
     } catch {
       // Stale/revoked generation or an unavailable local Human surface fails closed.
