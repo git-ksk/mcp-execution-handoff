@@ -141,7 +141,11 @@ automationへ権限を戻す前に、consumerはexternal sessionをrevokeし、�
 
 ## Browser takeover
 
-optional brokerが担当するのはtransportとsession管理だけです。public locatorにはcapabilityを含めません。同一originのbootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneの各requestでは、capability、principal binding、client bindingがすべて一致する必要があります。
+`BrowserHandoffAdapter` はconsumer-levelのfirst-class Browser WebRTC compositionです。bounded WebRTC runtime + broker pairの構築をHandoff内部へ閉じ、generic HTTP-frame start operationは公開しません。consumerはすでにauthorize済みのexact process/window targetを渡し、browser/profileのstart-stop、target-service authentication semantics、checkpoint/restore policy、fresh post-Human verificationは自分で所有し続けます。`processId` は必須で、`windowId` 未指定ならplatform hostがそのprocessからeligible windowを厳密に1つ解決し、明示 `windowId` 指定時はそのwindowが同じprocess所有であることを維持します。none / ambiguous / disappearance / ownership mismatchはdesktop fallbackせずfail closedします。
+
+Adapterの `start()` が返すshort-lived locatorはreadiness証明ではありません。Runtime readinessの正本は既存WebRTC prepare/connect pathで、host-window / first-media-frame gateを通るまでusable answerを返しません。Transport failureは明示され、canonical adapterがHTTP screenshot pollingへsilent switchすることはありません。
+
+low-level optional `TakeoverBroker` はcustom compositionを明示的に必要とする場合のtransport/session primitiveです。public locatorにはcapabilityを含めません。同一originのbootstrapでremote-client leaseを1つだけclaimし、short-lived capabilityを返します。frame/input/doneの各requestでは、capability、principal binding、client bindingがすべて一致する必要があります。
 
 新しいbindingが、すでに所有されているleaseを暗黙に奪うことはできません。native clientは明示的なclaim/reconnect APIを使えます。reconnectには、同じauthenticated principal、generation-bound reconnect handle、そして以前のleaseがidleであることが必要です。成功するとclient generationを進め、capabilityとreconnect handleを両方rotateします。これにより古いgenerationは即座に無効になります。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credentialを含めません。
 

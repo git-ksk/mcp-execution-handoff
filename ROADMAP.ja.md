@@ -102,7 +102,7 @@ npm publicationは **v0.2の完了条件ではありません**。
 
 - MCP MRTR / Elicitation / Tasksの進化を追跡し、標準で置き換えられる独自plumbingを削減
 - 実用上可能な範囲で複数MCP client/server implementationと検証
-- browser-takeover transport mechanics、core lifecycle semantics、Target Surface mechanicsの分離をさらに明確化
+- Maps / Cinema / future MCP consumerが `TakeoverBroker` + WebRTC runtime詳細を自前compositionせず、start / revoke / exact-target semanticsへ依存できるfirst-class Browser WebRTC Handoff adapterを提供・dogfood
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - generic remote-desktop productへ広げず、low-latency push/latest-frame transportとminimal native Human Takeover reference clientを検証
 
