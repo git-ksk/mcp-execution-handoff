@@ -38,8 +38,8 @@ export interface WebRtcTakeoverRuntimeProvider {
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
 }
-export type WebRtcRuntimeStartStage = "host_spawn" | "host_ready" | "remote_description" | "track_setup" | "answer_create" | "local_description" | "answer_finalize";
-export type WebRtcRuntimeStartReason = "peer_closed" | "host_not_ready" | "answer_signaling_state" | "answer_remote_description_missing" | "transceiver_missing" | "sctp_missing" | "invalid_media_kind" | "other";
+export type WebRtcRuntimeStartStage = "host_spawn" | "host_ready" | "media_ready" | "remote_description" | "track_setup" | "answer_create" | "local_description" | "answer_finalize";
+export type WebRtcRuntimeStartReason = "peer_closed" | "host_not_ready" | "media_not_ready" | "answer_signaling_state" | "answer_remote_description_missing" | "transceiver_missing" | "sctp_missing" | "invalid_media_kind" | "other";
 export type WebRtcRuntimeSignalingState = "stable" | "have-local-offer" | "have-remote-offer" | "have-local-pranswer" | "have-remote-pranswer" | "closed";
 export type WebRtcRuntimeEndCause = "expiry" | "generation_replace" | "explicit_revoke" | "peer_state" | "host_protocol" | "host_exit" | "host_error" | "video_drain";
 export declare class WebRtcTakeoverRuntimeError extends Error {

@@ -83,6 +83,7 @@ export interface WebRtcTakeoverRuntimeProvider {
 export type WebRtcRuntimeStartStage =
   | "host_spawn"
   | "host_ready"
+  | "media_ready"
   | "remote_description"
   | "track_setup"
   | "answer_create"
@@ -92,6 +93,7 @@ export type WebRtcRuntimeStartStage =
 export type WebRtcRuntimeStartReason =
   | "peer_closed"
   | "host_not_ready"
+  | "media_not_ready"
   | "answer_signaling_state"
   | "answer_remote_description_missing"
   | "transceiver_missing"
@@ -205,6 +207,7 @@ interface ActiveWebRtcRuntime {
   pendingFrame?: EncodedHostFrame;
   preconnectKeyframe?: EncodedHostFrame;
   hostReady?: HostReadyGate;
+  mediaReady: HostReadyGate;
   endCause?: WebRtcRuntimeEndCause;
 }
 
@@ -353,6 +356,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       }, Math.max(0, binding.expiresAt - Date.now()));
       expiryTimer.unref();
       const hostReady = this.config.displayName === undefined ? undefined : createHostReadyGate();
+      const mediaReady = createReadyGate("WebRTC host media is unavailable");
       runtime = {
         binding: { ...binding },
         iceSession: prepared.iceSession,
@@ -366,6 +370,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         lastIdrRequestAt: 0,
         videoDrainActive: false,
         awaitingVideoKeyframe: false,
+        mediaReady,
         ...(hostReady ? { hostReady } : {})
       };
       const activeRuntime = runtime;
@@ -380,6 +385,12 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Linux WebRTC host window is unavailable")), 8_000))
         ]);
       }
+
+      startStage = "media_ready";
+      await Promise.race([
+        activeRuntime.mediaReady.promise,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("WebRTC host media is unavailable")), 8_000))
+      ]);
 
       const answerStartedAt = Date.now();
       startStage = "remote_description";
@@ -519,9 +530,15 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     const stderr = runtime.host.stderr as Readable | null;
     if (!stdout || !stderr) throw new Error("WebRTC host pipes are unavailable");
     const parser = new HostRecordParser(
-      (frame) => this.writeFrame(runtime, frame),
+      (frame) => {
+        runtime.mediaReady.resolve();
+        this.writeFrame(runtime, frame);
+      },
       (editable) => this.sendEditableFeedback(runtime, editable, "tap"),
-      () => void this.end(runtime.binding.takeoverSessionId, true, "host_protocol")
+      () => {
+        runtime.mediaReady.reject();
+        void this.end(runtime.binding.takeoverSessionId, true, "host_protocol");
+      }
     );
     const metricParser = new HostMetricParser(
       (hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; },
@@ -540,10 +557,12 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     stderr.once("end", () => metricParser.end());
     runtime.host.once("exit", () => {
       runtime.hostReady?.reject();
+      runtime.mediaReady.reject();
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true, "host_exit");
     });
     runtime.host.once("error", () => {
       runtime.hostReady?.reject();
+      runtime.mediaReady.reject();
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true, "host_error");
     });
   }
@@ -804,11 +823,20 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
 
 
 function createHostReadyGate(): HostReadyGate {
+  return createReadyGate("Linux WebRTC host window is unavailable");
+}
+
+function createReadyGate(errorMessage: string): HostReadyGate {
   let resolvePromise!: () => void;
   let rejectPromise!: (error: Error) => void;
+  const promise = new Promise<void>((resolve, reject) => { resolvePromise = resolve; rejectPromise = reject; });
+  // A prior startup gate may fail before this gate is awaited. Observe rejection immediately so
+  // cleanup-triggered rejection never escapes as an unhandled promise while preserving the same
+  // rejected promise for the stage that does await it.
+  void promise.catch(() => undefined);
   const gate: HostReadyGate = {
     settled: false,
-    promise: new Promise<void>((resolve, reject) => { resolvePromise = resolve; rejectPromise = reject; }),
+    promise,
     resolve() {
       if (gate.settled) return;
       gate.settled = true;
@@ -817,7 +845,7 @@ function createHostReadyGate(): HostReadyGate {
     reject() {
       if (gate.settled) return;
       gate.settled = true;
-      rejectPromise(new Error("Linux WebRTC host window is unavailable"));
+      rejectPromise(new Error(errorMessage));
     }
   };
   return gate;
@@ -827,6 +855,7 @@ function classifyRuntimeStartReason(error: unknown): WebRtcRuntimeStartReason {
   const name = error instanceof Error ? error.name : "";
   const message = error instanceof Error ? error.message : "";
   if (message === "Linux WebRTC host window is unavailable") return "host_not_ready";
+  if (message === "WebRTC host media is unavailable") return "media_not_ready";
   if (name === "InvalidStateError" || /peer closed|RTCPeerConnection is closed/i.test(message)) return "peer_closed";
   if (message === "createAnswer failed") return "answer_signaling_state";
   if (message === "wrong state") return "answer_remote_description_missing";
