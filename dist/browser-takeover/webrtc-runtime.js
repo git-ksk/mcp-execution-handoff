@@ -523,7 +523,7 @@ export class SpawnedWebRtcRuntimeProvider {
         try {
             if (!this.canWriteHostInput(runtime, bytes.byteLength, label === "human-realtime"))
                 return;
-            endUse = runtime.hooks.beginInput();
+            endUse = runtime.hooks.beginInput(input);
             this.writeHostInput(runtime, input);
         }
         catch {

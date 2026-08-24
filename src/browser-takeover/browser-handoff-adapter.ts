@@ -4,30 +4,38 @@ import {
   TakeoverBroker,
   type TakeoverBrokerConfig,
   type TakeoverBrowserAdapter,
+  type TakeoverCompletionEvent,
   type TakeoverHostTarget,
   type TakeoverInterventionRef
 } from "./broker.js";
 import {
   SpawnedWebRtcRuntimeProvider,
-  type SpawnedWebRtcRuntimeProviderConfig
+  type SpawnedWebRtcRuntimeProviderConfig,
+  type WebRtcHumanInputPolicy
 } from "./webrtc-runtime-diagnostics.js";
 
 export interface BrowserHandoffAdapterConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
+  /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
+  onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
+
+export type BrowserHandoffInputPolicy = WebRtcHumanInputPolicy;
 
 export interface BrowserHandoffStartRequest {
   intervention: TakeoverInterventionRef;
   principalBinding: string;
   target: TakeoverHostTarget;
+  inputPolicy: BrowserHandoffInputPolicy;
 }
 
 export class BrowserHandoffAdapterError extends Error {
   constructor(
     public readonly code:
       | "BROWSER_HANDOFF_UNAVAILABLE"
-      | "BROWSER_HANDOFF_TARGET_INVALID",
+      | "BROWSER_HANDOFF_TARGET_INVALID"
+      | "BROWSER_HANDOFF_INPUT_POLICY_INVALID",
     message: string
   ) {
     super(message);
@@ -56,7 +64,8 @@ export class BrowserHandoffAdapter {
       webRtcOnlyBrowserAdapter(),
       config.takeover,
       undefined,
-      this.#runtime
+      this.#runtime,
+      config.onComplete ? { completed: config.onComplete } : {}
     );
   }
 
@@ -82,10 +91,17 @@ export class BrowserHandoffAdapter {
         "Browser Handoff requires a positive process id and an optional positive window id"
       );
     }
+    if (!validInputPolicy(request.inputPolicy)) {
+      throw new BrowserHandoffAdapterError(
+        "BROWSER_HANDOFF_INPUT_POLICY_INVALID",
+        "Browser Handoff requires an explicit bounded Human input policy"
+      );
+    }
     const locator = this.#broker.createWebRtcLink(
       request.intervention,
       request.principalBinding,
-      request.target
+      request.target,
+      request.inputPolicy
     );
     if (!locator) {
       throw new BrowserHandoffAdapterError(
@@ -121,6 +137,15 @@ export class BrowserHandoffAdapter {
 function validTarget(target: TakeoverHostTarget): boolean {
   return Number.isSafeInteger(target.processId) && target.processId > 0 &&
     (target.windowId === undefined || (Number.isSafeInteger(target.windowId) && target.windowId > 0));
+}
+
+function validInputPolicy(policy: BrowserHandoffInputPolicy): boolean {
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) return false;
+  const record = policy as unknown as Record<string, unknown>;
+  const keys = ["tap", "scroll", "text", "key"] as const;
+  return Object.keys(record).length === keys.length
+    && Object.keys(record).every((key) => keys.includes(key as typeof keys[number]))
+    && keys.every((key) => typeof record[key] === "boolean");
 }
 
 function webRtcOnlyBrowserAdapter(): TakeoverBrowserAdapter {

@@ -191,12 +191,36 @@ async function runCommand(executable, args, display) {
         throw new Error(`Linux WebRTC host helper command failed: ${executable}`);
     return Buffer.concat(stdout).toString("utf8");
 }
-async function resolveExactWindow(targetPid, display, xdotool) {
+export function parseOptionalTargetWindowId(value) {
+    if (value === undefined)
+        return undefined;
+    if (!/^[1-9]\d*$/.test(value))
+        throw new Error("TAKEOVER_WEBRTC_TARGET_WINDOW_ID is invalid");
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0)
+        throw new Error("TAKEOVER_WEBRTC_TARGET_WINDOW_ID is invalid");
+    return parsed;
+}
+async function resolveExactWindow(targetPid, targetWindowId, display, xdotool) {
     const deadline = Date.now() + 7_000;
     let observedMultiple = false;
     while (Date.now() < deadline) {
         const rawIds = await runCommand(xdotool, ["search", "--onlyvisible", "--pid", String(targetPid)], display).catch(() => "");
         const ids = [...new Set(parseWindowIds(rawIds))];
+        if (targetWindowId !== undefined) {
+            const pidText = await runCommand(xdotool, ["getwindowpid", String(targetWindowId)], display).catch(() => "");
+            const observedPid = Number(pidText.trim());
+            if (Number.isSafeInteger(observedPid) && observedPid > 0 && observedPid !== targetPid) {
+                throw new Error("Linux WebRTC requested window is not owned by the target browser PID");
+            }
+            if (ids.includes(targetWindowId) && observedPid === targetPid) {
+                const geometry = parseWindowGeometry(await runCommand(xdotool, ["getwindowgeometry", "--shell", String(targetWindowId)], display).catch(() => ""), targetWindowId);
+                if (geometry)
+                    return geometry;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            continue;
+        }
         const candidates = [];
         for (const id of ids) {
             const pidText = await runCommand(xdotool, ["getwindowpid", String(id)], display).catch(() => "");
@@ -229,6 +253,9 @@ async function resolveExactWindow(targetPid, display, xdotool) {
             observedMultiple = true;
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    if (targetWindowId !== undefined) {
+        throw new Error("Linux WebRTC host could not resolve the requested eligible window for the target browser PID");
+    }
     if (observedMultiple) {
         throw new Error("Linux WebRTC host did not converge to exactly one eligible window for the target browser PID");
     }
@@ -260,17 +287,20 @@ function parseHostInput(value) {
 }
 class LinuxWindowInput {
     geometry;
+    targetPid;
     display;
     xdotool;
-    constructor(geometry, display, xdotool) {
+    constructor(geometry, targetPid, display, xdotool) {
         this.geometry = geometry;
+        this.targetPid = targetPid;
         this.display = display;
         this.xdotool = xdotool;
     }
     async apply(input) {
-        // Ask the window manager to activate the exact target first, then confirm X input focus.
-        // This mirrors the macOS host's explicit raise/activate boundary and avoids relying on
-        // pointer movement alone to make Chromium the active input target.
+        // Revalidate the exact X11 window immediately before every Human mutation. Window ids can be
+        // recycled after a process exits; stale geometry must never widen input authority to a new
+        // owner. A move/resize of the same owned window refreshes only its bounded geometry.
+        this.geometry = await this.currentOwnedGeometry();
         await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
         // Pointer operations may establish browser focus. Text/key operations must preserve the
         // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
@@ -278,6 +308,7 @@ class LinuxWindowInput {
         if (input.kind === "tap" || input.kind === "scroll") {
             await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
         }
+        await this.confirmActiveTarget();
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
         if (input.kind === "tap") {
             const point = normalizedPointInWindow({
@@ -308,6 +339,36 @@ class LinuxWindowInput {
             return;
         }
         await this.typeText(input.text);
+    }
+    async currentOwnedGeometry() {
+        try {
+            process.kill(this.targetPid, 0);
+        }
+        catch {
+            throw new Error("Linux WebRTC target process is unavailable");
+        }
+        const visibleRaw = await runCommand(this.xdotool, ["search", "--onlyvisible", "--pid", String(this.targetPid)], this.display).catch(() => "");
+        if (!parseWindowIds(visibleRaw).includes(this.geometry.windowId)) {
+            throw new Error("Linux WebRTC target window is no longer visible");
+        }
+        const pidText = await runCommand(this.xdotool, ["getwindowpid", String(this.geometry.windowId)], this.display).catch(() => "");
+        if (Number(pidText.trim()) !== this.targetPid) {
+            throw new Error("Linux WebRTC target window ownership changed");
+        }
+        const geometry = parseWindowGeometry(await runCommand(this.xdotool, ["getwindowgeometry", "--shell", String(this.geometry.windowId)], this.display).catch(() => ""), this.geometry.windowId);
+        if (!geometry)
+            throw new Error("Linux WebRTC target window geometry is unavailable");
+        return geometry;
+    }
+    async confirmActiveTarget() {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const active = await runCommand(this.xdotool, ["getactivewindow"], this.display).catch(() => "");
+            if (Number(active.trim()) === this.geometry.windowId)
+                return;
+            if (attempt < 4)
+                await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error("Linux WebRTC target window did not become active");
     }
     async scrollAxis(delta, negativeButton, positiveButton) {
         if (!delta)
@@ -452,6 +513,7 @@ export async function linuxWebRtcHostMain() {
     if (process.platform !== "linux")
         throw new Error("Linux WebRTC host is available only on Linux");
     const targetPid = Number(process.env.TAKEOVER_WEBRTC_TARGET_PID);
+    const targetWindowId = parseOptionalTargetWindowId(process.env.TAKEOVER_WEBRTC_TARGET_WINDOW_ID);
     const expiresAt = Number(process.env.TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS);
     const display = process.env.TAKEOVER_WEBRTC_DISPLAY_NAME?.trim();
     if (!Number.isSafeInteger(targetPid) || targetPid <= 0) {
@@ -474,7 +536,7 @@ export async function linuxWebRtcHostMain() {
     const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
     let geometry;
     try {
-        geometry = await resolveExactWindow(targetPid, display, xdotool);
+        geometry = await resolveExactWindow(targetPid, targetWindowId, display, xdotool);
     }
     catch (error) {
         const multiple = error instanceof Error && /did not converge/.test(error.message);
@@ -482,7 +544,7 @@ export async function linuxWebRtcHostMain() {
         throw error;
     }
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
-    const input = new LinuxWindowInput(geometry, display, xdotool);
+    const input = new LinuxWindowInput(geometry, targetPid, display, xdotool);
     let stopped = false;
     let stopHost;
     const capture = new LinuxCapture(geometry, display, ffmpeg, new LatestFrameWriter(), () => {
@@ -535,7 +597,10 @@ export async function linuxWebRtcHostMain() {
             }
             inputChain = inputChain
                 .then(() => input.apply(command))
-                .catch(() => { process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_failure\n"); });
+                .catch(() => {
+                process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_failure\n");
+                void stopHost();
+            });
         }
     });
     process.stdin.once("end", () => { void stopHost(); });

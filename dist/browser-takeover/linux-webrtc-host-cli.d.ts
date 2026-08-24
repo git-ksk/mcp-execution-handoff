@@ -35,6 +35,7 @@ export declare class AnnexBAccessUnitParser {
     private acceptNal;
     private emitCurrent;
 }
+export declare function parseOptionalTargetWindowId(value: string | undefined): number | undefined;
 export declare function linuxWebRtcHostMain(): Promise<void>;
 export declare function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean;
 //# sourceMappingURL=linux-webrtc-host-cli.d.ts.map

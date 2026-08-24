@@ -7,8 +7,9 @@ import {
 
 const ORIGIN = "https://takeover.example";
 const PRINCIPAL = "principal-browser-handoff";
+const ALL_INPUT = { tap: true, scroll: true, text: true, key: true } as const;
 
-function fixture() {
+function fixture(onComplete?: (event: { interventionId: string; epoch: number }) => void | Promise<void>) {
   return new BrowserHandoffAdapter({
     takeover: {
       enabled: true,
@@ -19,7 +20,8 @@ function fixture() {
     runtime: {
       hostExecutable: process.execPath,
       hostArgs: ["-e", "process.exit(0)"]
-    }
+    },
+    onComplete
   });
 }
 
@@ -28,7 +30,8 @@ test("first-class Browser Handoff issues only a WebRTC locator for an exact targ
   const locator = adapter.start({
     intervention: { id: "browser-int-1", epoch: 3 },
     principalBinding: PRINCIPAL,
-    target: { processId: 4242, windowId: 7331 }
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: ALL_INPUT
   });
   const url = new URL(locator);
   assert.equal(url.origin, ORIGIN);
@@ -57,9 +60,20 @@ test("Browser Handoff fails closed for invalid or unavailable targets instead of
     () => adapter.start({
       intervention: { id: "browser-int-invalid", epoch: 1 },
       principalBinding: PRINCIPAL,
-      target: { processId: 0 }
+      target: { processId: 0 },
+      inputPolicy: ALL_INPUT
     }),
     (error: unknown) => error instanceof BrowserHandoffAdapterError && error.code === "BROWSER_HANDOFF_TARGET_INVALID"
+  );
+
+  assert.throws(
+    () => adapter.start({
+      intervention: { id: "browser-int-invalid-policy", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 4242 },
+      inputPolicy: { tap: true, scroll: true, text: true } as never
+    }),
+    (error: unknown) => error instanceof BrowserHandoffAdapterError && error.code === "BROWSER_HANDOFF_INPUT_POLICY_INVALID"
   );
 
   const disabled = new BrowserHandoffAdapter({
@@ -70,10 +84,56 @@ test("Browser Handoff fails closed for invalid or unavailable targets instead of
     () => disabled.start({
       intervention: { id: "browser-int-disabled", epoch: 1 },
       principalBinding: PRINCIPAL,
-      target: { processId: 4242 }
+      target: { processId: 4242 },
+      inputPolicy: ALL_INPUT
     }),
     (error: unknown) => error instanceof BrowserHandoffAdapterError && error.code === "BROWSER_HANDOFF_UNAVAILABLE"
   );
+});
+
+test("Browser Handoff completion callback runs after fencing and retries only after handler failure", async () => {
+  const events: Array<{ interventionId: string; epoch: number }> = [];
+  let attempts = 0;
+  const adapter = fixture(async (event) => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("verification coordinator unavailable");
+    events.push(event);
+  });
+  const locator = adapter.start({
+    intervention: { id: "browser-int-complete", epoch: 7 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: ALL_INPUT
+  });
+  const path = new URL(locator).pathname;
+  const sessionId = path.split("/").at(-1)!;
+  const page = await adapter.handle(new Request(`http://localhost${path}`), PRINCIPAL);
+  const html = await page.text();
+  const completion = /data-completion="([A-Za-z0-9_-]{32,128})"/.exec(html)?.[1];
+  assert.ok(completion);
+
+  const first = await adapter.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": completion }
+  }), PRINCIPAL);
+  assert.equal(first.status, 503);
+  assert.equal(attempts, 1);
+  assert.deepEqual(events, []);
+
+  const retry = await adapter.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": completion }
+  }), PRINCIPAL);
+  assert.equal(retry.status, 200);
+  assert.equal(attempts, 2);
+  assert.deepEqual(events, [{ interventionId: "browser-int-complete", epoch: 7 }]);
+
+  const duplicate = await adapter.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": completion }
+  }), PRINCIPAL);
+  assert.equal(duplicate.status, 200);
+  assert.equal(attempts, 2, "successful completion delivery must be idempotent");
 });
 
 test("Browser Handoff keeps WebRTC lifecycle routing and bounded diagnostics Handoff-owned", async () => {

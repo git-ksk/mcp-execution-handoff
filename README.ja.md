@@ -116,24 +116,29 @@ Linux helperはtarget PIDに属するX11 windowを厳密に1つだけ解決し�
 
 ## Browser takeover
 
-Standaloneなbrowser MCP consumer向けのcanonical high-level WebRTC compositionは `BrowserHandoffAdapter` です。consumerが渡すのはintervention / principal binding、exact target process/window、自分で所有するbrowser/profile lifecycleだけで、HandoffがWebRTC runtime + broker compositionを内部で構成します。Consumer-facing surfaceは `start()` / `revoke()` / HTTP routing + bounded diagnosticsに絞り、canonical Browser Handoffがlegacy HTTP frame/input transportへsilent downgradeすることはありません。Locator発行はcontrol-plane setupに過ぎず、media/input pathがusableになる前にhost-window readinessとfirst-media-frame gateを通ります。Browser profile persistence、target-service authentication、post-Human checkpoint / verificationはconsumer責務のままです。
+Standaloneなbrowser MCP consumer向けのcanonical high-level WebRTC compositionは `BrowserHandoffAdapter` です。consumerが渡すのはintervention / principal binding、exact target process/window、明示的でboundedなHuman input policy、自分で所有するbrowser/profile lifecycleで、HandoffがWebRTC runtime + broker compositionを内部で構成します。Consumer-facing surfaceは `start()` / `revoke()` / HTTP routing + bounded diagnosticsに絞り、canonical Browser Handoffがlegacy HTTP frame/input transportへsilent downgradeすることはありません。Locator発行はcontrol-plane setupに過ぎず、media/input pathがusableになる前にhost-window readinessとfirst-media-frame gateを通ります。Browser profile persistence、target-service authentication、post-Human checkpoint / verificationはconsumer責務のままです。
 
 ```ts
 import { BrowserHandoffAdapter } from "mcp-execution-handoff/browser-takeover";
 
 const browserHandoff = new BrowserHandoffAdapter({
   takeover: { enabled: true, publicBaseUrl, ttlMs: 60_000 },
-  runtime: { hostExecutable, displayName } // Linux/X11 hostではdisplayNameを指定
+  runtime: { hostExecutable, displayName }, // Linux/X11 hostではdisplayNameを指定
+  onComplete: async ({ interventionId, epoch }) => {
+    // ここではHuman authorityはすでにfence済み。consumer-ownedなfresh verificationだけ開始する。
+    await beginFreshVerification(interventionId, epoch);
+  }
 });
 
 const locator = browserHandoff.start({
   intervention: { id: interventionId, epoch },
   principalBinding,
-  target: { processId, ...(windowId ? { windowId } : {}) }
+  target: { processId, ...(windowId ? { windowId } : {}) },
+  inputPolicy: { tap: true, scroll: true, text: false, key: false }
 });
 ```
 
-Authenticatedな `/takeover/*` HTTP requestは `browserHandoff.handle(...)` へrouteし、consumer-ownedなpost-Human verificationへ進む前に `browserHandoff.revoke(interventionId)` を呼びます。ICE / STUN / TURN provider選択やrelay credentialは `start()` に渡さず、Handoff deployment/runtime側の責務に留めます。
+Authenticatedな `/takeover/*` HTTP requestは `browserHandoff.handle(...)` へrouteします。`inputPolicy` はtakeover sessionへbindingされ、OS inputの前にserver側で強制されます。browser UI側でも許可されていないkeyboard/input controlを隠してdefense in depthにします。optionalな `onComplete` callbackはHuman transport authorityをfenceした後にだけ呼ばれ、consumer-ownedなfresh verification開始のsignalに限定します。認証成功や重大操作の成功・承認を意味しません。ICE / STUN / TURN provider選択やrelay credentialは `start()` に渡さず、Handoff deployment/runtime側の責務に留めます。
 
 `TakeoverBroker` は、HTTP frame mode、Native composition、custom transport assemblyを明示的に必要とするconsumer向けのlow-level transport/session primitiveとして残します。brokerがinterventionについて知るのは `{ id, epoch }` だけで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
@@ -145,9 +150,9 @@ Safari transportは最大1280×720に制限します。現在のacceptanceでは
 
 touch対応SafariではTouch Eventsをswipeのauthoritative pathとし、touch Pointer Eventsは二重入力防止のため無視します。consumerはruntimeをtarget processへbindingでき、その場合はon-screenの対象windowを厳密に1つだけ解決できることを要求し、captureとinputを同じwindow boundsへ限定してdesktop全体を公開しません。legacy HTTP frame/input UIへfallbackすることもありません。
 
-background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundへ戻る場合はfresh generationを取得してから新peerを作ります。`Done` はtransport teardownより先にbroker generationをrevokeし、認証成功とは扱いません。
+background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundでmediaを復旧する場合はfresh generationを取得してから新peerを作ります。media/input authorityとは別のprincipal / intervention / epoch / expiry-boundなcompletion-only capabilityにより、同じauthorized locatorをreloadしてもstale generationを復活させず `Done` だけ配送できます。`Done` はtransport authorityをfenceしてからconsumer completion callbackへ通知し、認証成功やapprovalとは扱いません。Linux hostでは明示PID/window bindingを実際に検証し、各Human mutation直前にも同じX11 windowのPID ownershipとbounded geometryを再検証します。target消失やownership変更時はtransportをfenceし、別windowやdesktopへscopeを広げません。
 
-物理iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方をacceptance済みです。window-scoped video、別Mac appがfrontmostな状態からのtarget-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しています。Mobile viewport / keyboard compositionと明示reload/reconnect UXはfollow-upであり、transport baselineの前提条件ではありません。
+物理iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方をacceptance済みです。window-scoped video、別Mac appがfrontmostな状態からのtarget-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しています。completion-onlyなreload recoveryはdeterministic testで固定済みです。より広いmobile viewport / keyboard compositionやmedia reconnect UXはfollow-upで、transport baselineの前提条件ではありません。
 
 direct-first ICEは両peerで明示します。relay provider未設定時はSafari/browser側をhost-only (`iceServers: []`) に保ち、Node/werift側だけreview済みの明示STUNを使ってdependencyの暗黙default STUNを排除します。optional TURNはfallback専用で、productionでは `iceTransportPolicy: all` を維持しrelay-onlyにはしません。
 

@@ -100,6 +100,55 @@ test("takeover capability expires and can be revoked explicitly", () => {
   );
 });
 
+test("completion-only capability survives a released media generation without reviving it", () => {
+  const { sessions } = manager();
+  const locator = sessions.ensure("intervention-complete", 9, PRINCIPAL_A);
+  const completion = sessions.issueCompletionCapability(locator.id, PRINCIPAL_A);
+  const grant = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
+  sessions.releaseClientGeneration(locator.id, PRINCIPAL_A, CLIENT_A, grant.clientGeneration);
+
+  assert.throws(
+    () => sessions.verify(locator.id, grant.capability, PRINCIPAL_A, CLIENT_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+  assert.throws(
+    () => sessions.complete(locator.id, completion, PRINCIPAL_B),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+  assert.throws(
+    () => sessions.complete(locator.id, "x".repeat(43), PRINCIPAL_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_FORBIDDEN"
+  );
+
+  const first = sessions.complete(locator.id, completion, PRINCIPAL_A);
+  assert.equal(first.alreadyCompleted, false);
+  const duplicate = sessions.complete(locator.id, completion, PRINCIPAL_A);
+  assert.equal(duplicate.alreadyCompleted, true);
+  assert.throws(
+    () => sessions.verify(locator.id, grant.capability, PRINCIPAL_A, CLIENT_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_NOT_FOUND"
+  );
+});
+
+test("completion-only capability fails closed after explicit revoke or expiry", () => {
+  const { sessions, advance } = manager();
+  const revoked = sessions.ensure("intervention-revoked", 1, PRINCIPAL_A);
+  const revokedCompletion = sessions.issueCompletionCapability(revoked.id, PRINCIPAL_A);
+  sessions.revoke(revoked.id);
+  assert.throws(
+    () => sessions.complete(revoked.id, revokedCompletion, PRINCIPAL_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_NOT_FOUND"
+  );
+
+  const expired = sessions.ensure("intervention-expired", 1, PRINCIPAL_A);
+  const expiredCompletion = sessions.issueCompletionCapability(expired.id, PRINCIPAL_A);
+  advance(60_001);
+  assert.throws(
+    () => sessions.complete(expired.id, expiredCompletion, PRINCIPAL_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_EXPIRED"
+  );
+});
+
 test("invalid client binding never claims a lease", () => {
   const { sessions } = manager();
   const locator = sessions.ensure("intervention-a", 1, PRINCIPAL_A);
