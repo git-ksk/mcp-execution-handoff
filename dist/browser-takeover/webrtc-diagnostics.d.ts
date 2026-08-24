@@ -1,6 +1,7 @@
 export type WebRtcDiagnosticCandidateType = "host" | "srflx" | "prflx" | "relay";
 export type WebRtcDiagnosticPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
-export type WebRtcDiagnosticStage = "broker.prepare.request" | "broker.prepare.success" | "broker.prepare.failure" | "browser.gather.complete" | "browser.peer.state" | "broker.connect.request" | "server.answer.ready" | "broker.connect.success" | "broker.connect.failure" | "server.peer.state" | "host.target.alive" | "host.target.missing" | "host.window.ready" | "host.window.failure.none" | "host.window.failure.multiple" | "host.capture.started" | "host.frame.ready" | "host.input.focus.ready" | "host.input.tap.sent" | "host.input.failure" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other";
+export type WebRtcRelayDiagnosticFailureReason = "generation_expired" | "provider_auth" | "provider_rate_limited" | "provider_rejected" | "provider_unavailable" | "response_invalid" | "unknown";
+export type WebRtcDiagnosticStage = "broker.prepare.request" | "broker.prepare.success" | "broker.prepare.failure" | "relay.credential.unavailable" | "browser.gather.complete" | "browser.peer.state" | "broker.connect.request" | "server.answer.ready" | "broker.connect.success" | "broker.connect.failure" | "server.peer.state" | "host.target.alive" | "host.target.missing" | "host.window.ready" | "host.window.failure.none" | "host.window.failure.multiple" | "host.capture.started" | "host.frame.ready" | "host.input.focus.ready" | "host.input.tap.sent" | "host.input.failure" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other";
 export interface WebRtcDiagnosticCandidateCounts {
     host: number;
     srflx: number;
@@ -12,6 +13,7 @@ export interface WebRtcDiagnosticEvent {
     candidateCounts?: WebRtcDiagnosticCandidateCounts;
     state?: WebRtcDiagnosticPeerState;
     durationMs?: number;
+    reason?: WebRtcRelayDiagnosticFailureReason;
 }
 export interface WebRtcDiagnosticsSnapshot {
     events: WebRtcDiagnosticEvent[];

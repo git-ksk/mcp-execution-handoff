@@ -5,6 +5,10 @@ const BROWSER_STAGES = new Set([
     "browser.gather.complete",
     "browser.peer.state"
 ]);
+const RELAY_FAILURE_REASONS = new Set([
+    "generation_expired", "provider_auth", "provider_rate_limited", "provider_rejected",
+    "provider_unavailable", "response_invalid", "unknown"
+]);
 const PEER_STATES = new Set([
     "new", "connecting", "connected", "disconnected", "failed", "closed"
 ]);
@@ -12,6 +16,7 @@ const ALL_STAGES = new Set([
     "broker.prepare.request",
     "broker.prepare.success",
     "broker.prepare.failure",
+    "relay.credential.unavailable",
     "browser.gather.complete",
     "browser.peer.state",
     "broker.connect.request",
@@ -97,6 +102,7 @@ function normalizeWebRtcDiagnosticEvent(event) {
         "broker.prepare.request": ["stage"],
         "broker.prepare.success": ["stage", "durationMs"],
         "broker.prepare.failure": ["stage", "durationMs"],
+        "relay.credential.unavailable": ["stage", "reason"],
         "browser.gather.complete": ["stage", "candidateCounts", "durationMs"],
         "browser.peer.state": ["stage", "state"],
         "broker.connect.request": ["stage"],
@@ -134,6 +140,11 @@ function normalizeWebRtcDiagnosticEvent(event) {
         if (!PEER_STATES.has(event.state))
             return undefined;
         normalized.state = event.state;
+    }
+    if (event.reason !== undefined) {
+        if (!RELAY_FAILURE_REASONS.has(event.reason))
+            return undefined;
+        normalized.reason = event.reason;
     }
     if (event.durationMs !== undefined) {
         if (typeof event.durationMs !== "number" || !Number.isFinite(event.durationMs) || event.durationMs < 0 || event.durationMs > MAX_DURATION_MS) {

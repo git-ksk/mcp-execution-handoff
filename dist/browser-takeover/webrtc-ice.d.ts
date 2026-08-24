@@ -27,6 +27,12 @@ export interface WebRtcPreparedIceSession {
 export interface WebRtcIceCredentialProvider {
     issue(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcPreparedIceSession>;
 }
+export type WebRtcRelayCredentialFailureReason = "generation_expired" | "provider_auth" | "provider_rate_limited" | "provider_rejected" | "provider_unavailable" | "response_invalid" | "unknown";
+export declare class WebRtcRelayCredentialError extends Error {
+    readonly reason: WebRtcRelayCredentialFailureReason;
+    constructor(reason: WebRtcRelayCredentialFailureReason, message?: string);
+}
+export declare function relayCredentialFailureReason(error: unknown): WebRtcRelayCredentialFailureReason;
 export interface CloudflareRealtimeTurnCredentialProviderConfig {
     /** Cloudflare Realtime TURN key identifier. Not a credential. */
     turnKeyId: string;

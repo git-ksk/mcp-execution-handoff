@@ -35,6 +35,26 @@ export interface WebRtcIceCredentialProvider {
   issue(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcPreparedIceSession>;
 }
 
+export type WebRtcRelayCredentialFailureReason =
+  | "generation_expired"
+  | "provider_auth"
+  | "provider_rate_limited"
+  | "provider_rejected"
+  | "provider_unavailable"
+  | "response_invalid"
+  | "unknown";
+
+export class WebRtcRelayCredentialError extends Error {
+  constructor(readonly reason: WebRtcRelayCredentialFailureReason, message = "TURN credential unavailable") {
+    super(message);
+    this.name = "WebRtcRelayCredentialError";
+  }
+}
+
+export function relayCredentialFailureReason(error: unknown): WebRtcRelayCredentialFailureReason {
+  return error instanceof WebRtcRelayCredentialError ? error.reason : "unknown";
+}
+
 export interface CloudflareRealtimeTurnCredentialProviderConfig {
   /** Cloudflare Realtime TURN key identifier. Not a credential. */
   turnKeyId: string;
@@ -103,7 +123,7 @@ export class CloudflareRealtimeTurnCredentialProvider implements WebRtcIceCreden
   async issue(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcPreparedIceSession> {
     const remainingMs = binding.expiresAt - this.now();
     if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-      throw new Error("WebRTC generation is expired");
+      throw new WebRtcRelayCredentialError("generation_expired");
     }
     const ttl = Math.max(1, Math.min(this.maxTtlSeconds, Math.ceil(remainingMs / 1_000)));
     let browser: IssuedCloudflareIceServers | undefined;
@@ -111,10 +131,12 @@ export class CloudflareRealtimeTurnCredentialProvider implements WebRtcIceCreden
     try {
       browser = await this.generate(ttl);
       server = await this.generate(ttl);
-    } catch {
+    } catch (error) {
       if (browser) await this.revokeUsernames(browser.turnUsernames).catch(() => undefined);
       if (server) await this.revokeUsernames(server.turnUsernames).catch(() => undefined);
-      throw new Error("TURN credential issuance failed");
+      throw error instanceof WebRtcRelayCredentialError
+        ? error
+        : new WebRtcRelayCredentialError("unknown");
     }
 
     const usernames = [...new Set([...browser.turnUsernames, ...server.turnUsernames])];
@@ -137,31 +159,45 @@ export class CloudflareRealtimeTurnCredentialProvider implements WebRtcIceCreden
   }
 
   private async generate(ttl: number): Promise<IssuedCloudflareIceServers> {
-    const response = await this.fetchImpl(
-      `${CLOUDFLARE_TURN_ORIGIN}/v1/turn/keys/${encodeURIComponent(this.config.turnKeyId)}/credentials/generate-ice-servers`,
-      {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify({ ttl }),
-        cache: "no-store"
-      }
-    );
-    if (!response.ok) throw new Error("TURN credential issuance failed");
+    let response: Response;
+    try {
+      response = await this.fetchImpl(
+        `${CLOUDFLARE_TURN_ORIGIN}/v1/turn/keys/${encodeURIComponent(this.config.turnKeyId)}/credentials/generate-ice-servers`,
+        {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({ ttl }),
+          cache: "no-store"
+        }
+      );
+    } catch {
+      throw new WebRtcRelayCredentialError("provider_unavailable");
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new WebRtcRelayCredentialError("provider_auth");
+      if (response.status === 429) throw new WebRtcRelayCredentialError("provider_rate_limited");
+      if (response.status >= 500) throw new WebRtcRelayCredentialError("provider_unavailable");
+      throw new WebRtcRelayCredentialError("provider_rejected");
+    }
     const contentLength = Number(response.headers.get("content-length") ?? "0");
     if (Number.isFinite(contentLength) && contentLength > MAX_ICE_RESPONSE_BYTES) {
-      throw new Error("TURN credential response is invalid");
+      throw new WebRtcRelayCredentialError("response_invalid");
     }
     const text = await response.text();
     if (Buffer.byteLength(text, "utf8") > MAX_ICE_RESPONSE_BYTES) {
-      throw new Error("TURN credential response is invalid");
+      throw new WebRtcRelayCredentialError("response_invalid");
     }
     let value: unknown;
     try {
       value = JSON.parse(text);
     } catch {
-      throw new Error("TURN credential response is invalid");
+      throw new WebRtcRelayCredentialError("response_invalid");
     }
-    return parseCloudflareIceServers(value);
+    try {
+      return parseCloudflareIceServers(value);
+    } catch {
+      throw new WebRtcRelayCredentialError("response_invalid");
+    }
   }
 
   private async revokeUsernames(usernames: readonly string[]): Promise<void> {

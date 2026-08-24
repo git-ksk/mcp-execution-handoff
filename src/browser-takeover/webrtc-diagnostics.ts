@@ -1,9 +1,18 @@
 export type WebRtcDiagnosticCandidateType = "host" | "srflx" | "prflx" | "relay";
 export type WebRtcDiagnosticPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
+export type WebRtcRelayDiagnosticFailureReason =
+  | "generation_expired"
+  | "provider_auth"
+  | "provider_rate_limited"
+  | "provider_rejected"
+  | "provider_unavailable"
+  | "response_invalid"
+  | "unknown";
 export type WebRtcDiagnosticStage =
   | "broker.prepare.request"
   | "broker.prepare.success"
   | "broker.prepare.failure"
+  | "relay.credential.unavailable"
   | "browser.gather.complete"
   | "browser.peer.state"
   | "broker.connect.request"
@@ -39,6 +48,7 @@ export interface WebRtcDiagnosticEvent {
   candidateCounts?: WebRtcDiagnosticCandidateCounts;
   state?: WebRtcDiagnosticPeerState;
   durationMs?: number;
+  reason?: WebRtcRelayDiagnosticFailureReason;
 }
 
 export interface WebRtcDiagnosticsSnapshot {
@@ -52,6 +62,10 @@ const BROWSER_STAGES = new Set<WebRtcDiagnosticStage>([
   "browser.gather.complete",
   "browser.peer.state"
 ]);
+const RELAY_FAILURE_REASONS = new Set<WebRtcRelayDiagnosticFailureReason>([
+  "generation_expired", "provider_auth", "provider_rate_limited", "provider_rejected",
+  "provider_unavailable", "response_invalid", "unknown"
+]);
 const PEER_STATES = new Set<WebRtcDiagnosticPeerState>([
   "new", "connecting", "connected", "disconnected", "failed", "closed"
 ]);
@@ -59,6 +73,7 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "broker.prepare.request",
   "broker.prepare.success",
   "broker.prepare.failure",
+  "relay.credential.unavailable",
   "browser.gather.complete",
   "browser.peer.state",
   "broker.connect.request",
@@ -144,6 +159,7 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "broker.prepare.request": ["stage"],
     "broker.prepare.success": ["stage", "durationMs"],
     "broker.prepare.failure": ["stage", "durationMs"],
+    "relay.credential.unavailable": ["stage", "reason"],
     "browser.gather.complete": ["stage", "candidateCounts", "durationMs"],
     "browser.peer.state": ["stage", "state"],
     "broker.connect.request": ["stage"],
@@ -179,6 +195,10 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
   if (event.state !== undefined) {
     if (!PEER_STATES.has(event.state)) return undefined;
     normalized.state = event.state;
+  }
+  if (event.reason !== undefined) {
+    if (!RELAY_FAILURE_REASONS.has(event.reason)) return undefined;
+    normalized.reason = event.reason;
   }
   if (event.durationMs !== undefined) {
     if (typeof event.durationMs !== "number" || !Number.isFinite(event.durationMs) || event.durationMs < 0 || event.durationMs > MAX_DURATION_MS) {

@@ -4,6 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Add bounded relay credential failure diagnostics (`generation_expired`, provider auth/rate-limit/rejection/unavailable, invalid response, unknown) so Handoff can explain `relay unavailable` without logging provider payloads, TURN credentials, network identifiers, or consumer identity; direct fallback semantics remain fail-closed and unchanged.
 - Add a first-class `BrowserHandoffAdapter` that composes the canonical WebRTC browser handoff path for standalone MCP consumers, requires an exact process/window target plus explicit bounded input policy, keeps browser/profile/authentication lifecycle consumer-owned, exposes bounded diagnostics, and prevents accidental downgrade to the legacy HTTP frame transport.
 - Harden Browser Handoff completion and target authority: WebRTC `Done` now uses a principal/intervention/epoch/expiry-bound completion-only capability that survives media disconnect/reload without reviving stale input generations, consumer completion callbacks run only after transport fencing, and Linux honors/revalidates explicit PID/window ownership before every Human mutation.
 - Add an explicit native takeover claim/reconnect protocol: reconnect requires the same authenticated principal, an idle prior lease, and a generation-bound reconnect handle; successful recovery rotates client generation, capability, and reconnect handle so stale clients fail closed.
