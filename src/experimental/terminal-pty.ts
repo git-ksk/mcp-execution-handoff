@@ -277,7 +277,13 @@ export class ExperimentalTerminalPtyAuthority {
     this.sessionAlive = false;
     this.agentStateSynchronizationRequired = true;
     const active = this.state.getActive();
-    if (active?.status === "human_active") {
+    if (active?.status === "awaiting_human") {
+      // No Human authority was ever granted, so there can be no Human side effect to verify.
+      // Cancel only this pre-claim intervention and advance the epoch; the closed PTY still keeps
+      // effective authority at none and can never be revived by this transition.
+      this.state.cancel(active.id);
+      this.humanWritesDrained = true;
+    } else if (active?.status === "human_active") {
       this.state.markHumanComplete(active.id);
       this.humanWritesDrained = true;
     }

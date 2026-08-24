@@ -175,3 +175,16 @@ test("staged drain protocol fences before external drain and refuses verificatio
   const ready = gate.reportVerification(BINDING, verifying.id, verifying.epoch, true);
   assert.equal(ready.status, "ready_to_resume");
 });
+test("PTY exit after Agent fence but before Human claim cancels only the unclaimed intervention", () => {
+  const { gate } = fixture();
+  const awaiting = gate.beginFence(BINDING);
+  assert.equal(awaiting.status, "awaiting_human");
+  const closed = gate.noteSessionExit(BINDING);
+  assert.equal(closed.sessionAlive, false);
+  assert.equal(closed.interventionStatus, null);
+  assert.equal(closed.authority, "none");
+  assert.throws(
+    () => gate.claimHumanAfterAgentDrain(BINDING, awaiting.id, awaiting.epoch),
+    expectCode("TERMINAL_SESSION_CLOSED"),
+  );
+});
