@@ -116,7 +116,26 @@ Linux helperはtarget PIDに属するX11 windowを厳密に1つだけ解決し�
 
 ## Browser takeover
 
-`browser-takeover` はoptionalです。brokerがinterventionについて知るのは `{ id, epoch }` だけで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
+Standaloneなbrowser MCP consumer向けのcanonical high-level WebRTC compositionは `BrowserHandoffAdapter` です。consumerが渡すのはintervention / principal binding、exact target process/window、自分で所有するbrowser/profile lifecycleだけで、HandoffがWebRTC runtime + broker compositionを内部で構成します。Consumer-facing surfaceは `start()` / `revoke()` / HTTP routing + bounded diagnosticsに絞り、canonical Browser Handoffがlegacy HTTP frame/input transportへsilent downgradeすることはありません。Locator発行はcontrol-plane setupに過ぎず、media/input pathがusableになる前にhost-window readinessとfirst-media-frame gateを通ります。Browser profile persistence、target-service authentication、post-Human checkpoint / verificationはconsumer責務のままです。
+
+```ts
+import { BrowserHandoffAdapter } from "mcp-execution-handoff/browser-takeover";
+
+const browserHandoff = new BrowserHandoffAdapter({
+  takeover: { enabled: true, publicBaseUrl, ttlMs: 60_000 },
+  runtime: { hostExecutable, displayName } // Linux/X11 hostではdisplayNameを指定
+});
+
+const locator = browserHandoff.start({
+  intervention: { id: interventionId, epoch },
+  principalBinding,
+  target: { processId, ...(windowId ? { windowId } : {}) }
+});
+```
+
+Authenticatedな `/takeover/*` HTTP requestは `browserHandoff.handle(...)` へrouteし、consumer-ownedなpost-Human verificationへ進む前に `browserHandoff.revoke(interventionId)` を呼びます。ICE / STUN / TURN provider選択やrelay credentialは `start()` に渡さず、Handoff deployment/runtime側の責務に留めます。
+
+`TakeoverBroker` は、HTTP frame mode、Native composition、custom transport assemblyを明示的に必要とするconsumer向けのlow-level transport/session primitiveとして残します。brokerがinterventionについて知るのは `{ id, epoch }` だけで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
 native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。以前のclientがidleで、authenticated principalが一致し、generation-bound reconnect handleも一致した場合だけ新generationへrotateできます。成功すると旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含みません。
 

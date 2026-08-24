@@ -130,7 +130,11 @@ The package does not decide which intervention reasons need this surface. `selec
 
 ## Browser takeover
 
-The optional broker owns only transport/session concerns. A public locator contains no capability. Same-origin bootstrap claims one remote-client lease and returns a short-lived capability. Every frame/input/done request must present the matching capability, principal binding, and client binding.
+`BrowserHandoffAdapter` is the first-class consumer-level Browser WebRTC composition. It owns construction of the bounded WebRTC runtime + broker pair and intentionally exposes no generic HTTP-frame start operation. Consumers provide an already-authorized exact process/window target and retain ownership of browser/profile start-stop, target-service authentication semantics, checkpoint/restore policy, and fresh post-Human verification. `processId` is mandatory; when no `windowId` is supplied the platform host must resolve exactly one eligible window for that process, while an explicit `windowId` must remain owned by that process. None, ambiguity, disappearance, or ownership mismatch fail closed with no desktop fallback.
+
+The adapter's `start()` returns a short-lived locator, not a readiness claim. The existing WebRTC prepare/connect path remains authoritative for runtime readiness and does not return a usable answer until the host-window/first-media-frame gates pass. Transport failure is explicit and cannot silently switch the canonical adapter to HTTP screenshot polling.
+
+The lower-level optional `TakeoverBroker` owns transport/session concerns for deliberate custom compositions. A public locator contains no capability. Same-origin bootstrap claims one remote-client lease and returns a short-lived capability. Every frame/input/done request must present the matching capability, principal binding, and client binding.
 
 A new binding cannot implicitly reclaim an already-owned lease. Native clients may instead use the explicit claim/reconnect API. Reconnect requires the same authenticated principal, a generation-bound reconnect handle, and an idle prior lease. Successful reconnect increments the client generation and rotates both capability and reconnect handle, so the old client generation is immediately fenced. Expired/revoked sessions, active prior clients, wrong principals, wrong handles, or stale generations fail closed. The reconnect handle contains no browser content or target-service credential material.
 

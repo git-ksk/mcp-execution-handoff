@@ -110,7 +110,26 @@ For credential-safe browser handoff, the lifecycle above is cross-platform: the 
 
 ## Browser takeover
 
-`browser-takeover` is optional. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
+For standalone browser MCP consumers, `BrowserHandoffAdapter` is the canonical high-level WebRTC composition. A consumer supplies the intervention/principal binding, an exact target process/window, and its own browser/profile lifecycle; Handoff constructs the WebRTC runtime and broker internally, exposes only `start()` / `revoke()` / HTTP routing plus bounded diagnostics, and never silently downgrades that canonical path to the legacy HTTP frame/input transport. Locator issuance is control-plane setup only: WebRTC readiness still passes the host-window and first-media-frame gates before the media/input path becomes usable. Browser-profile persistence, target-service authentication, and post-Human checkpoint/verification remain consumer responsibilities.
+
+```ts
+import { BrowserHandoffAdapter } from "mcp-execution-handoff/browser-takeover";
+
+const browserHandoff = new BrowserHandoffAdapter({
+  takeover: { enabled: true, publicBaseUrl, ttlMs: 60_000 },
+  runtime: { hostExecutable, displayName } // displayName is used by Linux/X11 hosts
+});
+
+const locator = browserHandoff.start({
+  intervention: { id: interventionId, epoch },
+  principalBinding,
+  target: { processId, ...(windowId ? { windowId } : {}) }
+});
+```
+
+Route authenticated `/takeover/*` HTTP requests to `browserHandoff.handle(...)` and call `browserHandoff.revoke(interventionId)` before consumer-owned post-Human verification. ICE/STUN/TURN provider selection and relay credentials are not part of `start()`; they remain Handoff deployment/runtime concerns.
+
+`TakeoverBroker` remains the lower-level transport/session primitive for consumers that deliberately need the HTTP frame mode, Native composition, or custom transport assembly. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
 
 For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.
 
