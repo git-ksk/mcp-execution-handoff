@@ -112,6 +112,10 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /Math\.round\(point\.y\)/);
   assert.match(host, /\["mousemove", "--sync", String\(x\), String\(y\)\]/);
   assert.match(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
+  assert.match(host, /getwindowfocus/);
+  assert.match(host, /Linux WebRTC input focus is not owned by the target process/);
+  assert.match(host, /focusedWindowId === this\.geometry\.windowId/);
+  assert.match(host, /Number\(focusedPid\.trim\(\)\) === this\.targetPid/);
   assert.match(host, /linux_stage=input_focus_ready/);
   assert.match(host, /linux_stage=input_tap_sent/);
   assert.match(host, /linux_stage=input_failure/);
