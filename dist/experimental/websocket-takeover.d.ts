@@ -1,4 +1,9 @@
 export type WebSocketTakeoverState = "open" | "closing" | "closed" | "revoked" | "failed";
+/**
+ * Trusted binding created only after Handoff-owned WSS ingress authenticates the principal,
+ * validates the request Origin, and claims one client generation. Never populate these fields
+ * from peer-controlled WebSocket messages.
+ */
 export interface WebSocketTakeoverBinding {
     interventionId: string;
     epoch: number;
@@ -67,7 +72,7 @@ export interface ExperimentalWebSocketTakeoverOptions {
     maxFrameBytes?: number;
     maxBufferedBytes?: number;
 }
-export type WebSocketTakeoverFailureCode = "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "transport_failure";
+export type WebSocketTakeoverFailureCode = "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "transport_failure" | "authority_release_failed";
 export declare class WebSocketTakeoverError extends Error {
     readonly code: WebSocketTakeoverFailureCode;
     constructor(code: WebSocketTakeoverFailureCode, message: string);
@@ -113,8 +118,10 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private replacePendingFrame;
     private scheduleDrain;
     private flushPendingFrame;
+    private isBackpressured;
     private clearDrainTimer;
     private releaseOnce;
+    private recordReleaseFailure;
     private safeClose;
 }
 //# sourceMappingURL=websocket-takeover.d.ts.map
