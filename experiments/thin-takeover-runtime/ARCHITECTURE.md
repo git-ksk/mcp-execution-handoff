@@ -160,6 +160,7 @@ The macOS host:
 - preflights Screen Recording and Accessibility before starting the Human surface;
 - accepts an optional consumer-bound target process ID; if present, exactly one eligible on-screen window must resolve and be fully contained in one capturable display;
 - uses a one-window ScreenCaptureKit inclusion filter plus display-local source cropping and maps Human input to that exact window bounds;
+- commits ordinary non-secure focused AppKit text through `AXSelectedText` only after exact-window, PID, and non-web ancestry revalidation, while unsupported controls retain the bounded keyboard-event path and mismatches fail closed; route diagnostics expose only a bounded payload-free stage;
 - without a target process, retains explicit display selection when multiple displays are capturable and maps input to that display;
 - prefers a 32-byte root key delivered over an inherited FD; hex environment input is development fallback only.
 

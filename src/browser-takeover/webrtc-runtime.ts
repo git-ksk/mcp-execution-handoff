@@ -33,6 +33,7 @@ import {
   WebRtcDiagnosticsTracker,
   webRtcCandidateCountsFromSdp,
   type WebRtcDiagnosticEvent,
+  type WebRtcDiagnosticStage,
   type WebRtcDiagnosticsSnapshot
 } from "./webrtc-diagnostics.js";
 export type { WebRtcTakeoverRuntimeBinding } from "./webrtc-ice.js";
@@ -989,7 +990,7 @@ class HostMetricParser {
   constructor(
     private readonly onHostEncode: (hostEncodeMs: number) => void,
     private readonly onEditableRegions: (regions: number[][]) => void,
-    private readonly onHostStage: (stage: "host.target.alive" | "host.target.missing" | "host.window.ready" | "host.window.failure.none" | "host.window.failure.multiple" | "host.capture.started" | "host.frame.ready" | "host.input.focus.ready" | "host.input.tap.sent" | "host.input.failure" | "host.capture.failure" | "host.capture.failure.x11" | "host.capture.failure.encoder" | "host.capture.failure.option" | "host.capture.failure.other") => void
+    private readonly onHostStage: (stage: Extract<WebRtcDiagnosticStage, `host.${string}`>) => void
   ) {}
 
   push(chunk: Buffer): void {
@@ -1027,6 +1028,18 @@ class HostMetricParser {
           capture_failure_other: "host.capture.failure.other"
         } as const;
         this.onHostStage(stages[diagnostic[1] as keyof typeof stages]);
+        continue;
+      }
+      const textRoute = /^MCP_HANDOFF_DIAGNOSTIC input_text_route=(native_ax|pid_keyboard|event_creation_failure|activation_rejected|native_boundary_rejected)$/.exec(line);
+      if (textRoute) {
+        const stages = {
+          native_ax: "host.input.text.native_ax",
+          pid_keyboard: "host.input.text.pid_keyboard",
+          event_creation_failure: "host.input.text.event_creation_failure",
+          activation_rejected: "host.input.text.activation_rejected",
+          native_boundary_rejected: "host.input.text.native_boundary_rejected"
+        } as const;
+        this.onHostStage(stages[textRoute[1] as keyof typeof stages]);
         continue;
       }
       const regionsLine = /^MCP_HANDOFF_CONTROL editable_regions=(.*)$/.exec(line);

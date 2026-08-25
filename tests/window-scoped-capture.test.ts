@@ -21,6 +21,8 @@ test("macOS Native host delegates exact-window capture and input to the shared b
   assert.match(input, /event\.postToPid\(targetProcessID\)/);
   assert.match(input, /guard activateTargetWindowForInput\(\) else/);
   assert.match(input, /MacOSExactWindowInput\.activate\(processID: targetProcessID, inputBounds: inputBounds\)/);
+  assert.match(input, /MacOSExactWindowTextInput\.commitFocusedText\(/);
+  assert.match(input, /case \.rejected:\s*throw InjectionError\.targetUnavailable/);
 
   assert.match(exact, /window\.processID == targetProcessID/);
   assert.match(exact, /targetWindowID == nil \|\| window\.windowID == targetWindowID/);
@@ -48,9 +50,17 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
   assert.match(host, /private let targetProcessID: pid_t\?/);
   assert.match(host, /event\.postToPid\(targetProcessID\)/);
-  assert.match(host, /guard activateTargetWindowForInput\(\) else \{ return \}/);
+  assert.match(host, /guard activateTargetWindowForInput\(\) else \{[\s\S]*submitInputTextRoute\(\.activationRejected\)[\s\S]*return[\s\S]*\}/);
   assert.match(host, /MacOSExactWindowInput\.activate\(processID: targetProcessID, inputBounds: inputBounds\)/);
-  assert.match(host, /HumanInputInjector\(inputBounds: surface\.inputBounds, targetProcessID: targetProcessID, writer: writer\)/);
+  assert.match(host, /MacOSExactWindowTextInput\.commitFocusedText\(/);
+  assert.match(host, /MCP_HANDOFF_DIAGNOSTIC input_text_route=/);
+  assert.doesNotMatch(host, /MCP_HANDOFF_DIAGNOSTIC input_text_route=.*\\\(text\\\)/);
+  assert.match(host, /controlWriter\.submitInputTextRoute\(\.activationRejected\)/);
+  assert.match(host, /case \.rejected:\s*controlWriter\.submitInputTextRoute\(\.nativeBoundaryRejected\)\s*return/);
+  assert.match(
+    host,
+    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
+  );
   // Browser-only editable-region semantics stay in the WebRTC host rather than leaking into the
   // shared target-surface primitive.
   assert.match(host, /firstWebArea/);
@@ -65,6 +75,49 @@ test("Node runtime passes target PID and optional display only through the priva
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_PID = String\(binding\.targetProcessId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_TARGET_WINDOW_ID = String\(binding\.targetWindowId\)/);
   assert.match(webrtc, /env\.TAKEOVER_WEBRTC_DISPLAY_NAME = this\.config\.displayName/);
+});
+
+
+test("ordinary macOS native text commit remains exact-window bounded and excludes web content", () => {
+  const textInput = source(
+    "experiments/thin-takeover-runtime/Sources/TakeoverMacOSWindow/ExactWindowTextInput.swift"
+  );
+  assert.match(textInput, /kAXFocusedWindowAttribute/);
+  assert.match(textInput, /MacOSExactWindowGeometry\.framesMatch\(frame, inputBounds\)/);
+  assert.match(textInput, /MacOSExactWindowTextInputPolicy\.decision\(/);
+  assert.match(textInput, /AXUIElementGetPid\(focusedElement, &focusedPID\)/);
+  assert.match(textInput, /focusedPID == processID/);
+  assert.match(textInput, /kAXSelectedTextAttribute/);
+  assert.match(textInput, /kAXSecureTextFieldSubrole/);
+  assert.match(textInput, /AXUIElementIsAttributeSettable/);
+  assert.match(textInput, /AXUIElementSetAttributeValue/);
+  assert.match(textInput, /currentRole == "AXWebArea"/);
+  assert.match(textInput, /return \.web/);
+  assert.match(textInput, /return \.unknown/);
+  assert.match(textInput, /currentRole == \(kAXApplicationRole as String\)/);
+  assert.doesNotMatch(textInput, /kAXValueAttribute/);
+});
+
+test("native macOS text acceptance verifies focus and resulting AppKit content", () => {
+  const acceptance = source(
+    "experiments/thin-takeover-runtime/scripts/macos-native-window-text-acceptance.mts"
+  );
+  const fixture = source(
+    "experiments/thin-takeover-runtime/Sources/takeover-macos-text-input-fixture/main.swift"
+  );
+  assert.match(fixture, /NSTextView/);
+  assert.match(fixture, /window\.firstResponder === textView/);
+  assert.match(fixture, /textView\.accessibilityFrame\(\)/);
+  assert.match(acceptance, /initial\.tapX/);
+  assert.match(acceptance, /initial\.tapY/);
+  assert.match(acceptance, /kind: "tap"/);
+  assert.match(acceptance, /focused\?\.focused, true/);
+  assert.match(acceptance, /kind: "text", text: testText/);
+  assert.match(acceptance, /state\?\.text\.includes\(testText\) === true/);
+  assert.match(acceptance, /assert\.notEqual\(current\.text, beforeText\)/);
+  assert.match(acceptance, /host\.input\.text\.native_ax/);
+  assert.match(acceptance, /textRouteStages\.length, TEST_TEXTS\.length/);
+  assert.match(acceptance, /process\.exit\(0\)/);
 });
 
 

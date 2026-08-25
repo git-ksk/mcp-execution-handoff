@@ -115,6 +115,20 @@ final class MacOSInputInjector: @unchecked Sendable {
                   !text.isEmpty else {
                 throw InjectionError.invalidText
             }
+            if let targetProcessID {
+                switch MacOSExactWindowTextInput.commitFocusedText(
+                    processID: targetProcessID,
+                    inputBounds: inputBounds,
+                    text: text
+                ) {
+                case .committed:
+                    return
+                case .rejected:
+                    throw InjectionError.targetUnavailable
+                case .unsupported:
+                    break
+                }
+            }
             let utf16 = Array(text.utf16)
             guard utf16.count <= 1024 else { throw InjectionError.invalidText }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
