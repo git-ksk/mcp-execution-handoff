@@ -146,6 +146,8 @@ native operator client向けには明示的なclaim/reconnect pathも提供し�
 
 optionalなWebRTC browser transportは、signaling、H.264/RTP、DataChannel input、Safari lifecycle、reconnect fencingをHandoff内部へ閉じ込めます。macOS hostはScreenCaptureKit / CoreGraphics、Linux hostはisolated X11 display + exact target-window capture + bounded CPU H.264 + OS/window inputを使います。
 
+モバイルの密集UI向けにはclient-sideの **Aim（照準）モード** も用意します。Aimを有効にすると表示だけをbounded 4×へ拡大し、映像drag/pinchはローカルpan/zoomに限定されremote inputを送りません。中央crosshairへ対象を合わせ、明示的な `Tap` controlを押した時だけ既存のserver-side `tap` policyを通る1回のremote tapを送ります。reconnect / orientation change / teardownではAimとview transformをresetし、consumer semantic verificationやserver input authorityは一切広げません。
+
 Safari transportは最大1280×720に制限します。現在のacceptanceではmacOS hostは30 fps、Linux CPU hostは既定15 fpsです。WebRTC locatorは選択したhost capture surfaceを `playsinline` videoへ直接表示します。1×ではtap/swipeをそのsurfaceへの直接操作へ変換します。小さいmobile画面での精密操作向けに、Handoff所有のboundedな1×〜4× local view transformも持ち、zoom buttonまたは2本指pinch/panで拡大できます。zoom中の1本指dragはlocal panだけを行い、これらのview gestureからtarget tap/scrollは送信しません。静止tapだけをtransform後のvideo boundsから同じexact captured windowへ逆変換します。browser/page zoomやtarget-window identityは変更せず、reconnect/orientation changeでlocal transformをresetします。hidden browser input bridgeはiOS keyboardを使ってtext/Backspaceを送ります。
 
 touch対応SafariではTouch Eventsをswipeのauthoritative pathとし、touch Pointer Eventsは二重入力防止のため無視します。consumerはruntimeをtarget processへbindingでき、その場合はon-screenの対象windowを厳密に1つだけ解決できることを要求し、captureとinputを同じwindow boundsへ限定してdesktop全体を公開しません。legacy HTTP frame/input UIへfallbackすることもありません。
