@@ -5,8 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TakeoverBroker, type TakeoverBrowserAdapter } from "../../../src/browser-takeover/broker.ts";
-import { SpawnedWebRtcRuntimeProvider } from "../../../src/browser-takeover/webrtc-runtime.ts";
+import { WindowHandoffAdapter } from "../../../src/window-takeover/window-handoff-adapter.ts";
 
 function defaultLanHost(): string {
   for (const entries of Object.values(os.networkInterfaces())) {
@@ -84,20 +83,16 @@ chrome = spawn(CHROME, [
 if (!chrome.pid) throw new Error("Chrome target did not start");
 await new Promise((resolve) => setTimeout(resolve, 1200));
 
-const adapter: TakeoverBrowserAdapter = {
-  async captureHumanTakeoverFrame() { throw new Error("legacy frame surface disabled for WebRTC acceptance"); },
-  async tapHumanTakeover() { throw new Error("legacy input disabled"); },
-  async scrollHumanTakeover() { throw new Error("legacy input disabled"); },
-  async insertHumanTakeoverText() { throw new Error("legacy input disabled"); },
-  async pressHumanTakeoverKey() { throw new Error("legacy input disabled"); }
-};
-const runtime = new SpawnedWebRtcRuntimeProvider({ hostExecutable: HOST });
-const broker = new TakeoverBroker(adapter, {
-  enabled: true,
-  publicBaseUrl: PUBLIC_ORIGIN,
-  ttlMs: 180_000,
-  reconnectIdleMs: 2_000
-}, undefined, runtime);
+const windowHandoff = new WindowHandoffAdapter({
+  takeover: {
+    enabled: true,
+    publicBaseUrl: PUBLIC_ORIGIN,
+    ttlMs: 180_000,
+    reconnectIdleMs: 2_000
+  },
+  runtime: { hostExecutable: HOST }
+});
+const ACCEPTANCE_INPUT_POLICY = { tap: true, scroll: true, text: true, key: true } as const;
 
 function localOnly(req: IncomingMessage): boolean {
   const address = req.socket.remoteAddress || "";
@@ -115,27 +110,31 @@ async function control(req: IncomingMessage, res: ServerResponse, pathname: stri
     res.writeHead(404, { "cache-control": "no-store" }); res.end("Not Found"); return true;
   }
   if (pathname === "/__new") {
-    if (currentIntervention) await broker.revokeWebRtcForIntervention(currentIntervention).catch(() => undefined);
+    if (currentIntervention) await windowHandoff.revoke(currentIntervention).catch(() => undefined);
     run += 1;
     targetGeneration += 1;
     await new Promise((resolve) => setTimeout(resolve, 180));
     currentIntervention = `lan-run-${run}-${randomBytes(6).toString("hex")}`;
-    diagBaseline = runtime.diagnosticsSnapshot().events.length;
-    const locator = broker.createWebRtcLink({ id: currentIntervention, epoch: 1 }, PRINCIPAL, { processId: chrome!.pid! });
-    if (!locator) throw new Error("Unable to create WebRTC locator");
+    diagBaseline = windowHandoff.diagnosticsSnapshot().events.length;
+    const locator = windowHandoff.start({
+      intervention: { id: currentIntervention, epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: chrome!.pid! },
+      inputPolicy: ACCEPTANCE_INPUT_POLICY
+    });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify({ run, locator }));
     return true;
   }
   if (pathname === "/__diag") {
-    const snapshot = runtime.diagnosticsSnapshot();
-    const latency = runtime.latencySnapshot();
+    const snapshot = windowHandoff.diagnosticsSnapshot();
+    const latency = windowHandoff.latencySnapshot();
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
     res.end(JSON.stringify({ run, events: snapshot.events.slice(diagBaseline), latency }));
     return true;
   }
   if (pathname === "/__revoke") {
-    if (currentIntervention) await broker.revokeWebRtcForIntervention(currentIntervention).catch(() => undefined);
+    if (currentIntervention) await windowHandoff.revoke(currentIntervention).catch(() => undefined);
     currentIntervention = undefined;
     res.writeHead(204, { "cache-control": "no-store" }); res.end();
     return true;
@@ -172,7 +171,7 @@ const brokerServer = createServer(async (req, res) => {
       headers: req.headers as Record<string, string>,
       ...(body ? { body } : {})
     });
-    const response = await broker.handle(request, PRINCIPAL);
+    const response = await windowHandoff.handle(request, PRINCIPAL);
     const operation = url.pathname.match(/^\/takeover\/api\/(webrtc-prepare-claim|webrtc-prepare-reconnect|webrtc-suspend)\//)?.[1];
     if (operation) lifecycleEvents.push({ operation, status: response.status });
     if (lifecycleEvents.length > 32) lifecycleEvents.splice(0, lifecycleEvents.length - 32);
@@ -195,7 +194,7 @@ console.log(`Handoff WebRTC acceptance ready: mode=${MODE} origin=${PUBLIC_ORIGI
 console.log(`Fresh locator control: http://127.0.0.1:${BROKER_PORT}/__new`);
 
 async function shutdown() {
-  if (currentIntervention) await broker.revokeWebRtcForIntervention(currentIntervention).catch(() => undefined);
+  if (currentIntervention) await windowHandoff.revoke(currentIntervention).catch(() => undefined);
   await new Promise<void>((resolve) => brokerServer.close(() => resolve()));
   await new Promise<void>((resolve) => targetServer.close(() => resolve()));
   chrome?.kill("SIGTERM");

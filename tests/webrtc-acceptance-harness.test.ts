@@ -14,6 +14,11 @@ test("canonical WebRTC acceptance harness keeps LAN direct and public relay on o
   assert.match(source, /public-relay acceptance requires both Cloudflare TURN credential variables/);
   assert.match(source, /Refusing LAN direct acceptance while TURN credentials are present/);
   assert.match(source, /--new-window/);
+  assert.match(source, /WindowHandoffAdapter/);
+  assert.match(source, /windowHandoff\.start/);
+  assert.match(source, /inputPolicy: ACCEPTANCE_INPUT_POLICY/);
+  assert.doesNotMatch(source, /new TakeoverBroker/);
+  assert.doesNotMatch(source, /new SpawnedWebRtcRuntimeProvider/);
   assert.doesNotMatch(source, /--app=file:/);
 });
 
