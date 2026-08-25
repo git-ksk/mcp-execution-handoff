@@ -179,7 +179,7 @@ public enum MacOSExactWindowCapture {
 /// activation failure returns false and leaves the caller fail-closed.
 public enum MacOSExactWindowInput {
     public static func activate(processID: pid_t, inputBounds: CGRect) -> Bool {
-        guard let application = NSRunningApplication(processIdentifier: processID) else { return false }
+        guard let application = exactRunningApplication(processID: processID) else { return false }
         let appElement = AXUIElementCreateApplication(processID)
         var windowsRaw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
@@ -190,12 +190,61 @@ public enum MacOSExactWindowInput {
         }
         guard matches.count == 1, let window = matches.first else { return false }
         guard AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else { return false }
+        // Raising a window and seeing the process become active are not sufficient proof that the
+        // exact captured window is ready for Human input. Chromium can report the application active
+        // while focus is still transitioning from the previously-frontmost application/window.
+        // Ask AX for the exact window, then wait until that same bounded frame is the focused window.
+        _ = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        _ = AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         _ = application.activate(options: [])
-        for attempt in 0..<5 {
-            if application.isActive { return true }
-            if attempt < 4 { usleep(20_000) }
+        for attempt in 0..<4 {
+            if application.isActive && focusedWindowMatches(appElement: appElement, inputBounds: inputBounds) { return true }
+            if attempt < 3 { usleep(20_000) }
         }
-        return application.isActive
+        // Since macOS 14, `activateIgnoringOtherApps` no longer overrides the foreground app and
+        // `NSRunningApplication.activate` may accept a request without making the target frontmost.
+        // System Events can set the frontmost application by exact numeric PID. The script contains
+        // no provider/user data; if Apple Events policy denies it, activation simply fails closed.
+        guard requestExactFrontmost(processID: processID) else { return false }
+        for attempt in 0..<10 {
+            if application.isActive && focusedWindowMatches(appElement: appElement, inputBounds: inputBounds) { return true }
+            if attempt < 9 { usleep(20_000) }
+        }
+        return application.isActive && focusedWindowMatches(appElement: appElement, inputBounds: inputBounds)
+    }
+
+    private static func exactRunningApplication(processID: pid_t) -> NSRunningApplication? {
+        // LaunchServices/AppKit can transiently return nil for a still-live exact process while
+        // foreground ownership changes. Retry only the already-authorized numeric PID; never widen
+        // to a bundle identifier, application name, or another running instance.
+        for attempt in 0..<6 {
+            if let application = NSRunningApplication(processIdentifier: processID), !application.isTerminated {
+                return application
+            }
+            if attempt < 5 { usleep(20_000) }
+        }
+        return nil
+    }
+
+    private static func requestExactFrontmost(processID: pid_t) -> Bool {
+        let execute: () -> Bool = {
+            let source = "tell application \"System Events\" to set frontmost of first application process whose unix id is \(processID) to true"
+            guard let script = NSAppleScript(source: source) else { return false }
+            var error: NSDictionary?
+            _ = script.executeAndReturnError(&error)
+            return error == nil
+        }
+        if Thread.isMainThread { return execute() }
+        return DispatchQueue.main.sync(execute: execute)
+    }
+
+    private static func focusedWindowMatches(appElement: AXUIElement, inputBounds: CGRect) -> Bool {
+        var focusedRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedRaw) == .success,
+              let focusedRaw else { return false }
+        let focused = unsafeDowncast(focusedRaw, to: AXUIElement.self)
+        guard let focusedFrame = frame(of: focused) else { return false }
+        return MacOSExactWindowGeometry.framesMatch(focusedFrame, inputBounds)
     }
 
     private static func frame(of element: AXUIElement) -> CGRect? {

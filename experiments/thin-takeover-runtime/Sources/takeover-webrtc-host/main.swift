@@ -464,6 +464,10 @@ private final class HumanInputInjector: @unchecked Sendable {
     private let targetProcessID: pid_t?
     private let writer: LatestOutputWriter
     private let controlWriter: HostControlWriter
+    private let inputLock = NSLock()
+    private var primaryPressed = false
+    private var primaryPoint = CGPoint.zero
+    private var cursorBeforePrimary: CGPoint?
     init(
         inputBounds: CGRect,
         targetProcessID: pid_t?,
@@ -482,6 +486,7 @@ private final class HumanInputInjector: @unchecked Sendable {
             if kind == "text", targetProcessID != nil {
                 controlWriter.submitInputTextRoute(.activationRejected)
             }
+            FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=activation_failed\n".utf8))
             return
         }
         switch kind {
@@ -489,10 +494,23 @@ private final class HumanInputInjector: @unchecked Sendable {
             guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return }
             let point = screenPoint(x: x, y: y)
             let editableAtPoint = editableElement(at: point)
-            guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
-                  let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else { return }
-            down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+            guard postPrimaryButton(state: "down", at: point) else { return }
+            usleep(20_000)
+            guard postPrimaryButton(state: "up", at: point) else { releaseAll(); return }
             writer.submitEditable(editableAtPoint || editableAfterTap())
+        case "pointer_button":
+            guard object["button"] as? String == "primary",
+                  let state = object["state"] as? String, state == "down" || state == "up",
+                  let x = number(object["x"]), let y = number(object["y"]),
+                  (0...1).contains(x), (0...1).contains(y) else { return }
+            let point = screenPoint(x: x, y: y)
+            let editableAtPoint = state == "up" ? editableElement(at: point) : false
+            guard postPrimaryButton(state: state, at: point) else {
+                FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_\(state)_rejected\n".utf8))
+                return
+            }
+            FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_\(state)_sent\n".utf8))
+            if state == "up" { writer.submitEditable(editableAtPoint || editableAfterTap()) }
         case "scroll":
             guard let dx = number(object["deltaX"]), let dy = number(object["deltaY"]), abs(dx) <= 2_000, abs(dy) <= 2_000 else { return }
             guard let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0) else { return }
@@ -537,6 +555,120 @@ private final class HumanInputInjector: @unchecked Sendable {
             postKeyboard(down); postKeyboard(up)
         default: return
         }
+    }
+
+    private func syncPointer(at point: CGPoint) -> Bool {
+        let previous = CGEvent(source: source)?.location ?? point
+        guard let move = CGEvent(
+            mouseEventSource: source,
+            mouseType: .mouseMoved,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else { return false }
+        move.flags = []
+        move.setIntegerValueField(.mouseEventButtonNumber, value: 0)
+        move.setIntegerValueField(.mouseEventClickState, value: 0)
+        move.setDoubleValueField(.mouseEventDeltaX, value: point.x - previous.x)
+        move.setDoubleValueField(.mouseEventDeltaY, value: point.y - previous.y)
+        move.post(tap: .cghidEventTap)
+        CGWarpMouseCursorPosition(point)
+        return true
+    }
+
+    private func makePrimaryEvent(type: CGEventType, at point: CGPoint) -> CGEvent? {
+        guard let event = CGEvent(
+            mouseEventSource: source,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else { return nil }
+        event.flags = []
+        event.setIntegerValueField(.mouseEventButtonNumber, value: 0)
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.setDoubleValueField(.mouseEventDeltaX, value: 0)
+        event.setDoubleValueField(.mouseEventDeltaY, value: 0)
+        return event
+    }
+
+    private func postPrimaryButton(state: String, at point: CGPoint) -> Bool {
+        inputLock.lock()
+        defer { inputLock.unlock() }
+        guard syncPointer(at: point) else { return false }
+        if state == "down" {
+            guard !primaryPressed, let event = makePrimaryEvent(type: .leftMouseDown, at: point) else { return false }
+            cursorBeforePrimary = CGEvent(source: source)?.location
+            event.post(tap: .cghidEventTap)
+            primaryPressed = true
+            primaryPoint = point
+            return true
+        }
+        guard state == "up", primaryPressed, let event = makePrimaryEvent(type: .leftMouseUp, at: point) else { return false }
+        event.post(tap: .cghidEventTap)
+        primaryPressed = false
+        primaryPoint = point
+        cursorBeforePrimary = nil
+        return true
+    }
+
+    private func cancellationPoint() -> CGPoint {
+        var display = CGDirectDisplayID()
+        var count: UInt32 = 0
+        let resolved = CGGetDisplaysWithRect(inputBounds, 1, &display, &count) == .success && count == 1
+        let displayBounds = resolved ? CGDisplayBounds(display) : CGDisplayBounds(CGMainDisplayID())
+        let margin: CGFloat = 8
+        let safeY = min(max(primaryPoint.y, displayBounds.minY + 1), displayBounds.maxY - 1)
+        let safeX = min(max(primaryPoint.x, displayBounds.minX + 1), displayBounds.maxX - 1)
+        if inputBounds.minX - margin >= displayBounds.minX { return CGPoint(x: inputBounds.minX - margin, y: safeY) }
+        if inputBounds.maxX + margin <= displayBounds.maxX { return CGPoint(x: inputBounds.maxX + margin, y: safeY) }
+        if inputBounds.minY - margin >= displayBounds.minY { return CGPoint(x: safeX, y: inputBounds.minY - margin) }
+        if inputBounds.maxY + margin <= displayBounds.maxY { return CGPoint(x: safeX, y: inputBounds.maxY + margin) }
+        let corners = [
+            CGPoint(x: displayBounds.minX + 2, y: displayBounds.minY + 2),
+            CGPoint(x: displayBounds.maxX - 2, y: displayBounds.minY + 2),
+            CGPoint(x: displayBounds.minX + 2, y: displayBounds.maxY - 2),
+            CGPoint(x: displayBounds.maxX - 2, y: displayBounds.maxY - 2)
+        ]
+        return corners.max(by: { hypot($0.x - primaryPoint.x, $0.y - primaryPoint.y) < hypot($1.x - primaryPoint.x, $1.y - primaryPoint.y) }) ?? primaryPoint
+    }
+
+    private func movePointerForCancellation(to point: CGPoint) {
+        // While the primary button is still down, move as a drag rather than a hover. Chromium then
+        // treats lifecycle cleanup as an interrupted drag/release instead of synthesizing a click on
+        // the nearest common ancestor of the original press and the off-control release point.
+        guard let move = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else { return }
+        move.flags = []
+        move.setIntegerValueField(.mouseEventButtonNumber, value: 0)
+        move.setIntegerValueField(.mouseEventClickState, value: 0)
+        move.post(tap: .cghidEventTap)
+        CGWarpMouseCursorPosition(point)
+    }
+
+    private func restorePointerAfterCancellation(to point: CGPoint) {
+        guard let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) else { return }
+        move.flags = []
+        move.setIntegerValueField(.mouseEventButtonNumber, value: 0)
+        move.setIntegerValueField(.mouseEventClickState, value: 0)
+        move.post(tap: .cghidEventTap)
+        CGWarpMouseCursorPosition(point)
+    }
+
+    func releaseAll() {
+        inputLock.lock()
+        defer { inputLock.unlock() }
+        guard primaryPressed else { return }
+        // Lifecycle cleanup must release the WindowServer button state without turning an
+        // interrupted Human press into an activation. Move away from the original control, post a
+        // global mouse-up with click-state zero, then restore the pre-press cursor position.
+        let cancelAt = cancellationPoint()
+        let restore = cursorBeforePrimary
+        movePointerForCancellation(to: cancelAt)
+        if let event = makePrimaryEvent(type: .leftMouseUp, at: cancelAt) {
+            event.setIntegerValueField(.mouseEventClickState, value: 0)
+            event.post(tap: .cghidEventTap)
+        }
+        primaryPressed = false
+        cursorBeforePrimary = nil
+        if let restore { restorePointerAfterCancellation(to: restore) }
     }
 
     private func postKeyboard(_ event: CGEvent) {
@@ -697,6 +829,21 @@ struct WebRtcMacHost {
             writer: writer,
             controlWriter: controlWriter
         )
+        signal(SIGTERM, SIG_IGN)
+        signal(SIGINT, SIG_IGN)
+        let terminateSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: DispatchQueue.global(qos: .userInteractive))
+        let interruptSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: DispatchQueue.global(qos: .userInteractive))
+        let stopForSignal: @Sendable () -> Void = {
+            injector.releaseAll()
+            stop.stop(.explicitStop)
+        }
+        terminateSource.setEventHandler(handler: stopForSignal)
+        interruptSource.setEventHandler(handler: stopForSignal)
+        terminateSource.resume(); interruptSource.resume()
+        defer {
+            terminateSource.cancel(); interruptSource.cancel()
+            injector.releaseAll()
+        }
         InputReader(stop: stop, injector: injector, requestIDR: { encoder.requestIDR() }).start()
         if let targetProcessID {
             EditableRegionPublisher(targetProcessID: targetProcessID, inputBounds: surface.inputBounds, writer: controlWriter).start(stop: stop)
