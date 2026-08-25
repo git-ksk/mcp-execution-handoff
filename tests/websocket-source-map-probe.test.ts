@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import test from "node:test";
 
 test("temporary probe: emit TypeScript 7 source maps", () => {
@@ -30,8 +31,8 @@ test("temporary probe: emit TypeScript 7 source maps", () => {
     "node"
   ], { stdio: ["ignore", "inherit", "inherit"] });
   for (const name of ["websocket-takeover.d.ts.map", "websocket-takeover.js.map"]) {
-    const content = readFileSync(`dist/experimental/${name}`, "utf8");
-    const encoded = Buffer.from(content).toString("base64");
-    console.log(`WS_MAP_${name}=${encoded}`);
+    const content = readFileSync(`dist/experimental/${name}`);
+    const encoded = gzipSync(content, { level: 9 }).toString("base64");
+    console.log(`WS_GZIP_MAP_${name}=${encoded}`);
   }
 });
