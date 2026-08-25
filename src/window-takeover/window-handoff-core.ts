@@ -41,13 +41,14 @@ export class WindowHandoffCoreError extends Error {
 export class WindowHandoffCore {
   readonly #runtime: SpawnedWebRtcRuntimeProvider;
   readonly #broker: TakeoverBroker;
-  readonly #ttlMs: number;
+  readonly #routeTtlMs: number;
   readonly #sessionIds = new Set<string>();
-  readonly #sessionByIntervention = new Map<string, string>();
+  readonly #sessionsByIntervention = new Map<string, Set<string>>();
   readonly #expiryTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(config: WindowHandoffCoreConfig) {
-    this.#ttlMs = config.takeover.ttlMs;
+    const completionGraceMs = config.takeover.completionGraceMs ?? config.takeover.ttlMs;
+    this.#routeTtlMs = config.takeover.ttlMs + completionGraceMs;
     this.#runtime = new SpawnedWebRtcRuntimeProvider(config.runtime);
     this.#broker = new TakeoverBroker(
       webRtcOnlySurfaceAdapter(),
@@ -126,22 +127,22 @@ export class WindowHandoffCore {
   }
 
   #rememberSession(interventionId: string, sessionId: string): void {
-    const previous = this.#sessionByIntervention.get(interventionId);
-    if (previous && previous !== sessionId) this.#forgetSession(previous);
     this.#sessionIds.add(sessionId);
-    this.#sessionByIntervention.set(interventionId, sessionId);
+    const sessions = this.#sessionsByIntervention.get(interventionId) ?? new Set<string>();
+    sessions.add(sessionId);
+    this.#sessionsByIntervention.set(interventionId, sessions);
     const existingTimer = this.#expiryTimers.get(sessionId);
     if (existingTimer) clearTimeout(existingTimer);
-    const timer = setTimeout(() => this.#forgetSession(sessionId), this.#ttlMs + 1_000);
+    const timer = setTimeout(() => this.#forgetSession(sessionId), this.#routeTtlMs + 1_000);
     timer.unref();
     this.#expiryTimers.set(sessionId, timer);
   }
 
   #forgetIntervention(interventionId: string): void {
-    const sessionId = this.#sessionByIntervention.get(interventionId);
-    if (!sessionId) return;
-    this.#sessionByIntervention.delete(interventionId);
-    this.#forgetSession(sessionId);
+    const sessions = this.#sessionsByIntervention.get(interventionId);
+    if (!sessions) return;
+    this.#sessionsByIntervention.delete(interventionId);
+    for (const sessionId of [...sessions]) this.#forgetSession(sessionId);
   }
 
   #forgetSession(sessionId: string): void {
@@ -149,8 +150,9 @@ export class WindowHandoffCore {
     const timer = this.#expiryTimers.get(sessionId);
     if (timer) clearTimeout(timer);
     this.#expiryTimers.delete(sessionId);
-    for (const [interventionId, currentSessionId] of this.#sessionByIntervention) {
-      if (currentSessionId === sessionId) this.#sessionByIntervention.delete(interventionId);
+    for (const [interventionId, sessions] of this.#sessionsByIntervention) {
+      sessions.delete(sessionId);
+      if (sessions.size === 0) this.#sessionsByIntervention.delete(interventionId);
     }
   }
 }
