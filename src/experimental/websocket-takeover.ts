@@ -1,5 +1,10 @@
 export type WebSocketTakeoverState = "open" | "closing" | "closed" | "revoked" | "failed";
 
+/**
+ * Trusted binding created only after Handoff-owned WSS ingress authenticates the principal,
+ * validates the request Origin, and claims one client generation. Never populate these fields
+ * from peer-controlled WebSocket messages.
+ */
 export interface WebSocketTakeoverBinding {
   interventionId: string;
   epoch: number;
@@ -65,7 +70,8 @@ export type WebSocketTakeoverFailureCode =
   | "input_not_allowed"
   | "stale_generation"
   | "frame_too_large"
-  | "transport_failure";
+  | "transport_failure"
+  | "authority_release_failed";
 
 export class WebSocketTakeoverError extends Error {
   constructor(
@@ -80,6 +86,9 @@ export class WebSocketTakeoverError extends Error {
 const DEFAULT_MAX_INBOUND_BYTES = 8 * 1024;
 const DEFAULT_MAX_FRAME_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAX_BUFFERED_BYTES = 512 * 1024;
+const ABSOLUTE_MAX_INBOUND_BYTES = 64 * 1024;
+const ABSOLUTE_MAX_FRAME_BYTES = 8 * 1024 * 1024;
+const ABSOLUTE_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 const MAX_SCROLL_DELTA = 2_000;
 const MAX_TEXT_BYTES = 4 * 1024;
 const MAX_KEY_BYTES = 64;
@@ -103,6 +112,11 @@ function boundedString(value: unknown, maxBytes: number): value is string {
   return typeof value === "string" && utf8Length(value) <= maxBytes;
 }
 
+function hasOnlyKeys(record: Record<string, unknown>, allowed: readonly string[]): boolean {
+  const keys = Object.keys(record);
+  return keys.length === allowed.length && keys.every((key) => allowed.includes(key));
+}
+
 function validateBinding(binding: WebSocketTakeoverBinding): void {
   if (
     !binding.interventionId ||
@@ -115,10 +129,15 @@ function validateBinding(binding: WebSocketTakeoverBinding): void {
   }
 }
 
-function positiveBound(value: number | undefined, fallback: number, name: string): number {
+function boundedLimit(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+  name: string
+): number {
   const resolved = value ?? fallback;
-  if (!Number.isInteger(resolved) || resolved < 1) {
-    throw new Error(`${name} must be a positive integer`);
+  if (!Number.isInteger(resolved) || resolved < 1 || resolved > maximum) {
+    throw new Error(`${name} must be an integer between 1 and ${maximum}`);
   }
   return resolved;
 }
@@ -151,6 +170,9 @@ function parseHumanMessage(
   const record = value as Record<string, unknown>;
   switch (record.kind) {
     case "tap":
+      if (!hasOnlyKeys(record, ["kind", "x", "y"])) {
+        throw new WebSocketTakeoverError("invalid_message", "Tap message has extra fields");
+      }
       if (!inputPolicy.tap) {
         throw new WebSocketTakeoverError("input_not_allowed", "Tap input is not allowed");
       }
@@ -159,6 +181,9 @@ function parseHumanMessage(
       }
       return { kind: "tap", x: record.x, y: record.y };
     case "scroll":
+      if (!hasOnlyKeys(record, ["kind", "deltaY"])) {
+        throw new WebSocketTakeoverError("invalid_message", "Scroll message has extra fields");
+      }
       if (!inputPolicy.scroll) {
         throw new WebSocketTakeoverError("input_not_allowed", "Scroll input is not allowed");
       }
@@ -167,6 +192,9 @@ function parseHumanMessage(
       }
       return { kind: "scroll", deltaY: record.deltaY };
     case "text":
+      if (!hasOnlyKeys(record, ["kind", "text"])) {
+        throw new WebSocketTakeoverError("invalid_message", "Text message has extra fields");
+      }
       if (!inputPolicy.text) {
         throw new WebSocketTakeoverError("input_not_allowed", "Text input is not allowed");
       }
@@ -175,6 +203,9 @@ function parseHumanMessage(
       }
       return { kind: "text", text: record.text };
     case "key":
+      if (!hasOnlyKeys(record, ["kind", "key"])) {
+        throw new WebSocketTakeoverError("invalid_message", "Key message has extra fields");
+      }
       if (!inputPolicy.key) {
         throw new WebSocketTakeoverError("input_not_allowed", "Key input is not allowed");
       }
@@ -183,10 +214,18 @@ function parseHumanMessage(
       }
       return { kind: "key", key: record.key };
     case "done":
+      if (!hasOnlyKeys(record, ["kind"])) {
+        throw new WebSocketTakeoverError("invalid_message", "Done message has extra fields");
+      }
       return { kind: "done" };
     case "ping":
-      if (record.nonce === undefined) return { kind: "ping" };
-      if (!boundedString(record.nonce, 64)) {
+      if (record.nonce === undefined) {
+        if (!hasOnlyKeys(record, ["kind"])) {
+          throw new WebSocketTakeoverError("invalid_message", "Ping message has extra fields");
+        }
+        return { kind: "ping" };
+      }
+      if (!hasOnlyKeys(record, ["kind", "nonce"]) || !boundedString(record.nonce, 64)) {
         throw new WebSocketTakeoverError("invalid_message", "Ping nonce is out of bounds");
       }
       return { kind: "ping", nonce: record.nonce };
@@ -222,19 +261,22 @@ export class ExperimentalWebSocketTakeoverChannel {
     this.peer = options.peer;
     this.lease = options.lease;
     this.onInput = options.onInput;
-    this.maxInboundBytes = positiveBound(
+    this.maxInboundBytes = boundedLimit(
       options.maxInboundBytes,
       DEFAULT_MAX_INBOUND_BYTES,
+      ABSOLUTE_MAX_INBOUND_BYTES,
       "maxInboundBytes"
     );
-    this.maxFrameBytes = positiveBound(
+    this.maxFrameBytes = boundedLimit(
       options.maxFrameBytes,
       DEFAULT_MAX_FRAME_BYTES,
+      ABSOLUTE_MAX_FRAME_BYTES,
       "maxFrameBytes"
     );
-    this.maxBufferedBytes = positiveBound(
+    this.maxBufferedBytes = boundedLimit(
       options.maxBufferedBytes,
       DEFAULT_MAX_BUFFERED_BYTES,
+      ABSOLUTE_MAX_BUFFERED_BYTES,
       "maxBufferedBytes"
     );
   }
@@ -259,14 +301,9 @@ export class ExperimentalWebSocketTakeoverChannel {
 
   async start(): Promise<void> {
     if (this.stateValue !== "open") return;
-    try {
+    await this.runBoundUse(async () => {
       await this.peer.sendControl({ kind: "ready" });
-    } catch (error) {
-      await this.failClosed(
-        new WebSocketTakeoverError("transport_failure", "WebSocket startup failed")
-      );
-      throw error;
-    }
+    });
   }
 
   receiveText(raw: string): Promise<void> {
@@ -281,18 +318,13 @@ export class ExperimentalWebSocketTakeoverChannel {
       }
 
       if (message.kind === "ping") {
-        try {
+        await this.runBoundUse(async () => {
           await this.peer.sendControl(
             message.nonce === undefined
               ? { kind: "pong" }
               : { kind: "pong", nonce: message.nonce }
           );
-        } catch (error) {
-          await this.failClosed(
-            new WebSocketTakeoverError("transport_failure", "WebSocket pong failed")
-          );
-          throw error;
-        }
+        });
         return;
       }
       if (message.kind === "done") {
@@ -309,14 +341,14 @@ export class ExperimentalWebSocketTakeoverChannel {
     if (this.stateValue !== "open") return;
     try {
       this.validateFrame(frame);
+      if (this.frameSending || this.isBackpressured()) {
+        this.replacePendingFrame(frame);
+        this.scheduleDrain();
+        return;
+      }
     } catch (error) {
       await this.failClosed(error);
       throw error;
-    }
-    if (this.frameSending || this.peer.bufferedAmount() > this.maxBufferedBytes) {
-      this.replacePendingFrame(frame);
-      this.scheduleDrain();
-      return;
     }
     if (this.pendingFrame) {
       this.droppedFramesValue += 1;
@@ -327,21 +359,37 @@ export class ExperimentalWebSocketTakeoverChannel {
 
   disconnect(): Promise<void> {
     return this.enqueue(async () => {
-      if (this.stateValue === "closed" || this.stateValue === "revoked") return;
+      if ((this.stateValue === "closed" || this.stateValue === "revoked") && this.released) {
+        return;
+      }
       this.stateValue = "closed";
       this.clearDrainTimer();
       this.pendingFrame = undefined;
-      await this.releaseOnce();
+      try {
+        await this.releaseOnce();
+      } catch (error) {
+        this.recordReleaseFailure();
+        await this.safeClose(INTERNAL_CLOSE, "authority_release_failed");
+        throw error;
+      }
     });
   }
 
   revoke(): Promise<void> {
     return this.enqueue(async () => {
-      if (this.stateValue === "revoked" || this.stateValue === "closed") return;
+      if ((this.stateValue === "revoked" || this.stateValue === "closed") && this.released) {
+        return;
+      }
       this.stateValue = "revoked";
       this.clearDrainTimer();
       this.pendingFrame = undefined;
-      await this.releaseOnce();
+      try {
+        await this.releaseOnce();
+      } catch (error) {
+        this.recordReleaseFailure();
+        await this.safeClose(INTERNAL_CLOSE, "authority_release_failed");
+        throw error;
+      }
       await this.safeClose(NORMAL_CLOSE, "revoked");
     });
   }
@@ -360,7 +408,7 @@ export class ExperimentalWebSocketTakeoverChannel {
     let current: WebSocketTakeoverFrame | undefined = first;
     try {
       while (current && this.stateValue === "open") {
-        if (this.peer.bufferedAmount() > this.maxBufferedBytes) {
+        if (this.isBackpressured()) {
           this.replacePendingFrame(current);
           this.scheduleDrain();
           break;
@@ -387,7 +435,7 @@ export class ExperimentalWebSocketTakeoverChannel {
   private async runBoundUse(operation: () => Promise<void>): Promise<void> {
     try {
       await this.lease.beginUse(this.binding);
-    } catch (error) {
+    } catch {
       const stale = new WebSocketTakeoverError(
         "stale_generation",
         "WebSocket takeover generation is no longer active"
@@ -469,10 +517,16 @@ export class ExperimentalWebSocketTakeoverChannel {
     } catch {
       // The connection may already be unavailable. Authority is still fenced below.
     }
-    await this.releaseOnce();
+    try {
+      await this.releaseOnce();
+    } catch {
+      this.recordReleaseFailure();
+    }
     await this.safeClose(
-      failure.code === "transport_failure" ? INTERNAL_CLOSE : POLICY_CLOSE,
-      failure.code
+      failure.code === "transport_failure" || this.lastFailureValue === "authority_release_failed"
+        ? INTERNAL_CLOSE
+        : POLICY_CLOSE,
+      this.lastFailureValue ?? failure.code
     );
   }
 
@@ -510,8 +564,13 @@ export class ExperimentalWebSocketTakeoverChannel {
     ) {
       return;
     }
-    if (this.peer.bufferedAmount() > this.maxBufferedBytes) {
-      this.scheduleDrain();
+    try {
+      if (this.isBackpressured()) {
+        this.scheduleDrain();
+        return;
+      }
+    } catch (error) {
+      await this.failClosed(error);
       return;
     }
     const frame = this.pendingFrame;
@@ -523,6 +582,25 @@ export class ExperimentalWebSocketTakeoverChannel {
     }
   }
 
+  private isBackpressured(): boolean {
+    let amount: number;
+    try {
+      amount = this.peer.bufferedAmount();
+    } catch {
+      throw new WebSocketTakeoverError(
+        "transport_failure",
+        "WebSocket buffered amount is unavailable"
+      );
+    }
+    if (!boundedNumber(amount, 0, Number.MAX_SAFE_INTEGER)) {
+      throw new WebSocketTakeoverError(
+        "transport_failure",
+        "WebSocket buffered amount is invalid"
+      );
+    }
+    return amount > this.maxBufferedBytes;
+  }
+
   private clearDrainTimer(): void {
     if (!this.drainTimer) return;
     clearTimeout(this.drainTimer);
@@ -531,12 +609,21 @@ export class ExperimentalWebSocketTakeoverChannel {
 
   private async releaseOnce(): Promise<void> {
     if (this.released) return;
-    this.released = true;
     try {
       await this.lease.release(this.binding);
+      this.released = true;
     } catch {
-      // Releasing an already stale generation must not make the transport usable again.
+      throw new WebSocketTakeoverError(
+        "authority_release_failed",
+        "WebSocket takeover authority release failed"
+      );
     }
+  }
+
+  private recordReleaseFailure(): void {
+    this.released = false;
+    this.stateValue = "failed";
+    this.lastFailureValue = "authority_release_failed";
   }
 
   private async safeClose(code: number, reason: string): Promise<void> {
