@@ -73,6 +73,12 @@ jobs:
       - run: npm run build
       - name: Install Linux normal-browser takeover dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool openbox ffmpeg
+      - name: Normalize runner Chrome stable
+        run: |
+          if command -v google-chrome-stable >/dev/null 2>&1; then
+            sudo apt-get install -y --only-upgrade google-chrome-stable
+            google-chrome-stable --version
+          fi
       - name: Verify runner Chrome
         run: command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser
       - run: npm run accept:webrtc:linux

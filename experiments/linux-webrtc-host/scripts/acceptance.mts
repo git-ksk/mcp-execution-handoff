@@ -102,6 +102,7 @@ async function main(): Promise<void> {
 
   let pageInteractive = false;
   let formOpened = false;
+  const pointerEvents = { pointerdown: false, mousedown: false, pointerup: false, mouseup: false, click: false };
   let typedLength = 0;
   let submitted: string | undefined;
   const server = http.createServer((req, res) => {
@@ -111,6 +112,17 @@ async function main(): Promise<void> {
     if (url.pathname === "/ready") {
       pageInteractive = true;
       res.end("ok");
+      return;
+    }
+    if (url.pathname === "/pointer-event") {
+      const kind = url.searchParams.get("kind");
+      if (kind === "pointerdown" || kind === "mousedown" || kind === "pointerup" || kind === "mouseup" || kind === "click") {
+        pointerEvents[kind] = true;
+        res.end("ok");
+        return;
+      }
+      res.statusCode = 400;
+      res.end("invalid");
       return;
     }
     if (url.pathname === "/form") {
@@ -129,7 +141,7 @@ async function main(): Promise<void> {
       res.end("<!doctype html><html><body>submitted</body></html>");
       return;
     }
-    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button><script>window.addEventListener('load',()=>fetch('/ready',{cache:'no-store'}).catch(()=>{}),{once:true});</script></body></html>`);
+    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button id="open-form" onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button><script>const b=document.getElementById('open-form');for(const k of ['pointerdown','mousedown','pointerup','mouseup','click'])b.addEventListener(k,()=>fetch('/pointer-event?kind='+k,{cache:'no-store',keepalive:true}).catch(()=>{}));window.addEventListener('load',()=>fetch('/ready',{cache:'no-store'}).catch(()=>{}),{once:true});</script></body></html>`);
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -156,6 +168,8 @@ async function main(): Promise<void> {
   let rtpPackets = 0;
   let inputUses = 0;
   let endedUses = 0;
+  let pointerInsideExactWindow = false;
+  let pointerWindowOwnedByTarget = false;
   client.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { rtpPackets += 1; }));
 
   try {
@@ -185,7 +199,7 @@ async function main(): Promise<void> {
     process.stdout.write("LINUX_WEBRTC_STAGE chrome-window\n");
     const acceptedWindowId = await waitForLinuxWindowReadiness({
       expectedTitle: "Handoff Linux Acceptance",
-      timeoutMs: 30_000,
+      timeoutMs: 45_000,
       stableSamples: 2,
       observe: () => {
         const processAlive = chrome?.exitCode === null && chrome?.signalCode === null;
@@ -252,31 +266,61 @@ async function main(): Promise<void> {
       throw new Error(`${error instanceof Error ? error.message : "RTP timeout"}; diagnostics=${stages}`);
     }
 
-    critical.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.55 }));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "down", x: 0.5, y: 0.55 }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "up", x: 0.5, y: 0.55 }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const pointerLocation = spawnSync("/usr/bin/xdotool", ["getmouselocation", "--shell"], { env: xEnv, encoding: "utf8" });
+    const pointerFields = new Map<string, number>();
+    if (pointerLocation.status === 0) {
+      for (const line of pointerLocation.stdout.split(/\r?\n/)) {
+        const match = /^([A-Z]+)=(-?\d+)$/.exec(line.trim());
+        if (match) pointerFields.set(match[1]!, Number(match[2]));
+      }
+    }
+    const acceptedGeometry = spawnSync("/usr/bin/xdotool", ["getwindowgeometry", "--shell", acceptedWindowId], { env: xEnv, encoding: "utf8" });
+    const geometryFields = new Map<string, number>();
+    if (acceptedGeometry.status === 0) {
+      for (const line of acceptedGeometry.stdout.split(/\r?\n/)) {
+        const match = /^([A-Z]+)=(-?\d+)$/.exec(line.trim());
+        if (match) geometryFields.set(match[1]!, Number(match[2]));
+      }
+    }
+    const px = pointerFields.get("X"), py = pointerFields.get("Y");
+    const gx = geometryFields.get("X"), gy = geometryFields.get("Y"), gw = geometryFields.get("WIDTH"), gh = geometryFields.get("HEIGHT");
+    pointerInsideExactWindow = [px, py, gx, gy, gw, gh].every(Number.isFinite)
+      && px! >= gx! && px! < gx! + gw! && py! >= gy! && py! < gy! + gh!;
+    const pointerWindow = pointerFields.get("WINDOW");
+    if (Number.isSafeInteger(pointerWindow) && pointerWindow! > 0) {
+      const pointerPid = spawnSync("/usr/bin/xdotool", ["getwindowpid", String(pointerWindow)], { env: xEnv, encoding: "utf8" });
+      pointerWindowOwnedByTarget = pointerPid.status === 0 && Number(pointerPid.stdout.trim()) === chrome.pid;
+    }
     process.stdout.write("LINUX_WEBRTC_STAGE tap-form\n");
     try {
-      await waitFor("tap-form", () => inputUses >= 1 && endedUses >= 1 && formOpened);
+      await waitFor("tap-form", () => inputUses >= 2 && endedUses >= 2 && formOpened);
     } catch (error) {
       const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
-      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}`);
+      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
 
-    critical.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "down", x: 0.5, y: 0.5 }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "up", x: 0.5, y: 0.5 }));
     process.stdout.write("LINUX_WEBRTC_STAGE tap-input\n");
-    await waitFor("tap-input", () => inputUses >= 2 && endedUses >= 2);
+    await waitFor("tap-input", () => inputUses >= 4 && endedUses >= 4);
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     const marker = `handoff-linux-${process.pid}-dummy`;
     critical.send(JSON.stringify({ kind: "text", text: marker }));
     process.stdout.write("LINUX_WEBRTC_STAGE text-input\n");
-    await waitFor("text-input", () => inputUses >= 3 && endedUses >= 3);
+    await waitFor("text-input", () => inputUses >= 5 && endedUses >= 5);
     await waitFor("text-field-value", () => typedLength === marker.length);
     process.stdout.write("LINUX_WEBRTC_STAGE text-field-value\n");
     assert.equal(await markerInAnyProcess(marker), false, "Human text leaked into a process command line");
     critical.send(JSON.stringify({ kind: "key", key: "Enter" }));
     process.stdout.write("LINUX_WEBRTC_STAGE enter-submit\n");
-    await waitFor("enter-submit", () => inputUses >= 4 && endedUses >= 4 && submitted === marker);
+    await waitFor("enter-submit", () => inputUses >= 6 && endedUses >= 6 && submitted === marker);
 
     assert.ok(rtpPackets > 0, "no H264 RTP reached the WebRTC peer");
     process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses}\n`);

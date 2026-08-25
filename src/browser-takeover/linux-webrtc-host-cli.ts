@@ -28,7 +28,9 @@ export interface LinuxWindowGeometry {
 }
 
 export interface LinuxHostInput {
-  kind: "tap" | "scroll" | "text" | "key";
+  kind: "tap" | "pointer_button" | "scroll" | "text" | "key";
+  button?: "primary";
+  state?: "down" | "up";
   x?: number;
   y?: number;
   deltaX?: number;
@@ -303,6 +305,12 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
     const x = Number(record.x), y = Number(record.y);
     return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { kind: "tap", x, y } : undefined;
   }
+  if (record.kind === "pointer_button" && record.button === "primary" && (record.state === "down" || record.state === "up")) {
+    const x = Number(record.x), y = Number(record.y);
+    return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1
+      ? { kind: "pointer_button", button: "primary", state: record.state, x, y }
+      : undefined;
+  }
   if (record.kind === "scroll") {
     const deltaX = Number(record.deltaX), deltaY = Number(record.deltaY);
     return Number.isFinite(deltaX) && Number.isFinite(deltaY) && Math.abs(deltaX) <= 2_000 && Math.abs(deltaY) <= 2_000
@@ -318,6 +326,9 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
 }
 
 class LinuxWindowInput {
+  private primaryPressed = false;
+  private primaryPoint: { x: number; y: number } | undefined;
+
   constructor(
     private geometry: LinuxWindowGeometry,
     private readonly targetPid: number,
@@ -334,13 +345,13 @@ class LinuxWindowInput {
     // Pointer operations may establish browser focus. Text/key operations must preserve the
     // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
     // the top-level X11 window here can steal that internal focus before paste/Enter.
-    if (input.kind === "tap" || input.kind === "scroll") {
+    if (input.kind === "tap" || input.kind === "pointer_button" || input.kind === "scroll") {
       await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
     }
     await this.confirmActiveTarget();
     await this.confirmInputFocusOwnedByTarget();
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
-    if (input.kind === "tap") {
+    if (input.kind === "tap" || input.kind === "pointer_button") {
       const point = normalizedPointInWindow(
         {
           id: this.geometry.windowId,
@@ -354,12 +365,15 @@ class LinuxWindowInput {
       );
       const x = Math.round(point.x);
       const y = Math.round(point.y);
-      // Move through XTest using root coordinates derived from the exact target window. This avoids
-      // reparenting/window-decoration differences in --window-relative pointer semantics while
-      // keeping the point strictly inside the already-resolved browser window.
-      await runCommand(this.xdotool, ["mousemove", "--sync", String(x), String(y)], this.display);
-      await runCommand(this.xdotool, ["click", "1"], this.display);
-      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
+      if (input.kind === "tap") {
+        await this.postPrimaryButton("down", x, y);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await this.postPrimaryButton("up", x, y);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
+        return;
+      }
+      await this.postPrimaryButton(input.state!, x, y);
+      if (input.state === "up") process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
       return;
     }
     if (input.kind === "scroll") {
@@ -373,6 +387,84 @@ class LinuxWindowInput {
       return;
     }
     await this.typeText(input.text!);
+  }
+
+
+  private async postPrimaryButton(state: "down" | "up", x: number, y: number): Promise<void> {
+    if (state === "down") {
+      if (this.primaryPressed) throw new Error("Linux WebRTC primary button is already pressed");
+      // Position before pressing. Reissuing a synchronous XTest move while Button1 is already down
+      // can block on newer Chromium/Xvfb combinations and also turns tap semantics into a drag.
+      const relativeX = x - this.geometry.x;
+      const relativeY = y - this.geometry.y;
+      await runCommand(this.xdotool, [
+        "mousemove", "--sync", "--window", String(this.geometry.windowId),
+        String(relativeX), String(relativeY)
+      ], this.display);
+      await runCommand(this.xdotool, ["mousedown", "1"], this.display);
+      this.primaryPressed = true;
+      this.primaryPoint = { x, y };
+      return;
+    }
+    const pressed = this.primaryPoint;
+    if (!this.primaryPressed || !pressed) throw new Error("Linux WebRTC primary button is not pressed");
+    // `pointer_button` is an internal lifecycle for the public tap policy, not a drag API. Require
+    // release at the admitted press point and avoid another pointer move while Button1 is held.
+    if (Math.abs(pressed.x - x) > 1 || Math.abs(pressed.y - y) > 1) {
+      throw new Error("Linux WebRTC primary release point changed");
+    }
+    await runCommand(this.xdotool, ["mouseup", "1"], this.display);
+    this.primaryPressed = false;
+    this.primaryPoint = undefined;
+  }
+
+  async releaseAll(): Promise<void> {
+    if (!this.primaryPressed) return;
+    const releasePoint = await this.cancellationPoint();
+    // Use one ordered xdotool command without --sync while Button1 is held. This intentionally
+    // becomes an interrupted drag/release away from the original control and cannot deadlock on a
+    // synchronous motion wait during shutdown.
+    await runCommand(this.xdotool, [
+      "mousemove", String(releasePoint.x), String(releasePoint.y),
+      "mouseup", "1"
+    ], this.display).catch(() => undefined);
+    this.primaryPressed = false;
+    this.primaryPoint = undefined;
+  }
+
+  private async cancellationPoint(): Promise<{ x: number; y: number }> {
+    const raw = await runCommand(this.xdotool, ["getdisplaygeometry"], this.display).catch(() => "");
+    const match = /^(\d+)\s+(\d+)$/.exec(raw.trim());
+    const width = match ? Number(match[1]) : 0;
+    const height = match ? Number(match[2]) : 0;
+    const pressed = this.primaryPoint ?? { x: this.geometry.x, y: this.geometry.y };
+    if (Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 1 && height > 1) {
+      const safeX = Math.min(Math.max(pressed.x, 1), width - 2);
+      const safeY = Math.min(Math.max(pressed.y, 1), height - 2);
+      const margin = 2;
+      if (this.geometry.x - margin >= 0) return { x: this.geometry.x - margin, y: safeY };
+      if (this.geometry.x + this.geometry.width + margin < width) {
+        return { x: this.geometry.x + this.geometry.width + margin, y: safeY };
+      }
+      if (this.geometry.y - margin >= 0) return { x: safeX, y: this.geometry.y - margin };
+      if (this.geometry.y + this.geometry.height + margin < height) {
+        return { x: safeX, y: this.geometry.y + this.geometry.height + margin };
+      }
+      // A full-display target has no off-window point. Fall back to the display corner farthest
+      // from the original press so cleanup becomes an interrupted drag/release, not a control click.
+      const candidates = [
+        { x: 1, y: 1 },
+        { x: width - 2, y: 1 },
+        { x: 1, y: height - 2 },
+        { x: width - 2, y: height - 2 }
+      ];
+      return candidates.reduce((best, candidate) => {
+        const bestDistance = Math.hypot(best.x - pressed.x, best.y - pressed.y);
+        const candidateDistance = Math.hypot(candidate.x - pressed.x, candidate.y - pressed.y);
+        return candidateDistance > bestDistance ? candidate : best;
+      });
+    }
+    return { x: Math.max(0, this.geometry.x - 2), y: Math.max(0, this.geometry.y - 2) };
   }
 
   private async currentOwnedGeometry(): Promise<LinuxWindowGeometry> {
@@ -589,10 +681,18 @@ export async function linuxWebRtcHostMain(): Promise<void> {
 
   let pending = Buffer.alloc(0);
   let inputChain = Promise.resolve();
-  stopHost = async () => {
-    if (stopped) return;
+  let stopPromise: Promise<void> | undefined;
+  stopHost = () => {
+    if (stopPromise) return stopPromise;
     stopped = true;
-    await capture.stop();
+    // Serialize lifecycle cleanup after every already-admitted Human mutation. If shutdown races
+    // an in-flight primary-down command, releasing outside the chain can observe primaryPressed
+    // before mousedown completes and leave the X11 button stuck after helper exit.
+    inputChain = inputChain
+      .then(() => input.releaseAll())
+      .catch(() => undefined);
+    stopPromise = inputChain.then(() => capture.stop());
+    return stopPromise;
   };
   capture.start();
   const expiry = setTimeout(() => { void stopHost(); }, Math.max(0, expiresAt - Date.now()));
@@ -630,7 +730,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
 
   while (!stopped) await new Promise((resolve) => setTimeout(resolve, 40));
   clearTimeout(expiry);
-  await inputChain;
+  await stopPromise;
 }
 
 export function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean {

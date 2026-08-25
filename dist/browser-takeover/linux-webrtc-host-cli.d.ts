@@ -7,7 +7,9 @@ export interface LinuxWindowGeometry {
     height: number;
 }
 export interface LinuxHostInput {
-    kind: "tap" | "scroll" | "text" | "key";
+    kind: "tap" | "pointer_button" | "scroll" | "text" | "key";
+    button?: "primary";
+    state?: "down" | "up";
     x?: number;
     y?: number;
     deltaX?: number;

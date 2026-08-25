@@ -125,8 +125,12 @@ test("wrong title or non-interactive page cannot satisfy exact-window readiness"
 test("Linux real-browser acceptance carries the accepted exact window into WebRTC target binding", () => {
   const source = readFileSync("experiments/linux-webrtc-host/scripts/acceptance.mts", "utf8");
   assert.match(source, /waitForLinuxWindowReadiness/);
+  assert.match(source, /timeoutMs:\s*45_000/);
   assert.match(source, /stableSamples:\s*2/);
   assert.match(source, /targetWindowId:\s*acceptedWindowIdNumber/);
+  assert.match(source, /kind: "pointer_button", button: "primary", state: "down"/);
+  assert.match(source, /kind: "pointer_button", button: "primary", state: "up"/);
+  assert.doesNotMatch(source, /critical\.send\(JSON\.stringify\(\{ kind: "tap"/);
   const visibleSearches = source.match(/xdotool[\s\S]{0,120}search[\s\S]{0,120}--onlyvisible/g) ?? [];
   assert.equal(visibleSearches.length, 1, "window readiness must use one coherent polling observation path");
   assert.doesNotMatch(source, /assert\.equal\(windowIds\.length,\s*1\)/);
