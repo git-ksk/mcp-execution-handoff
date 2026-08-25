@@ -15,24 +15,20 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-08-23
+### 現在の作業状態 — 2026-08-25
 
-v0.1.0以降は、Handoffをgenericなcomputer-use / remote-desktop productへ広げることなく、元のbrowser consumer以外でもhandoff contractを再利用できるかを実consumerで検証しています。
+v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。ただし最終的なTarget Surface用語は #45/#46 がcloseするまで意図的に固定しません。
 
-着地済みの土台:
+- `BrowserHandoffAdapter` は #70 で完了し、canonicalなhigh-level Browser WebRTC compositionです。
+- `WindowHandoffAdapter` は実装済みで、CUMGもconsumer-localな `TakeoverBroker` / runtime手組みから移行済みです。merged codeでiPhone + Cloudflare Tunnel/TURN acceptanceとstale locator拒否まで通過しています。#85に残るのはfirst-class adapterでのsame-LAN direct再Acceptanceだけです。
+- `TerminalHandoffAdapter` は #86 で完了しました。CUMGはexperimental PTY authorityとTerminal WebRTC transportを別々にcomposeせず、first-class adapterだけを利用します。merged-code real PTY cross-repo E2Eとphysical iPhone Human acceptanceも通過済みです。
+- #47でmacOS/Linuxのbounded exact-window primitiveを整理し、whole-desktop fallbackを追加せず共通化しました。
+- #48でbounded Terminal/PTY semanticsを実dogfoodし、staged Agent/Human drain fence、explicit resume、post-Human state sync必須化、Human期間outputをAgentへreplayしない境界を確立しました。
+- CUMGはWindowとTerminalの両方でprovenなnon-browser consumerです。
 
-- architectureを Handoff Semantics / Human Interaction Policy / Target Surface / Transport の4軸に整理済み
-- 現在のproven Target Surfaceは `browser` と bounded `os_window`
-- internal bounded OS/window primitiveとして exact-one selection、ambiguity時のfail-closed、bounded capture sizing、target内に必ず収まるnormalized Human input mappingを実装済み
-- Linux browser hostは既存のexact-window security boundaryとreal-browser WebRTC behaviorを維持したまま、そのOS/window primitiveを再利用済み
-- CIはUbuntu / macOS / WindowsのNode/Browser portabilityを実行し、Linuxではreal ChromeによるWebRTC acceptanceを継続
-- generated artifactのdriftもcross-platformで検出
+したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。#46でsemantic admission criteriaを整理し、#85の残るdirect evidenceを閉じた後に #45でterminology/public APIを収束します。
 
-現在の検証方針:
-
-- Issue #47では `git-ksk/computer-use-mcp-gateway`（CUMG）/ Cuaを、non-browser `os_window` の第一dogfood候補として使う。最初のdogfood loopは残るmacOS host抽出より先に開始してよく、macOS側の抽出境界はsynthetic prerequisiteではなく実際のintegration frictionを見て確定する。
-- Issue #48ではbounded PTY sessionを使った `terminal` Target Surfaceをexperimental/internalでprototypeし、CUMGをdogfood候補にする。`terminal` は実利用で境界が証明されるまでstable public Target Surface kindにはしない。
-- broadなpublic `OsWindowAdapter` / `TerminalAdapter` やpublic Target Surface enum拡張は、dogfoodで再利用可能なshapeが確認できるまで固定しない。
+既知follow-upは限定的です。#85はfirst-class Windowのsame-LAN direct physical rerun、#91はbackend lifecycleが正常完了していてもSafari上で「Connecting」に見え続ける可能性があるTerminal mobile UI/status ambiguityを追跡します。いずれもauthority / epoch / replay / privacy boundaryを弱める課題ではありません。
 
 ## 基本原則
 
@@ -59,25 +55,24 @@ v0.1.0以降は、Handoffをgenericなcomputer-use / remote-desktop productへ�
 
 ## v0.2 — 3つ目のconsumerとTarget Surface contractを検証
 
-候補scope:
+現在のscopeとcloseout:
 
-- 性質の異なるworkflow/domainの3つ目の実consumerでcontractを検証し、CUMGを第一dogfood候補とする
-- stableなsurface adapterを公開する前に、browser-takeover host外でbounded `os_window` を再利用できるか検証
-- `terminal` / PTY handoffをinternalでprototypeし、実dogfoodからTerminalが独立した再利用可能Target Surfaceなのか、より小さいsession/stream abstractionの方が正しいのか判断
-- public API追加前にadapter friction / surface frictionを記録
-- authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalize
-- consumer / Cua / browser / PTY / transport固有semanticを漏らさず公開できるextension pointを整理
+- Browser / Window / Terminalをfirst-class consumer-facing componentとして維持し、異なるmedia/stream mechanicsをprematureなgeneric surface interfaceへ無理に押し込めない
+- #85のmerged-code same-LAN direct Window acceptanceを完了し、すでに通過済みのpublic Tunnel/TURN physical evidenceも維持する
+- CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す
+- authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalizeする
+- #46/#45でstable terminologyとpublic Target Surface discriminatorが本当に必要かを決める。3adapterが存在するだけではpublic enumを要件にしない
 
-Target Surface追加は引き続きevidence-basedとする。既存の `browser` / `os_window` と比べて、authority boundary、capture/input model、lifecycle、postcondition handlingのいずれかが本質的に異なる場合のみ新categoryを追加する。単に別app・別OS・別deviceであるだけでは追加理由にしない。
+Target Surface admissionは引き続きevidence-basedです。provenな Browser / bounded OS Window / bounded Terminal-PTY shapeと比べて、authority boundary、capture/input model、lifecycle、postcondition handlingが本質的に異なる場合だけ新shapeとして認めます。別app・別OS・別device・別transport・別deploymentというだけでは追加理由にしません。
 
 完了条件:
 
-- 3つの実consumerでdeterministic testがgreen
-- 3つ目のconsumerのためにgeneric `src/` へproduct-specific conceptを入れず再利用できる
-- bounded OS/window dogfoodで1つのexact targetに対する Agent → Human → verifying → Agent を実証、または具体的blockerを文書化
-- Terminal/PTYの結果として、`terminal` をproven categoryへ昇格するか、experimentalのままにするか、より小さいabstractionへ置き換えるかを明記
-- adapterやTarget Surface都合でsecurity invariantを弱めない
-- 新しいpublic surfaceには少なくとも2つの独立した実use caseとdocumented compatibility strategyがある
+- Browser / Window / Terminal componentがdeterministic testとreal consumer integrationでgreenを維持
+- first-class Window adapterでexact targetに対する Agent → Human → verifying → Agent を必要な両connectivity baselineで実証
+- Terminal/PTYがshell/process runnerへ広がらずbounded session/stream componentのままで、real PTY / iPhone evidenceを再現可能
+- CUMGがHandoff experimental internalsではなくfirst-class Window/Terminal componentだけへ依存
+- #46/#45でsemantic-domain / terminologyの最終判断を文書化し、security invariantを弱めない
+- 将来generic surface APIを追加する場合、target-specific mechanicsより小さいabstractionであるevidenceとcompatibility strategyを持つ
 
 npm publicationは **v0.2の完了条件ではありません**。
 
@@ -102,7 +97,7 @@ npm publicationは **v0.2の完了条件ではありません**。
 
 - MCP MRTR / Elicitation / Tasksの進化を追跡し、標準で置き換えられる独自plumbingを削減
 - 実用上可能な範囲で複数MCP client/server implementationと検証
-- Maps / Cinema / future MCP consumerが `TakeoverBroker` + WebRTC runtime詳細を自前compositionせず、start / revoke / exact-target semanticsへ依存できるfirst-class Browser WebRTC Handoff adapterを提供・dogfood
+- first-class Browser / Window / Terminal component familyを維持し、consumerがlow-level broker / WebRTC / PTY-authority internalsを手組みせずbounded lifecycle / target semanticsへ依存できる状態を保つ
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - generic remote-desktop productへ広げず、low-latency push/latest-frame transportとminimal native Human Takeover reference clientを検証
 

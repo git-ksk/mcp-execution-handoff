@@ -114,6 +114,18 @@ Linux helperはtarget PIDに属するX11 windowを厳密に1つだけ解決し�
 
 `selectHumanSurface()` は、sign-in / consentなどconsumerが設定したreasonを `credential_safe_external` へrouteし、それ以外を `automation_adjacent` に残す小さなpolicy helperです。どのreasonがidentity-sensitiveかはcoreでは決めません。
 
+## First-class surface component
+
+consumer-facingなcomponent familyを明示しています。共通化できるHandoff semanticsは共有しますが、異なるtarget mechanicsを1つのgeneric runnerへ無理に押し込みません。
+
+| Component | Boundary | 現在のevidence |
+| --- | --- | --- |
+| `BrowserHandoffAdapter` | exact browser/window + WebRTC上のbounded Human input | #70で完了。既存browser consumerとphysical mobile transport acceptanceをbaselineとして維持します。 |
+| `WindowHandoffAdapter` | exact bounded OS application window。desktop fallbackなし | 実装済みでCUMGも利用中。merged-code iPhone public Tunnel/TURN relay acceptanceとstale locator拒否は通過済みで、#85に残るのはfirst-class adapterのsame-LAN direct再Acceptanceだけです。 |
+| `TerminalHandoffAdapter` | 1つのconsumer-owned bounded PTY/session + DataChannel WebRTC | #86で完了。CUMGはexperimental部品の直接compositionから移行済みで、merged-code real PTY E2Eとphysical iPhone Human acceptanceも通過済みです。#91はmobile connection/status表示だけを追跡します。 |
+
+これらadapterの存在だけでgenericなpublic Target Surface enumをfreezeしません。実証済みsurface shapeはBrowser / bounded OS Window / bounded Terminal-PTYの3つですが、最終的なsemantic-domainとterminology/API収束は #46/#45で行います。どのcomponentでもHuman `Done`はtransport/lifecycle stepの完了evidenceに過ぎず、semantic successや重大操作のapprovalではありません。
+
 ## Browser takeover
 
 Standaloneなbrowser MCP consumer向けのcanonical high-level WebRTC compositionは `BrowserHandoffAdapter` です。consumerが渡すのはintervention / principal binding、exact target process/window、明示的でboundedなHuman input policy、自分で所有するbrowser/profile lifecycleで、HandoffがWebRTC runtime + broker compositionを内部で構成します。Consumer-facing surfaceは `start()` / `revoke()` / HTTP routing + bounded diagnosticsに絞り、canonical Browser Handoffがlegacy HTTP frame/input transportへsilent downgradeすることはありません。Locator発行はcontrol-plane setupに過ぎず、media/input pathがusableになる前にhost-window readinessとfirst-media-frame gateを通ります。Browser profile persistence、target-service authentication、post-Human checkpoint / verificationはconsumer責務のままです。
