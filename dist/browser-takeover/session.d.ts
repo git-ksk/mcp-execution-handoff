@@ -24,8 +24,9 @@ export declare class TakeoverSessionManager {
     private readonly createId;
     private readonly signingKey;
     private readonly reconnectIdleMs;
+    private readonly completionGraceMs;
     private readonly records;
-    constructor(ttlMs: number, now?: () => number, createId?: () => string, signingKey?: Buffer, reconnectIdleMs?: number);
+    constructor(ttlMs: number, now?: () => number, createId?: () => string, signingKey?: Buffer, reconnectIdleMs?: number, completionGraceMs?: number);
     ensure(interventionId: string, epoch: number, principalBinding: string): TakeoverLocator;
     validateLocator(id: string, principalBinding: string): TakeoverLocator;
     issueCompletionCapability(id: string, principalBinding: string): string;
