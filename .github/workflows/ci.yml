@@ -23,6 +23,13 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: Upload temporary WebSocket TS7 artifacts
+        if: matrix.node == 24
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: websocket-ts7-generated
+          path: dist/experimental/websocket-takeover.*
+          retention-days: 1
       - name: Verify committed dist is current
         if: matrix.node == 24
         run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
