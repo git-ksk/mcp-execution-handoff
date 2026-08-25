@@ -188,6 +188,7 @@ export class TakeoverBroker {
     webRtcTargetWindowIds = new Map();
     webRtcInputPolicies = new Map();
     completionDelivered = new Set();
+    completionGraceMs;
     // A Safari page lifecycle suspend must never revoke the peer while its answer is still being built.
     webRtcConnectInFlight = new Map();
     constructor(browser, config, nativeRuntime, webRtcRuntime, hooks = {}) {
@@ -196,7 +197,8 @@ export class TakeoverBroker {
         this.nativeRuntime = nativeRuntime;
         this.webRtcRuntime = webRtcRuntime;
         this.hooks = hooks;
-        this.sessions = new TakeoverSessionManager(config.ttlMs, undefined, undefined, undefined, config.reconnectIdleMs ?? 5_000);
+        this.completionGraceMs = config.completionGraceMs ?? config.ttlMs;
+        this.sessions = new TakeoverSessionManager(config.ttlMs, undefined, undefined, undefined, config.reconnectIdleMs ?? 5_000, this.completionGraceMs);
         this.publicOrigin = config.publicBaseUrl ? new URL(config.publicBaseUrl).origin : undefined;
     }
     isEnabled() {
@@ -255,11 +257,12 @@ export class TakeoverBroker {
             return undefined;
         for (const [sessionId, currentIntervention] of this.webRtcOnlySessions) {
             if (currentIntervention === intervention.id && sessionId !== locator.id) {
-                this.webRtcOnlySessions.delete(sessionId);
+                // A prior session can exist here only after its mutable media/input lease expired or was
+                // revoked by a newer epoch. Keep the route marker until its bounded completion grace ends,
+                // but drop all target/input metadata immediately so it cannot regain Human input authority.
                 this.webRtcTargetProcessIds.delete(sessionId);
                 this.webRtcTargetWindowIds.delete(sessionId);
                 this.webRtcInputPolicies.delete(sessionId);
-                this.completionDelivered.delete(sessionId);
             }
         }
         const existingPolicy = this.webRtcInputPolicies.get(locator.id);
@@ -272,14 +275,23 @@ export class TakeoverBroker {
             if (target.windowId !== undefined)
                 this.webRtcTargetWindowIds.set(locator.id, target.windowId);
         }
-        const expiryCleanup = setTimeout(() => {
+        const mediaExpiryCleanup = setTimeout(() => {
+            // Media/input authority ends at ttlMs. Keep only the route marker needed to deliver a
+            // completion-only capability during the bounded grace window. Session-manager checks keep
+            // prepare/connect/input/reconnect fail-closed after the media lease expires.
+            this.webRtcTargetProcessIds.delete(locator.id);
+            this.webRtcTargetWindowIds.delete(locator.id);
+            this.webRtcInputPolicies.delete(locator.id);
+        }, this.config.ttlMs + 1_000);
+        mediaExpiryCleanup.unref();
+        const completionExpiryCleanup = setTimeout(() => {
             this.webRtcOnlySessions.delete(locator.id);
             this.webRtcTargetProcessIds.delete(locator.id);
             this.webRtcTargetWindowIds.delete(locator.id);
             this.webRtcInputPolicies.delete(locator.id);
             this.completionDelivered.delete(locator.id);
-        }, this.config.ttlMs + 1_000);
-        expiryCleanup.unref();
+        }, this.config.ttlMs + this.completionGraceMs + 1_000);
+        completionExpiryCleanup.unref();
         return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
     }
     revokeForIntervention(interventionId) {

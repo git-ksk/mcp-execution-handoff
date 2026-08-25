@@ -26,6 +26,7 @@ export interface TakeoverBrokerConfig {
     publicBaseUrl?: string;
     ttlMs: number;
     reconnectIdleMs?: number;
+    completionGraceMs?: number;
 }
 export interface TakeoverCompletionEvent {
     interventionId: string;
@@ -50,6 +51,7 @@ export declare class TakeoverBroker {
     private readonly webRtcTargetWindowIds;
     private readonly webRtcInputPolicies;
     private readonly completionDelivered;
+    private readonly completionGraceMs;
     private readonly webRtcConnectInFlight;
     constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined, webRtcRuntime?: WebRtcTakeoverRuntimeProvider | undefined, hooks?: TakeoverBrokerHooks);
     isEnabled(): boolean;

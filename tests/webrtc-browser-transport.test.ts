@@ -739,6 +739,56 @@ test("completion-only Done survives WebRTC disconnect and reload without revivin
   assert.notEqual(grant.capability, initialCompletion);
 });
 
+test("claimed WebRTC completion route survives media ttl while mutable input stays expired", async () => {
+  const runtime = new FakeWebRtcRuntime();
+  const broker = new TakeoverBroker(
+    noOpBrowser(),
+    {
+      enabled: true,
+      publicBaseUrl: ORIGIN,
+      ttlMs: 1_000,
+      reconnectIdleMs: 250,
+      completionGraceMs: 1_500
+    },
+    undefined,
+    runtime
+  );
+  const link = broker.createWebRtcLink(
+    { id: "intervention-media-expiry-completion", epoch: 3 },
+    PRINCIPAL,
+    { processId: 4242, windowId: 31337 }
+  );
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1)!;
+
+  const page = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
+  assert.equal(page.status, 200);
+  const completion = /data-completion="([A-Za-z0-9_-]{32,128})"/.exec(await page.text())?.[1];
+  assert.ok(completion);
+
+  const claimed = await prepare(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(claimed.status, 200);
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+
+  const completionPage = await broker.handle(
+    new Request(`http://localhost/takeover/${sessionId}`),
+    PRINCIPAL
+  );
+  assert.equal(completionPage.status, 200);
+  assert.match(await completionPage.text(), /data-completion=/);
+
+  const stalePrepare = await prepare(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(stalePrepare.status, 404);
+
+  const completed = await broker.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": completion }
+  }), PRINCIPAL);
+  assert.equal(completed.status, 200);
+  assert.deepEqual(await completed.json(), { done: true, alreadyDone: false });
+});
+
 test("Done revokes broker generation and WebRTC runtime without treating relay as semantic success", async () => {
   const { broker, runtime, sessionId } = fixture();
   const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);

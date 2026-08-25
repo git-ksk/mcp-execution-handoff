@@ -36,6 +36,46 @@ test("first-class Window Handoff issues only a WebRTC locator for an exact bound
   assert.doesNotMatch(html, /\/takeover\/client\.js/);
 });
 
+test("Window Handoff keeps completion route ownership after media ttl without extending input", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: {
+      enabled: true,
+      publicBaseUrl: ORIGIN,
+      ttlMs: 1_000,
+      reconnectIdleMs: 250,
+      completionGraceMs: 1_500
+    },
+    runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "process.exit(0)"] }
+  });
+  const locator = adapter.start({
+    intervention: { id: "window-int-completion-route", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: POINTER_ONLY
+  });
+  const sessionId = new URL(locator).pathname.split("/").at(-1)!;
+  const claimed = await adapter.handle(new Request(
+    `http://localhost/takeover/api/webrtc-prepare-claim/${sessionId}`,
+    {
+      method: "POST",
+      headers: { origin: ORIGIN, "x-takeover-client": "window-client-1234567890abcd" }
+    }
+  ), PRINCIPAL);
+  assert.equal(claimed.status, 200);
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+
+  assert.equal(adapter.ownsPath(new URL(locator).pathname), true);
+  const completionPage = await adapter.handle(
+    new Request(`http://localhost${new URL(locator).pathname}`),
+    PRINCIPAL
+  );
+  assert.equal(completionPage.status, 200);
+  assert.match(await completionPage.text(), /data-completion=/);
+  await adapter.revoke("window-int-completion-route");
+  assert.equal(adapter.ownsPath(new URL(locator).pathname), false);
+});
+
 test("Window Handoff requires an explicit process boundary and bounded input policy", () => {
   const adapter = fixture();
   assert.throws(
