@@ -81,9 +81,10 @@ test("new resource epoch rotates takeover session and resets the client lease", 
   assert.equal(sessions.verify(second.id, secondGrant.capability, PRINCIPAL_A, CLIENT_B).epoch, 5);
 });
 
-test("takeover capability expires and can be revoked explicitly", () => {
+test("takeover capability expires and a fresh media lease does not revoke old completion-only grace", () => {
   const { sessions, advance } = manager();
   const locator = sessions.ensure("intervention-a", 1, PRINCIPAL_A);
+  const completion = sessions.issueCompletionCapability(locator.id, PRINCIPAL_A);
   const grant = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
   advance(60_001);
   assert.throws(
@@ -92,7 +93,10 @@ test("takeover capability expires and can be revoked explicitly", () => {
   );
 
   const replacement = sessions.ensure("intervention-a", 1, PRINCIPAL_A);
+  assert.notEqual(replacement.id, locator.id);
   const replacementGrant = sessions.claimClient(replacement.id, PRINCIPAL_A, CLIENT_A);
+  assert.equal(sessions.complete(locator.id, completion, PRINCIPAL_A).alreadyCompleted, false);
+
   sessions.revokeForIntervention("intervention-a");
   assert.throws(
     () => sessions.verify(replacementGrant.id, replacementGrant.capability, PRINCIPAL_A, CLIENT_A),
@@ -146,6 +150,42 @@ test("completion-only capability fails closed after explicit revoke or expiry", 
   assert.throws(
     () => sessions.complete(expired.id, expiredCompletion, PRINCIPAL_A),
     (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_EXPIRED"
+  );
+});
+
+test("claimed Human session loses input at ttl but keeps completion-only grace", () => {
+  const { sessions, advance } = manager();
+  const locator = sessions.ensure("intervention-human-active", 9, PRINCIPAL_A);
+  const completion = sessions.issueCompletionCapability(locator.id, PRINCIPAL_A);
+  const grant = sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
+
+  advance(60_001);
+  assert.throws(
+    () => sessions.verify(locator.id, grant.capability, PRINCIPAL_A, CLIENT_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_EXPIRED"
+  );
+  assert.equal(sessions.issueCompletionCapability(locator.id, PRINCIPAL_A), completion);
+  assert.equal(sessions.complete(locator.id, completion, PRINCIPAL_A).alreadyCompleted, false);
+});
+
+test("claimed Human completion grace is bounded and explicit revoke still wins", () => {
+  const { sessions, advance } = manager();
+  const locator = sessions.ensure("intervention-human-active", 10, PRINCIPAL_A);
+  const completion = sessions.issueCompletionCapability(locator.id, PRINCIPAL_A);
+  sessions.claimClient(locator.id, PRINCIPAL_A, CLIENT_A);
+  advance(120_001);
+  assert.throws(
+    () => sessions.complete(locator.id, completion, PRINCIPAL_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_EXPIRED"
+  );
+
+  const revoked = sessions.ensure("intervention-human-revoked", 11, PRINCIPAL_A);
+  const revokedCompletion = sessions.issueCompletionCapability(revoked.id, PRINCIPAL_A);
+  sessions.claimClient(revoked.id, PRINCIPAL_A, CLIENT_A);
+  sessions.revoke(revoked.id);
+  assert.throws(
+    () => sessions.complete(revoked.id, revokedCompletion, PRINCIPAL_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_NOT_FOUND"
   );
 });
 

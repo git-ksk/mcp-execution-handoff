@@ -13,37 +13,51 @@ export class TakeoverSessionManager {
     createId;
     signingKey;
     reconnectIdleMs;
+    completionGraceMs;
     records = new Map();
-    constructor(ttlMs, now = Date.now, createId = randomUUID, signingKey = randomBytes(32), reconnectIdleMs = Math.min(5_000, Math.max(250, Math.floor(ttlMs / 4)))) {
+    constructor(ttlMs, now = Date.now, createId = randomUUID, signingKey = randomBytes(32), reconnectIdleMs = Math.min(5_000, Math.max(250, Math.floor(ttlMs / 4))), completionGraceMs = ttlMs) {
         this.ttlMs = ttlMs;
         this.now = now;
         this.createId = createId;
         this.signingKey = signingKey;
         this.reconnectIdleMs = reconnectIdleMs;
+        this.completionGraceMs = completionGraceMs;
         if (!Number.isInteger(ttlMs) || ttlMs < 1_000) {
             throw new Error("takeover ttl must be at least 1000ms");
         }
         if (!Number.isInteger(reconnectIdleMs) || reconnectIdleMs < 250 || reconnectIdleMs >= ttlMs) {
             throw new Error("takeover reconnect idle must be at least 250ms and less than the takeover ttl");
         }
+        if (!Number.isInteger(completionGraceMs) || completionGraceMs < 1_000 || completionGraceMs > 30 * 60_000) {
+            throw new Error("takeover completion grace must be between 1s and 30m");
+        }
     }
     ensure(interventionId, epoch, principalBinding) {
         this.pruneExpired();
+        const now = this.now();
         for (const record of this.records.values()) {
             if (!record.revoked &&
+                record.expiresAt > now &&
                 record.interventionId === interventionId &&
                 record.epoch === epoch &&
                 record.principalBinding === principalBinding) {
                 return this.locator(record);
             }
         }
-        this.revokeForIntervention(interventionId);
+        // A claimed record whose media/input lease expired may remain only for bounded Human Done.
+        // Do not revoke that completion-only record when minting a fresh media locator. Revoke only
+        // still-live media/input records for the intervention so two mutable generations never coexist.
+        for (const record of this.records.values()) {
+            if (record.interventionId === interventionId && record.expiresAt > now)
+                record.revoked = true;
+        }
         const record = {
             id: this.createId(),
             interventionId,
             epoch,
             principalBinding,
-            expiresAt: this.now() + this.ttlMs,
+            expiresAt: now + this.ttlMs,
+            completionExpiresAt: now + this.ttlMs + this.completionGraceMs,
             revoked: false,
             completed: false,
             clientGeneration: 0,
@@ -59,20 +73,28 @@ export class TakeoverSessionManager {
         return this.locator(record);
     }
     issueCompletionCapability(id, principalBinding) {
-        const record = this.requireActive(id);
+        const record = this.records.get(id);
+        if (!record || record.revoked) {
+            throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
+        }
         this.assertPrincipal(record, principalBinding);
+        if (record.expiresAt <= this.now()) {
+            if (!record.clientBinding || record.clientGeneration < 1 || record.completionExpiresAt <= this.now()) {
+                throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
+            }
+        }
         return this.completionCapabilityFor(record);
     }
     complete(id, completionCapability, principalBinding) {
         const record = this.records.get(id);
         if (!record)
             throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
-        if (record.expiresAt <= this.now()) {
-            record.revoked = true;
-            throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
-        }
         if (record.revoked && !record.completed) {
             throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
+        }
+        if (record.expiresAt <= this.now()
+            && (!record.clientBinding || record.clientGeneration < 1 || record.completionExpiresAt <= this.now())) {
+            throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
         }
         this.assertPrincipal(record, principalBinding);
         this.assertCompletionCapabilityShape(completionCapability);
@@ -150,10 +172,8 @@ export class TakeoverSessionManager {
         const record = this.records.get(id);
         if (!record || record.revoked)
             return;
-        if (record.expiresAt <= this.now()) {
-            record.revoked = true;
+        if (record.expiresAt <= this.now())
             return;
-        }
         if (!this.same(record.principalBinding, principalBinding) ||
             !record.clientBinding ||
             !this.same(record.clientBinding, clientBinding) ||
@@ -199,7 +219,6 @@ export class TakeoverSessionManager {
             throw new TakeoverSessionError("TAKEOVER_NOT_FOUND", "Takeover session is not active");
         }
         if (record.expiresAt <= this.now()) {
-            record.revoked = true;
             throw new TakeoverSessionError("TAKEOVER_EXPIRED", "Takeover session expired");
         }
         return record;
@@ -303,6 +322,8 @@ export class TakeoverSessionManager {
             .update(record.principalBinding)
             .update("\0")
             .update(String(record.expiresAt))
+            .update("\0")
+            .update(String(record.completionExpiresAt))
             .digest("base64url");
     }
     reconnectHandleFor(record) {
@@ -329,8 +350,12 @@ export class TakeoverSessionManager {
     pruneExpired() {
         const now = this.now();
         for (const [id, record] of this.records) {
-            if (record.expiresAt <= now || (record.revoked && !record.completed))
+            const claimed = !!record.clientBinding && record.clientGeneration > 0;
+            if ((record.revoked && !record.completed)
+                || (!claimed && record.expiresAt <= now)
+                || (claimed && record.completionExpiresAt <= now)) {
                 this.records.delete(id);
+            }
         }
     }
 }

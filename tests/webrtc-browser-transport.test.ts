@@ -281,6 +281,8 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(html, /webkit-playsinline/);
   assert.match(html, /opacity:0/);
   assert.match(html, />Done<\/button>/);
+  assert.match(html, /\.done\{[^}]*pointer-events:auto/);
+  assert.match(html, /\.done\{[^}]*touch-action:manipulation/);
   assert.match(html, /id="keyboard-open"/);
   assert.match(html, /aria-pressed="false"/);
   assert.match(html, /id="keyboard-backspace"/);
@@ -417,6 +419,11 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /inputPolicy=\{tap:true,scroll:true,text:true,key:true\}/);
   assert.match(script, /function inputAllowed\(kind\)/);
   assert.match(script, /x-mcp-takeover-completion/);
+  assert.match(script, /async function completeHuman\(\)/);
+  assert.match(script, /function consumeDoneGesture\(event\)\{event\.preventDefault\(\);event\.stopPropagation\(\);void completeHuman\(\)\}/);
+  assert.match(script, /doneButton\.addEventListener\('touchstart',[\s\S]*event\.stopPropagation\(\)[\s\S]*passive:true/);
+  assert.match(script, /doneButton\.addEventListener\('touchend',consumeDoneGesture,\{passive:false\}\)/);
+  assert.match(script, /doneButton\.addEventListener\('click',consumeDoneGesture\)/);
   assert.match(script, /takeover\/api\/complete/);
 });
 
