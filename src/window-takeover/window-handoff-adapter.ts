@@ -1,0 +1,81 @@
+import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
+import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
+import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
+import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
+import type { TakeoverBrokerConfig } from "../browser-takeover/broker.js";
+import { WindowHandoffCore, WindowHandoffCoreError } from "./window-handoff-core.js";
+
+export interface WindowHandoffAdapterConfig {
+  takeover: TakeoverBrokerConfig;
+  runtime: SpawnedWebRtcRuntimeProviderConfig;
+  /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
+  onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+}
+
+export type WindowHandoffInputPolicy = WebRtcHumanInputPolicy;
+
+export interface WindowHandoffStartRequest {
+  intervention: TakeoverInterventionRef;
+  principalBinding: string;
+  target: TakeoverHostTarget;
+  inputPolicy: WindowHandoffInputPolicy;
+}
+
+export class WindowHandoffAdapterError extends Error {
+  constructor(
+    public readonly code:
+      | "WINDOW_HANDOFF_UNAVAILABLE"
+      | "WINDOW_HANDOFF_TARGET_INVALID"
+      | "WINDOW_HANDOFF_INPUT_POLICY_INVALID",
+    message: string
+  ) {
+    super(message);
+    this.name = "WindowHandoffAdapterError";
+  }
+}
+
+/**
+ * First-class bounded OS-window WebRTC Handoff composition for MCP consumers.
+ *
+ * Consumers own application/domain semantics, process lifecycle, intervention policy and fresh
+ * verification. Handoff owns locator/session lifecycle, exact process/window capture/input,
+ * WebRTC/TURN/reconnect behavior, revoke and privacy-bounded transport diagnostics.
+ *
+ * This adapter always requires an exact process boundary and never exposes display/desktop-wide
+ * capture as a fallback.
+ */
+export class WindowHandoffAdapter {
+  readonly #core: WindowHandoffCore;
+
+  constructor(config: WindowHandoffAdapterConfig) {
+    this.#core = new WindowHandoffCore(config);
+  }
+
+  isEnabled(): boolean { return this.#core.isEnabled(); }
+  isPath(pathname: string): boolean { return this.#core.isPath(pathname); }
+  ownsPath(pathname: string): boolean { return this.#core.ownsPath(pathname); }
+
+  start(request: WindowHandoffStartRequest): string {
+    try {
+      return this.#core.start(request);
+    } catch (error) {
+      throw translateError(error);
+    }
+  }
+
+  async revoke(interventionId: string): Promise<void> { await this.#core.revoke(interventionId); }
+  async revokeForIntervention(interventionId: string): Promise<void> { await this.revoke(interventionId); }
+  handle(request: Request, boundPrincipal: string | undefined): Promise<Response> { return this.#core.handle(request, boundPrincipal); }
+  diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot { return this.#core.diagnosticsSnapshot(); }
+  latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
+}
+
+function translateError(error: unknown): Error {
+  if (!(error instanceof WindowHandoffCoreError)) return error instanceof Error ? error : new Error("Window Handoff failed");
+  const code = error.code === "TARGET_INVALID"
+    ? "WINDOW_HANDOFF_TARGET_INVALID"
+    : error.code === "INPUT_POLICY_INVALID"
+      ? "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
+      : "WINDOW_HANDOFF_UNAVAILABLE";
+  return new WindowHandoffAdapterError(code, error.message);
+}

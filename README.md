@@ -134,6 +134,34 @@ const locator = browserHandoff.start({
 
 Route authenticated `/takeover/*` HTTP requests to `browserHandoff.handle(...)`. `inputPolicy` is bound to the takeover session and enforced server-side before OS input; the browser UI also suppresses disallowed keyboard/input controls as defense in depth. The optional `onComplete` callback runs only after Human transport authority is fenced and is a signal to begin consumer-owned fresh verification, never evidence that authentication or a consequential action succeeded. ICE/STUN/TURN provider selection and relay credentials are not part of `start()`; they remain Handoff deployment/runtime concerns.
 
+`BrowserHandoffAdapter` and `WindowHandoffAdapter` share the same internal bounded-window WebRTC/session core. Browser remains a browser-policy facade; the shared core owns only exact target binding, WebRTC/session/reconnect/revoke and bounded diagnostics.
+
+## Window handoff
+
+For non-browser application windows, `WindowHandoffAdapter` is the first-class high-level component. It requires a positive target process and optionally an exact window id, plus an explicit bounded Human input policy. The adapter never exposes display-wide/desktop fallback. If only `processId` is supplied, the host must resolve exactly one eligible owned window; if `windowId` is supplied, that exact ownership is revalidated by the existing host boundary. Target disappearance, ambiguity or ownership mismatch fails closed.
+
+```ts
+import { WindowHandoffAdapter } from "mcp-execution-handoff/window-takeover";
+
+const windowHandoff = new WindowHandoffAdapter({
+  takeover: { enabled: true, publicBaseUrl, ttlMs: 60_000 },
+  runtime: { hostExecutable, displayName },
+  onComplete: async ({ interventionId, epoch }) => {
+    // Human transport is fenced. Verify the application state freshly in the consumer.
+    await beginFreshWindowVerification(interventionId, epoch);
+  }
+});
+
+const locator = windowHandoff.start({
+  intervention: { id: interventionId, epoch },
+  principalBinding,
+  target: { processId, windowId },
+  inputPolicy: { tap: true, scroll: true, text: false, key: false }
+});
+```
+
+The consumer still owns why the intervention is needed, application/process lifecycle, semantic verification and replay/resume policy. Handoff owns the short-lived locator, one-client session, exact bounded window media/input transport, direct-first WebRTC/TURN behavior, reconnect generation fencing and revoke. Human `Done` is only the end of the Human transport step; it is not application success or approval.
+
 `TakeoverBroker` remains the lower-level transport/session primitive for consumers that deliberately need the HTTP frame mode, Native composition, or custom transport assembly. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
 
 For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.

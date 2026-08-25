@@ -11,7 +11,8 @@
     ".": "./dist/index.js",
     "./core": "./dist/core/index.js",
     "./mcp": "./dist/mcp/index.js",
-    "./browser-takeover": "./dist/browser-takeover/index.js"
+    "./browser-takeover": "./dist/browser-takeover/index.js",
+    "./window-takeover": "./dist/window-takeover/index.js"
   },
   "types": "./dist/index.d.ts",
   "files": [
