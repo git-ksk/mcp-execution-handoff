@@ -162,6 +162,45 @@ const locator = windowHandoff.start({
 
 The consumer still owns why the intervention is needed, application/process lifecycle, semantic verification and replay/resume policy. Handoff owns the short-lived locator, one-client session, exact bounded window media/input transport, direct-first WebRTC/TURN behavior, reconnect generation fencing and revoke. Human `Done` is only the end of the Human transport step; it is not application success or approval.
 
+## Terminal / PTY handoff
+
+`TerminalHandoffAdapter` is the first-class component for one bounded, consumer-owned PTY/session. Handoff does **not** spawn a shell or own cwd/env/job-control semantics. It composes the accepted PTY authority state machine with the DataChannel-only WebRTC/TURN transport, while the consumer keeps the actual PTY/process and content-free postcondition verification.
+
+The adapter is intentionally process-boundary friendly. `begin()` fences Agent authority before returning the Human locator. The consumer drains Agent writes that were already admitted before that fence, then calls `claimHumanAfterAgentDrain()` only after the physical drain completes. An ordered Human `Done` is transport-fenced before `nextHumanEvent()` returns it and immediately moves Handoff authority to `verifying`; the consumer drains already-admitted Human writes and calls `confirmHumanDrain()` before verification can succeed.
+
+```ts
+import { TerminalHandoffAdapter } from "mcp-execution-handoff/terminal-takeover";
+
+const terminalHandoff = new TerminalHandoffAdapter({
+  binding: { sessionId, sessionGeneration, principalBinding },
+  takeover: { enabled: true, publicBaseUrl, ttlMs: 60_000 }
+});
+
+const { intervention: awaiting, locator } = terminalHandoff.begin();
+await pty.drainAgentWrites();
+// Serve authenticated /takeover/terminal/* through terminalHandoff.handle(request, boundPrincipal).
+await waitUntil(() => terminalHandoff.transportStatus(awaiting).transportReady);
+const human = terminalHandoff.claimHumanAfterAgentDrain(awaiting);
+
+const event = terminalHandoff.nextHumanEvent(human);
+if (event?.kind === "input") await pty.writeHuman(event.data);
+if (event?.kind === "resize") await pty.resize(event.rows, event.cols);
+if (event?.kind === "done") {
+  await pty.drainHumanWrites();
+  const drained = terminalHandoff.confirmHumanDrain(event.verifying);
+  const ready = terminalHandoff.reportVerification(drained, await verifyPtyPostcondition());
+  const resume = terminalHandoff.resume(ready);
+  if (resume.sessionAlive && resume.agentStateSynchronizationRequired) {
+    await invalidateAndReloadAgentPtyState();
+    terminalHandoff.acknowledgeAgentStateSynchronization();
+  }
+}
+```
+
+Human-visible PTY output is sent with `pushHumanOutput()` only while the exact Human intervention owns authority. Input/output bytes exist only in ephemeral method/DataChannel buffers; they are not generic Handoff checkpoint, audit, diagnostics, or model content. Disconnect is not `Done` and does not restore Agent authority. Exact PTY exit is terminal for that adapter instance and never synthesizes a replacement session. After explicit resume, Agent input/observation/resize remain fenced until the consumer acknowledges fresh state synchronization, which is also where the consumer must discard or re-read Human-period output/cwd/env/job/prompt assumptions as applicable.
+
+Direct-first ICE, TURN fallback, one-client lease and stale generation/capability rejection remain Handoff-owned. PTY allocation, descendant containment, process exit truth, shell/program policy, and semantic verification remain consumer-owned; Handoff does not claim Windows ConPTY descendant containment parity merely by exposing this adapter.
+
 `TakeoverBroker` remains the lower-level transport/session primitive for consumers that deliberately need the HTTP frame mode, Native composition, or custom transport assembly. The broker deliberately knows only `{ id, epoch }` for an intervention plus a consumer-supplied principal binding and browser adapter. It does not know Maps, Cinema, Chrome URLs, CAPTCHA classifications, or provider policies.
 
 For native operator clients, the broker also exposes an explicit claim/reconnect path. Reconnect is **not** implicit lease transfer: the previous client must be idle, the authenticated principal must match, and a short-lived generation-bound reconnect handle must match. Successful recovery rotates the client generation and invalidates the previous capability and reconnect handle. The reconnect handle is continuity metadata only; it is not a target-service credential and must never contain browser/session content.

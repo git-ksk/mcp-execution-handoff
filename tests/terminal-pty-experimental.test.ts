@@ -189,3 +189,20 @@ test("PTY exit after Agent fence but before Human claim cancels only the unclaim
     expectCode("TERMINAL_SESSION_CLOSED"),
   );
 });
+
+test("pre-claim cancellation restores Agent only because Human authority was never granted", () => {
+  const { gate } = fixture();
+  const awaiting = gate.beginFence(BINDING);
+  assert.equal(gate.getStatus().authority, "none");
+  const restored = gate.cancelBeforeHuman(BINDING, awaiting.id, awaiting.epoch);
+  assert.equal(restored.authority, "agent");
+  assert.equal(restored.interventionStatus, null);
+  gate.assertAgentInput(BINDING);
+
+  const second = gate.beginFence(BINDING);
+  const human = gate.claimHumanAfterAgentDrain(BINDING, second.id, second.epoch);
+  assert.throws(
+    () => gate.cancelBeforeHuman(BINDING, human.id, human.epoch),
+    expectCode("TERMINAL_INTERVENTION_STALE"),
+  );
+});

@@ -121,6 +121,24 @@ export class ExperimentalTerminalPtyAuthority {
     return this.claimHumanAfterAgentDrain(binding, intervention.id, intervention.epoch);
   }
 
+  /**
+   * Cancel only an intervention that never granted Human authority. This is the sole safe rollback
+   * for transport/setup failure before claim; once Human authority existed, verification remains
+   * mandatory and this path is unavailable.
+   */
+  cancelBeforeHuman(
+    binding: ExperimentalTerminalPtyBinding,
+    interventionId: string,
+    epoch: number,
+  ): ExperimentalTerminalPtyStatus {
+    this.requireSession(binding, true);
+    const active = this.requireIntervention(interventionId, epoch, "awaiting_human");
+    this.state.cancel(active.id);
+    this.humanDisconnected = false;
+    this.humanWritesDrained = true;
+    return this.getStatus();
+  }
+
   assertAgentInput(binding: ExperimentalTerminalPtyBinding): void {
     this.requireSession(binding, true);
     this.state.assertAgentAuthority();
