@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 test("temporary probe: emit TypeScript 7 source maps", () => {
-  execFileSync(process.execPath, [
-    "node_modules/typescript/bin/tsc",
+  const tsc = process.platform === "win32"
+    ? "node_modules/.bin/tsc.cmd"
+    : "node_modules/.bin/tsc";
+  execFileSync(tsc, [
     "src/experimental/websocket-takeover.ts",
     "--target",
     "ES2022",
@@ -17,15 +19,15 @@ test("temporary probe: emit TypeScript 7 source maps", () => {
     "--declarationMap",
     "--sourceMap",
     "--outDir",
-    "dist/experimental",
+    "dist",
     "--rootDir",
-    "src/experimental",
+    "src",
     "--skipLibCheck",
     "--noUncheckedIndexedAccess",
     "--exactOptionalPropertyTypes",
     "--types",
     "node"
-  ]);
+  ], { stdio: ["ignore", "inherit", "inherit"] });
   for (const name of ["websocket-takeover.d.ts.map", "websocket-takeover.js.map"]) {
     const content = readFileSync(`dist/experimental/${name}`, "utf8");
     const encoded = Buffer.from(content).toString("base64");
