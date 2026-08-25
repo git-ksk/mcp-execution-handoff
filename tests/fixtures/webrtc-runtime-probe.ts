@@ -94,16 +94,18 @@ async function main(): Promise<void> {
     }
     await waitFor(() => feedback.some((value) => value.kind === "editableRegions" && JSON.stringify(value.regions) === JSON.stringify([[1000, 2000, 3000, 1000]])));
     if (inputUses !== 0 || endedUses !== 0) throw new Error("editable-region metadata reached the Human input authority gate");
-    critical.send(JSON.stringify({ kind: "tap", x: 0.25, y: 0.75 }));
-    await waitFor(() => inputUses === 1 && endedUses === 1);
-    realtime.send(JSON.stringify({ kind: "scroll", deltaX: 0, deltaY: 620 }));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "down", x: 0.25, y: 0.75 }));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "up", x: 0.25, y: 0.75 }));
     await waitFor(() => inputUses === 2 && endedUses === 2);
+    realtime.send(JSON.stringify({ kind: "scroll", deltaX: 0, deltaY: 620 }));
+    await waitFor(() => inputUses === 3 && endedUses === 3);
     realtime.send(JSON.stringify({ kind: "scroll", deltaX: 0, deltaY: 2_001 }));
     await new Promise((resolve) => setTimeout(resolve, 75));
-    if (inputUses !== 2) throw new Error("invalid realtime Human input reached authority gate");
-    critical.send(JSON.stringify({ kind: "tap", x: 2, y: 0.5 }));
+    if (inputUses !== 3) throw new Error("invalid realtime Human input reached authority gate");
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "hold", x: 0.5, y: 0.5 }));
+    critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "down", x: 2, y: 0.5 }));
     await new Promise((resolve) => setTimeout(resolve, 75));
-    if (inputUses !== 2) throw new Error("invalid Human input reached authority gate");
+    if (inputUses !== 3) throw new Error("invalid Human input reached authority gate");
     if (disconnected !== 0) throw new Error("unexpected disconnect during live probe");
   } finally {
     await client.close().catch(() => undefined);

@@ -13,6 +13,12 @@ export type WebRtcHumanInput = {
     x: number;
     y: number;
 } | {
+    kind: "pointer_button";
+    button: "primary";
+    state: "down" | "up";
+    x: number;
+    y: number;
+} | {
     kind: "scroll";
     deltaX: number;
     deltaY: number;
