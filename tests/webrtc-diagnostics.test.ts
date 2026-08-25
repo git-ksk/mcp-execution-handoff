@@ -59,3 +59,26 @@ test("diagnostic tracker remains bounded and snapshot cannot mutate stored event
   snapshot.events[0]!.stage = "broker.connect.request";
   assert.equal(tracker.snapshot().events[0]!.stage, "broker.prepare.request");
 });
+
+
+test("native text route diagnostics retain only one bounded payload-free stage", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  const stages = [
+    "host.input.text.native_ax",
+    "host.input.text.pid_keyboard",
+    "host.input.text.event_creation_failure",
+    "host.input.text.activation_rejected",
+    "host.input.text.native_boundary_rejected"
+  ] as const;
+  for (const stage of stages) tracker.record({ stage });
+  assert.deepEqual(tracker.snapshot(), { events: stages.map((stage) => ({ stage })) });
+  tracker.record({
+    stage: "host.input.text.native_ax",
+    durationMs: 1
+  });
+  assert.equal(tracker.snapshot().events.length, stages.length);
+  assert.equal(
+    tracker.snapshot().events.every((event) => Object.keys(event).length === 1 && Object.keys(event)[0] === "stage"),
+    true
+  );
+});

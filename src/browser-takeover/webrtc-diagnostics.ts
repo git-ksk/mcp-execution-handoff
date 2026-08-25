@@ -29,6 +29,11 @@ export type WebRtcDiagnosticStage =
   | "host.frame.ready"
   | "host.input.focus.ready"
   | "host.input.tap.sent"
+  | "host.input.text.native_ax"
+  | "host.input.text.pid_keyboard"
+  | "host.input.text.event_creation_failure"
+  | "host.input.text.activation_rejected"
+  | "host.input.text.native_boundary_rejected"
   | "host.input.failure"
   | "host.capture.failure"
   | "host.capture.failure.x11"
@@ -90,6 +95,11 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.frame.ready",
   "host.input.focus.ready",
   "host.input.tap.sent",
+  "host.input.text.native_ax",
+  "host.input.text.pid_keyboard",
+  "host.input.text.event_creation_failure",
+  "host.input.text.activation_rejected",
+  "host.input.text.native_boundary_rejected",
   "host.input.failure",
   "host.capture.failure",
   "host.capture.failure.x11",
@@ -176,6 +186,11 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.frame.ready": ["stage"],
     "host.input.focus.ready": ["stage"],
     "host.input.tap.sent": ["stage"],
+    "host.input.text.native_ax": ["stage"],
+    "host.input.text.pid_keyboard": ["stage"],
+    "host.input.text.event_creation_failure": ["stage"],
+    "host.input.text.activation_rejected": ["stage"],
+    "host.input.text.native_boundary_rejected": ["stage"],
     "host.input.failure": ["stage"],
     "host.capture.failure": ["stage"],
     "host.capture.failure.x11": ["stage"],

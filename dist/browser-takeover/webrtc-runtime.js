@@ -844,6 +844,18 @@ class HostMetricParser {
                 this.onHostStage(stages[diagnostic[1]]);
                 continue;
             }
+            const textRoute = /^MCP_HANDOFF_DIAGNOSTIC input_text_route=(native_ax|pid_keyboard|event_creation_failure|activation_rejected|native_boundary_rejected)$/.exec(line);
+            if (textRoute) {
+                const stages = {
+                    native_ax: "host.input.text.native_ax",
+                    pid_keyboard: "host.input.text.pid_keyboard",
+                    event_creation_failure: "host.input.text.event_creation_failure",
+                    activation_rejected: "host.input.text.activation_rejected",
+                    native_boundary_rejected: "host.input.text.native_boundary_rejected"
+                };
+                this.onHostStage(stages[textRoute[1]]);
+                continue;
+            }
             const regionsLine = /^MCP_HANDOFF_CONTROL editable_regions=(.*)$/.exec(line);
             if (regionsLine) {
                 const payload = regionsLine[1] ?? "";

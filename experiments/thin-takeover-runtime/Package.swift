@@ -20,6 +20,10 @@ let package = Package(
         .executable(name: "takeover-macos-host", targets: ["takeover-macos-host"]),
         .executable(name: "takeover-macos-dogfood-client", targets: ["takeover-macos-dogfood-client"]),
         .executable(name: "takeover-macos-dogfood-target", targets: ["takeover-macos-dogfood-target"]),
+        .executable(
+            name: "takeover-macos-text-input-fixture",
+            targets: ["takeover-macos-text-input-fixture"]
+        ),
         .executable(name: "takeover-webrtc-host", targets: ["takeover-webrtc-host"]),
     ],
     targets: [
@@ -36,6 +40,7 @@ let package = Package(
         .executableTarget(name: "takeover-macos-host", dependencies: ["TakeoverCore", "TakeoverMacOSWindow"]),
         .executableTarget(name: "takeover-macos-dogfood-client", dependencies: ["TakeoverCore"]),
         .executableTarget(name: "takeover-macos-dogfood-target"),
+        .executableTarget(name: "takeover-macos-text-input-fixture"),
         .executableTarget(name: "takeover-webrtc-host", dependencies: ["TakeoverCore", "TakeoverMacOSWindow"]),
         .testTarget(name: "TakeoverCoreTests", dependencies: ["TakeoverCore"]),
         .testTarget(name: "TakeoverNativeClientTests", dependencies: ["TakeoverCore", "TakeoverNativeClient"]),

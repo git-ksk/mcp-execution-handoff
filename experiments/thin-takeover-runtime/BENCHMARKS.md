@@ -61,6 +61,19 @@ The loopback probes authenticate the header on both send and receive:
 
 The security hardening has a measurable packet-plane cost, but it remains below the 1080p codec-round-trip median on this hosted runner. The constrained-buffer loss case remains intentional evidence for bounded recovery rather than hidden reliable-video queues.
 
+## Native AppKit text-input regression probe
+
+`npm run accept:window:macos-native-text` is a local, permission-bearing regression probe for the
+ordinary macOS Window Human-input hot path. It launches a dedicated AppKit `NSTextView` fixture,
+binds WebRTC to that exact process/window, requires a Human tap to establish the first responder,
+then performs 20 bounded text commits. Every sample must change the fixture's actual text content.
+
+The command prints p50/p95/p99 for **DataChannel send → fixture state-file observation**. This is a
+local regression metric and includes polling/file-observation overhead; it is not physical-device or
+glass-to-glass latency. Hosted CI does not run this permission-bearing acceptance because runner
+Screen Recording/Accessibility grants are not a stable contract. CI still compiles the fixture and
+checks the exact-window/fail-closed source boundaries deterministically.
+
 ## Earlier references
 
 Earlier runs without pre-reassembly header authentication showed sub-millisecond localhost frame completion. Those values are retained only as optimization references and must not be presented as current secure-wire performance.
@@ -79,6 +92,7 @@ swift run -c release takeover-vt-codec-bench 1280 720 120 20
 swift run -c release takeover-packet-bench 2000 131072
 swift run -c release takeover-loopback 400 32000 1 131072
 swift run -c release takeover-loopback 200 131072 16 262144
+npm run accept:window:macos-native-text
 ```
 
 ## Physical-device acceptance still required

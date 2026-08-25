@@ -159,7 +159,7 @@ WebRTC browser transportではdirect-first ICEを維持し、signaling/data-plan
 
 モバイルの密集UI向けにはclient-sideの **Aim（照準）モード** も用意します。Aimを有効にすると表示だけをbounded 4×へ拡大し、映像drag/pinchはローカルpan/zoomに限定されremote inputを送りません。中央crosshairへ対象を合わせ、明示的な `Tap` controlを押した時だけ既存のserver-side `tap` policyを通る1回のremote tapを送ります。reconnect / orientation change / teardownではAimとview transformをresetし、consumer semantic verificationやserver input authorityは一切広げません。
 
-touch対応SafariではTouch Eventsをgestureの基準とし、touch Pointer Eventsによる二重入力を抑止します。macOS hostでは `CGEventSource(stateID: .combinedSessionState)` を利用し、login中のuser session内で動くprocessに合わせます。tap/scrollはsession event tap、target-bound keyboard inputは対象PIDを解決できる場合にそのPIDへ送ります。consumer APIを広げずに、window単位のcapture/inputとbrowser gestureの意味を一致させるための設計です。
+touch対応SafariではTouch Eventsをgestureの基準とし、touch Pointer Eventsによる二重入力を抑止します。macOS hostでは `CGEventSource(stateID: .combinedSessionState)` を利用し、login中のuser session内で動くprocessに合わせます。tap/scrollはsession event tapを使います。exact native windowでは、ordinary non-secure AppKit text controlに限り、focused window・focused elementのPID・non-web ancestryを再検証したうえでboundedな `AXSelectedText` commitを先に試します。unsupported controlは既存のtarget-PID keyboard-event経路を維持し、ownershipまたはexact-window不一致時はfallbackせずfail closedします。text routingの診断は bounded なstage (`native_ax` / `pid_keyboard` / `event_creation_failure` / `activation_rejected` / `native_boundary_rejected`) だけを保持し、Human text、座標、target/process/window identity、session identityは保持しません。consumer APIを広げずに、window単位のcapture/inputとbrowser gestureの意味を一致させるための設計です。
 
 broker自身はtakeover可能なsurfaceを広げません。consumer browser adapterが自身のallowlistと現在のepochに基づいて各操作を検証します。
 

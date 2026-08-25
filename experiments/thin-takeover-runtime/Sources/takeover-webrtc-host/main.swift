@@ -153,6 +153,14 @@ private final class HostMetricWriter: @unchecked Sendable {
     }
 }
 
+private enum InputTextDiagnosticRoute: String {
+    case nativeAX = "native_ax"
+    case pidKeyboard = "pid_keyboard"
+    case eventCreationFailure = "event_creation_failure"
+    case activationRejected = "activation_rejected"
+    case nativeBoundaryRejected = "native_boundary_rejected"
+}
+
 private final class HostControlWriter: @unchecked Sendable {
     private let handle = FileHandle.standardError
     private let lock = NSLock()
@@ -163,6 +171,11 @@ private final class HostControlWriter: @unchecked Sendable {
         }.joined(separator: ";")
         lock.lock(); defer { lock.unlock() }
         handle.write(Data("MCP_HANDOFF_CONTROL editable_regions=\(payload)\n".utf8))
+    }
+
+    func submitInputTextRoute(_ route: InputTextDiagnosticRoute) {
+        lock.lock(); defer { lock.unlock() }
+        handle.write(Data("MCP_HANDOFF_DIAGNOSTIC input_text_route=\(route.rawValue)\n".utf8))
     }
 }
 
@@ -450,13 +463,27 @@ private final class HumanInputInjector: @unchecked Sendable {
     private let inputBounds: CGRect
     private let targetProcessID: pid_t?
     private let writer: LatestOutputWriter
-    init(inputBounds: CGRect, targetProcessID: pid_t?, writer: LatestOutputWriter) {
-        self.inputBounds = inputBounds; self.targetProcessID = targetProcessID; self.writer = writer
+    private let controlWriter: HostControlWriter
+    init(
+        inputBounds: CGRect,
+        targetProcessID: pid_t?,
+        writer: LatestOutputWriter,
+        controlWriter: HostControlWriter
+    ) {
+        self.inputBounds = inputBounds
+        self.targetProcessID = targetProcessID
+        self.writer = writer
+        self.controlWriter = controlWriter
     }
 
     func apply(_ object: [String: Any]) {
         guard let kind = object["kind"] as? String else { return }
-        guard activateTargetWindowForInput() else { return }
+        guard activateTargetWindowForInput() else {
+            if kind == "text", targetProcessID != nil {
+                controlWriter.submitInputTextRoute(.activationRejected)
+            }
+            return
+        }
         switch kind {
         case "tap":
             guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return }
@@ -472,15 +499,35 @@ private final class HumanInputInjector: @unchecked Sendable {
             event.post(tap: .cghidEventTap)
         case "text":
             guard let text = object["text"] as? String, !text.isEmpty, text.utf8.count <= 4_096 else { return }
+            if let targetProcessID {
+                switch MacOSExactWindowTextInput.commitFocusedText(
+                    processID: targetProcessID,
+                    inputBounds: inputBounds,
+                    text: text
+                ) {
+                case .committed:
+                    controlWriter.submitInputTextRoute(.nativeAX)
+                    return
+                case .rejected:
+                    controlWriter.submitInputTextRoute(.nativeBoundaryRejected)
+                    return
+                case .unsupported:
+                    break
+                }
+            }
             let utf16 = Array(text.utf16)
             guard utf16.count <= 1_024,
                   let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { return }
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+                if targetProcessID != nil { controlWriter.submitInputTextRoute(.eventCreationFailure) }
+                return
+            }
             utf16.withUnsafeBufferPointer { buffer in
                 down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
                 up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
             }
             postKeyboard(down); postKeyboard(up)
+            if targetProcessID != nil { controlWriter.submitInputTextRoute(.pidKeyboard) }
         case "key":
             guard let key = object["key"] as? String else { return }
             let code: CGKeyCode
@@ -644,7 +691,12 @@ struct WebRtcMacHost {
                 writer.submitFrame(record)
             }
         }
-        let injector = HumanInputInjector(inputBounds: surface.inputBounds, targetProcessID: targetProcessID, writer: writer)
+        let injector = HumanInputInjector(
+            inputBounds: surface.inputBounds,
+            targetProcessID: targetProcessID,
+            writer: writer,
+            controlWriter: controlWriter
+        )
         InputReader(stop: stop, injector: injector, requestIDR: { encoder.requestIDR() }).start()
         if let targetProcessID {
             EditableRegionPublisher(targetProcessID: targetProcessID, inputBounds: surface.inputBounds, writer: controlWriter).start(stop: stop)

@@ -7,6 +7,7 @@ import {
 const HOST_SCRIPT = String.raw`
 process.stdin.resume();
 let timestamp = 0;
+let textRouteEmitted = false;
 const timer = setInterval(() => {
   const avcc = Buffer.from([0, 0, 0, 1, 0x65]);
   const payload = Buffer.alloc(9 + avcc.length);
@@ -16,6 +17,10 @@ const timer = setInterval(() => {
   payload.writeUInt16BE(360, 7);
   avcc.copy(payload, 9);
   process.stderr.write('MCP_HANDOFF_METRIC encode_tenths=42\n'); // 4.2 ms, duration-only diagnostic side channel
+  if (!textRouteEmitted) {
+    process.stderr.write('MCP_HANDOFF_DIAGNOSTIC input_text_route=native_ax\n');
+    textRouteEmitted = true;
+  }
   process.stderr.write('MCP_HANDOFF_CONTROL editable_regions=1000,2000,3000,1000\n');
   const record = Buffer.alloc(5 + payload.length);
   record[0] = 1;
@@ -76,6 +81,9 @@ async function main(): Promise<void> {
     await client.setRemoteDescription(answer);
     await waitFor(() => client.connectionState === "connected" && critical.readyState === "open" && realtime.readyState === "open");
     await waitFor(() => rtpPackets > 0);
+    await waitFor(() => provider.diagnosticsSnapshot().events.some(
+      (event) => event.stage === "host.input.text.native_ax"
+    ));
     provider.recordLatency("runtime-session-1", { path: "direct", rttMs: 1 });
     const latency = provider.latencySnapshot();
     if (latency.direct.hostEncode.count !== 1 || latency.direct.hostEncode.p50Ms !== 4.2) {
