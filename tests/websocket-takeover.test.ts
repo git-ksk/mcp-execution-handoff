@@ -11,6 +11,8 @@ interface HarnessOverrides {
   failComplete?: boolean;
   failInput?: boolean;
   failFrame?: boolean;
+  failBuffered?: boolean;
+  failReleaseAttempts?: number;
 }
 
 function deferred(): {
@@ -33,6 +35,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
   let buffered = 0;
   let frameGate: ReturnType<typeof deferred> | undefined;
   let failBegin = false;
+  let releaseFailuresLeft = overrides.failReleaseAttempts ?? 0;
 
   const channel = new ExperimentalWebSocketTakeoverChannel({
     binding: {
@@ -54,6 +57,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
         if (overrides.failFrame) throw new Error("frame failed");
       },
       bufferedAmount() {
+        if (overrides.failBuffered) throw new Error("buffered amount failed");
         return buffered;
       },
       async close(code, reason) {
@@ -75,6 +79,10 @@ function createHarness(overrides: HarnessOverrides = {}) {
       },
       async release() {
         calls.release += 1;
+        if (releaseFailuresLeft > 0) {
+          releaseFailuresLeft -= 1;
+          throw new Error("release failed");
+        }
       }
     },
     maxBufferedBytes: 8,
@@ -123,8 +131,8 @@ test("WebSocket takeover bounds input with explicit policy", async () => {
     { kind: "tap", x: 0.25, y: 0.5 },
     { kind: "scroll", deltaY: 300 }
   ]);
-  assert.equal(h.calls.begin, 2);
-  assert.equal(h.calls.end, 2);
+  assert.equal(h.calls.begin, 3);
+  assert.equal(h.calls.end, 3);
   assert.deepEqual(h.controls[0], { kind: "ready" });
 
   await assert.rejects(
@@ -134,6 +142,48 @@ test("WebSocket takeover bounds input with explicit policy", async () => {
   assert.equal(h.channel.state, "failed");
   assert.equal(h.calls.release, 1);
   assert.deepEqual(h.closes.at(-1), { code: 1008, reason: "input_not_allowed" });
+});
+
+test("WebSocket protocol refuses peer-supplied ingress identity and Origin fields", async () => {
+  const h = createHarness();
+  await assert.rejects(
+    h.channel.receiveText(JSON.stringify({
+      kind: "tap",
+      x: 0.5,
+      y: 0.5,
+      principalBinding: "attacker",
+      origin: "https://untrusted.example"
+    })),
+    (error) => error instanceof WebSocketTakeoverError && error.code === "invalid_message"
+  );
+  assert.deepEqual(h.inputs, []);
+  assert.equal(h.channel.state, "failed");
+});
+
+test("WebSocket ready is generation-fenced before control traffic", async () => {
+  const h = createHarness();
+  h.setFailBegin(true);
+
+  await assert.rejects(
+    h.channel.start(),
+    (error) => error instanceof WebSocketTakeoverError && error.code === "stale_generation"
+  );
+  assert.deepEqual(h.controls, [{ kind: "error", code: "stale_generation" }]);
+  assert.equal(h.calls.release, 1);
+  assert.equal(h.channel.state, "failed");
+});
+
+test("WebSocket pong is generation-fenced before control traffic", async () => {
+  const h = createHarness();
+  await h.channel.start();
+  h.setFailBegin(true);
+
+  await assert.rejects(
+    h.channel.receiveText(JSON.stringify({ kind: "ping", nonce: "one" })),
+    (error) => error instanceof WebSocketTakeoverError && error.code === "stale_generation"
+  );
+  assert.equal(h.controls.some((message) => "kind" in message && message.kind === "pong"), false);
+  assert.equal(h.channel.state, "failed");
 });
 
 test("WebSocket takeover rejects a stale generation before target input", async () => {
@@ -181,7 +231,84 @@ test("WebSocket takeover flushes the newest frame after backlog clears", async (
   assert.deepEqual(h.frames, [2]);
 });
 
-test("WebSocket disconnect releases authority but never means Done", async () => {
+test("WebSocket configured limits have non-overridable hard ceilings", () => {
+  const options = {
+    binding: {
+      interventionId: "intervention",
+      epoch: 1,
+      principalBinding: "principal",
+      clientBinding: "client",
+      clientGeneration: 1
+    },
+    inputPolicy: { tap: true, scroll: true, text: false, key: false },
+    peer: {
+      sendControl() {},
+      sendFrame() {},
+      bufferedAmount() { return 0; },
+      close() {}
+    },
+    lease: {
+      beginUse() {},
+      endUse() {},
+      complete() {},
+      release() {}
+    },
+    onInput() {}
+  };
+
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverChannel({
+      ...options,
+      maxInboundBytes: 64 * 1024 + 1
+    }),
+    /maxInboundBytes/
+  );
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverChannel({
+      ...options,
+      maxFrameBytes: 8 * 1024 * 1024 + 1
+    }),
+    /maxFrameBytes/
+  );
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverChannel({
+      ...options,
+      maxBufferedBytes: 4 * 1024 * 1024 + 1
+    }),
+    /maxBufferedBytes/
+  );
+});
+
+test("WebSocket bufferedAmount failure fences the active generation", async () => {
+  const h = createHarness({ failBuffered: true });
+  await assert.rejects(
+    h.channel.pushFrame(frame(1)),
+    (error) => error instanceof WebSocketTakeoverError && error.code === "transport_failure"
+  );
+  assert.equal(h.channel.state, "failed");
+  assert.equal(h.calls.release, 1);
+  assert.deepEqual(h.frames, []);
+});
+
+test("WebSocket release failure stays failed and explicit revoke can retry cleanup", async () => {
+  const h = createHarness({ failReleaseAttempts: 1 });
+
+  await assert.rejects(
+    h.channel.receiveText("not-json"),
+    (error) => error instanceof WebSocketTakeoverError && error.code === "invalid_message"
+  );
+  assert.equal(h.channel.state, "failed");
+  assert.equal(h.channel.diagnostics.lastFailure, "authority_release_failed");
+  assert.equal(h.calls.release, 1);
+  assert.deepEqual(h.closes.at(-1), { code: 1011, reason: "authority_release_failed" });
+
+  await h.channel.revoke();
+  assert.equal(h.calls.release, 2);
+  assert.equal(h.channel.state, "revoked");
+  assert.deepEqual(h.closes.at(-1), { code: 1000, reason: "revoked" });
+});
+
+test("WebSocket disconnect releases transport but never means Done", async () => {
   const h = createHarness();
   await h.channel.disconnect();
   await h.channel.disconnect();
@@ -219,6 +346,36 @@ test("WebSocket target input failure fences after ending bound use", async () =>
   assert.equal(h.calls.release, 1);
   assert.equal(h.channel.state, "failed");
   assert.equal(h.channel.diagnostics.lastFailure, "transport_failure");
+});
+
+test("WebSocket control failure fences after ending bound use", async () => {
+  const h = createHarness({ failControl: true });
+  await assert.rejects(h.channel.start(), /control failed/);
+  assert.equal(h.calls.begin, 1);
+  assert.equal(h.calls.end, 1);
+  assert.equal(h.calls.release, 1);
+  assert.equal(h.channel.state, "failed");
+});
+
+test("WebSocket completion rejection fences and never reports closed", async () => {
+  const h = createHarness({ failComplete: true });
+  await assert.rejects(
+    h.channel.receiveText(JSON.stringify({ kind: "done" })),
+    /stale complete/
+  );
+  assert.equal(h.calls.complete, 1);
+  assert.equal(h.calls.release, 1);
+  assert.equal(h.channel.state, "failed");
+  assert.equal(h.controls.some((message) => "kind" in message && message.kind === "closed"), false);
+});
+
+test("WebSocket frame delivery failure fences the active generation", async () => {
+  const h = createHarness({ failFrame: true });
+  await assert.rejects(h.channel.pushFrame(frame(1)), /frame failed/);
+  assert.equal(h.calls.begin, 1);
+  assert.equal(h.calls.end, 1);
+  assert.equal(h.calls.release, 1);
+  assert.equal(h.channel.state, "failed");
 });
 
 test("WebSocket invalid frame fails closed", async () => {
