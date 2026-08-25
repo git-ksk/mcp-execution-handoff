@@ -237,8 +237,10 @@ test("WebRTC input policy is session-bound and server-enforced before host input
   assert.deepEqual(grant.inputPolicy, policy);
 
   const hooks = runtime.starts[0]!.hooks;
-  const endTap = hooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 });
-  endTap();
+  const endDown = hooks.beginInput({ kind: "pointer_button", button: "primary", state: "down", x: 0.5, y: 0.5 });
+  endDown();
+  const endUp = hooks.beginInput({ kind: "pointer_button", button: "primary", state: "up", x: 0.5, y: 0.5 });
+  endUp();
   assert.throws(
     () => hooks.beginInput({ kind: "text", text: "blocked" }),
     /not allowed/i
@@ -359,7 +361,11 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /clientX:r\.left\+r\.width\/2,clientY:r\.top\+r\.height\/2/);
   assert.match(script, /aimButton\.addEventListener\('click'/);
   assert.match(script, /aimTapButton\.addEventListener\('click'/);
-  assert.match(script, /sendCritical\(\{kind:'tap',x:p\.x,y:p\.y\}\)/);
+  assert.match(script, /function sendPrimaryTap\(point\)/);
+  assert.match(script, /kind:'pointer_button',button:'primary',state:'down'/);
+  assert.match(script, /kind:'pointer_button',button:'primary',state:'up'/);
+  assert.match(script, /setTimeout\(function\(\)\{primaryReleaseTimer=0;releasePrimaryButton\(\)\},20\)/);
+  assert.doesNotMatch(script, /sendCritical\(\{kind:'tap',x:p\.x,y:p\.y\}\)/);
   assert.match(script, /setAimControlsVisible\(\)/);
   assert.match(script, /window\.addEventListener\('orientationchange',scheduleOrientationReset\)/);
   assert.match(script, /closePeer\(\)[\s\S]*resetViewTransform\(\)/);

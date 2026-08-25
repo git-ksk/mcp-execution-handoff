@@ -52,16 +52,71 @@ let diagBaseline = 0;
 let run = 0;
 let targetGeneration = 0;
 const lifecycleEvents: Array<{ operation: string; status: number }> = [];
+type PointerAcceptanceState = {
+  button: boolean;
+  checkbox: boolean;
+  focus: boolean;
+  javascript: boolean;
+  normalNavigation: boolean;
+  secondNavigation: boolean;
+};
+function freshPointerState(): PointerAcceptanceState {
+  return {
+    button: false,
+    checkbox: false,
+    focus: false,
+    javascript: false,
+    normalNavigation: false,
+    secondNavigation: false
+  };
+}
+let pointerState = freshPointerState();
+function pointerComplete(): boolean {
+  return Object.values(pointerState).every(Boolean);
+}
 
 const targetHtml = `<!doctype html><meta charset="utf-8"><title>Handoff LAN Acceptance Target</title>
-<style>body{font:20px system-ui;margin:0;background:#f6f6f6;color:#111}.card{margin:36px;padding:28px;background:white;border-radius:18px}input{font:24px system-ui;padding:14px;width:80%}.spacer{height:1150px;background:linear-gradient(#fff,#ddd);margin:20px 0}.bottom{font-size:30px;padding:30px;background:white}</style>
-<div class="card"><h1>Handoff LAN Acceptance</h1><p>Tap the field, type a short harmless test string, Backspace once, then swipe up to move down the page.</p><input aria-label="Acceptance text field" placeholder="type here"></div><div class="spacer"></div><div class="bottom">Scroll target reached</div>
-<script>let generation=-1;setInterval(async()=>{try{const r=await fetch('/__state',{cache:'no-store'});if(!r.ok)return;const s=await r.json();if(s.generation!==generation){generation=s.generation;scrollTo(0,0);const i=document.querySelector('input');if(i)i.value=''}}catch{}},100)</script>`;
+<style>body{font:20px system-ui;margin:0;background:#f6f6f6;color:#111}.card{margin:36px;padding:28px;background:white;border-radius:18px}.pointer-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center}.pointer-grid button,.pointer-grid a,.pointer-grid input{font:22px system-ui;padding:14px;min-height:58px}.pointer-grid a{display:flex;align-items:center;background:#eef;border-radius:10px;text-decoration:none;color:#111}.text-entry{font:24px system-ui;padding:14px;width:80%}.spacer{height:1150px;background:linear-gradient(#fff,#ddd);margin:20px 0}.bottom{font-size:30px;padding:30px;background:white}</style>
+<div class="card"><h1>Handoff LAN Acceptance</h1><p>Pointer matrix: activate the button, check the checkbox, focus the harmless focus field without typing, activate the JavaScript-backed link, then activate the normal navigation link and the second link on the next page.</p><div class="pointer-grid"><button id="pointer-button" onclick="markPointer('button')">Pointer button</button><label><input id="pointer-checkbox" type="checkbox" onchange="if(this.checked)markPointer('checkbox')"> Checkbox</label><input id="pointer-focus" aria-label="Pointer focus field" placeholder="focus only — do not type" onfocus="markPointer('focus')"><a id="pointer-js" href="javascript:markPointer('javascript');void 0">JavaScript-backed link</a><a id="pointer-normal" href="/pointer-next">Normal navigation link</a></div></div>
+<div class="card"><p>Text/scroll baseline: tap the field, type a short harmless test string, Backspace once, then swipe up to move down the page.</p><input class="text-entry" aria-label="Acceptance text field" placeholder="type here"></div><div class="spacer"></div><div class="bottom">Scroll target reached</div>
+<script>function markPointer(kind){fetch('/__pointer-event?kind='+encodeURIComponent(kind),{method:'POST',cache:'no-store'}).catch(()=>{})}let generation=-1;setInterval(async()=>{try{const r=await fetch('/__state',{cache:'no-store'});if(!r.ok)return;const s=await r.json();if(s.generation!==generation){generation=s.generation;scrollTo(0,0);const i=document.querySelector('input[aria-label="Acceptance text field"]');if(i)i.value='';const c=document.querySelector('#pointer-checkbox');if(c)c.checked=false}}catch{}},100)</script>`;
+
+const pointerNextHtml = `<!doctype html><meta charset="utf-8"><title>Handoff Pointer Navigation</title><style>body{font:24px system-ui;padding:40px;background:#f6f6f6}.card{padding:30px;background:white;border-radius:18px}a{display:inline-flex;padding:18px 24px;background:#eef;border-radius:12px;color:#111;text-decoration:none}</style><div class="card"><h1>Normal navigation completed</h1><p>Activate the second ordinary link to return to the pointer matrix.</p><a id="pointer-second" href="/pointer-second">Second navigation link</a></div>`;
 
 const targetServer = createServer((req, res) => {
-  if (req.url === "/__state") {
+  const url = new URL(req.url || "/", `http://127.0.0.1:${TARGET_PORT}`);
+  if (url.pathname === "/__state") {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    res.end(JSON.stringify({ generation: targetGeneration }));
+    res.end(JSON.stringify({ generation: targetGeneration, pointer: pointerState, pointerComplete: pointerComplete() }));
+    return;
+  }
+  if (url.pathname === "/__pointer-event" && req.method === "POST") {
+    const kind = url.searchParams.get("kind");
+    if (kind === "button" || kind === "checkbox" || kind === "focus" || kind === "javascript") {
+      pointerState[kind] = true;
+      res.writeHead(204, { "cache-control": "no-store" });
+      res.end();
+      return;
+    }
+    res.writeHead(400, { "cache-control": "no-store" });
+    res.end("Invalid pointer event");
+    return;
+  }
+  if (url.pathname === "/pointer-next") {
+    pointerState.normalNavigation = true;
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(pointerNextHtml);
+    return;
+  }
+  if (url.pathname === "/pointer-second") {
+    pointerState.secondNavigation = true;
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(targetHtml);
+    return;
+  }
+  if (url.pathname !== "/") {
+    res.writeHead(404, { "cache-control": "no-store" });
+    res.end("Not Found");
     return;
   }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -113,6 +168,7 @@ async function control(req: IncomingMessage, res: ServerResponse, pathname: stri
     if (currentIntervention) await windowHandoff.revoke(currentIntervention).catch(() => undefined);
     run += 1;
     targetGeneration += 1;
+    pointerState = freshPointerState();
     await new Promise((resolve) => setTimeout(resolve, 180));
     currentIntervention = `lan-run-${run}-${randomBytes(6).toString("hex")}`;
     diagBaseline = windowHandoff.diagnosticsSnapshot().events.length;
@@ -192,6 +248,7 @@ await new Promise<void>((resolve, reject) => {
 
 console.log(`Handoff WebRTC acceptance ready: mode=${MODE} origin=${PUBLIC_ORIGIN}`);
 console.log(`Fresh locator control: http://127.0.0.1:${BROKER_PORT}/__new`);
+console.log(`Pointer matrix state: http://127.0.0.1:${TARGET_PORT}/__state`);
 
 async function shutdown() {
   if (currentIntervention) await windowHandoff.revoke(currentIntervention).catch(() => undefined);

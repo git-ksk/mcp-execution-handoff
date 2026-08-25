@@ -53,6 +53,7 @@ export interface WebRtcSessionDescription {
 
 export type WebRtcHumanInput =
   | { kind: "tap"; x: number; y: number }
+  | { kind: "pointer_button"; button: "primary"; state: "down" | "up"; x: number; y: number }
   | { kind: "scroll"; deltaX: number; deltaY: number }
   | { kind: "text"; text: string }
   | { kind: "key"; key: "Backspace" | "Enter" };
@@ -960,6 +961,12 @@ function parseHumanInput(value: unknown, realtime: boolean): WebRtcHumanInput | 
     const y = Number(record.y);
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return undefined;
     return { kind: "tap", x, y };
+  }
+  if (record.kind === "pointer_button" && record.button === "primary" && (record.state === "down" || record.state === "up")) {
+    const x = Number(record.x);
+    const y = Number(record.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return undefined;
+    return { kind: "pointer_button", button: "primary", state: record.state, x, y };
   }
   if (record.kind === "text") {
     if (typeof record.text !== "string" || record.text.length === 0 || Buffer.byteLength(record.text, "utf8") > MAX_TEXT_BYTES) return undefined;

@@ -20,6 +20,17 @@ test("canonical WebRTC acceptance harness keeps LAN direct and public relay on o
   assert.doesNotMatch(source, /new TakeoverBroker/);
   assert.doesNotMatch(source, /new SpawnedWebRtcRuntimeProvider/);
   assert.doesNotMatch(source, /--app=file:/);
+  assert.match(source, /id="pointer-button"/);
+  assert.match(source, /id="pointer-checkbox"/);
+  assert.match(source, /id="pointer-focus"/);
+  assert.match(source, /id="pointer-js"/);
+  assert.match(source, /href="\/pointer-next"/);
+  assert.match(source, /id="pointer-second"/);
+  assert.match(source, /pointerState\.normalNavigation = true/);
+  assert.match(source, /pointerState\.secondNavigation = true/);
+  assert.match(source, /pointerComplete: pointerComplete\(\)/);
+  assert.match(source, /pointerState = freshPointerState\(\)/);
+  assert.doesNotMatch(source, /\.click\(\)/);
 });
 
 test("acceptance control endpoints require both loopback transport and loopback Host", () => {

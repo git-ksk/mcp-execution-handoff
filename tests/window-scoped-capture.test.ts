@@ -34,6 +34,20 @@ test("macOS Native host delegates exact-window capture and input to the shared b
   assert.match(exact, /matches\.count == 1/);
   assert.match(exact, /AXUIElementPerformAction\(window, kAXRaiseAction as CFString\)/);
   assert.match(exact, /application\.activate\(options: \[\]\)/);
+  assert.match(exact, /exactRunningApplication\(processID: processID\)/);
+  assert.match(exact, /for attempt in 0\.\.<6/);
+  assert.match(exact, /NSRunningApplication\(processIdentifier: processID\)/);
+  assert.match(exact, /attempt < 5 \{ usleep\(20_000\) \}/);
+  assert.doesNotMatch(exact, /runningApplications\(withBundleIdentifier:/);
+  assert.match(exact, /kAXFocusedWindowAttribute/);
+  assert.match(exact, /focusedWindowMatches\(appElement: appElement, inputBounds: inputBounds\)/);
+  assert.match(exact, /AXUIElementSetAttributeValue\(window, kAXMainAttribute as CFString, kCFBooleanTrue\)/);
+  assert.match(exact, /AXUIElementSetAttributeValue\(window, kAXFocusedAttribute as CFString, kCFBooleanTrue\)/);
+  assert.match(exact, /private static func requestExactFrontmost\(processID: pid_t\) -> Bool/);
+  assert.match(exact, /tell application \\"System Events\\" to set frontmost of first application process whose unix id is/);
+  assert.match(exact, /script\.executeAndReturnError\(&error\)/);
+  assert.match(exact, /DispatchQueue\.main\.sync\(execute: execute\)/);
+  assert.match(exact, /guard requestExactFrontmost\(processID: processID\) else \{ return false \}/);
   assert.doesNotMatch(exact, /excludingWindows:/);
   assert.doesNotMatch(exact, /CGDisplayBounds\(/);
 });
@@ -50,7 +64,7 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
   assert.match(host, /private let targetProcessID: pid_t\?/);
   assert.match(host, /event\.postToPid\(targetProcessID\)/);
-  assert.match(host, /guard activateTargetWindowForInput\(\) else \{[\s\S]*submitInputTextRoute\(\.activationRejected\)[\s\S]*return[\s\S]*\}/);
+  assert.match(host, /guard activateTargetWindowForInput\(\) else \{[\s\S]*submitInputTextRoute\(\.activationRejected\)[\s\S]*input_stage=activation_failed[\s\S]*return[\s\S]*\}/);
   assert.match(host, /MacOSExactWindowInput\.activate\(processID: targetProcessID, inputBounds: inputBounds\)/);
   assert.match(host, /MacOSExactWindowTextInput\.commitFocusedText\(/);
   assert.match(host, /MCP_HANDOFF_DIAGNOSTIC input_text_route=/);
@@ -61,6 +75,27 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
     host,
     /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
   );
+  assert.match(host, /private var primaryPressed = false/);
+  assert.match(host, /case \"pointer_button\"/);
+  assert.match(host, /private func postPrimaryButton\(state: String, at point: CGPoint\) -> Bool/);
+  assert.match(host, /func releaseAll\(\)/);
+  assert.match(host, /private func cancellationPoint\(\) -> CGPoint/);
+  assert.match(host, /CGGetDisplaysWithRect\(inputBounds, 1/);
+  assert.match(host, /movePointerForCancellation\(to: cancelAt\)/);
+  assert.match(host, /event\.setIntegerValueField\(\.mouseEventClickState, value: 0\)/);
+  assert.match(host, /event\.post\(tap: \.cghidEventTap\)/);
+  assert.match(host, /if let restore \{ restorePointerAfterCancellation\(to: restore\) \}/);
+  assert.match(host, /mouseType: \.mouseMoved/);
+  assert.match(host, /CGWarpMouseCursorPosition\(point\)/);
+  assert.match(host, /mouseType: \.leftMouseDragged/);
+  assert.match(host, /private func restorePointerAfterCancellation\(to point: CGPoint\)/);
+  assert.match(host, /event\.flags = \[\]/);
+  assert.match(host, /mouseEventButtonNumber, value: 0/);
+  assert.match(host, /mouseEventClickState, value: 1/);
+  assert.match(host, /leftMouseDown/);
+  assert.match(host, /leftMouseUp/);
+  assert.match(host, /signal\(SIGTERM, SIG_IGN\)/);
+  assert.match(host, /terminateSource\.setEventHandler/);
   // Browser-only editable-region semantics stay in the WebRTC host rather than leaking into the
   // shared target-surface primitive.
   assert.match(host, /firstWebArea/);
