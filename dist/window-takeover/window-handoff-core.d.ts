@@ -1,0 +1,35 @@
+import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
+import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
+import { type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
+import { type SpawnedWebRtcRuntimeProviderConfig, type WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
+export interface WindowHandoffCoreConfig {
+    takeover: TakeoverBrokerConfig;
+    runtime: SpawnedWebRtcRuntimeProviderConfig;
+    onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+}
+export interface WindowHandoffCoreStartRequest {
+    intervention: TakeoverInterventionRef;
+    principalBinding: string;
+    target: TakeoverHostTarget;
+    inputPolicy: WebRtcHumanInputPolicy;
+}
+export declare class WindowHandoffCoreError extends Error {
+    readonly code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID";
+    constructor(code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID", message: string);
+}
+/** Shared bounded-window WebRTC/session composition used by Browser and Window facades. */
+export declare class WindowHandoffCore {
+    #private;
+    constructor(config: WindowHandoffCoreConfig);
+    isEnabled(): boolean;
+    isPath(pathname: string): boolean;
+    ownsPath(pathname: string): boolean;
+    start(request: WindowHandoffCoreStartRequest): string;
+    revoke(interventionId: string): Promise<void>;
+    handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
+    latencySnapshot(): WebRtcLatencyComparison;
+}
+export declare function validWindowHandoffTarget(target: TakeoverHostTarget): boolean;
+export declare function validWindowHandoffInputPolicy(policy: WebRtcHumanInputPolicy): boolean;
+//# sourceMappingURL=window-handoff-core.d.ts.map
