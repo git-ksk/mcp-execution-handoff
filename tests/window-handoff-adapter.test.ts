@@ -114,4 +114,14 @@ test("Browser and Window facades share the same bounded route/session core contr
   await adapter.revoke("window-int-owned");
   assert.equal(adapter.ownsPath(new URL(locator).pathname), false);
   await adapter.revokeForIntervention("not-active");
+
+  const unclaimed = adapter.start({
+    intervention: { id: "window-int-unclaimed", epoch: 2 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: POINTER_ONLY
+  });
+  assert.equal(adapter.ownsPath(new URL(unclaimed).pathname), true);
+  adapter.revokeUnclaimed("window-int-unclaimed");
+  assert.equal(adapter.ownsPath(new URL(unclaimed).pathname), false);
 });

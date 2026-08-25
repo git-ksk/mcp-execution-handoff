@@ -104,6 +104,15 @@ export class WindowHandoffCore {
     await this.#broker.revokeWebRtcForIntervention(interventionId);
   }
 
+  /**
+   * Synchronously revoke an unclaimed locator/control-plane session.
+   * Runtime cleanup remains best-effort inside TakeoverBroker; no Human generation has been claimed.
+   */
+  revokeUnclaimed(interventionId: string): void {
+    this.#forgetIntervention(interventionId);
+    this.#broker.revokeForIntervention(interventionId);
+  }
+
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> {
     return this.#broker.handle(request, boundPrincipal);
   }

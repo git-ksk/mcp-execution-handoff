@@ -26,6 +26,11 @@ export declare class WindowHandoffCore {
     ownsPath(pathname: string): boolean;
     start(request: WindowHandoffCoreStartRequest): string;
     revoke(interventionId: string): Promise<void>;
+    /**
+     * Synchronously revoke an unclaimed locator/control-plane session.
+     * Runtime cleanup remains best-effort inside TakeoverBroker; no Human generation has been claimed.
+     */
+    revokeUnclaimed(interventionId: string): void;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     latencySnapshot(): WebRtcLatencyComparison;

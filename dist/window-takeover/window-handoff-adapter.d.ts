@@ -39,6 +39,8 @@ export declare class WindowHandoffAdapter {
     start(request: WindowHandoffStartRequest): string;
     revoke(interventionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
+    /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
+    revokeUnclaimed(interventionId: string): void;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     latencySnapshot(): WebRtcLatencyComparison;
