@@ -168,6 +168,45 @@ const locator = windowHandoff.start({
 
 interventionが必要な理由、application/process lifecycle、semantic verification、replay/resume policyはconsumer責務のままです。Handoffはshort-lived locator、one-client session、exact bounded windowのmedia/input transport、direct-first WebRTC/TURN、reconnect generation fence、revokeを所有します。Human `Done`はHuman transport stepの終了だけを意味し、application successやapprovalではありません。
 
+## Terminal / PTY handoff
+
+`TerminalHandoffAdapter` は、1つのboundedでconsumer-ownedなPTY/session向けのfirst-class componentです。Handoffはshellをspawnせず、cwd / env / job-control semanticsも所有しません。accepted済みPTY authority state machineとDataChannel-only WebRTC/TURN transportを1つにcomposeし、実際のPTY/processとcontent-free postcondition verificationはconsumer側に残します。
+
+process境界を持つconsumerでも使えるよう、drainは明示的なstaged contractです。`begin()` はHuman locatorを返す前にAgent authorityをfenceします。consumerはそのfence前にadmit済みだったAgent writeを物理的にdrainし、完了後だけ `claimHumanAfterAgentDrain()` を呼びます。orderedなHuman `Done` は `nextHumanEvent()` が返す前にtransport側でfenceされ、Handoff authorityも直ちに `verifying` へ移ります。その後consumerがadmit済みHuman writeをdrainし、`confirmHumanDrain()` を呼ぶまでverificationは成功できません。
+
+```ts
+import { TerminalHandoffAdapter } from "mcp-execution-handoff/terminal-takeover";
+
+const terminalHandoff = new TerminalHandoffAdapter({
+  binding: { sessionId, sessionGeneration, principalBinding },
+  takeover: { enabled: true, publicBaseUrl, ttlMs: 60_000 }
+});
+
+const { intervention: awaiting, locator } = terminalHandoff.begin();
+await pty.drainAgentWrites();
+// authenticatedな /takeover/terminal/* を terminalHandoff.handle(request, boundPrincipal) へrouteする。
+await waitUntil(() => terminalHandoff.transportStatus(awaiting).transportReady);
+const human = terminalHandoff.claimHumanAfterAgentDrain(awaiting);
+
+const event = terminalHandoff.nextHumanEvent(human);
+if (event?.kind === "input") await pty.writeHuman(event.data);
+if (event?.kind === "resize") await pty.resize(event.rows, event.cols);
+if (event?.kind === "done") {
+  await pty.drainHumanWrites();
+  const drained = terminalHandoff.confirmHumanDrain(event.verifying);
+  const ready = terminalHandoff.reportVerification(drained, await verifyPtyPostcondition());
+  const resume = terminalHandoff.resume(ready);
+  if (resume.sessionAlive && resume.agentStateSynchronizationRequired) {
+    await invalidateAndReloadAgentPtyState();
+    terminalHandoff.acknowledgeAgentStateSynchronization();
+  }
+}
+```
+
+Human-visibleなPTY outputは、exact Human interventionがauthorityを持つ間だけ `pushHumanOutput()` で送ります。input/output byteはephemeralなmethod/DataChannel bufferにだけ存在し、generic Handoff checkpoint / audit / diagnostics / model contentへ入りません。disconnectは`Done`ではなく、Agent authorityを自動復帰させません。exact PTY exitはそのadapter instanceをterminalに閉じ、replacement sessionを生成しません。explicit resume後もconsumerがfresh state synchronizationをackするまでAgent input / observation / resizeはfenceされたままです。このsync境界でconsumerはHuman-period outputやcwd / env / job / prompt assumptionを必要に応じてdiscard/re-readします。
+
+direct-first ICE、TURN fallback、one-client lease、stale generation/capability rejectionはHandoffが所有します。PTY allocation、descendant containment、process exit truth、shell/program policy、semantic verificationはconsumer責務のままです。このadapterを公開しただけでWindows ConPTY descendant containment parityを主張しません。
+
 `TakeoverBroker` は、HTTP frame mode、Native composition、custom transport assemblyを明示的に必要とするconsumer向けのlow-level transport/session primitiveとして残します。brokerがinterventionについて知るのは `{ id, epoch }` だけで、principal bindingとbrowser adapterはconsumerから明示的に渡します。Maps URL、Cinema provider、CAPTCHA分類、provider policyはgeneric layerへ入りません。
 
 native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。以前のclientがidleで、authenticated principalが一致し、generation-bound reconnect handleも一致した場合だけ新generationへrotateできます。成功すると旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含みません。

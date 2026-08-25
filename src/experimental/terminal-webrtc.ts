@@ -371,6 +371,15 @@ export class ExperimentalTerminalWebRtcTakeover {
     this.#runtime.sendOutput(session.id, session.clientGeneration, dataBase64);
   }
 
+  /** Release only a transport already fenced/completed by ordered Human Done. */
+  releaseCompleted(interventionId: string, epoch: number): void {
+    const session = this.requireIntervention(interventionId, epoch);
+    if (!session.completed || session.humanActive) {
+      throw new Error("terminal WebRTC transport is not completed");
+    }
+    this.#session = undefined;
+  }
+
   async revoke(interventionId: string, epoch: number): Promise<void> {
     const session = this.requireIntervention(interventionId, epoch);
     session.humanActive = false;
