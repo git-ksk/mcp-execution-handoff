@@ -137,6 +137,7 @@ The Native path above remains unchanged. An additional install-free Safari trans
 
 - locator opens a fullscreen `playsinline` video surface for the selected host capture scope;
 - direct tap and swipe operate on that surface;
+- bounded local 1×–4× zoom plus two-finger pinch/pan supports precision targets on small mobile screens; while zoomed, one-finger drag pans only the local view and never emits target scroll input, while a stationary tap still maps through the transformed video bounds to the exact capture surface;
 - tapping an editable field bridges to the iOS keyboard for text / Backspace / Enter;
 - no Scroll / Tab / Send operation-button fallback is exposed for WebRTC-only locators;
 - background / peer disconnect destroys the old peer and requires fresh-generation reconnect;
