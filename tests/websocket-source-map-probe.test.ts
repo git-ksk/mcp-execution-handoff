@@ -8,6 +8,7 @@ test("temporary probe: emit TypeScript 7 source maps", () => {
     : "node_modules/.bin/tsc";
   execFileSync(tsc, [
     "src/experimental/websocket-takeover.ts",
+    "--ignoreConfig",
     "--target",
     "ES2022",
     "--module",
