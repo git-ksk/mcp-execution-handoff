@@ -108,6 +108,18 @@ For credential-safe browser handoff, the lifecycle above is cross-platform: the 
 
 `selectHumanSurface()` is a small policy helper for consumers to route configured reasons such as sign-in/consent to `credential_safe_external` while leaving other interventions on `automation_adjacent`. The core does not decide which reasons are identity-sensitive.
 
+## First-class surface components
+
+The consumer-facing component family is now explicit. These components share Handoff semantics where appropriate but do not force different target mechanics behind one generic runner:
+
+| Component | Boundary | Current evidence |
+| --- | --- | --- |
+| `BrowserHandoffAdapter` | exact browser/window + bounded Human input over WebRTC | Complete in #70; established browser consumers and physical mobile transport acceptance remain the baseline. |
+| `WindowHandoffAdapter` | exact bounded OS application window; no desktop fallback | Implemented and consumed by CUMG. Merged-code iPhone public Tunnel/TURN relay acceptance and stale-locator rejection passed; #85 remains open only for the first-class same-LAN direct rerun. |
+| `TerminalHandoffAdapter` | one consumer-owned bounded PTY/session + DataChannel WebRTC | Complete in #86. CUMG migrated off direct experimental composition; merged-code real-PTY E2E and physical iPhone Human acceptance passed. #91 tracks mobile connection/status presentation only. |
+
+These adapters do not freeze a generic public Target Surface enum. The proven surface shapes are Browser, bounded OS Window, and bounded Terminal/PTY; #46/#45 still own the final semantic-domain and terminology/API convergence. A component's Human `Done` remains transport/lifecycle completion evidence only, never semantic success or consequential-action approval.
+
 ## Browser takeover
 
 For standalone browser MCP consumers, `BrowserHandoffAdapter` is the canonical high-level WebRTC composition. A consumer supplies the intervention/principal binding, an exact target process/window, an explicit bounded Human input policy, and its own browser/profile lifecycle; Handoff constructs the WebRTC runtime and broker internally, exposes only `start()` / `revoke()` / HTTP routing plus bounded diagnostics, and never silently downgrades that canonical path to the legacy HTTP frame/input transport. Locator issuance is control-plane setup only: WebRTC readiness still passes the host-window and first-media-frame gates before the media/input path becomes usable. Browser-profile persistence, target-service authentication, and post-Human checkpoint/verification remain consumer responsibilities.

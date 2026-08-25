@@ -13,24 +13,20 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
-### Current working state — 2026-08-23
+### Current working state — 2026-08-25
 
-The post-v0.1.0 work is now actively validating whether the handoff contract remains reusable beyond the original browser consumers without widening Handoff into a generic computer-use or remote-desktop product.
+The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence, while final Target Surface terminology remains deliberately unfrozen until #45/#46 close:
 
-Landed foundation:
+- `BrowserHandoffAdapter` is complete (#70) and remains the canonical high-level Browser WebRTC composition;
+- `WindowHandoffAdapter` is implemented and consumed by CUMG instead of consumer-local `TakeoverBroker`/runtime assembly. Its merged-code iPhone Cloudflare Tunnel/TURN acceptance passed, including stale-locator rejection; #85 remains open only for the same-LAN direct rerun on the first-class adapter;
+- `TerminalHandoffAdapter` is complete (#86). CUMG no longer composes the experimental PTY authority and Terminal WebRTC transport as unrelated pieces; merged-code real-PTY cross-repo E2E and physical iPhone Human acceptance passed;
+- #47 completed reusable bounded macOS/Linux exact-window primitives without adding whole-desktop fallback;
+- #48 completed the bounded Terminal/PTY semantic dogfood that established staged Agent/Human drain fences, explicit resume, mandatory post-Human state synchronization, and no Human-period output replay to Agent;
+- CUMG is the proven non-browser consumer for both Window and Terminal integration boundaries.
 
-- the four-axis architecture distinguishes Handoff Semantics, Human Interaction Policy, Target Surface, and Transport;
-- `browser` and bounded `os_window` are the currently proven Target Surface categories;
-- internal bounded OS/window primitives now provide exact-one selection, fail-closed ambiguity handling, bounded capture sizing, and strictly in-bounds normalized Human input mapping;
-- the Linux browser host reuses those OS/window primitives while preserving the existing exact-window security boundary and real-browser WebRTC behavior;
-- CI now exercises Ubuntu, macOS, and Windows Node/Browser portability, with Linux real-Chrome WebRTC acceptance retained;
-- generated-artifact drift is checked cross-platform.
+The three proven **surface shapes** are therefore Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum or final naming. #46 records the semantic admission criteria and #45 is the convergence point for terminology/public API after #85's remaining direct acceptance evidence is closed.
 
-Current validation direction:
-
-- Issue #47 uses `git-ksk/computer-use-mcp-gateway` (CUMG) / Cua as the primary non-browser `os_window` dogfood candidate. The first dogfood loop may begin before the remaining macOS host extraction; that extraction should be guided by observed integration friction rather than treated as a synthetic prerequisite.
-- Issue #48 prototypes `terminal` as an experimental/internal Target Surface using a bounded PTY session and CUMG as a dogfood candidate. `terminal` is not a stable public Target Surface kind until real use proves the boundary.
-- No broad public `OsWindowAdapter`, `TerminalAdapter`, or public Target Surface enum expansion should be frozen before dogfood evidence demonstrates a reusable shape.
+Known follow-up work is intentionally narrow: #85 still needs the first-class Window same-LAN direct physical rerun, and #91 tracks a Terminal mobile UI/status ambiguity where the backend lifecycle completed successfully while Safari could appear to remain on “Connecting”. Neither issue weakens authority, epoch, replay, or privacy boundaries.
 
 ## Guiding principles
 
@@ -57,25 +53,24 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 ## v0.2 — third-adapter and Target Surface contract validation
 
-Candidate scope:
+Current scope and closeout:
 
-- validate the contract with a third real adapter from a materially different workflow/domain, with CUMG as the leading dogfood candidate;
-- validate bounded `os_window` reuse outside the browser-takeover host path before exposing a stable surface adapter;
-- prototype `terminal` / PTY handoff internally and use real dogfood to decide whether Terminal is a distinct reusable Target Surface or whether a smaller session/stream abstraction is more correct;
-- record adapter and surface friction before adding new public APIs;
+- keep Browser, Window, and Terminal as first-class consumer-facing components without forcing their distinct media/stream mechanics behind one premature generic surface interface;
+- finish #85's merged-code same-LAN direct Window acceptance while retaining the already-passed public Tunnel/TURN physical evidence;
+- keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;
 - formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;
-- clarify which extension points are stable enough to expose without leaking consumer, Cua, browser, PTY, or transport semantics.
+- use #46/#45 to decide the stable terminology and whether any public Target Surface discriminator is justified. A public enum is not required merely because the three component adapters exist.
 
-Target Surface admission remains evidence-based: a new category should be added only when its authority boundary, capture/input model, lifecycle, or postcondition handling is materially different from the existing `browser` / `os_window` categories. A different app, OS, or device alone is not sufficient.
+Target Surface admission remains evidence-based: a new shape should be recognized only when its authority boundary, capture/input model, lifecycle, or postcondition handling is materially different from the proven Browser / bounded OS Window / bounded Terminal-PTY shapes. A different app, OS, device, transport, or deployment path alone is not sufficient.
 
 Exit criteria:
 
-- three real adapters pass deterministic consumer tests;
-- the third adapter demonstrates reuse without product-specific concepts entering generic `src/`;
-- bounded OS/window dogfood demonstrates Agent → Human → verifying → Agent over one exact target, or concrete blockers are documented;
-- Terminal/PTY findings state whether `terminal` should become a proven category, remain experimental, or be replaced by a smaller abstraction;
-- no security invariant is weakened to accommodate an adapter or Target Surface;
-- any new public surface has at least two independent real use cases and a documented compatibility strategy.
+- the Browser, Window, and Terminal components remain green in deterministic tests and real consumer integration;
+- bounded OS-window dogfood demonstrates Agent → Human → verifying → Agent over one exact target on the first-class Window adapter for both required connectivity baselines;
+- Terminal/PTY remains a bounded session/stream component rather than becoming a shell/process runner, and its real-PTY/iPhone evidence remains reproducible;
+- CUMG depends only on the first-class Window/Terminal components rather than Handoff experimental internals;
+- #46/#45 document the final semantic-domain/terminology decision without weakening security invariants;
+- any later generic surface API has a documented compatibility strategy and evidence that it is smaller than the target-specific mechanics it coordinates.
 
 npm publication is **not** an exit criterion for v0.2.
 
@@ -100,7 +95,7 @@ Candidate scope:
 
 - track MCP MRTR, elicitation, and Tasks evolution and remove redundant project-specific plumbing when the standard subsumes it;
 - test against multiple MCP client/server implementations where practical;
-- provide and dogfood one first-class Browser WebRTC Handoff adapter so Maps, Cinema, and future MCP consumers depend on start/revoke/exact-target semantics instead of assembling `TakeoverBroker` + WebRTC runtime details themselves;
+- maintain the first-class Browser / Window / Terminal component family so consumers depend on bounded lifecycle/target semantics instead of assembling low-level broker, WebRTC, or PTY-authority internals themselves;
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
 - validate a low-latency push/latest-frame transport and a minimal native Human Takeover reference client without turning the project into a generic remote-desktop product.
 

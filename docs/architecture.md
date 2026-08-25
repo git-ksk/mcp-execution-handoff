@@ -15,11 +15,11 @@ MCP bridge ---------------- principal + invocation + args binding
    v
 Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    |
-   +---- consumer adapter: browser.maps
+   +---- BrowserHandoffAdapter ---- exact browser/window + WebRTC
    |
-   +---- consumer adapter: browser.cinema
+   +---- WindowHandoffAdapter ----- exact bounded OS window + WebRTC
    |
-   +---- optional browser takeover transport
+   +---- TerminalHandoffAdapter --- bounded consumer-owned PTY + DataChannel WebRTC
    |
    +---- credential-safe external Human provider coordinator
 ```
@@ -47,12 +47,13 @@ The existing TypeScript API calls these values `HumanSurfaceKind`. Documentation
 
 ### 3. Target Surface
 
-This describes what execution surface the Human controls. The currently proven categories are:
+This describes what execution surface the Human controls. Real consumer evidence now proves three materially different surface shapes:
 
 - `browser` — a browser execution/window/session surface;
-- `os_window` — a bounded OS application/window surface.
+- `os_window` — a bounded OS application/window surface;
+- `terminal_pty` — one bounded, consumer-owned PTY/session with byte-stream input/output, resize, staged writer drains, process continuity, and mandatory post-Human Agent state synchronization.
 
-Future categories such as terminal/PTY or another native-application abstraction remain non-contractual until a real consumer proves the need. Architecture terminology prefers **Target Surface**; “takeover type” may be used informally, but should not replace the canonical term.
+`terminal_pty` is an architecture label for the proven shape, not a frozen public enum value. #46/#45 still own the final semantic-domain and public terminology decision. A future native-application/device abstraction remains non-contractual until a real consumer proves a materially different boundary. Architecture terminology prefers **Target Surface**; “takeover type” may be used informally, but should not replace the canonical term.
 
 ### 4. Transport
 
@@ -71,6 +72,7 @@ Execution Handoff
 +-- Target Surface
 |    browser
 |    os_window
+|    terminal_pty
 |
 +-- Transport
      Native
@@ -80,7 +82,7 @@ Execution Handoff
      future: WebSocket / HTTP streaming / WebTransport
 ```
 
-Current examples include `browser + automation_adjacent + WebRTC` and `browser/os_window + credential_safe_external + WebRTC`. A combination is supported only when the relevant consumer/provider/host path has its own acceptance evidence; architectural composability does not imply blanket support.
+Current examples include `browser + automation_adjacent + WebRTC`, bounded `os_window + WebRTC`, and `terminal_pty + WebRTC DataChannel`. A combination is supported only when the relevant consumer/provider/host path has its own acceptance evidence; architectural composability does not imply blanket support. Direct ICE and TURN relay are transport outcomes, not additional Target Surface categories.
 
 ## Lifecycle
 
@@ -149,6 +151,22 @@ For dense mobile UIs, the client also provides a client-side **Aim mode**. Enabl
 Touch-capable Safari uses Touch Events as the authoritative gesture stream and suppresses duplicate touch Pointer Events. The macOS host injects events from `CGEventSource(stateID: .combinedSessionState)`, which matches a process running inside the logged-in user session. Tap/scroll use the session event tap; target-bound keyboard input is posted to the resolved target PID when available. These choices keep window-scoped capture/input and browser gesture semantics aligned without broadening the consumer API.
 
 The broker cannot widen the set of surfaces eligible for takeover. The consumer browser adapter must reject navigation/state outside its own allowlist and verify every input against the current intervention epoch.
+
+## Window handoff
+
+`WindowHandoffAdapter` is the first-class non-browser bounded-window component. Browser and Window share the smallest internal bounded-window WebRTC/session core: exact process/window binding, short-lived locator/session lifecycle, direct-first ICE with optional TURN fallback, reconnect/client-generation fencing, revoke, and privacy-bounded transport diagnostics. Browser profile/authentication policy remains in the Browser facade rather than leaking into the Window component.
+
+The Window adapter requires a positive `processId`, an optional exact `windowId`, and an explicit bounded `{ tap, scroll, text, key }` Human input policy. There is no display-wide or whole-desktop fallback. If only `processId` is supplied, the host must resolve exactly one eligible owned window; if `windowId` is supplied, ownership is revalidated against that process. Target disappearance, ambiguity, ownership mismatch, or input-host failure fences the Human transport rather than widening scope.
+
+CUMG is the real non-browser consumer. It migrated from consumer-local `TakeoverBroker` + WebRTC runtime assembly to `WindowHandoffAdapter` without moving CUMG authorization, quarantine, replay, or semantic verification into Handoff. Merged-code physical iPhone acceptance through a public Cloudflare Tunnel confirmed the relay path and stale-locator rejection. Issue #85 remains open only for the equivalent same-LAN direct rerun on the first-class adapter; older shared transport direct evidence does not substitute for that final component-level rerun.
+
+## Terminal / PTY handoff
+
+`TerminalHandoffAdapter` is the first-class component for exactly one bounded, consumer-owned PTY/session. It composes the already-proven Terminal authority machine with the DataChannel-only WebRTC transport; it does not introduce a second authority FSM, spawn shells, own cwd/env/job-control policy, supervise consumer processes, or persist a transcript.
+
+The lifecycle is intentionally stronger than a generic byte tunnel. `begin()` fences Agent input/observation/resize before the consumer drains writes admitted before that fence. Human claim is allowed only after that drain and exact transport readiness. Ordered Human `Done` fences the Human transport before the event is exposed, then the consumer drains already-admitted Human writes before verification may succeed. Explicit resume retains `agentStateSynchronizationRequired`; Agent PTY operations remain fenced until the consumer discards/re-reads Human-period output and other PTY assumptions and acknowledges fresh state synchronization. Disconnect is not Done, PTY exit never synthesizes a replacement session, and Human-period output is never replayed to Agent.
+
+CUMG now consumes only `TerminalHandoffAdapter`; its runtime and production staging no longer depend directly on `ExperimentalTerminalPtyAuthority` or `ExperimentalTerminalWebRtcTakeover`. CUMG retains PTY allocation, Unix descendant containment, process truth, bounded PTY I/O, and content-free verification. Merged Handoff/CUMG code passed real `/bin/cat` cross-repo WebRTC E2E and physical iPhone Human acceptance through the first-class adapter. The physical run used an external Cloudflare Tunnel with TURN configured, but the selected ICE pair was not recorded, so it must not be cited as proof that that specific Terminal run relayed through TURN. Issue #91 separately tracks a mobile status-display ambiguity where Safari could appear to remain on “Connecting” even though the backend lifecycle reached Human input, Done, verifying, explicit resume, and state synchronization successfully.
 
 ## Consequential actions
 

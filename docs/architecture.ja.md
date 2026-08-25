@@ -17,11 +17,11 @@ MCP bridge ---------------- principal + invocation + args binding
    v
 Execution Handoff core ---- authority / epoch / resume policy / checkpoint
    |
-   +---- consumer adapter: browser.maps
+   +---- BrowserHandoffAdapter ---- exact browser/window + WebRTC
    |
-   +---- consumer adapter: browser.cinema
+   +---- WindowHandoffAdapter ----- exact bounded OS window + WebRTC
    |
-   +---- optional browser takeover transport
+   +---- TerminalHandoffAdapter --- bounded consumer-owned PTY + DataChannel WebRTC
    |
    +---- credential-safe external Human provider coordinator
 ```
@@ -49,12 +49,13 @@ Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはt
 
 ### 3. Target Surface
 
-「Humanが何を操作するか」を表す軸です。現在実績のあるcategoryは次のとおりです。
+「Humanが何を操作するか」を表す軸です。実consumer evidenceで、現在は本質的に異なる3つのsurface shapeを実証しています。
 
 - `browser` — browser execution/window/session surface
 - `os_window` — scopeを限定したOS application/window surface
+- `terminal_pty` — 1つのboundedでconsumer-ownedなPTY/session。byte-stream input/output、resize、staged writer drain、process continuity、post-Human Agent state sync必須化を含む
 
-terminal/PTYや別のnative-application abstractionは、実consumerで必要性が証明されるまでnon-contractualな将来候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
+`terminal_pty` は実証済みshapeを説明するarchitecture labelであり、frozenなpublic enum valueではありません。最終的なsemantic-domain / public terminologyは #46/#45で確定します。別のnative-application/device abstractionは、実consumerで本質的に異なるboundaryが証明されるまでnon-contractualな候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
 
 ### 4. Transport
 
@@ -73,6 +74,7 @@ Execution Handoff
 +-- Target Surface
 |    browser
 |    os_window
+|    terminal_pty
 |
 +-- Transport
      Native
@@ -82,7 +84,7 @@ Execution Handoff
      future: WebSocket / HTTP streaming / WebTransport
 ```
 
-現在の実例には `browser + automation_adjacent + WebRTC`、`browser/os_window + credential_safe_external + WebRTC` があります。architecture上で組み合わせ可能でも、それだけでsupport済みとはみなしません。各consumer/provider/host pathでacceptance evidenceがある場合だけsupport済みと扱います。
+現在の実例には `browser + automation_adjacent + WebRTC`、bounded `os_window + WebRTC`、`terminal_pty + WebRTC DataChannel` があります。architecture上で組み合わせ可能でも、それだけでsupport済みとはみなしません。各consumer/provider/host pathでacceptance evidenceがある場合だけsupport済みと扱います。direct ICE / TURN relayはtransport outcomeであり、別Target Surface categoryではありません。
 
 ## ライフサイクル
 
@@ -160,6 +162,22 @@ WebRTC browser transportではdirect-first ICEを維持し、signaling/data-plan
 touch対応SafariではTouch Eventsをgestureの基準とし、touch Pointer Eventsによる二重入力を抑止します。macOS hostでは `CGEventSource(stateID: .combinedSessionState)` を利用し、login中のuser session内で動くprocessに合わせます。tap/scrollはsession event tap、target-bound keyboard inputは対象PIDを解決できる場合にそのPIDへ送ります。consumer APIを広げずに、window単位のcapture/inputとbrowser gestureの意味を一致させるための設計です。
 
 broker自身はtakeover可能なsurfaceを広げません。consumer browser adapterが自身のallowlistと現在のepochに基づいて各操作を検証します。
+
+## Window handoff
+
+`WindowHandoffAdapter` はnon-browserのbounded window向けfirst-class componentです。BrowserとWindowは、exact process/window binding、short-lived locator/session lifecycle、direct-first ICE + optional TURN fallback、reconnect/client-generation fencing、revoke、privacy-bounded transport diagnosticsという最小のinternal bounded-window WebRTC/session coreだけを共有します。browser profile / authentication policyはBrowser facadeに残し、Window componentへ漏らしません。
+
+Window adapterはpositiveな `processId`、必要ならexact `windowId`、明示的でboundedな `{ tap, scroll, text, key }` Human input policyを要求します。display-wide / whole-desktop fallbackはありません。`processId`だけならeligibleなowned windowを厳密に1つ解決し、`windowId`指定時はそのprocess ownershipを再検証します。target消失、ambiguity、ownership mismatch、input host failure時はscopeを広げずHuman transportをfenceします。
+
+実non-browser consumerはCUMGです。CUMGはconsumer-localな `TakeoverBroker` + WebRTC runtime手組みから `WindowHandoffAdapter` へ移行しつつ、authorization / quarantine / replay / semantic verificationはCUMG側に維持しています。merged-code physical iPhone acceptanceではpublic Cloudflare Tunnel経由のrelay pathとstale locator rejectionを確認済みです。#85に残るのはfirst-class adapterで同等のsame-LAN direct rerunを行うことだけで、shared transportに対する過去のdirect evidenceだけではこの最後のcomponent-level rerunの代替にしません。
+
+## Terminal / PTY handoff
+
+`TerminalHandoffAdapter` はexactly 1つのboundedでconsumer-ownedなPTY/session向けfirst-class componentです。実証済みTerminal authority machineとDataChannel-only WebRTC transportをcomposeし、2つ目のauthority FSMを作りません。shell spawn、cwd/env/job-control policy、consumer process supervision、terminal transcript永続化もHandoffの責務にはしません。
+
+lifecycleはgeneric byte tunnelより強く制約します。`begin()` はAgent input / observation / resizeを先にfenceし、そのfence前にadmit済みだったwriteをconsumerがdrainします。Human claimはdrain完了とexact transport readinessの後だけ可能です。ordered Human `Done` はeventをconsumerへ返す前にHuman transportをfenceし、その後consumerがadmit済みHuman writeをdrainするまでverificationは成功できません。explicit resume後も `agentStateSynchronizationRequired` を維持し、consumerがHuman期間outputやPTY assumptionを破棄・再読込してfresh state syncをackするまでAgent PTY operationをfenceします。disconnectはDoneではなく、PTY exitからreplacement sessionを作らず、Human期間outputをAgentへreplayしません。
+
+CUMGは現在 `TerminalHandoffAdapter` だけをconsumeし、runtime/production stagingから `ExperimentalTerminalPtyAuthority` / `ExperimentalTerminalWebRtcTakeover` への直接依存を外しています。PTY allocation、Unix descendant containment、process truth、bounded PTY I/O、content-free verificationはCUMG責務です。merged Handoff/CUMG codeでreal `/bin/cat` cross-repo WebRTC E2Eとphysical iPhone Human acceptanceをfirst-class adapter経由で通過済みです。physical runは外部Cloudflare TunnelかつTURN設定ありでしたが、selected ICE pairは記録していないため、そのTerminal run自体がTURN relayを選択したとは主張しません。#91では、backend lifecycleがHuman input / Done / verifying / explicit resume / state syncまで成功していてもSafari上で「Connecting」に見え続ける可能性があるmobile status表示のambiguityを別途追跡します。
 
 ## 重大操作との分離
 
