@@ -25,17 +25,16 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: their supported work is now represented by first-class bounded Window/WebRTC/WSS evidence and the narrower #94/#56/#19/#12 follow-ups; whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: their supported work is now represented by first-class bounded Window/WebRTC/WSS evidence and the narrower #56/#19/#12 follow-ups plus completed #94 evidence; whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
-The next implementation priority is #94: investigate an explicit Human-only macOS native input backend for secure system UI without silently widening bounded Window Handoff to whole-desktop authority. Media quality (#56) and Linux editable-region parity (#34) follow as bounded transport/host improvements rather than authority-model changes.
+Issue #94 is complete: post-#99/#101 evidence shows the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. Media quality (#56) and Linux editable-region parity (#34) remain the next bounded transport/host improvements.
 
-### Post-v0.2.0 follow-up issue map — 5 issues
+### Post-v0.2.0 follow-up issue map — 4 issues
 
-The release gate #119 closes only after the v0.2.0 tag and GitHub Release are verified. The durable post-release backlog is mapped below.
+The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog is mapped below.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
-| #94 | v0.2.x Window hardening | **Next implementation priority.** Human-only, explicitly selected secure-system-UI input backend; no TCC bypass or hidden desktop fallback. |
 | #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
 | #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
@@ -78,7 +77,7 @@ Current scope and closeout:
 
 - keep Browser, Window, and Terminal as first-class consumer-facing components without forcing their distinct media/stream mechanics behind one premature generic surface interface;
 - retain #85's completed physical Window evidence across both same-LAN direct and public Tunnel/TURN relay paths, including stale-locator rejection;
-- investigate #94 as an explicit Human-only secure-system-UI input capability while keeping ordinary Window Handoff bounded and unchanged by default;
+- retain #94 as completed evidence: exact-window Human-only macOS input passes the tested secure System Settings control without privileged/desktop fallback; any future broader backend requires a separately reviewed escalation;
 - improve bounded Window media legibility in #56 without regressing latency/backpressure, and close Linux editable-region parity in #34 without CDP/DOM/credential exposure;
 - keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;
 - formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;

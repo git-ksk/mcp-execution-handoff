@@ -110,6 +110,30 @@ test("Linux WebRTC runtime waits for exact host window readiness before creating
   }
 });
 
+test("macOS WebRTC pointer diagnostics expose bounded Human delivery without payload data", async () => {
+  const child = new FakeHostProcess();
+  const provider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: "/fake/takeover-webrtc-host",
+    spawnProcess: (() => child) as never
+  });
+  const { client, offer } = await clientOffer();
+  try {
+    const started = provider.start(binding(), offer, hooks);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.stdout.write(encodedFrameRecord());
+    await started;
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_down_sent\n");
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_up_sent\n");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage);
+    assert.equal(stages.includes("host.input.pointer.down_sent"), true);
+    assert.equal(stages.includes("host.input.tap.sent"), true);
+  } finally {
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});
+
 test("macOS-style WebRTC runtime fails closed before answer creation when the host exits before first media", async () => {
   const child = new FakeHostProcess();
   const provider = new SpawnedWebRtcRuntimeProvider({

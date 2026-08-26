@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Fix bounded macOS Window Human pointer admission for first-party system windows that are already the exact focused target but reject `AXRaise`: raising is now best-effort while exact PID/window geometry plus focused-window verification remains the authority proof. Physical iPhone acceptance opened the System Settings Accessibility Add file chooser without changing TCC state, credentials, or permission values; no Screen Sharing/Remote Management or desktop-wide fallback was added (#94).
+
 ## [0.2.0] - 2026-08-26
 
 - Added canonical Human Interaction Policy API names (`HumanInteractionPolicyKind`, `HUMAN_INTERACTION_POLICY_KINDS`, `selectHumanInteractionPolicy`) while retaining the historical Human-surface names as source/runtime-compatible aliases; documented Browser/OS Window/Terminal as Target Surface labels without freezing a public `TargetSurfaceKind`.

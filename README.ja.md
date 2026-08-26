@@ -159,6 +159,8 @@ Authenticatedな `/takeover/*` HTTP requestは `browserHandoff.handle(...)` へr
 
 非browserのapplication windowには、first-class high-level componentとして `WindowHandoffAdapter` を使います。positiveなtarget process、必要ならexact window id、そして明示的でboundedなHuman input policyが必須です。このadapterからdisplay-wide/desktop fallbackへ広がる経路はありません。`processId`だけならeligibleなowned windowを厳密に1つだけ解決する必要があり、`windowId`も指定した場合は既存host boundaryがそのexact ownershipを再検証します。target消失、ambiguity、ownership mismatchはfail closedです。
 
+macOSのpointer inputは、exact-window revalidation後にstateful `CGEvent` / `cghidEventTap` を使うbounded pathのままです。#94ではmacOS 26.5のSystem Settings Accessibility **追加** controlを現行pathでactivateできることを確認したため、Screen Sharing / Remote Managementをprivileged / desktop-wide fallbackとして追加しません。fail-closed boundaryの詳細はarchitectureのinput-backend contractを参照してください。
+
 ```ts
 import { WindowHandoffAdapter } from "mcp-execution-handoff/window-takeover";
 
