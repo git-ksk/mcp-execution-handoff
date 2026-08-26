@@ -118,6 +118,7 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /Math\.round\(point\.y\)/);
   assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
   assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xtest-helper", moduleUrl\)/);
+  assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xrecord-delivery-helper", moduleUrl\)/);
   assert.doesNotMatch(host, /TAKEOVER_LINUX_XTEST_HELPER/);
   assert.match(host, /await this\.pointer\.move\(x, y\)/);
   assert.match(host, /currentGeometry = await this\.currentOwnedGeometry\(\)/);
@@ -133,6 +134,11 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_pointer_move_ready/);
   assert.match(host, /linux_stage=input_pointer_authority_ready/);
   assert.match(host, /linux_stage=input_pointer_down_sent/);
+  assert.match(host, /delivery\.arm\(geometryBeforeMove\.windowId, x, y\)/);
+  assert.match(host, /await delivery\.waitPrimaryPress\(\)/);
+  assert.match(host, /linux_stage=input_pointer_delivery_ready/);
+  assert.match(host, /input_pointer_delivery_helper_failure/);
+  assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
   assert.match(host, /await this\.pointer\.up\(\)/);
@@ -184,6 +190,20 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
   assert.doesNotMatch(helper, /XSendEvent/);
   assert.doesNotMatch(helper, /XTestGrabControl/);
   assert.doesNotMatch(helper, /_NET_WM_PID|window title|targetPid|windowId/);
+});
+
+
+test("Linux XRecord helper waits for exact delivered Button1 press without injecting input", () => {
+  const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");
+  assert.match(helper, /XRecordQueryVersion/);
+  assert.match(helper, /delivered_events\.first = ButtonPress/);
+  assert.match(helper, /XRecordCreateContext/);
+  assert.match(helper, /XRecordEnableContextAsync/);
+  assert.match(helper, /XRecordProcessReplies/);
+  assert.match(helper, /event_window == state->expected_window/);
+  assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
+  assert.match(helper, /DELIVERY_WAIT_TIMEOUT_MS 1000/);
+  assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
 });
 
 test("Linux X11 pointer query probe remains query-only and non-invasive", () => {

@@ -212,6 +212,8 @@ async function main(): Promise<void> {
   assert.equal(await exists(helper), true, "compiled Linux helper is required");
   const xtestHelper = path.resolve("dist/native/mcp-handoff-linux-xtest-helper");
   assert.equal(await exists(xtestHelper), true, "compiled Linux XTEST pointer helper is required");
+  const xrecordDeliveryHelper = path.resolve("dist/native/mcp-handoff-linux-xrecord-delivery-helper");
+  assert.equal(await exists(xrecordDeliveryHelper), true, "compiled Linux XRecord delivery helper is required");
   const x11PointerQuery = path.resolve("dist/native/mcp-handoff-linux-x11-pointer-query");
   assert.equal(await exists(x11PointerQuery), true, "compiled Linux X11 pointer query probe is required");
   await chmod(helper, 0o755);
