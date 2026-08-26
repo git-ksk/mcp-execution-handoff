@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { access, chmod, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -217,6 +217,26 @@ async function main(): Promise<void> {
   await chmod(helper, 0o755);
 
   const root = await mkdtemp(path.join(os.tmpdir(), "handoff-linux-webrtc-"));
+  const openboxNoClientGrab = process.env.HANDOFF_ACCEPT_OPENBOX_NO_CLIENT_GRAB === "1";
+  const openboxConfig = path.join(root, "openbox-no-client-grab.xml");
+  if (openboxNoClientGrab) {
+    await writeFile(openboxConfig, `<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+    <focusLast>yes</focusLast>
+    <underMouse>no</underMouse>
+    <raiseOnFocus>no</raiseOnFocus>
+  </focus>
+  <mouse>
+    <dragThreshold>8</dragThreshold>
+    <doubleClickTime>200</doubleClickTime>
+    <screenEdgeWarpTime>0</screenEdgeWarpTime>
+  </mouse>
+</openbox_config>
+`, { mode: 0o600 });
+  }
   const profile = path.join(root, "profile");
   const home = path.join(root, "home");
   const runtimeDir = path.join(root, "runtime");
@@ -309,7 +329,8 @@ async function main(): Promise<void> {
     });
     xvfb.once("error", () => undefined);
     await waitForX(displayNumber);
-    openbox = spawn(openboxExecutable, ["--sm-disable"], { env: xEnv, stdio: ["ignore", "ignore", "ignore"] });
+    const openboxArgs = ["--sm-disable", ...(openboxNoClientGrab ? ["--config-file", openboxConfig] : [])];
+    openbox = spawn(openboxExecutable, openboxArgs, { env: xEnv, stdio: ["ignore", "ignore", "ignore"] });
     openbox.once("error", () => undefined);
     await waitForOpenboxReady(openbox, xEnv);
 

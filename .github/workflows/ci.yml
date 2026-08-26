@@ -100,8 +100,16 @@ jobs:
         if: always()
         continue-on-error: true
         run: npm run accept:webrtc:linux
+      - name: Run Linux Chrome acceptance without Openbox Client grab
+        id: no_client_grab
+        if: always()
+        continue-on-error: true
+        env:
+          HANDOFF_ACCEPT_OPENBOX_NO_CLIENT_GRAB: "1"
+        run: npm run accept:webrtc:linux
       - name: Require repeated Linux Chrome stable acceptance
         if: always()
         run: |
           test "${{ steps.stable_chrome_1.outcome }}" = success
           test "${{ steps.stable_chrome_2.outcome }}" = success
+          test "${{ steps.no_client_grab.outcome }}" = success
