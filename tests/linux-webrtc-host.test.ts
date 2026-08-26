@@ -200,7 +200,8 @@ test("Linux XRecord helper waits for exact delivered Button1 press without injec
   assert.match(helper, /XRecordCreateContext/);
   assert.match(helper, /XRecordEnableContextAsync/);
   assert.match(helper, /XRecordProcessReplies/);
-  assert.match(helper, /event_window == state->expected_window/);
+  assert.match(helper, /client = \(XRecordClientSpec\)window/);
+  assert.doesNotMatch(helper, /event_window == state->expected_window/);
   assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
   assert.match(helper, /DELIVERY_WAIT_TIMEOUT_MS 1000/);
   assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);

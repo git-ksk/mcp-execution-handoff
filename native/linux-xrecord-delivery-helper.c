@@ -19,7 +19,6 @@
 
 #define WIRE_EVENT_TYPE_OFFSET 0
 #define WIRE_DETAIL_OFFSET 1
-#define WIRE_EVENT_WINDOW_OFFSET 12
 #define WIRE_ROOT_X_OFFSET 20
 #define WIRE_ROOT_Y_OFFSET 22
 
@@ -27,7 +26,6 @@ typedef struct {
   Display *control;
   Display *data;
   XRecordContext context;
-  Window expected_window;
   int expected_x;
   int expected_y;
   bool delivered;
@@ -76,12 +74,6 @@ static int64_t monotonic_ms(void) {
   return ((int64_t)now.tv_sec * 1000) + ((int64_t)now.tv_nsec / 1000000);
 }
 
-static uint32_t read_u32(const unsigned char *data, size_t offset) {
-  uint32_t value = 0;
-  (void)memcpy(&value, data + offset, sizeof(value));
-  return value;
-}
-
 static int16_t read_i16(const unsigned char *data, size_t offset) {
   int16_t value = 0;
   (void)memcpy(&value, data + offset, sizeof(value));
@@ -99,10 +91,12 @@ static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
     const unsigned char *event = recorded->data;
     const unsigned char type = (unsigned char)(event[WIRE_EVENT_TYPE_OFFSET] & 0x7fU);
     const unsigned char detail = event[WIRE_DETAIL_OFFSET];
-    const Window event_window = (Window)read_u32(event, WIRE_EVENT_WINDOW_OFFSET);
     const int root_x = (int)read_i16(event, WIRE_ROOT_X_OFFSET);
     const int root_y = (int)read_i16(event, WIRE_ROOT_Y_OFFSET);
-    if (type == ButtonPress && detail == 1U && event_window == state->expected_window
+    // XRecordClientSpec is the exact target XID resource, so this context already scopes
+    // delivered events to the client that created that resource. The event field itself may name
+    // a descendant/input child; do not incorrectly require it to equal the top-level exact XID.
+    if (type == ButtonPress && detail == 1U
         && root_x == state->expected_x && root_y == state->expected_y) {
       state->delivered = true;
     }
@@ -151,7 +145,6 @@ static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
     return false;
   }
 
-  state->expected_window = window;
   state->expected_x = x;
   state->expected_y = y;
   state->delivered = false;
