@@ -1,12 +1,15 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import WebSocket from "ws";
-import { TakeoverSessionManager } from "../browser-takeover/session.js";
+import { TakeoverSessionManager, type TakeoverCompletionResult } from "../browser-takeover/session.js";
 import { type WebSocketTakeoverBinding, type WebSocketTakeoverFrame, type WebSocketTakeoverHumanInput, type WebSocketTakeoverInputPolicy, type WebSocketTakeoverLease, type WebSocketTakeoverPeer, type WebSocketTakeoverServerMessage } from "./websocket-takeover.js";
 export interface ExperimentalWebSocketAcceptedSession {
     readonly binding: WebSocketTakeoverBinding;
     readonly inputPolicy: WebSocketTakeoverInputPolicy;
     readonly lease: WebSocketTakeoverLease;
+}
+export interface ExperimentalWebSocketTakeoverSessionAuthorityHooks {
+    completed?(completion: TakeoverCompletionResult): void | Promise<void>;
 }
 /**
  * Handoff-owned WSS authentication/claim authority.
@@ -26,7 +29,8 @@ export declare class ExperimentalWebSocketTakeoverSessionAuthority {
     private readonly now;
     private readonly createTicket;
     private readonly createClientBinding;
-    constructor(sessions: TakeoverSessionManager, now?: () => number, createTicket?: () => string, createClientBinding?: () => string);
+    private readonly hooks;
+    constructor(sessions: TakeoverSessionManager, now?: () => number, createTicket?: () => string, createClientBinding?: () => string, hooks?: ExperimentalWebSocketTakeoverSessionAuthorityHooks);
     issueHandshakeTicket(sessionId: string, boundPrincipal: string, inputPolicy: WebSocketTakeoverInputPolicy): string;
     accept(sessionId: string, ticket: string): ExperimentalWebSocketAcceptedSession;
     invalidateTicket(ticket: string): void;

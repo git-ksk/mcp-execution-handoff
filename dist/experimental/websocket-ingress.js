@@ -29,13 +29,15 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
     now;
     createTicket;
     createClientBinding;
+    hooks;
     #sessionsById = new Map();
     #sessionsByTicket = new Map();
-    constructor(sessions, now = Date.now, createTicket = () => randomBytes(32).toString("base64url"), createClientBinding = () => randomBytes(24).toString("base64url")) {
+    constructor(sessions, now = Date.now, createTicket = () => randomBytes(32).toString("base64url"), createClientBinding = () => randomBytes(24).toString("base64url"), hooks = {}) {
         this.sessions = sessions;
         this.now = now;
         this.createTicket = createTicket;
         this.createClientBinding = createClientBinding;
+        this.hooks = hooks;
     }
     issueHandshakeTicket(sessionId, boundPrincipal, inputPolicy) {
         validateInputPolicy(inputPolicy);
@@ -133,8 +135,9 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
             },
             complete: () => {
                 assertRecordBinding();
-                this.sessions.complete(record.sessionId, record.completionCapability, record.principalBinding);
+                const completion = this.sessions.complete(record.sessionId, record.completionCapability, record.principalBinding);
                 this.#forgetRecord(record);
+                return this.hooks.completed?.(completion);
             },
             release: () => {
                 // A newer generation already fences an older socket. Treat that as successful cleanup,
@@ -144,7 +147,16 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
                     !safeEqual(record.currentClientBinding, binding.clientBinding)) {
                     return;
                 }
-                this.sessions.releaseClientGeneration(record.sessionId, record.principalBinding, binding.clientBinding, binding.clientGeneration);
+                try {
+                    this.sessions.releaseClientGeneration(record.sessionId, record.principalBinding, binding.clientBinding, binding.clientGeneration);
+                }
+                catch (error) {
+                    if (error instanceof TakeoverSessionError
+                        && (error.code === "TAKEOVER_NOT_FOUND" || error.code === "TAKEOVER_EXPIRED")) {
+                        return;
+                    }
+                    throw error;
+                }
             }
         };
     }
