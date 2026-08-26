@@ -4,6 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Retire historical umbrella issues #11 and #13 as superseded: bounded Window/WebRTC/WSS acceptance now carries the supported path, while secure-system-UI input, media quality, provider-neutral relay, and hosted topology remain in narrower issues; whole-desktop and mandatory custom Native-client scope are not restored by default.
 - Clarify the generic architecture/positioning boundary (#5/#42/#46): separate MCP principal from target-service identity, define the four Handoff semantic domains and Takeover Session layer, make Target Surface admission evidence-based/documentation-first, and compare responsibility boundaries without claiming remote-desktop/browser/HITL superiority.
 - Stabilize Safari WebRTC reconnect lifecycle (#104): generation release is single-flight, overlapping background/foreground/failure triggers coalesce to one reconnect, active-lease conflicts are bounded/observable, Human input is never replayed across generations, and a physical same-LAN iPhone run recovered through three background/foreground cycles without a 409 loop or black-frame stall.
 - Make Terminal Handoff mobile state explicit (#91): the Human surface now distinguishes connecting, connected/waiting for Human authority, Human authority active, Done/verifying, and fail-closed unavailable states without weakening backend authority semantics.

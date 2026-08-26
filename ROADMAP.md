@@ -28,11 +28,11 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum or final naming. #46 now documents the semantic-domain/admission baseline; #45 remains the terminology/public-API convergence point.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation).
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: their supported work is now represented by first-class bounded Window/WebRTC/WSS evidence and the narrower #94/#56/#19/#12 follow-ups; whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 The next implementation priority is #94: investigate an explicit Human-only macOS native input backend for secure system UI without silently widening bounded Window Handoff to whole-desktop authority. Media quality (#56) and Linux editable-region parity (#34) follow as bounded transport/host improvements rather than authority-model changes.
 
-### Open issue map — 8 issues
+### Open issue map — 6 issues
 
 Every currently open issue is assigned below so backlog state is visible from the roadmap rather than inferred from GitHub history.
 
@@ -44,8 +44,6 @@ Every currently open issue is assigned below so backlog state is visible from th
 | #45 | v0.2 API/terminology convergence | Audit/align public terminology using the #46 architecture baseline; avoid speculative enums and unnecessary breaking renames. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
-| #13 | v0.4+ transport umbrella | **Re-scope before more implementation.** Much of the old Phase 1/Phase 2/WebRTC/mobile lifecycle plan is now proven; retain only unique remaining remote/mobile or transport decisions. |
-| #11 | v0.2/v0.4 cleanup umbrella | **Audit for supersession.** First-class Window Handoff, #94 secure UI, and #56 quality work now cover much of the original OS-provider/latency scope; narrow or close rather than duplicating work. |
 
 ## Guiding principles
 
@@ -121,8 +119,8 @@ Candidate scope:
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
 - finish the provider-neutral connectivity/relay boundary in #19 without exposing ICE/TURN/provider choice to consumers;
 - define the hosted control-plane + stateful execution-worker topology in #12 with bounded durable state and authenticated outbound worker connectivity;
-- re-scope the historical #13 Thin Takeover umbrella against the now-proven WebRTC/WSS/mobile evidence before adding more transport code;
-- audit #11 for unique remaining work after first-class Window Handoff, #94 secure UI, and #56 media-quality separation rather than duplicating already-landed OS-provider work;
+- retain the #13 closeout decision: the historical Thin Takeover/mandatory custom Native-client umbrella is superseded by the accepted WebRTC path and completed WSS evaluation; any future native-client work must return as a new narrowly evidenced requirement;
+- retain the #11 closeout decision: first-class bounded Window Handoff plus #94 secure UI and #56 media quality supersede the old full-desktop/provider-latency umbrella; desktop-wide authority remains outside the default boundary;
 - validate any additional low-latency push/latest-frame or native Human Takeover path only when it adds evidence not already covered by current WebRTC/WSS acceptance.
 
 ### Transport family direction
