@@ -123,7 +123,9 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /record\.kind === "pointer_button"/);
   assert.match(host, /record\.button === "primary"/);
   assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
+  assert.match(host, /const POINTER_INPUT_SETTLE_MS = 20/);
   assert.match(host, /linux_stage=input_pointer_move_ready/);
+  assert.match(host, /setTimeout\(resolve, POINTER_INPUT_SETTLE_MS\)[\s\S]*this\.geometry = await this\.currentOwnedGeometry\(\)[\s\S]*confirmActiveTarget/);
   assert.match(host, /linux_stage=input_pointer_authority_ready/);
   assert.match(host, /linux_stage=input_pointer_down_sent/);
   assert.match(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);

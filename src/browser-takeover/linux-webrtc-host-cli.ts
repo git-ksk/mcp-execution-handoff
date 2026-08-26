@@ -18,6 +18,7 @@ const DEFAULT_MAX_WIDTH = 1280;
 const DEFAULT_MAX_HEIGHT = 720;
 const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
+const POINTER_INPUT_SETTLE_MS = 20;
 
 export interface LinuxWindowGeometry {
   windowId: number;
@@ -405,8 +406,9 @@ class LinuxWindowInput {
       if (this.primaryPressed) throw new Error("Linux WebRTC primary button is already pressed");
       // `mousemove --sync` only waits for any movement away from the prior location, not for the
       // requested destination. Force an X11 round trip with getmouselocation in the same xdotool
-      // invocation, then verify the exact root coordinates before admitting Button1 down. This
-      // keeps the public input path on XTEST and never targets a button event via XSendEvent.
+      // invocation. Chromium/Ozone can receive the first Enter/Motion asynchronously, so allow one
+      // bounded input-settle interval before the press, then revalidate exact authority again.
+      // The public input path remains XTEST and never targets a button event via XSendEvent.
       const relativeX = x - this.geometry.x;
       const relativeY = y - this.geometry.y;
       await runCommand(this.xdotool, [
@@ -415,8 +417,10 @@ class LinuxWindowInput {
         "getmouselocation"
       ], this.display);
       process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_move_ready\n");
-      // The round trip above closes the motion race. Re-check exact active/focus authority after
-      // motion and immediately before the stateful XTEST button mutation.
+      await new Promise((resolve) => setTimeout(resolve, POINTER_INPUT_SETTLE_MS));
+      // Window ids can be recycled or authority can change during the settle interval. Revalidate
+      // exact PID/window ownership, geometry, active window, and focus immediately before down.
+      this.geometry = await this.currentOwnedGeometry();
       await this.confirmActiveTarget();
       await this.confirmInputFocusOwnedByTarget();
       process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_authority_ready\n");
