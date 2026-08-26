@@ -72,6 +72,32 @@ async function markerInAnyProcess(marker: string): Promise<boolean> {
   return false;
 }
 
+function x11ParentWindow(windowId: number, env: NodeJS.ProcessEnv): number | undefined {
+  if (!Number.isSafeInteger(windowId) || windowId <= 0) return undefined;
+  const result = spawnSync(
+    "/usr/bin/xwininfo",
+    ["-id", String(windowId), "-int", "-children"],
+    { env, encoding: "utf8" }
+  );
+  if (result.status !== 0) return undefined;
+  const match = /Parent window id:\s+(\d+)/.exec(result.stdout);
+  if (!match) return undefined;
+  const parent = Number(match[1]);
+  return Number.isSafeInteger(parent) && parent > 0 ? parent : undefined;
+}
+
+function x11IsAncestor(ancestor: number, descendant: number, env: NodeJS.ProcessEnv): boolean {
+  if (!Number.isSafeInteger(ancestor) || !Number.isSafeInteger(descendant) || ancestor <= 0 || descendant <= 0) return false;
+  let current = descendant;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (current === ancestor) return true;
+    const parent = x11ParentWindow(current, env);
+    if (!parent || parent === current) return false;
+    current = parent;
+  }
+  return false;
+}
+
 async function main(): Promise<void> {
   if (process.platform !== "linux") throw new Error("Linux acceptance must run on Linux");
   const chromeExecutable = await firstExecutable([
@@ -80,7 +106,7 @@ async function main(): Promise<void> {
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
   ]);
-  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/ffmpeg"]) {
+  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/ffmpeg"]) {
     assert.equal(await exists(executable), true, `${executable} is required`);
   }
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
@@ -170,6 +196,9 @@ async function main(): Promise<void> {
   let endedUses = 0;
   let pointerInsideExactWindow = false;
   let pointerWindowOwnedByTarget = false;
+  let pointerWindowIsExact = false;
+  let pointerWindowDescendsFromExact = false;
+  let pointerWindowAncestorsExact = false;
   client.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { rtpPackets += 1; }));
 
   try {
@@ -294,13 +323,16 @@ async function main(): Promise<void> {
     if (Number.isSafeInteger(pointerWindow) && pointerWindow! > 0) {
       const pointerPid = spawnSync("/usr/bin/xdotool", ["getwindowpid", String(pointerWindow)], { env: xEnv, encoding: "utf8" });
       pointerWindowOwnedByTarget = pointerPid.status === 0 && Number(pointerPid.stdout.trim()) === chrome.pid;
+      pointerWindowIsExact = pointerWindow === acceptedWindowIdNumber;
+      pointerWindowDescendsFromExact = x11IsAncestor(acceptedWindowIdNumber, pointerWindow!, xEnv);
+      pointerWindowAncestorsExact = x11IsAncestor(pointerWindow!, acceptedWindowIdNumber, xEnv);
     }
     process.stdout.write("LINUX_WEBRTC_STAGE tap-form\n");
     try {
       await waitFor("tap-form", () => inputUses >= 2 && endedUses >= 2 && formOpened);
     } catch (error) {
       const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
-      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}`);
+      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}; pointer_is_exact=${pointerWindowIsExact}; pointer_descends_exact=${pointerWindowDescendsFromExact}; pointer_ancestors_exact=${pointerWindowAncestorsExact}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
 
