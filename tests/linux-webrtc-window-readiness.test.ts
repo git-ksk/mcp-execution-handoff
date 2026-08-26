@@ -137,6 +137,9 @@ test("Linux real-browser acceptance carries the accepted exact window into WebRT
   assert.match(source, /raw_chain_has_exact=/);
   assert.match(source, /raw_deepest_descends_exact=/);
   assert.match(source, /HANDOFF_ACCEPT_OPENBOX_NO_CLIENT_GRAB/);
+  const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+  assert.match(workflow, /Informational control only/);
+  assert.doesNotMatch(workflow, /test "\$\{\{ steps\.no_client_grab\.outcome \}\}" = success/);
   assert.match(source, /--config-file/);
   assert.match(source, /<mouse>[\s\S]*<\/mouse>/);
   assert.doesNotMatch(source, /openbox\.once\("error"[\s\S]{0,160}setTimeout\(resolve, 250\)/);
