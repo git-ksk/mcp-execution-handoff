@@ -194,14 +194,17 @@ async function runCommand(executable, args, display) {
 class XdotoolPointerSession {
     child;
     output = "";
+    stderrText = "";
+    failureHint;
     pending;
     closing;
     constructor(executable, display) {
         this.child = spawn(executable, ["-"], {
             env: boundedEnvironment(display),
-            stdio: ["pipe", "pipe", "ignore"]
+            stdio: ["pipe", "pipe", "pipe"]
         });
         this.child.stdout.on("data", (chunk) => this.consume(chunk));
+        this.child.stderr.on("data", (chunk) => this.consumeStderr(chunk));
         this.child.once("error", () => {
             this.diagnostic("pointer_session_write_failure");
             this.failPending("Linux WebRTC pointer helper failed");
@@ -226,6 +229,12 @@ class XdotoolPointerSession {
                 if (!this.pending)
                     return;
                 this.pending = undefined;
+                if (this.failureHint === "parse_failure")
+                    this.diagnostic("pointer_session_parse_failure");
+                if (this.failureHint === "x11_failure")
+                    this.diagnostic("pointer_session_x11_failure");
+                if (this.failureHint === "stderr_other")
+                    this.diagnostic("pointer_session_stderr_other");
                 this.diagnostic("pointer_session_ack_timeout");
                 reject(new Error("Linux WebRTC pointer helper acknowledgement timed out"));
                 void this.close();
@@ -293,6 +302,21 @@ class XdotoolPointerSession {
                 pending.resolve();
             }
         }
+    }
+    consumeStderr(chunk) {
+        if (this.stderrText.length >= 4_096)
+            return;
+        this.stderrText = (this.stderrText + chunk.toString("utf8")).slice(0, 4_096);
+        if (/Unknown command|wrong number of args|Usage:|needs at least|invalid option|unrecognized option/i.test(this.stderrText)) {
+            this.failureHint = "parse_failure";
+            return;
+        }
+        if (/xdo_mouse_(?:down|up)|XTEST|XTest|XGetWindowProperty|X Error|reported an error|XSendEvent/i.test(this.stderrText)) {
+            this.failureHint = "x11_failure";
+            return;
+        }
+        if (this.stderrText.trim().length > 0)
+            this.failureHint = "stderr_other";
     }
     failPending(message) {
         const pending = this.pending;

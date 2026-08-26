@@ -217,8 +217,10 @@ async function runCommand(executable: string, args: string[], display: string): 
 }
 
 class XdotoolPointerSession {
-  private readonly child: ChildProcessByStdio<Writable, Readable, null>;
+  private readonly child: ChildProcessByStdio<Writable, Readable, Readable>;
   private output = "";
+  private stderrText = "";
+  private failureHint: "parse_failure" | "x11_failure" | "stderr_other" | undefined;
   private pending: {
     expectedWindowId: number;
     resolve: () => void;
@@ -230,9 +232,10 @@ class XdotoolPointerSession {
   constructor(executable: string, display: string) {
     this.child = spawn(executable, ["-"], {
       env: boundedEnvironment(display),
-      stdio: ["pipe", "pipe", "ignore"]
+      stdio: ["pipe", "pipe", "pipe"]
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.consume(chunk));
+    this.child.stderr.on("data", (chunk: Buffer) => this.consumeStderr(chunk));
     this.child.once("error", () => {
       this.diagnostic("pointer_session_write_failure");
       this.failPending("Linux WebRTC pointer helper failed");
@@ -255,6 +258,9 @@ class XdotoolPointerSession {
       const timer = setTimeout(() => {
         if (!this.pending) return;
         this.pending = undefined;
+        if (this.failureHint === "parse_failure") this.diagnostic("pointer_session_parse_failure");
+        if (this.failureHint === "x11_failure") this.diagnostic("pointer_session_x11_failure");
+        if (this.failureHint === "stderr_other") this.diagnostic("pointer_session_stderr_other");
         this.diagnostic("pointer_session_ack_timeout");
         reject(new Error("Linux WebRTC pointer helper acknowledgement timed out"));
         void this.close();
@@ -317,6 +323,20 @@ class XdotoolPointerSession {
     }
   }
 
+  private consumeStderr(chunk: Buffer): void {
+    if (this.stderrText.length >= 4_096) return;
+    this.stderrText = (this.stderrText + chunk.toString("utf8")).slice(0, 4_096);
+    if (/Unknown command|wrong number of args|Usage:|needs at least|invalid option|unrecognized option/i.test(this.stderrText)) {
+      this.failureHint = "parse_failure";
+      return;
+    }
+    if (/xdo_mouse_(?:down|up)|XTEST|XTest|XGetWindowProperty|X Error|reported an error|XSendEvent/i.test(this.stderrText)) {
+      this.failureHint = "x11_failure";
+      return;
+    }
+    if (this.stderrText.trim().length > 0) this.failureHint = "stderr_other";
+  }
+
   private failPending(message: string): void {
     const pending = this.pending;
     if (!pending) return;
@@ -325,7 +345,16 @@ class XdotoolPointerSession {
     pending.reject(new Error(message));
   }
 
-  private diagnostic(stage: "pointer_session_ack" | "pointer_session_ack_timeout" | "pointer_session_ack_authority" | "pointer_session_write_failure" | "pointer_session_closed"): void {
+  private diagnostic(stage:
+    | "pointer_session_ack"
+    | "pointer_session_ack_timeout"
+    | "pointer_session_ack_authority"
+    | "pointer_session_write_failure"
+    | "pointer_session_closed"
+    | "pointer_session_parse_failure"
+    | "pointer_session_x11_failure"
+    | "pointer_session_stderr_other"
+  ): void {
     process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${stage}\n`);
   }
 }

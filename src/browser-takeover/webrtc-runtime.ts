@@ -1015,7 +1015,7 @@ class HostMetricParser {
         if (Number.isSafeInteger(tenths) && tenths >= 0 && tenths <= 65_535) this.onHostEncode(tenths / 10);
         continue;
       }
-      const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|pointer_session_ack|pointer_session_ack_timeout|pointer_session_ack_authority|pointer_session_write_failure|pointer_session_closed|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
+      const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|pointer_session_ack|pointer_session_ack_timeout|pointer_session_ack_authority|pointer_session_write_failure|pointer_session_closed|pointer_session_parse_failure|pointer_session_x11_failure|pointer_session_stderr_other|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
       if (diagnostic) {
         const stages = {
           target_alive: "host.target.alive",
@@ -1032,6 +1032,9 @@ class HostMetricParser {
           pointer_session_ack_authority: "host.input.pointer.session.ack_authority",
           pointer_session_write_failure: "host.input.pointer.session.write_failure",
           pointer_session_closed: "host.input.pointer.session.closed",
+          pointer_session_parse_failure: "host.input.pointer.session.parse_failure",
+          pointer_session_x11_failure: "host.input.pointer.session.x11_failure",
+          pointer_session_stderr_other: "host.input.pointer.session.stderr_other",
           input_failure: "host.input.failure",
           capture_failure: "host.capture.failure",
           capture_failure_x11: "host.capture.failure.x11",

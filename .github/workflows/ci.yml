@@ -79,6 +79,8 @@ jobs:
             sudo apt-get install -y --only-upgrade google-chrome-stable
             google-chrome-stable --version
           fi
-      - name: Verify runner Chrome
-        run: command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser
+      - name: Verify runner browser and X11 input helper
+        run: |
+          command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser
+          xdotool --version
       - run: npm run accept:webrtc:linux

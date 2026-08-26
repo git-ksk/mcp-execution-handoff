@@ -130,6 +130,10 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /pointer_session_ack_authority/);
   assert.match(host, /pointer_session_write_failure/);
   assert.match(host, /pointer_session_closed/);
+  assert.match(host, /pointer_session_parse_failure/);
+  assert.match(host, /pointer_session_x11_failure/);
+  assert.match(host, /pointer_session_stderr_other/);
+  assert.doesNotMatch(host, /process\.stderr\.write\([^)]*this\.stderrText/);
   assert.match(host, /session\.command\(\["mouseup", "1"\], this\.geometry\.windowId\)/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
   assert.match(host, /"mousemove", String\(releasePoint\.x\), String\(releasePoint\.y\),[\s\S]*"mouseup", "1"/);

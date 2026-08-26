@@ -34,6 +34,9 @@ export type WebRtcDiagnosticStage =
   | "host.input.pointer.session.ack_authority"
   | "host.input.pointer.session.write_failure"
   | "host.input.pointer.session.closed"
+  | "host.input.pointer.session.parse_failure"
+  | "host.input.pointer.session.x11_failure"
+  | "host.input.pointer.session.stderr_other"
   | "host.input.text.native_ax"
   | "host.input.text.pid_keyboard"
   | "host.input.text.event_creation_failure"
@@ -105,6 +108,9 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.input.pointer.session.ack_authority",
   "host.input.pointer.session.write_failure",
   "host.input.pointer.session.closed",
+  "host.input.pointer.session.parse_failure",
+  "host.input.pointer.session.x11_failure",
+  "host.input.pointer.session.stderr_other",
   "host.input.text.native_ax",
   "host.input.text.pid_keyboard",
   "host.input.text.event_creation_failure",
@@ -201,6 +207,9 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.input.pointer.session.ack_authority": ["stage"],
     "host.input.pointer.session.write_failure": ["stage"],
     "host.input.pointer.session.closed": ["stage"],
+    "host.input.pointer.session.parse_failure": ["stage"],
+    "host.input.pointer.session.x11_failure": ["stage"],
+    "host.input.pointer.session.stderr_other": ["stage"],
     "host.input.text.native_ax": ["stage"],
     "host.input.text.pid_keyboard": ["stage"],
     "host.input.text.event_creation_failure": ["stage"],
