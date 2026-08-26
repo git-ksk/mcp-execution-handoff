@@ -115,6 +115,8 @@ ICE / SDP / RTP / DataChannel、WebSocket framing / backpressure、将来のWebT
 
 WebSocket experimentの主なacceptance questionは、HTTPS-only managed runtimeだけでphysical mobile Human takeoverが実用になり、かつTCP/video backlogをboundedに保てるかです。slow clientでもmemoryをboundedにしlatest-frame/drop semanticsを維持し、reconnectではstale authorityを復活させず必ずgenerationをrotateします。このworkはIssue #40で追跡します。
 
+現在のexperimental sequenceではphysical Acceptance完了までAPIをprivateに保ちます。bounded channel coreの次に、Handoff-owned Node HTTPS/WSS ingressでopaqueなserver-issued handshake ticketを認証し、設定済みのexact HTTPS Origin allowlistを強制し、one-client generationだけをclaimしてchannel bindingをserver側で導出します。既存のexact Browser / Window target lifecycleとのbroker/session composition、physical iPhone Safari Acceptance、WebRTC direct / TURN比較は後続gateです。WebRTCからWebSocketへのautomatic downgradeは行いません。
+
 具体的なworkが決まった時点でversionを割り当てます。必要なら `0.5`、`0.6`、`0.10` 以降も使用します。
 
 ## v1.0 — stable contract milestone

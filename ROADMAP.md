@@ -113,6 +113,8 @@ Transport-specific mechanisms such as ICE/SDP/RTP/DataChannel, WebSocket framing
 
 For the WebSocket experiment, the key acceptance question is whether an HTTPS-only managed runtime can provide usable physical-mobile Human takeover without unbounded TCP/video backlog. A slow client must preserve bounded memory and latest-frame/drop semantics, and reconnect must rotate generation rather than revive stale authority. Track this work in Issue #40.
 
+The current experimental sequence keeps the API private until physical acceptance. The bounded channel core is followed by a Handoff-owned Node HTTPS/WSS ingress that authenticates an opaque server-issued handshake ticket, enforces an exact configured HTTPS Origin allowlist, claims only one client generation, and derives the channel binding on the server. Broker/session composition with the existing exact Browser/Window target lifecycle, physical iPhone Safari acceptance, and WebRTC direct/TURN comparison remain subsequent gates; there is no automatic downgrade from WebRTC to WebSocket.
+
 The exact version number for each item will be chosen when the work is concrete. The project may use `0.5`, `0.6`, `0.10`, and later pre-1.0 releases as needed.
 
 ## v1.0 — stable contract milestone
