@@ -170,6 +170,11 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
   assert.match(helper, /XTestFakeMotionEvent/);
   assert.match(helper, /XTestFakeButtonEvent/);
   assert.match(helper, /XSync\(state->display, False\)/);
+  assert.match(helper, /XQueryPointer/);
+  assert.match(helper, /Button1Mask/);
+  assert.match(helper, /pointer_at\(state, x, y\)/);
+  assert.match(helper, /primary_button_state\(state, true\)/);
+  assert.match(helper, /primary_button_state\(state, false\)/);
   assert.match(helper, /READY.*1/);
   assert.match(helper, /strcmp\(tokens\[0\], "MOVE"\)/);
   assert.match(helper, /strcmp\(tokens\[0\], "DOWN"\)/);

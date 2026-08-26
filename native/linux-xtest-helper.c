@@ -71,10 +71,47 @@ static int split_tokens(char *line, char **tokens, int capacity) {
 
 static bool cleanup_pressed_button(PointerState *state);
 
+static bool query_pointer_state(PointerState *state, int *root_x, int *root_y, unsigned int *mask) {
+  Window root_return = None;
+  Window child_return = None;
+  int window_x = 0;
+  int window_y = 0;
+  unsigned int observed_mask = 0;
+  int observed_root_x = 0;
+  int observed_root_y = 0;
+  const Window root = RootWindow(state->display, state->screen);
+  if (!XQueryPointer(
+      state->display, root, &root_return, &child_return,
+      &observed_root_x, &observed_root_y, &window_x, &window_y, &observed_mask)) {
+    return false;
+  }
+  if (root_return != root) return false;
+  *root_x = observed_root_x;
+  *root_y = observed_root_y;
+  *mask = observed_mask;
+  return true;
+}
+
+static bool pointer_at(PointerState *state, int x, int y) {
+  int root_x = 0;
+  int root_y = 0;
+  unsigned int mask = 0;
+  return query_pointer_state(state, &root_x, &root_y, &mask) && root_x == x && root_y == y;
+}
+
+static bool primary_button_state(PointerState *state, bool pressed) {
+  int root_x = 0;
+  int root_y = 0;
+  unsigned int mask = 0;
+  if (!query_pointer_state(state, &root_x, &root_y, &mask)) return false;
+  return ((mask & Button1Mask) != 0U) == pressed;
+}
+
 static bool inject_move(PointerState *state, int x, int y) {
   x_error_seen = 0;
   if (!XTestFakeMotionEvent(state->display, state->screen, x, y, CurrentTime)) return false;
-  return sync_display(state);
+  if (!sync_display(state)) return false;
+  return pointer_at(state, x, y);
 }
 
 static bool inject_button_down(PointerState *state) {
@@ -83,7 +120,7 @@ static bool inject_button_down(PointerState *state) {
   // Once the press request has been accepted by Xlib, cleanup must assume Button1 may be held even
   // if the following XSync reports a protocol error. This keeps EOF/error teardown conservative.
   state->primary_pressed = true;
-  if (sync_display(state)) return true;
+  if (sync_display(state) && primary_button_state(state, true)) return true;
   (void)cleanup_pressed_button(state);
   return false;
 }
@@ -91,7 +128,7 @@ static bool inject_button_down(PointerState *state) {
 static bool inject_button_up(PointerState *state) {
   x_error_seen = 0;
   if (!XTestFakeButtonEvent(state->display, 1, False, CurrentTime)) return false;
-  if (!sync_display(state)) return false;
+  if (!sync_display(state) || !primary_button_state(state, false)) return false;
   state->primary_pressed = false;
   return true;
 }
@@ -103,6 +140,7 @@ static bool cleanup_pressed_button(PointerState *state) {
   if (!XTestFakeMotionEvent(state->display, state->screen, state->cleanup_x, state->cleanup_y, CurrentTime)) ok = false;
   if (!XTestFakeButtonEvent(state->display, 1, False, CurrentTime)) ok = false;
   if (!sync_display(state)) ok = false;
+  if (!primary_button_state(state, false)) ok = false;
   state->primary_pressed = false;
   return ok;
 }
