@@ -829,7 +829,7 @@ class HostMetricParser {
                     this.onHostEncode(tenths / 10);
                 continue;
             }
-            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_pointer_helper_ready|input_pointer_helper_failure|input_pointer_move_ready|input_pointer_authority_ready|input_pointer_down_sent|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
+            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_pointer_helper_ready|input_pointer_helper_failure|input_pointer_move_ready|input_pointer_authority_ready|input_pointer_down_sent|input_pointer_delivery_helper_ready|input_pointer_delivery_helper_failure|input_pointer_delivery_arm_failure|input_pointer_delivery_wait_failure|input_pointer_delivery_ready|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
             if (diagnostic) {
                 const stages = {
                     target_alive: "host.target.alive",
@@ -846,6 +846,11 @@ class HostMetricParser {
                     input_pointer_move_ready: "host.input.pointer.move_ready",
                     input_pointer_authority_ready: "host.input.pointer.authority_ready",
                     input_pointer_down_sent: "host.input.pointer.down_sent",
+                    input_pointer_delivery_helper_ready: "host.input.pointer.delivery_helper_ready",
+                    input_pointer_delivery_helper_failure: "host.input.pointer.delivery_helper_failure",
+                    input_pointer_delivery_arm_failure: "host.input.pointer.delivery_arm_failure",
+                    input_pointer_delivery_wait_failure: "host.input.pointer.delivery_wait_failure",
+                    input_pointer_delivery_ready: "host.input.pointer.delivery_ready",
                     input_failure: "host.input.failure",
                     capture_failure: "host.capture.failure",
                     capture_failure_x11: "host.capture.failure.x11",

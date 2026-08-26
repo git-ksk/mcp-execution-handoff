@@ -420,8 +420,8 @@ class LinuxXRecordDeliveryHelper {
     return helper;
   }
 
-  arm(windowId: number, targetPid: number, x: number, y: number): Promise<void> {
-    return this.command(`ARM ${windowId} ${targetPid} ${x} ${y}`, "ARM");
+  arm(windowId: number, x: number, y: number): Promise<void> {
+    return this.command(`ARM ${windowId} ${x} ${y}`, "ARM");
   }
 
   waitPrimaryPress(): Promise<void> {
@@ -487,7 +487,7 @@ class LinuxXRecordDeliveryHelper {
       const line = this.output.slice(0, newline).trim();
       this.output = this.output.slice(newline + 1);
       if (this.readyState === "waiting") {
-        if (line !== "READY 1") {
+        if (line !== "READY 2") {
           this.fail("Linux XRecord delivery helper protocol mismatch");
           void this.close();
           return;
@@ -741,13 +741,9 @@ class LinuxWindowInput {
       const geometryBeforeMove = { ...this.geometry };
       const cleanup = await this.cancellationPoint({ x, y });
       const delivery = await this.deliveryHelper();
-      // Arm a query-only RECORD context before any pointer mutation. The exact target PID/XID and
-      // root coordinate remain Node-owned policy inputs; the observer confirms that this Button1
-      // press reached an X11 connection of that process inside the exact target window subtree.
-      await delivery.arm(geometryBeforeMove.windowId, this.targetPid, x, y);
       try {
         // The XTEST helper still owns only injection state and never receives PID/XID/window policy.
-        // MOVE is acknowledged only after XSync(False).
+        // MOVE is acknowledged only after XSync(False) and an exact XQueryPointer coordinate check.
         await this.pointer.move(x, y);
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_move_ready\n");
 
@@ -768,6 +764,15 @@ class LinuxWindowInput {
         await this.confirmActiveTarget();
         await this.confirmInputFocusOwnedByTarget();
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_authority_ready\n");
+        // Arm only after MOVE and the post-move authority check. The exact Window resource is a
+        // RECORD ClientSpec for its creator X11 client, while Node remains the sole PID/Window
+        // authority owner. If the observer cannot arm, fail closed before injecting DOWN.
+        try {
+          await delivery.arm(geometryBeforeMove.windowId, x, y);
+        } catch (error) {
+          process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_arm_failure\n");
+          throw error;
+        }
         await this.pointer.down(cleanup.x, cleanup.y);
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_down_sent\n");
         this.primaryPressed = true;
@@ -775,7 +780,12 @@ class LinuxWindowInput {
         // XSync proves server state on the injector connection, but another client may hold a
         // synchronous passive grab. Do not admit UP until RECORD proves the press was delivered to
         // the exact Chrome X11 client. This is a condition barrier, not a timing/sleep heuristic.
-        await delivery.waitPrimaryPress();
+        try {
+          await delivery.waitPrimaryPress();
+        } catch (error) {
+          process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_wait_failure\n");
+          throw error;
+        }
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_ready\n");
         return;
       } catch (error) {

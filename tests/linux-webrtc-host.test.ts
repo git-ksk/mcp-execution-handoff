@@ -134,10 +134,14 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_pointer_move_ready/);
   assert.match(host, /linux_stage=input_pointer_authority_ready/);
   assert.match(host, /linux_stage=input_pointer_down_sent/);
-  assert.match(host, /delivery\.arm\(geometryBeforeMove\.windowId, this\.targetPid, x, y\)/);
+  assert.match(host, /delivery\.arm\(geometryBeforeMove\.windowId, x, y\)/);
+  assert.match(host, /input_pointer_authority_ready[\s\S]*delivery\.arm[\s\S]*pointer\.down/);
   assert.match(host, /await delivery\.waitPrimaryPress\(\)/);
+  assert.match(host, /linux_stage=input_pointer_delivery_helper_ready/);
+  assert.match(host, /linux_stage=input_pointer_delivery_helper_failure/);
+  assert.match(host, /linux_stage=input_pointer_delivery_arm_failure/);
+  assert.match(host, /linux_stage=input_pointer_delivery_wait_failure/);
   assert.match(host, /linux_stage=input_pointer_delivery_ready/);
-  assert.match(host, /input_pointer_delivery_helper_failure/);
   assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
@@ -195,19 +199,21 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
 
 test("Linux XRecord helper waits for exact delivered Button1 press without injecting input", () => {
   const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");
+  assert.match(helper, /PROTOCOL_VERSION 2/);
   assert.match(helper, /XRecordQueryVersion/);
-  assert.match(helper, /XResQueryVersion/);
-  assert.match(helper, /XResQueryClientIds/);
-  assert.match(helper, /XResGetClientPid/);
-  assert.match(helper, /XRES_CLIENT_ID_PID_MASK/);
+  assert.match(helper, /XQueryExtension\(state.control, "XInputExtension"/);
   assert.match(helper, /delivered_events\.first = ButtonPress/);
-  assert.match(helper, /XRecordCreateContext\(state->control, 0, clients, client_count/);
+  assert.match(helper, /delivered_events\.first = GenericEvent/);
+  assert.match(helper, /XI_ButtonPress/);
+  assert.match(helper, /client = \(XRecordClientSpec\)window/);
+  assert.match(helper, /XRecordCreateContext\(state->control, 0, &client, 1, ranges, 2\)/);
   assert.match(helper, /XRecordEnableContextAsync/);
   assert.match(helper, /XRecordProcessReplies/);
   assert.match(helper, /window_descends_from\(state->control, state->expected_window, event_window\)/);
   assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
+  assert.match(helper, /WIRE_XI2_EVENT_WINDOW_OFFSET/);
   assert.match(helper, /DELIVERY_WAIT_TIMEOUT_MS 1000/);
-  assert.doesNotMatch(helper, /XRecordAllClients|XRecordCurrentClients|XRecordFutureClients/);
+  assert.doesNotMatch(helper, /XResQuery|XResGet|XRES_CLIENT_ID|XRecordAllClients|XRecordCurrentClients|XRecordFutureClients/);
   assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
 });
 

@@ -82,3 +82,19 @@ test("native text route diagnostics retain only one bounded payload-free stage",
     true
   );
 });
+
+
+test("Linux pointer delivery diagnostics retain only bounded stage names", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  const stages = [
+    "host.input.pointer.delivery_helper_ready",
+    "host.input.pointer.delivery_helper_failure",
+    "host.input.pointer.delivery_arm_failure",
+    "host.input.pointer.delivery_wait_failure",
+    "host.input.pointer.delivery_ready"
+  ] as const;
+  for (const stage of stages) tracker.record({ stage });
+  assert.deepEqual(tracker.snapshot(), { events: stages.map((stage) => ({ stage })) });
+  tracker.record({ stage: "host.input.pointer.delivery_ready", durationMs: 1 });
+  assert.equal(tracker.snapshot().events.length, stages.length);
+});
