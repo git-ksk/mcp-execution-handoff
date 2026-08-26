@@ -2,7 +2,7 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { once } from "node:events";
-import type { Readable, Writable } from "node:stream";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
   normalizedPointInWindow,
@@ -216,56 +216,16 @@ async function runCommand(executable: string, args: string[], display: string): 
   return Buffer.concat(stdout).toString("utf8");
 }
 
-class XdotoolPointerSession {
-  private readonly child: ChildProcessByStdio<Writable, null, null>;
-  private closing: Promise<void> | undefined;
-
-  constructor(executable: string, display: string) {
-    this.child = spawn(executable, ["-"], {
-      env: boundedEnvironment(display),
-      stdio: ["pipe", "ignore", "ignore"]
-    });
-    this.child.once("error", () => undefined);
+function parseMouseLocation(value: string): { x: number; y: number } | undefined {
+  const fields = new Map<string, number>();
+  for (const line of value.split(/\r?\n/)) {
+    const match = /^([A-Z]+)=(-?\d+)$/.exec(line.trim());
+    if (match) fields.set(match[1]!, Number(match[2]));
   }
-
-  command(args: string[]): Promise<void> {
-    if (this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
-      return Promise.reject(new Error("Linux WebRTC pointer helper is unavailable"));
-    }
-    if (args.length < 1 || args.some((arg) => /\s/.test(arg))) {
-      return Promise.reject(new Error("Linux WebRTC pointer helper command is invalid"));
-    }
-    return new Promise<void>((resolve, reject) => {
-      // Script mode executes complete lines in order on one xdo/X11 connection. The write
-      // callback only confirms admission to that ordered stream; exact PID/window and focus
-      // authority are independently revalidated by LinuxWindowInput before every mutation.
-      this.child.stdin.write(`${args.join(" ")}\n`, (error) => {
-        if (error) reject(new Error("Linux WebRTC pointer helper write failed"));
-        else resolve();
-      });
-    });
-  }
-
-  async close(): Promise<void> {
-    if (this.closing) return this.closing;
-    this.closing = (async () => {
-      if (this.child.exitCode !== null || this.child.signalCode !== null) return;
-      this.child.stdin.end();
-      const closed = once(this.child, "close").then(() => true, () => true);
-      const ended = await Promise.race([
-        closed,
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500))
-      ]);
-      if (ended || this.child.exitCode !== null || this.child.signalCode !== null) return;
-      this.child.kill("SIGTERM");
-      await Promise.race([
-        once(this.child, "close").catch(() => undefined),
-        new Promise((resolve) => setTimeout(resolve, 250))
-      ]);
-      if (this.child.exitCode === null && this.child.signalCode === null) this.child.kill("SIGKILL");
-    })();
-    return this.closing;
-  }
+  const x = fields.get("X");
+  const y = fields.get("Y");
+  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return undefined;
+  return { x: x!, y: y! };
 }
 
 export function parseOptionalTargetWindowId(value: string | undefined): number | undefined {
@@ -380,7 +340,6 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
 class LinuxWindowInput {
   private primaryPressed = false;
   private primaryPoint: { x: number; y: number } | undefined;
-  private primarySession: XdotoolPointerSession | undefined;
 
   constructor(
     private geometry: LinuxWindowGeometry,
@@ -455,67 +414,61 @@ class LinuxWindowInput {
 
   private async postPrimaryButton(state: "down" | "up", x: number, y: number): Promise<void> {
     if (state === "down") {
-      if (this.primaryPressed || this.primarySession) throw new Error("Linux WebRTC primary button is already pressed");
-      // Keep the complete press lifecycle on one xdotool/X11 connection. Script mode executes
-      // lines as they arrive, so motion/down and the later up retain XTEST ordering without a
-      // window-targeted XSendEvent fallback. Mark the press admitted before awaiting the ack so
-      // shutdown will still issue a defensive release if the acknowledgement path fails.
+      if (this.primaryPressed) throw new Error("Linux WebRTC primary button is already pressed");
+      // `mousemove --sync` only waits for any movement away from the prior location, not for the
+      // requested destination. Force an X11 round trip with getmouselocation in the same xdotool
+      // invocation, then verify the exact root coordinates before admitting Button1 down. This
+      // keeps the public input path on XTEST and never targets a button event via XSendEvent.
       const relativeX = x - this.geometry.x;
       const relativeY = y - this.geometry.y;
-      const session = new XdotoolPointerSession(this.xdotool, this.display);
-      this.primarySession = session;
-      this.primaryPressed = true;
-      this.primaryPoint = { x, y };
-      await session.command([
+      const location = await runCommand(this.xdotool, [
         "mousemove", "--window", String(this.geometry.windowId),
         String(relativeX), String(relativeY),
-        "mousedown", "1"
-      ]);
+        "getmouselocation", "--shell"
+      ], this.display);
+      const observed = parseMouseLocation(location);
+      if (!observed || Math.abs(observed.x - x) > 1 || Math.abs(observed.y - y) > 1) {
+        throw new Error("Linux WebRTC pointer did not reach the admitted target point");
+      }
+      // The round trip above closes the motion race. Re-check exact active/focus authority after
+      // motion and immediately before the stateful XTEST button mutation.
+      await this.confirmActiveTarget();
+      await this.confirmInputFocusOwnedByTarget();
+      await runCommand(this.xdotool, ["mousedown", "1"], this.display);
+      this.primaryPressed = true;
+      this.primaryPoint = { x, y };
       return;
     }
     const pressed = this.primaryPoint;
-    const session = this.primarySession;
-    if (!this.primaryPressed || !pressed || !session) throw new Error("Linux WebRTC primary button is not pressed");
+    if (!this.primaryPressed || !pressed) throw new Error("Linux WebRTC primary button is not pressed");
     // `pointer_button` is an internal lifecycle for the public tap policy, not a drag API. Require
     // release at the admitted press point and avoid another pointer move while Button1 is held.
     if (Math.abs(pressed.x - x) > 1 || Math.abs(pressed.y - y) > 1) {
       throw new Error("Linux WebRTC primary release point changed");
     }
-    await session.command(["mouseup", "1"]);
+    const location = parseMouseLocation(
+      await runCommand(this.xdotool, ["getmouselocation", "--shell"], this.display)
+    );
+    if (!location || Math.abs(location.x - pressed.x) > 1 || Math.abs(location.y - pressed.y) > 1) {
+      throw new Error("Linux WebRTC pointer moved during primary press");
+    }
+    await runCommand(this.xdotool, ["mouseup", "1"], this.display);
     this.primaryPressed = false;
     this.primaryPoint = undefined;
-    this.primarySession = undefined;
-    await session.close();
   }
 
   async releaseAll(): Promise<void> {
-    const session = this.primarySession;
-    if (!this.primaryPressed) {
-      this.primarySession = undefined;
-      await session?.close();
-      return;
-    }
+    if (!this.primaryPressed) return;
     const releasePoint = await this.cancellationPoint();
-    let released = false;
-    if (session) {
-      // Prefer the admitted press connection for cancellation so down/move/up ordering stays on
-      // one XTEST stream. If that helper is unhealthy, fall back to a best-effort one-shot release
-      // to avoid leaving Button1 pressed during teardown.
-      released = await session.command([
-        "mousemove", String(releasePoint.x), String(releasePoint.y),
-        "mouseup", "1"
-      ]).then(() => true, () => false);
-      await session.close();
-    }
-    if (!released) {
-      await runCommand(this.xdotool, [
-        "mousemove", String(releasePoint.x), String(releasePoint.y),
-        "mouseup", "1"
-      ], this.display).catch(() => undefined);
-    }
+    // Cleanup is intentionally a move/release away from the admitted control. It is serialized
+    // after accepted input, so a shutdown race cannot leave Button1 pressed or activate the
+    // original control.
+    await runCommand(this.xdotool, [
+      "mousemove", String(releasePoint.x), String(releasePoint.y),
+      "mouseup", "1"
+    ], this.display).catch(() => undefined);
     this.primaryPressed = false;
     this.primaryPoint = undefined;
-    this.primarySession = undefined;
   }
 
   private async cancellationPoint(): Promise<{ x: number; y: number }> {
