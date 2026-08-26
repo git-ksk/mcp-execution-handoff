@@ -829,7 +829,7 @@ class HostMetricParser {
                     this.onHostEncode(tenths / 10);
                 continue;
             }
-            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
+            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|pointer_session_ack|pointer_session_ack_timeout|pointer_session_ack_authority|pointer_session_write_failure|pointer_session_closed|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
             if (diagnostic) {
                 const stages = {
                     target_alive: "host.target.alive",
@@ -841,6 +841,11 @@ class HostMetricParser {
                     frame_ready: "host.frame.ready",
                     input_focus_ready: "host.input.focus.ready",
                     input_tap_sent: "host.input.tap.sent",
+                    pointer_session_ack: "host.input.pointer.session.ack",
+                    pointer_session_ack_timeout: "host.input.pointer.session.ack_timeout",
+                    pointer_session_ack_authority: "host.input.pointer.session.ack_authority",
+                    pointer_session_write_failure: "host.input.pointer.session.write_failure",
+                    pointer_session_closed: "host.input.pointer.session.closed",
                     input_failure: "host.input.failure",
                     capture_failure: "host.capture.failure",
                     capture_failure_x11: "host.capture.failure.x11",

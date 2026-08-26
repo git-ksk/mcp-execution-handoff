@@ -202,8 +202,15 @@ class XdotoolPointerSession {
             stdio: ["pipe", "pipe", "ignore"]
         });
         this.child.stdout.on("data", (chunk) => this.consume(chunk));
-        this.child.once("error", () => this.failPending("Linux WebRTC pointer helper failed"));
-        this.child.once("close", () => this.failPending("Linux WebRTC pointer helper closed"));
+        this.child.once("error", () => {
+            this.diagnostic("pointer_session_write_failure");
+            this.failPending("Linux WebRTC pointer helper failed");
+        });
+        this.child.once("close", () => {
+            if (!this.closing && this.pending)
+                this.diagnostic("pointer_session_closed");
+            this.failPending("Linux WebRTC pointer helper closed");
+        });
     }
     command(args, expectedWindowId) {
         if (this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
@@ -219,6 +226,7 @@ class XdotoolPointerSession {
                 if (!this.pending)
                     return;
                 this.pending = undefined;
+                this.diagnostic("pointer_session_ack_timeout");
                 reject(new Error("Linux WebRTC pointer helper acknowledgement timed out"));
                 void this.close();
             }, 2_000);
@@ -277,9 +285,11 @@ class XdotoolPointerSession {
             clearTimeout(pending.timer);
             this.pending = undefined;
             if (Number(line) !== pending.expectedWindowId) {
+                this.diagnostic("pointer_session_ack_authority");
                 pending.reject(new Error("Linux WebRTC pointer target lost active authority"));
             }
             else {
+                this.diagnostic("pointer_session_ack");
                 pending.resolve();
             }
         }
@@ -291,6 +301,9 @@ class XdotoolPointerSession {
         clearTimeout(pending.timer);
         this.pending = undefined;
         pending.reject(new Error(message));
+    }
+    diagnostic(stage) {
+        process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${stage}\n`);
     }
 }
 export function parseOptionalTargetWindowId(value) {
