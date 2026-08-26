@@ -54,13 +54,21 @@ try {
   const cookie = /^(__Host-handoff-accept=[A-Za-z0-9_-]{32});/.exec(setCookie)?.[1];
   assert.ok(cookie);
 
-  const page = await get(location, { cookie });
+  const restarted = await get("/start", { cookie });
+  assert.equal(restarted.status, 302);
+  const freshLocation = restarted.headers.get("location");
+  assert.match(freshLocation ?? "", /^\/takeover\/[A-Za-z0-9-]{8,100}$/);
+  assert.notEqual(freshLocation, location);
+  const stalePage = await get(location, { cookie });
+  assert.equal(stalePage.status, 404);
+
+  const page = await get(freshLocation, { cookie });
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /new WebSocket\(target,body\.protocols\)/);
   assert.doesNotMatch(html, /processId|windowId|RTCPeerConnection|TURN|STUN/);
 
-  const sessionId = location.split("/").at(-1);
+  const sessionId = freshLocation.split("/").at(-1);
   const bootstrap = await fetch(`http://127.0.0.1:${port}/takeover/api/websocket-bootstrap/${sessionId}`, {
     method: "POST",
     headers: { cookie, origin, "content-type": "application/json" }

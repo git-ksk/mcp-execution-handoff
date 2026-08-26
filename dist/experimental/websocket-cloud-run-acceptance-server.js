@@ -31,6 +31,7 @@ let surface;
 let handoff;
 let activePrincipal;
 let activeLocator;
+let activeStartedAt = 0;
 let activeEpoch = 0;
 const port = boundedPort(process.env.PORT);
 const publicBaseUrl = requiredHttpsOrigin(process.env.HANDOFF_WSS_PUBLIC_BASE_URL);
@@ -126,6 +127,11 @@ async function handleHttp(req, res) {
         if (!cookieValue)
             cookieValue = randomBytes(PRINCIPAL_BYTES).toString("base64url");
         const principal = `physical:${cookieValue}`;
+        if (activeLocator && activeStartedAt > 0 && Date.now() - activeStartedAt >= SESSION_TTL_MS) {
+            handoff?.revoke("cloud-run-wss-physical-acceptance");
+            activeLocator = undefined;
+            activeStartedAt = 0;
+        }
         if (activePrincipal && activePrincipal !== principal && activeLocator && !doneObserved) {
             return sendJson(res, 409, { error: "acceptance_in_use" });
         }
@@ -150,24 +156,32 @@ async function handleHttp(req, res) {
                 onComplete: () => {
                     doneObserved = true;
                     activeLocator = undefined;
+                    activeStartedAt = 0;
                 }
             });
         }
-        if (!activeLocator || doneObserved) {
-            activeEpoch += 1;
-            doneObserved = false;
-            targetState.formOpened = false;
-            targetState.textObserved = false;
-            targetState.scrolled = false;
-            targetState.submitted = false;
-            activePrincipal = principal;
-            activeLocator = handoff.start({
-                intervention: { id: "cloud-run-wss-physical-acceptance", epoch: activeEpoch },
-                principalBinding: principal,
-                target,
-                inputPolicy: { tap: true, scroll: true, text: true, key: true }
-            });
+        // `/start` is an explicit acceptance-session request, not a stable bookmark. Reopening it with
+        // the same authenticated browser must never recycle a locator whose broker TTL may already have
+        // expired. Fence any prior session first, then mint a fresh epoch/locator for the same principal.
+        if (activeLocator) {
+            handoff.revoke("cloud-run-wss-physical-acceptance");
+            activeLocator = undefined;
+            activeStartedAt = 0;
         }
+        activeEpoch += 1;
+        doneObserved = false;
+        targetState.formOpened = false;
+        targetState.textObserved = false;
+        targetState.scrolled = false;
+        targetState.submitted = false;
+        activePrincipal = principal;
+        activeLocator = handoff.start({
+            intervention: { id: "cloud-run-wss-physical-acceptance", epoch: activeEpoch },
+            principalBinding: principal,
+            target,
+            inputPolicy: { tap: true, scroll: true, text: true, key: true }
+        });
+        activeStartedAt = Date.now();
         res.statusCode = 302;
         res.setHeader("cache-control", "no-store");
         res.setHeader("location", new URL(activeLocator).pathname);
