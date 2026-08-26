@@ -4,7 +4,7 @@
 
 > 英語版が正本です。内容に差がある場合は英語版を優先してください。
 
-最終確認: 2026-08-23
+最終確認: 2026-08-26
 
 `mcp-execution-handoff` は、汎用的なHuman-in-the-loop framework、approval product、workflow engine、browser automation systemを目指すプロジェクトではありません。
 
@@ -33,7 +33,7 @@ MCPで動く処理の途中で、Agentだけでは進められない、または
 
 1. **Handoff Semantics** — authority、epoch、ownership、replay/resume、recovery。security-orientedな不変のcoreであり、差別化の中心です。
 2. **Human Interaction Policy** — Humanがどのtrust boundaryで操作するか。現在の実装値は `automation_adjacent` と `credential_safe_external` です。既存TypeScript APIでは `HumanSurfaceKind` と呼びます。
-3. **Target Surface** — Humanが何を操作するか。現在実績があるのはbrowserと、scopeを限定したOS/window surfaceです。
+3. **Target Surface** — Humanが何を操作するか。現在の実証済みshapeはbrowser、bounded OS/window、bounded Terminal/PTYです。このevidenceだけでpublic enumをfreezeしません。
 4. **Transport** — Human control/media pathをどう届けるか。NativeやWebRTCなどが該当し、direct ICEかTURN fallbackかはWebRTC connectivityの違いです。
 
 この4つは同じレベルの「takeover type」ではありません。特にbrowser takeoverはcoreそのものではなく、core semanticsの周囲にあるoptionalなHuman-control surface/transport capabilityです。architectureでは **Target Surface** を正式用語とし、policy軸は実際の操作対象と混同しないよう **Human Interaction Policy** と呼びます。
@@ -92,6 +92,26 @@ Agent Control Planeはdurable agent execution、scheduling/control-loop infrastr
 Reference:
 
 - https://github.com/humanlayer/agentcontrolplane
+
+## 責任境界による比較
+
+以下はfeature数やsecurity superiorityの比較ではなく、「どのresourceと責任を誰が所有するか」の違いを整理するものです。
+
+### Remote desktop system
+
+RustDeskやApache Guacamoleのようなsystemは、device / session / desktop自体をHuman-controlled resourceとして扱うのが中心です。`mcp-execution-handoff` は既存MCP execution context内の1つのbounded interventionとしてHuman controlを扱い、authorityをintervention + resource epoch + principal + exact invocationへbindingします。default Window contractがunrelated desktopへ黙ってscopeを広げることもありません。したがってremote desktopとHandoffは異なるlayerを解いています。
+
+### Browser takeover / cloud browser system
+
+browser platformはbrowser runtime、session persistence、automation stack、Human live-view/takeover planeを1つのproductとして所有する場合があります。Handoffではbrowser/profile lifecycleとtarget-service authentication semanticsはconsumer責務のままです。optional Browser Handoff componentはbounded Human controlとsession fencingを提供しますが、fresh semantic verificationはtransport外に残します。
+
+### Integrated agent sandbox / execution platform
+
+より大きなexecution platformはsandbox / VM / browser / desktop、agent runtime、Human interaction surface、routingをまとめて所有できます。Handoffは意図的に小さく保ち、既存MCP consumer/runtimeへ組み込み、consumerのprocess/profile/authorization ownershipを維持します。execution platformそのものにはなりません。
+
+### HITL / approval system
+
+approval/interrupt frameworkは処理をpauseしてHuman decision/inputを求められます。Handoffが担当するのはtemporary **execution-authority transfer** とfreshness / ownership / replay fencingです。Human `Done` はmanual interventionの終了だけを意味し、後続のconsequential actionをapproveせず、stale semantic actionをreplay可能にも変えません。
 
 ## Browser takeover systemとの関係
 

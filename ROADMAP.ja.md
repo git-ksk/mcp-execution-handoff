@@ -15,20 +15,40 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-08-25
+### 現在の作業状態 — 2026-08-26
 
 v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。ただし最終的なTarget Surface用語は #45/#46 がcloseするまで意図的に固定しません。
 
-- `BrowserHandoffAdapter` は #70 で完了し、canonicalなhigh-level Browser WebRTC compositionです。
-- `WindowHandoffAdapter` は実装済みで、CUMGもconsumer-localな `TakeoverBroker` / runtime手組みから移行済みです。merged codeでiPhone + Cloudflare Tunnel/TURN acceptanceとstale locator拒否まで通過しています。#85に残るのはfirst-class adapterでのsame-LAN direct再Acceptanceだけです。
-- `TerminalHandoffAdapter` は #86 で完了しました。CUMGはexperimental PTY authorityとTerminal WebRTC transportを別々にcomposeせず、first-class adapterだけを利用します。merged-code real PTY cross-repo E2Eとphysical iPhone Human acceptanceも通過済みです。
-- #47でmacOS/Linuxのbounded exact-window primitiveを整理し、whole-desktop fallbackを追加せず共通化しました。
-- #48でbounded Terminal/PTY semanticsを実dogfoodし、staged Agent/Human drain fence、explicit resume、post-Human state sync必須化、Human期間outputをAgentへreplayしない境界を確立しました。
-- CUMGはWindowとTerminalの両方でprovenなnon-browser consumerです。
+- `BrowserHandoffAdapter` は #70で完成し、canonicalなhigh-level Browser WebRTC compositionです。Human側のBrowser `Done` は #84で即時one-shot化されました。
+- `WindowHandoffAdapter` は #85で完成し、CUMGもconsumer-localな `TakeoverBroker` / runtime手組みから移行済みです。merged codeのphysical iPhone acceptanceでは、public Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。
+- `TerminalHandoffAdapter` は #86で完成しました。CUMGはexperimental PTY authorityとTerminal WebRTC transportの個別compositionをやめ、merged-code real PTY cross-repo E2Eとphysical iPhone Human acceptanceも通過済みです。mobileのconnection / Human authority / verifying表示は #91で明示的かつfail-closedになりました。
+- Safari suspend/disconnect後のBrowser WebRTC reconnectは #104でdeterministic化しました。generation releaseをsingle-flight化し、重複lifecycle eventを1本のreconnectへ集約し、active-lease conflictをboundedに観測できます。same-LAN iPhoneのphysical runではbackground/foregroundを3回連続で復帰し、409 loopやblack-frame固定は発生しませんでした。Safari appの完全終了はimplicit lease reclaimを行わず、fresh authorized flowを要求します。
+- HTTPS/WSS managed-runtime experimentは #40で完了しました。physical iPhone SafariのWSS操作とCloud Run application reachabilityを確認しつつ、WebRTCからWebSocketへのsilent downgradeは追加していません。
+- #47でmacOS/Linuxのbounded exact-window primitiveを再利用可能にし、whole-desktop fallbackは追加していません。
+- #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
+- CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。
 
-したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。#46でsemantic admission criteriaを整理し、#85の残るdirect evidenceを閉じた後に #45でterminology/public APIを収束します。
+したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。残るsemantic-domain / admission wordingは #46、terminology / public API convergenceは #45が担当します。
 
-既知follow-upは限定的です。#85はfirst-class Windowのsame-LAN direct physical rerun、#91はbackend lifecycleが正常完了していてもSafari上で「Connecting」に見え続ける可能性があるTerminal mobile UI/status ambiguityを追跡します。いずれもauthority / epoch / replay / privacy boundaryを弱める課題ではありません。
+次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
+
+### OPEN Issue map — 11件
+
+現在OPENのIssueはすべて以下へ配置し、backlog状態をGitHub履歴から推測しなくてもRoadmapだけで分かるようにします。
+
+| Issue | Roadmap配置 | 現在の扱い |
+| --- | --- | --- |
+| #94 | v0.2 Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
+| #56 | v0.2 media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
+| #34 | v0.2 cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
+| #46 | v0.2 architecture contract | semantic-domain、takeover-session分離、evidence-based Target Surface admission ruleの最終化。 |
+| #45 | v0.2 API/terminology convergence | #46後にpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
+| #5 | v0.2 identity boundary | MCP principalとtarget-service/browser identityを分離。Human completionはidentity attestationでもapprovalでもない。 |
+| #42 | v0.1.x documentation | remote desktop、browser takeover、integrated sandbox、HITL/approvalとの責任境界を明確化。 |
+| #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
+| #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
+| #13 | v0.4+ transport umbrella | **追加実装前に再スコープ。** 旧Phase 1/2、WebRTC、mobile lifecycleの多くはすでに実証済み。uniqueな残課題だけ残す。 |
+| #11 | v0.2/v0.4 cleanup umbrella | **supersede監査対象。** first-class Window、#94 secure UI、#56 qualityが元Issueの大部分を吸収済み。重複実装せずnarrow/closeを判断。 |
 
 ## 基本原則
 
@@ -46,21 +66,24 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 - bug / security fix
 - 現在のcontractを維持するspec alignment fix
-- docs / diagnostics改善
+- docs / diagnostics改善。#42のresponsibility-boundary positioningも含む
 - Maps / Japan Cinemaで見つかったregression coverage
 - Target Surface内部をrefactorしている間もcross-platform portability gateとreal-browser acceptanceを維持
 - pre-1.0で避けられないbreaking fixがある場合のmigration note
 
 完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
 
-## v0.2 — 3つ目のconsumerとTarget Surface contractを検証
+## v0.2 — Target Surface contractとbounded host hardening
 
 現在のscopeとcloseout:
 
 - Browser / Window / Terminalをfirst-class consumer-facing componentとして維持し、異なるmedia/stream mechanicsをprematureなgeneric surface interfaceへ無理に押し込めない
-- #85のmerged-code same-LAN direct Window acceptanceを完了し、すでに通過済みのpublic Tunnel/TURN physical evidenceも維持する
+- #85で完了したsame-LAN directとpublic Tunnel/TURN relayの両physical Window evidence、およびstale locator拒否を維持する
+- #94を明示的なHuman-only secure-system-UI input capabilityとして調査し、ordinary Window Handoffのbounded defaultは変えない
+- #56でlatency/backpressureを悪化させずWindow media可読性を改善し、#34でCDP / DOM / credential露出なしにLinux editable-region parityを閉じる
 - CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す
 - authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalizeする
+- #5のMCP principalとtarget-service identityの境界をdocumentし、Handoffをservice-account attestation APIにはしない
 - #46/#45でstable terminologyとpublic Target Surface discriminatorが本当に必要かを決める。3adapterが存在するだけではpublic enumを要件にしない
 
 Target Surface admissionは引き続きevidence-basedです。provenな Browser / bounded OS Window / bounded Terminal-PTY shapeと比べて、authority boundary、capture/input model、lifecycle、postcondition handlingが本質的に異なる場合だけ新shapeとして認めます。別app・別OS・別device・別transport・別deploymentというだけでは追加理由にしません。
@@ -99,7 +122,11 @@ npm publicationは **v0.2の完了条件ではありません**。
 - 実用上可能な範囲で複数MCP client/server implementationと検証
 - first-class Browser / Window / Terminal component familyを維持し、consumerがlow-level broker / WebRTC / PTY-authority internalsを手組みせずbounded lifecycle / target semanticsへ依存できる状態を保つ
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
-- generic remote-desktop productへ広げず、low-latency push/latest-frame transportとminimal native Human Takeover reference clientを検証
+- #19でprovider-neutral connectivity/relay boundaryを仕上げ、ICE/TURN/provider選択をconsumerへ露出しない
+- #12でbounded durable stateとauthenticated outbound worker connectivityを持つhosted control-plane + stateful execution-worker topologyを定義する
+- historicalな#13 Thin Takeover umbrellaは、現在のWebRTC/WSS/mobile evidenceと照合して追加transport codeの前に再スコープする
+- #11はfirst-class Window、#94 secure UI、#56 media quality分離後にuniqueな残作業だけを監査し、land済みOS-provider workを重複実装しない
+- 追加のlow-latency push/latest-frame / native Human Takeover pathは、現在のWebRTC/WSS acceptanceでは得られない新しいevidenceがある場合だけ検証する
 
 ### Transport familyの方向性
 
@@ -113,7 +140,7 @@ Human takeover transportはconsumerごとのforkにせず、同じbroker authori
 
 ICE / SDP / RTP / DataChannel、WebSocket framing / backpressure、将来のWebTransport stream / datagramなどtransport固有mechanismはtransport実装内部へ閉じ込めます。consumerは下層network protocolではなく、locator / start / reconnect / revoke系のlifecycle semanticsへ依存し続けます。
 
-WebSocket experimentの主なacceptance questionは、HTTPS-only managed runtimeだけでphysical mobile Human takeoverが実用になり、かつTCP/video backlogをboundedに保てるかです。slow clientでもmemoryをboundedにしlatest-frame/drop semanticsを維持し、reconnectではstale authorityを復活させず必ずgenerationをrotateします。このworkはIssue #40で追跡します。
+Issue #40で初期WebSocket managed-runtime evaluationは完了しました。physical iPhone SafariのWSS操作、bounded latest-frame/drop挙動、Cloud Run application reachabilityを確認し、WebRTCからWebSocketへのsilent downgradeは導入していません。今後WebSocketをproductizeするかは、#40の未完acceptanceではなくtransport maturityとして別途判断します。
 
 現在のexperimental sequenceではphysical Acceptance完了までAPIをprivateに保ちます。bounded channel coreとHandoff-owned Node HTTPS/WSS ingressは、brokerと同じ`TakeoverSessionManager`へprivateに結線済みです。WSSには明示的なroute markerを持たせ、同一live locatorをlegacy HTTP / Native / WebRTCからclaimできないようにし、broker revokeではWSS channelも閉じ、Human Doneでは既存completion hookより先にshared generationをfenceします。privateなGeneric Window compositionではexact process/window targetをserver側だけに保持し、frame/inputはexact-window host-helper surfaceだけへ渡し、認証済みWSS clientがactiveになる前はcaptureせず、exact capture revalidation失敗時はsessionをrevokeします。privateなGeneric Browser compositionではprincipal-boundなHandoff-owned WSS pageを提供し、bounded JPEG/PNG frameとtap/scroll/text/key/Doneだけを扱い、target process/window identityやtransport selectionをconsumerへ露出しません。real Linux exact-window helperを使うphysical iPhone Safari WSS AcceptanceはHTTPS/WSS public Tunnel経由で通過し、tap/text/scroll/submit/Doneはcontent-freeなserver-side evidenceでも確認済みです。slow-clientは10,000 frame backlog stressでlatest-frame/drop semanticsを固定しています。同じacceptance imageはCloud Run内でもhealthyです。初期にはGoogle Frontend 404がありましたが、その後 `asia-northeast1` のpublic routeはphysical iPhone Safariからacceptance applicationまで到達し、そこで返った `takeover_unavailable` からacceptance専用のstale locator再利用bugを特定しました。このbugは `/start` ごとにfresh locatorへrotateし、`old locator -> 404` / `fresh locator -> 200` を保証する修正で解消済みです。Cloud Runで2回目のHuman操作一式は再実施せず、physical action evidenceは既に通過したiPhone HTTPS/WSS run、Cloud Run evidenceはapplication reachabilityとdeterministic fresh-locator/container acceptanceとして区別して記録します。証拠取得後、temporary Cloud Run acceptance serviceは削除しました。WebRTC direct / TURNとの同一session数値latency比較は保存されていないため、`experiments/websocket-cloud-run/COMPARISON.md`では根拠のない数値性能主張を行わずoperational comparisonを記録します。WebRTCからWebSocketへのautomatic downgradeは行いません。
 

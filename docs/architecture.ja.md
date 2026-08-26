@@ -34,9 +34,16 @@ consumer integration は **optional ですが、有効化した場合は authori
 
 ### 1. Handoff Semantics
 
-「誰が実行権限を持つか」「どのstateがまだ有効か」「どの条件なら再開できるか」を決める不変のcoreです。Agent/Human authorityの排他、resource epoch fencing、principal/invocation ownership binding、限定されたcheckpoint、resume/replay policy、stale reconnect拒否、`reissue_and_revalidate` によるrecoveryなどを含みます。
+「誰が実行権限を持つか」「どのstateがまだ有効か」「どの条件なら再開できるか」を決める不変のcoreです。すべてのmechanismを同列に並べず、次の4 semantic domainで整理します。
+
+- **Authority state-machine semantics** — `agent` / `human` / `none` の排他的authorityと、`awaiting_human -> human_active -> verifying -> ready_to_resume`、cancel、return-to-Human、explicit resumeの明示transition。
+- **Freshness and ownership fencing semantics** — monotonic resource epoch、stale-state拒否、principal binding、exact invocation / canonical argument ownership、initial ownership window後のowner再binding禁止。
+- **Completion and continuation semantics** — Human `Done` はmanual step終了だけを意味し、fresh consumer verificationとより厳しいreplay/call-site policyがcontinuation可否を決める。`Done` はsemantic successでもconsequential-action approvalでもない。
+- **Recovery semantics** — durable stateはbounded control-plane metadataだけを保持し、checkpoint integrity/expiryを検証し、restart recoveryは常に `reissue_and_revalidate`。stale Agent/Human authorityやbrowser/request stateは復元しない。
 
 Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはtakeover typeではありません。
+
+**Takeover Session Semanticsは別のoptional layerです。** short-lived capability、one-client lease、client generation、reconnect handle、release/revoke/expiry、stale capability拒否はsecurity-criticalですが、invariant authority state machineではなくremote Human-control sessionに属します。intervention + epoch + principalへのbindingを維持しつつ、Native / WebRTC / WebSocket / future transportで共有できても、「security mechanismだから」という理由だけでcore Handoff stateへ昇格させません。
 
 ### 2. Human Interaction Policy
 
@@ -56,6 +63,10 @@ Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはt
 - `terminal_pty` — 1つのboundedでconsumer-ownedなPTY/session。byte-stream input/output、resize、staged writer drain、process continuity、post-Human Agent state sync必須化を含む
 
 `terminal_pty` は実証済みshapeを説明するarchitecture labelであり、frozenなpublic enum valueではありません。最終的なsemantic-domain / public terminologyは #46/#45で確定します。別のnative-application/device abstractionは、実consumerで本質的に異なるboundaryが証明されるまでnon-contractualな候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
+
+新しいTarget Surface shapeは、authority、capture/input model、lifecycle、postcondition handlingのいずれかでexecution boundaryが本質的に異なる場合だけ追加します。application technology、product/domain、OS/device、transportが違うだけでは新shapeにしません。authority boundaryが1つのbounded application windowなら `native_app` は `os_window` のまま、`device` は通常host/runtime propertyです。whole `desktop` controlは通常のTarget Surfaceにせず、exact-surface boundaryを広げるため別の明示security reviewを要求します。editor/document/IDEもgeneric authority boundaryではなくproduct categoryです。
+
+Target Surfaceは、具体的なruntime compatibility/diagnostics上の必要性が出るまではdescriptive/documentation-firstに保ちます。3つの実証済みshapeがあること自体はpublic enum導入理由になりません。
 
 ### 4. Transport
 
@@ -139,6 +150,12 @@ providerから受け取って保持する情報は、provider kind、interventio
 
 automationへ権限を戻す前に、consumerはexternal sessionをrevokeし、その方式に固有のexecution boundaryが閉じたことを確認します。normal-browser providerならbrowser終了と専用profile lockの解放、hosted browser providerならHuman側CDP authorityのdetachとfresh Agent connectionが必要です。その後、既存の `verifying -> ready_to_resume` lifecycleへ進めます。認証成功はfresh browser stateから再検証し、認証前の古いsemantic actionをそのまま再実行しません。
 
+### MCP principalとtarget-service identityの分離
+
+interventionを所有するauthenticated MCP principalと、target service内でactiveなaccount/sessionは別security domainです。HandoffはMCP principal + invocation + resource epochへcontrol-plane ownershipをbindingしますが、Humanがsign-in、MFA、account selection、CAPTCHA、consentを完了しただけでGoogle/Apple/member/enterprise accountをattestしません。account identityがauthorizationに必要なconsumerは、自分でfresh identity/context verificationを行い、unknown / changed / ambiguousならfail closedします。credential、cookie、session token、MFA/OTP、challenge answerをHandoff stateへコピーしてidentity bindingを作ってはいけません。
+
+single-user deploymentではlogical principalごとにdedicated browser profile/runtimeを使うのが基本です。unrelated principalを同じauthenticated profileへ載せる場合は、明示的なper-principal isolation designが必要です。Human `Done` はtarget-service identity attestationとも、その後のconsequential-action approvalとも別です。
+
 どのintervention reasonでこのsurfaceを使うかはpackage側では決めません。`selectHumanSurface()` を使ってconsumerごとにidentity-sensitiveなreasonを設定し、provider固有policyをgeneric coreへ持ち込みません。
 
 ## Browser takeover
@@ -153,7 +170,7 @@ WebRTCのmedia/input generation authorityとHuman completion authorityは分離�
 
 low-level optional `TakeoverBroker` はcustom compositionを明示的に必要とする場合のtransport/session primitiveです。public locatorにはmedia/input capabilityを含めません。同一originのbootstrapでremote-client leaseを1つだけclaimし、short-lived generation capabilityを返します。legacy HTTP frame/input/done operationは引き続きmatching capability / principal binding / client bindingを必要とし、canonical WebRTC completion pathだけが上記のcompletion-only capabilityを使います。
 
-新しいbindingが、すでに所有されているleaseを暗黙に奪うことはできません。native clientは明示的なclaim/reconnect APIを使えます。reconnectには、同じauthenticated principal、generation-bound reconnect handle、そして以前のleaseがidleであることが必要です。成功するとclient generationを進め、capabilityとreconnect handleを両方rotateします。これにより古いgenerationは即座に無効になります。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credentialを含めません。
+新しいbindingが、すでに所有されているleaseを暗黙に奪うことはできません。native clientは明示的なclaim/reconnect APIを使えます。reconnectには、同じauthenticated principal、generation-bound reconnect handle、以前のleaseがidle/releasedであることが必要です。成功するとclient generationを進め、capabilityとreconnect handleを両方rotateします。Browser WebRTC recoveryはSafariの重複lifecycle/failure triggerを1本のreconnectへ集約し、exact-generation releaseを待ち、active-lease conflict retryをboundedにし、generationをまたぐHuman input replayを行いません。same-LAN iPhone physical acceptanceではbackground/foregroundを3回連続復帰し、409 loopやblack-frame固定は発生しませんでした。browser app完全終了ではmemory-only reconnect stateを復元せずfresh authorized flowを要求します。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credentialを含めません。
 
 WebRTC browser transportではdirect-first ICEを維持し、signaling/data-plane policyをHandoff側に閉じ込めます。Safariはhost candidateのみを使い、Node/werift peerはCloudflare STUNを明示的に利用して、dependency内部のdefaultが別third-partyへ勝手に切り替わらないようにします。TURNを設定してもfallback専用で、client generationに紐づくshort-lived peer credentialを使います。network diagnosticにはcandidate type/count、peer state、限定されたtimingだけを残し、candidate文字列、address、SDP、credentialは保存しません。
 
@@ -169,7 +186,7 @@ broker自身はtakeover可能なsurfaceを広げません。consumer browser ada
 
 Window adapterはpositiveな `processId`、必要ならexact `windowId`、明示的でboundedな `{ tap, scroll, text, key }` Human input policyを要求します。display-wide / whole-desktop fallbackはありません。`processId`だけならeligibleなowned windowを厳密に1つ解決し、`windowId`指定時はそのprocess ownershipを再検証します。target消失、ambiguity、ownership mismatch、input host failure時はscopeを広げずHuman transportをfenceします。
 
-実non-browser consumerはCUMGです。CUMGはconsumer-localな `TakeoverBroker` + WebRTC runtime手組みから `WindowHandoffAdapter` へ移行しつつ、authorization / quarantine / replay / semantic verificationはCUMG側に維持しています。merged-code physical iPhone acceptanceではpublic Cloudflare Tunnel経由のrelay pathとstale locator rejectionを確認済みです。#85に残るのはfirst-class adapterで同等のsame-LAN direct rerunを行うことだけで、shared transportに対する過去のdirect evidenceだけではこの最後のcomponent-level rerunの代替にしません。
+実non-browser consumerはCUMGです。CUMGはconsumer-localな `TakeoverBroker` + WebRTC runtime手組みから `WindowHandoffAdapter` へ移行しつつ、authorization / quarantine / replay / semantic verificationはCUMG側に維持しています。merged-code physical iPhone acceptanceではpublic Cloudflare Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator rejectionも確認済みです。#85は完了しており、今後のWindow workはfirst-class adapter境界の再証明ではなくbounded capabilityの拡張として扱います。
 
 ## Terminal / PTY handoff
 
@@ -177,7 +194,7 @@ Window adapterはpositiveな `processId`、必要ならexact `windowId`、明示
 
 lifecycleはgeneric byte tunnelより強く制約します。`begin()` はAgent input / observation / resizeを先にfenceし、そのfence前にadmit済みだったwriteをconsumerがdrainします。Human claimはdrain完了とexact transport readinessの後だけ可能です。ordered Human `Done` はeventをconsumerへ返す前にHuman transportをfenceし、その後consumerがadmit済みHuman writeをdrainするまでverificationは成功できません。explicit resume後も `agentStateSynchronizationRequired` を維持し、consumerがHuman期間outputやPTY assumptionを破棄・再読込してfresh state syncをackするまでAgent PTY operationをfenceします。disconnectはDoneではなく、PTY exitからreplacement sessionを作らず、Human期間outputをAgentへreplayしません。
 
-CUMGは現在 `TerminalHandoffAdapter` だけをconsumeし、runtime/production stagingから `ExperimentalTerminalPtyAuthority` / `ExperimentalTerminalWebRtcTakeover` への直接依存を外しています。PTY allocation、Unix descendant containment、process truth、bounded PTY I/O、content-free verificationはCUMG責務です。merged Handoff/CUMG codeでreal `/bin/cat` cross-repo WebRTC E2Eとphysical iPhone Human acceptanceをfirst-class adapter経由で通過済みです。physical runは外部Cloudflare TunnelかつTURN設定ありでしたが、selected ICE pairは記録していないため、そのTerminal run自体がTURN relayを選択したとは主張しません。#91では、backend lifecycleがHuman input / Done / verifying / explicit resume / state syncまで成功していてもSafari上で「Connecting」に見え続ける可能性があるmobile status表示のambiguityを別途追跡します。
+CUMGは現在 `TerminalHandoffAdapter` だけをconsumeし、runtime/production stagingから `ExperimentalTerminalPtyAuthority` / `ExperimentalTerminalWebRtcTakeover` への直接依存を外しています。PTY allocation、Unix descendant containment、process truth、bounded PTY I/O、content-free verificationはCUMG責務です。merged Handoff/CUMG codeでreal `/bin/cat` cross-repo WebRTC E2Eとphysical iPhone Human acceptanceをfirst-class adapter経由で通過済みです。physical runは外部Cloudflare TunnelかつTURN設定ありでしたが、selected ICE pairは記録していないため、そのTerminal run自体がTURN relayを選択したとは主張しません。#91でmobile status表示のambiguityは解消し、Safariはtransport readiness、Human authority待ち、Human active、verifying/failureをbackend authority lifecycleを弱めず明示するようになりました。
 
 ## 重大操作との分離
 

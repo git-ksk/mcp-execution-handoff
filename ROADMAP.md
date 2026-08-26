@@ -13,20 +13,40 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
-### Current working state — 2026-08-25
+### Current working state — 2026-08-26
 
 The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence, while final Target Surface terminology remains deliberately unfrozen until #45/#46 close:
 
-- `BrowserHandoffAdapter` is complete (#70) and remains the canonical high-level Browser WebRTC composition;
-- `WindowHandoffAdapter` is implemented and consumed by CUMG instead of consumer-local `TakeoverBroker`/runtime assembly. Its merged-code iPhone Cloudflare Tunnel/TURN acceptance passed, including stale-locator rejection; #85 remains open only for the same-LAN direct rerun on the first-class adapter;
-- `TerminalHandoffAdapter` is complete (#86). CUMG no longer composes the experimental PTY authority and Terminal WebRTC transport as unrelated pieces; merged-code real-PTY cross-repo E2E and physical iPhone Human acceptance passed;
-- #47 completed reusable bounded macOS/Linux exact-window primitives without adding whole-desktop fallback;
-- #48 completed the bounded Terminal/PTY semantic dogfood that established staged Agent/Human drain fences, explicit resume, mandatory post-Human state synchronization, and no Human-period output replay to Agent;
+- `BrowserHandoffAdapter` is complete (#70) and remains the canonical high-level Browser WebRTC composition. Browser completion is now immediate and one-shot on the Human surface (#84).
+- `WindowHandoffAdapter` is complete (#85) and consumed by CUMG instead of consumer-local `TakeoverBroker`/runtime assembly. Merged-code physical iPhone acceptance has passed both public Tunnel/TURN relay and same-LAN direct paths, including stale-locator rejection.
+- `TerminalHandoffAdapter` is complete (#86). CUMG no longer composes the experimental PTY authority and Terminal WebRTC transport as unrelated pieces; merged-code real-PTY cross-repo E2E and physical iPhone Human acceptance passed. Mobile connection/authority/verifying state is now explicit and fail-closed (#91).
+- Browser WebRTC reconnect after Safari suspend/disconnect is deterministic (#104): generation release is single-flight, overlapping lifecycle triggers coalesce to one reconnect, active-lease conflicts are bounded/observable, and a physical same-LAN iPhone run recovered through three background/foreground cycles without a 409 loop or black-frame stall. Full app termination still requires a fresh authorized flow rather than implicit lease reclamation.
+- The HTTPS/WSS managed-runtime experiment is complete (#40). Physical iPhone Safari WSS control and Cloud Run application reachability were proven without adding a WebRTC-to-WebSocket silent downgrade.
+- #47 completed reusable bounded macOS/Linux exact-window primitives without adding whole-desktop fallback.
+- #48 completed the bounded Terminal/PTY semantic dogfood that established staged Agent/Human drain fences, explicit resume, mandatory post-Human state synchronization, and no Human-period output replay to Agent.
 - CUMG is the proven non-browser consumer for both Window and Terminal integration boundaries.
 
-The three proven **surface shapes** are therefore Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum or final naming. #46 records the semantic admission criteria and #45 is the convergence point for terminology/public API after #85's remaining direct acceptance evidence is closed.
+The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum or final naming. #46 owns the remaining semantic-domain/admission wording and #45 owns terminology/public-API convergence.
 
-Known follow-up work is intentionally narrow: #85 still needs the first-class Window same-LAN direct physical rerun, and #91 tracks a Terminal mobile UI/status ambiguity where the backend lifecycle completed successfully while Safari could appear to remain on “Connecting”. Neither issue weakens authority, epoch, replay, or privacy boundaries.
+The next implementation priority is #94: investigate an explicit Human-only macOS native input backend for secure system UI without silently widening bounded Window Handoff to whole-desktop authority. Media quality (#56) and Linux editable-region parity (#34) follow as bounded transport/host improvements rather than authority-model changes.
+
+### Open issue map — 11 issues
+
+Every currently open issue is assigned below so backlog state is visible from the roadmap rather than inferred from GitHub history.
+
+| Issue | Roadmap placement | Current disposition |
+| --- | --- | --- |
+| #94 | v0.2 Window hardening | **Next implementation priority.** Human-only, explicitly selected secure-system-UI input backend; no TCC bypass or hidden desktop fallback. |
+| #56 | v0.2 media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
+| #34 | v0.2 cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
+| #46 | v0.2 architecture contract | Finalize semantic-domain wording, takeover-session separation, and evidence-based Target Surface admission rules. |
+| #45 | v0.2 API/terminology convergence | Audit/align public terminology after #46; avoid speculative enums and unnecessary breaking renames. |
+| #5 | v0.2 identity boundary | Keep MCP principal identity separate from target-service/browser identity; Human completion is neither identity attestation nor approval. |
+| #42 | v0.1.x documentation | Clarify responsibility-boundary positioning against remote desktop, browser takeover, integrated sandboxes, and HITL/approval systems. |
+| #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
+| #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
+| #13 | v0.4+ transport umbrella | **Re-scope before more implementation.** Much of the old Phase 1/Phase 2/WebRTC/mobile lifecycle plan is now proven; retain only unique remaining remote/mobile or transport decisions. |
+| #11 | v0.2/v0.4 cleanup umbrella | **Audit for supersession.** First-class Window Handoff, #94 secure UI, and #56 quality work now cover much of the original OS-provider/latency scope; narrow or close rather than duplicating work. |
 
 ## Guiding principles
 
@@ -44,21 +64,24 @@ Focus:
 
 - bug and security fixes;
 - specification-alignment fixes that preserve the current contract;
-- documentation and diagnostics improvements;
+- documentation and diagnostics improvements, including the responsibility-boundary positioning tracked by #42;
 - regression coverage from Maps and Japan Cinema;
 - maintain cross-platform portability gates and real-browser acceptance while target-surface internals are refactored;
 - migration notes for any unavoidable pre-1.0 breaking fix.
 
 Exit condition: each patch must preserve the documented security invariants and remain green in both established real consumers.
 
-## v0.2 — third-adapter and Target Surface contract validation
+## v0.2 — Target Surface contract and bounded host hardening
 
 Current scope and closeout:
 
 - keep Browser, Window, and Terminal as first-class consumer-facing components without forcing their distinct media/stream mechanics behind one premature generic surface interface;
-- finish #85's merged-code same-LAN direct Window acceptance while retaining the already-passed public Tunnel/TURN physical evidence;
+- retain #85's completed physical Window evidence across both same-LAN direct and public Tunnel/TURN relay paths, including stale-locator rejection;
+- investigate #94 as an explicit Human-only secure-system-UI input capability while keeping ordinary Window Handoff bounded and unchanged by default;
+- improve bounded Window media legibility in #56 without regressing latency/backpressure, and close Linux editable-region parity in #34 without CDP/DOM/credential exposure;
 - keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;
 - formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;
+- document the MCP-principal vs target-service identity boundary from #5 without turning Handoff into a service-account attestation API;
 - use #46/#45 to decide the stable terminology and whether any public Target Surface discriminator is justified. A public enum is not required merely because the three component adapters exist.
 
 Target Surface admission remains evidence-based: a new shape should be recognized only when its authority boundary, capture/input model, lifecycle, or postcondition handling is materially different from the proven Browser / bounded OS Window / bounded Terminal-PTY shapes. A different app, OS, device, transport, or deployment path alone is not sufficient.
@@ -97,7 +120,11 @@ Candidate scope:
 - test against multiple MCP client/server implementations where practical;
 - maintain the first-class Browser / Window / Terminal component family so consumers depend on bounded lifecycle/target semantics instead of assembling low-level broker, WebRTC, or PTY-authority internals themselves;
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
-- validate a low-latency push/latest-frame transport and a minimal native Human Takeover reference client without turning the project into a generic remote-desktop product.
+- finish the provider-neutral connectivity/relay boundary in #19 without exposing ICE/TURN/provider choice to consumers;
+- define the hosted control-plane + stateful execution-worker topology in #12 with bounded durable state and authenticated outbound worker connectivity;
+- re-scope the historical #13 Thin Takeover umbrella against the now-proven WebRTC/WSS/mobile evidence before adding more transport code;
+- audit #11 for unique remaining work after first-class Window Handoff, #94 secure UI, and #56 media-quality separation rather than duplicating already-landed OS-provider work;
+- validate any additional low-latency push/latest-frame or native Human Takeover path only when it adds evidence not already covered by current WebRTC/WSS acceptance.
 
 ### Transport family direction
 
@@ -111,7 +138,7 @@ Human takeover transports should remain replaceable siblings behind the same bro
 
 Transport-specific mechanisms such as ICE/SDP/RTP/DataChannel, WebSocket framing/backpressure, or future WebTransport streams/datagrams must stay inside the transport implementation. Consumers should continue to depend on locator/start/reconnect/revoke-style lifecycle semantics, not the underlying network protocol.
 
-For the WebSocket experiment, the key acceptance question is whether an HTTPS-only managed runtime can provide usable physical-mobile Human takeover without unbounded TCP/video backlog. A slow client must preserve bounded memory and latest-frame/drop semantics, and reconnect must rotate generation rather than revive stale authority. Track this work in Issue #40.
+Issue #40 completed the initial WebSocket managed-runtime evaluation: physical iPhone Safari WSS control, bounded latest-frame/drop behavior, and Cloud Run application reachability were demonstrated without introducing a WebRTC-to-WebSocket silent downgrade. Any future WebSocket productization remains a separate transport-maturity decision rather than an unfinished #40 acceptance gate.
 
 The current experimental sequence keeps the API private until physical acceptance. The bounded channel core and Handoff-owned Node HTTPS/WSS ingress bind through the same `TakeoverSessionManager` used by the broker: WSS has an explicit route marker, cannot be claimed through legacy HTTP/Native/WebRTC for the same live locator, broker revocation closes the WSS channel, and Human Done fences the shared generation before the existing completion hook runs. A private Generic Window composition now keeps the exact process/window target server-side, invokes only an exact-window host-helper surface for frame/input, performs no capture before an authenticated WSS client is active, and revokes the session if exact capture revalidation fails. A private Generic Browser composition now serves a principal-bound Handoff-owned WSS page for bounded JPEG/PNG frames and tap/scroll/text/key/Done control without exposing target process/window identity or transport selection to consumers. Physical iPhone Safari WSS acceptance with the real Linux exact-window helper has passed through an HTTPS/WSS public Tunnel, with server-side content-free evidence for tap/text/scroll/submit/Done. Slow-client latest-frame semantics are stress-tested with a 10,000-frame backlog. The same acceptance image is healthy in Cloud Run. After initial Google Frontend 404s, the `asia-northeast1` public route reached the acceptance application from physical iPhone Safari; the observed `takeover_unavailable` response exposed an acceptance-only stale-locator reuse bug, which is now fixed by explicit fresh-locator rotation (`old locator -> 404`, `fresh locator -> 200`). The temporary Cloud Run acceptance services were removed after evidence capture. Numeric same-session latency comparison against WebRTC direct/TURN is not recorded; see `experiments/websocket-cloud-run/COMPARISON.md`, which intentionally makes no unsupported numeric performance claim. There is no automatic downgrade from WebRTC to WebSocket.
 
