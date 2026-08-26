@@ -62,7 +62,7 @@ Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはt
 - `os_window` — scopeを限定したOS application/window surface
 - `terminal_pty` — 1つのboundedでconsumer-ownedなPTY/session。byte-stream input/output、resize、staged writer drain、process continuity、post-Human Agent state sync必須化を含む
 
-`terminal_pty` は実証済みshapeを説明するarchitecture labelであり、frozenなpublic enum valueではありません。最終的なsemantic-domain / public terminologyは #46/#45で確定します。別のnative-application/device abstractionは、実consumerで本質的に異なるboundaryが証明されるまでnon-contractualな候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
+`terminal_pty` は実証済みshapeを説明するarchitecture labelであり、frozenなpublic enum valueではありません。#46がsemantic-domain / Target Surface admission baselineをdocumentし、残るpublic terminology/API convergenceは #45が担当します。別のnative-application/device abstractionは、実consumerで本質的に異なるboundaryが証明されるまでnon-contractualな候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
 
 新しいTarget Surface shapeは、authority、capture/input model、lifecycle、postcondition handlingのいずれかでexecution boundaryが本質的に異なる場合だけ追加します。application technology、product/domain、OS/device、transportが違うだけでは新shapeにしません。authority boundaryが1つのbounded application windowなら `native_app` は `os_window` のまま、`device` は通常host/runtime propertyです。whole `desktop` controlは通常のTarget Surfaceにせず、exact-surface boundaryを広げるため別の明示security reviewを要求します。editor/document/IDEもgeneric authority boundaryではなくproduct categoryです。
 
@@ -155,6 +155,10 @@ automationへ権限を戻す前に、consumerはexternal sessionをrevokeし、�
 interventionを所有するauthenticated MCP principalと、target service内でactiveなaccount/sessionは別security domainです。HandoffはMCP principal + invocation + resource epochへcontrol-plane ownershipをbindingしますが、Humanがsign-in、MFA、account selection、CAPTCHA、consentを完了しただけでGoogle/Apple/member/enterprise accountをattestしません。account identityがauthorizationに必要なconsumerは、自分でfresh identity/context verificationを行い、unknown / changed / ambiguousならfail closedします。credential、cookie、session token、MFA/OTP、challenge answerをHandoff stateへコピーしてidentity bindingを作ってはいけません。
 
 single-user deploymentではlogical principalごとにdedicated browser profile/runtimeを使うのが基本です。unrelated principalを同じauthenticated profileへ載せる場合は、明示的なper-principal isolation designが必要です。Human `Done` はtarget-service identity attestationとも、その後のconsequential-action approvalとも別です。
+
+consumerがexpected service account/contextをauthorizationに使う必要がある場合は、より高assuranceな **consumer-specific target-service identity verification gate** を別途持てます。このgateはMCP principal + dedicated profile/runtime + resource epoch + intended semantic actionへ結果をbindingし、credential/tokenを露出せず、identityがunknown / ambiguous / stale / changedならfail closedします。generic Handoff stateにはtarget-service account attestation fieldを持たせません。
+
+実consumerもこの分離を使っています。Mapsはcoarseなauthentication readinessだけを扱い、Google sign-in completionをaccount proofにせずfresh semantic reissue/revalidationを要求します。Japan Cinemaもmember sign-in dataをHandoff stateへ入れず、Human completionをcheckout/purchase authorityへ昇格させません。これらはprovider-specific identity logicをHandoff coreへ移さずgeneric boundaryを実証しています。
 
 どのintervention reasonでこのsurfaceを使うかはpackage側では決めません。`selectHumanSurface()` を使ってconsumerごとにidentity-sensitiveなreasonを設定し、provider固有policyをgeneric coreへ持ち込みません。
 
