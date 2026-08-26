@@ -367,15 +367,17 @@ class LinuxWindowInput {
         if (state === "down") {
             if (this.primaryPressed)
                 throw new Error("Linux WebRTC primary button is already pressed");
-            // Position before pressing. Reissuing a synchronous XTest move while Button1 is already down
-            // can block on newer Chromium/Xvfb combinations and also turns tap semantics into a drag.
+            // Keep motion and press on one X connection. `mousemove --sync` only waits until the pointer
+            // moves at all, not until it reaches the requested destination, so a second xdotool process
+            // can race the final motion and press the wrong X11 child. Command chaining preserves XTEST
+            // ordering without targeting mousedown via XSendEvent.
             const relativeX = x - this.geometry.x;
             const relativeY = y - this.geometry.y;
             await runCommand(this.xdotool, [
-                "mousemove", "--sync", "--window", String(this.geometry.windowId),
-                String(relativeX), String(relativeY)
+                "mousemove", "--window", String(this.geometry.windowId),
+                String(relativeX), String(relativeY),
+                "mousedown", "1"
             ], this.display);
-            await runCommand(this.xdotool, ["mousedown", "1"], this.display);
             this.primaryPressed = true;
             this.primaryPoint = { x, y };
             return;

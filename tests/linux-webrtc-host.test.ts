@@ -113,14 +113,16 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /xclip|TAKEOVER_LINUX_XCLIP/);
   assert.match(host, /Math\.round\(point\.x\)/);
   assert.match(host, /Math\.round\(point\.y\)/);
-  assert.match(host, /"mousemove", "--sync", "--window", String\(this\.geometry\.windowId\)/);
+  assert.match(host, /"mousemove", "--window", String\(this\.geometry\.windowId\)[\s\S]*"mousedown", "1"/);
+  assert.doesNotMatch(host, /"mousemove", "--sync", "--window", String\(this\.geometry\.windowId\)/);
   assert.match(host, /const relativeX = x - this\.geometry\.x/);
   assert.match(host, /const relativeY = y - this\.geometry\.y/);
   assert.match(host, /kind: "tap" \| "pointer_button"/);
   assert.match(host, /record\.kind === "pointer_button"/);
   assert.match(host, /record\.button === "primary"/);
   assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
-  assert.match(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.match(host, /moves at all, not until it reaches the requested destination/);
   assert.match(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
   assert.match(host, /"mousemove", String\(releasePoint\.x\), String\(releasePoint\.y\),[\s\S]*"mouseup", "1"/);
