@@ -532,7 +532,7 @@ export class SpawnedWebRtcRuntimeProvider {
             this.writeHostInput(runtime, input);
         }
         catch {
-            // Stale/revoked generation or an unavailable local Human surface fails closed.
+            // Stale/revoked generation or an unavailable local Human-control session fails closed.
         }
         finally {
             endUse?.();

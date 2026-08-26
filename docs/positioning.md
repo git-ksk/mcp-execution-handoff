@@ -28,7 +28,7 @@ These invariants are part of this project's compatibility contract. Other framew
 The project uses four separate architectural axes:
 
 1. **Handoff Semantics** — authority, epoch, ownership, replay/resume, and recovery. This is the security-oriented invariant core and the primary differentiation.
-2. **Human Interaction Policy** — the trust boundary under which the Human interacts. Current implementation values are `automation_adjacent` and `credential_safe_external` (named `HumanSurfaceKind` in the existing TypeScript API).
+2. **Human Interaction Policy** — the trust boundary under which the Human interacts. Current implementation values are `automation_adjacent` and `credential_safe_external`; the canonical TypeScript name is `HumanInteractionPolicyKind`, with `HumanSurfaceKind` retained as a compatibility alias.
 3. **Target Surface** — what the Human controls. Current proven shapes are browser, bounded OS/window, and bounded Terminal/PTY surfaces; this evidence does not by itself freeze a public enum.
 4. **Transport** — how Human control/media is delivered, such as Native or WebRTC. Direct ICE vs TURN is WebRTC connectivity behavior, not a takeover type.
 

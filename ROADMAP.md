@@ -15,9 +15,9 @@ The npm package remains `private: true`. npm publication is not required for the
 
 ### Current working state — 2026-08-26
 
-The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence, with the semantic-domain/Target Surface admission contract now documented by #46 while final public terminology remains deliberately unfrozen until #45 closes:
+The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence. #46 documents the semantic-domain/Target Surface admission contract, and the v0.2 terminology convergence adds canonical Human Interaction Policy aliases without freezing a `TargetSurfaceKind` enum:
 
-- `BrowserHandoffAdapter` is complete (#70) and remains the canonical high-level Browser WebRTC composition. Browser completion is now immediate and one-shot on the Human surface (#84).
+- `BrowserHandoffAdapter` is complete (#70) and remains the canonical high-level Browser WebRTC composition. Browser completion is now immediate and one-shot on the Browser Human-control session (#84).
 - `WindowHandoffAdapter` is complete (#85) and consumed by CUMG instead of consumer-local `TakeoverBroker`/runtime assembly. Merged-code physical iPhone acceptance has passed both public Tunnel/TURN relay and same-LAN direct paths, including stale-locator rejection.
 - `TerminalHandoffAdapter` is complete (#86). CUMG no longer composes the experimental PTY authority and Terminal WebRTC transport as unrelated pieces; merged-code real-PTY cross-repo E2E and physical iPhone Human acceptance passed. Mobile connection/authority/verifying state is now explicit and fail-closed (#91).
 - Browser WebRTC reconnect after Safari suspend/disconnect is deterministic (#104): generation release is single-flight, overlapping lifecycle triggers coalesce to one reconnect, active-lease conflicts are bounded/observable, and a physical same-LAN iPhone run recovered through three background/foreground cycles without a 409 loop or black-frame stall. Full app termination still requires a fresh authorized flow rather than implicit lease reclamation.
@@ -26,23 +26,22 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 - #48 completed the bounded Terminal/PTY semantic dogfood that established staged Agent/Human drain fences, explicit resume, mandatory post-Human state synchronization, and no Human-period output replay to Agent.
 - CUMG is the proven non-browser consumer for both Window and Terminal integration boundaries.
 
-The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum or final naming. #46 now documents the semantic-domain/admission baseline; #45 remains the terminology/public-API convergence point.
+The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
 Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: their supported work is now represented by first-class bounded Window/WebRTC/WSS evidence and the narrower #94/#56/#19/#12 follow-ups; whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 The next implementation priority is #94: investigate an explicit Human-only macOS native input backend for secure system UI without silently widening bounded Window Handoff to whole-desktop authority. Media quality (#56) and Linux editable-region parity (#34) follow as bounded transport/host improvements rather than authority-model changes.
 
-### Open issue map — 7 issues
+### Open issue map — 6 issues
 
 Every currently open issue is assigned below so backlog state is visible from the roadmap rather than inferred from GitHub history.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
-| #119 | v0.2.0 source release | **Release gate.** Source-only v0.2.0 checklist; npm stays private. #45 is the only product/API blocker assigned to the release milestone. |
+| #119 | v0.2.0 source release | **Release gate.** Source-only v0.2.0 checklist; npm stays private. The terminology/API blocker is satisfied; release bookkeeping remains. |
 | #94 | v0.2.x Window hardening | **Next implementation priority.** Human-only, explicitly selected secure-system-UI input backend; no TCC bypass or hidden desktop fallback. |
 | #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
 | #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
-| #45 | v0.2.0 API/terminology blocker | Audit/align public terminology using the #46 architecture baseline; avoid speculative enums and unnecessary breaking renames. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
 
@@ -53,7 +52,7 @@ Every currently open issue is assigned below so backlog state is visible from th
 3. **Keep the generic contract smaller than consumer policy.** Domain detection, provider policy, postcondition verification, native execution, and consequential-action approval remain consumer responsibilities.
 4. **Prove abstractions with real adapters.** Do not freeze a new public abstraction based only on synthetic examples.
 5. **Handoff is not approval.** Human completion never implicitly authorizes another consequential action.
-6. **Browser takeover stays optional.** The core must remain useful without a browser transport.
+6. **Browser Handoff stays optional.** The core must remain useful without a Browser Target Surface or any Browser-specific transport.
 7. **No bypass product.** CAPTCHA solving, anti-bot evasion, credential relay, stealth/fingerprint spoofing, and payment automation remain explicit non-goals.
 
 ## v0.1.x — hardening the established baseline
@@ -73,7 +72,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 `v0.2.0` is the next planned **GitHub source release**. It is justified as a minor pre-1.0 boundary because the public surface has materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are now exported, and the Window/Terminal package subpaths are part of the source package shape.
 
-The release is tracked by milestone `v0.2.0 — Source Release` and Issue #119. The only current product/API blocker assigned to that milestone is #45. #94, #56, and #34 remain important v0.2.x hardening work but do not block the first v0.2 source release; #19 and #12 remain later transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
+The release is tracked by milestone `v0.2.0 — Source Release` and Issue #119. The public terminology/API blocker is now satisfied; #119 is the remaining source-release bookkeeping gate. #94, #56, and #34 remain important v0.2.x hardening work but do not block the first v0.2 source release; #19 and #12 remain later transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -88,7 +87,7 @@ Current scope and closeout:
 - keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;
 - formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;
 - preserve the #5 MCP-principal vs target-service identity boundary without turning Handoff into a service-account attestation API;
-- use the #46 semantic-domain/Target Surface admission decision as the architecture baseline and #45 to decide stable public terminology. A public enum is not required merely because the three component adapters exist.
+- use the #46 semantic-domain/Target Surface admission decision as the architecture baseline; v0.2 exposes canonical Human Interaction Policy names with compatibility aliases while keeping Target Surface documentation-first. A public enum is not required merely because the three component adapters exist.
 
 Target Surface admission remains evidence-based: a new shape should be recognized only when its authority boundary, capture/input model, lifecycle, or postcondition handling is materially different from the proven Browser / bounded OS Window / bounded Terminal-PTY shapes. A different app, OS, device, transport, or deployment path alone is not sufficient.
 
@@ -98,7 +97,7 @@ Exit criteria:
 - bounded OS-window dogfood demonstrates Agent → Human → verifying → Agent over one exact target on the first-class Window adapter for both required connectivity baselines;
 - Terminal/PTY remains a bounded session/stream component rather than becoming a shell/process runner, and its real-PTY/iPhone evidence remains reproducible;
 - CUMG depends only on the first-class Window/Terminal components rather than Handoff experimental internals;
-- #46 remains the semantic-domain/Target Surface admission baseline, and #45 completes terminology/API convergence without weakening security invariants;
+- #46 remains the semantic-domain/Target Surface admission baseline, and the completed v0.2 terminology convergence preserves compatibility and security invariants;
 - any later generic surface API has a documented compatibility strategy and evidence that it is smaller than the target-specific mechanics it coordinates.
 
 npm publication is **not** an exit criterion for v0.2.
@@ -161,7 +160,7 @@ Minimum exit criteria:
 - at least three real adapters have validated the generic boundary, with more than one application domain represented;
 - Target Surface boundaries have been validated with real consumers rather than only synthetic examples;
 - MCP-standard alignment has been re-audited so the library is not duplicating protocol features unnecessarily;
-- browser takeover remains optional and transport-only;
+- Browser Handoff remains optional; Browser Target Surface and Transport stay separate from the generic core;
 - Human completion remains distinct from consequential-action approval;
 - automatic replay remains explicitly constrained by consumer policy;
 - CI, cross-platform portability gates, dependency review, CodeQL, secret scanning, and security reporting remain operational;

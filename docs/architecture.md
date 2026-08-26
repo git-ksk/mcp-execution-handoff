@@ -50,7 +50,31 @@ This describes the trust/safety boundary under which the Human may interact. The
 - `automation_adjacent` — Human control remains adjacent to the automation-managed execution surface;
 - `credential_safe_external` — Human control moves to an external Human-only boundary suitable for interventions that must not reuse the automation-managed credential surface.
 
-The existing TypeScript API calls these values `HumanSurfaceKind`. Documentation uses **Human Interaction Policy** to avoid confusing this policy axis with the actual target surface. No public API rename is required for this taxonomy.
+The canonical TypeScript API now exposes `HumanInteractionPolicyKind`, `HUMAN_INTERACTION_POLICY_KINDS`, and `selectHumanInteractionPolicy()`. The historical `HumanSurfaceKind`, `HUMAN_SURFACE_KINDS`, and `selectHumanSurface()` names remain compatibility aliases so v0.2.0 does not break consumers.
+
+### v0.2 terminology inventory and compatibility decision
+
+The public vocabulary is intentionally additive in v0.2.0. Existing consumers are not required to rename imports merely to match documentation.
+
+| Existing term or symbol | Canonical axis | v0.2.0 decision |
+| --- | --- | --- |
+| `HumanInteractionPolicyKind`, `HUMAN_INTERACTION_POLICY_KINDS`, `selectHumanInteractionPolicy()` | Human Interaction Policy | Canonical public names for `automation_adjacent` / `credential_safe_external`. |
+| `HumanSurfaceKind`, `HUMAN_SURFACE_KINDS`, `selectHumanSurface()` | Human Interaction Policy | Compatibility aliases. They remain source/runtime compatible; removal is reserved for a future intentional breaking release after consumer migration. |
+| credential-safe external Human surface/provider/runtime | Human Interaction Policy + concrete Human-control boundary | Keep the wording when it refers to the actual external operator boundary. It is not a Target Surface kind and does not attest target-service identity. |
+| `BrowserHandoffAdapter` / Browser | Target Surface | Canonical consumer-level Browser surface. |
+| `WindowHandoffAdapter` / bounded OS Window | Target Surface | Canonical `os_window` architecture label. Exact PID/window ownership remains fail closed; there is no desktop-wide fallback. |
+| `TerminalHandoffAdapter` / bounded Terminal/PTY | Target Surface | Canonical `terminal_pty` architecture label. PTY/process ownership remains consumer-owned. |
+| `browser`, `os_window`, `terminal_pty` | Target Surface | Proven documentation labels only. v0.2.0 intentionally does **not** export `TargetSurfaceKind`: there is no shared runtime compatibility/diagnostic discriminator that needs it yet. |
+| Native, WebRTC, WebSocket; direct ICE / TURN fallback | Transport | Transport families/connectivity behavior only. They do not identify the Target Surface or change Handoff authority. |
+| `browser-takeover`, `window-takeover`, `terminal-takeover` package subpaths; `TakeoverBroker` | Compatibility/API naming | Retained to avoid breaking consumers. “Takeover” in these names is historical API/product prose, not a fifth architecture axis. New architecture prose should prefer Browser/Window/Terminal **Handoff** plus an explicit Transport when needed. |
+| “browser takeover” | Product prose / compatibility naming | Acceptable when referring to the historical API/module or the broader browser-Human-control feature. Do not use it as a synonym for Transport or Handoff Semantics. |
+| “browser transport” | Transport | Use only for a concrete transport implementation carrying Browser Target Surface media/input; Browser itself is not a transport. |
+| “OS takeover”, “desktop takeover”, “window takeover” | Target Surface prose | Prefer **bounded OS Window Handoff**. Whole-desktop control is outside the current normal boundary; compatibility module names are the only reason to retain “window-takeover”. |
+| unqualified “Human surface” | Context-dependent | Avoid when discussing policy. Use **Human Interaction Policy**, **Target Surface**, or **Human-control session/boundary** according to the actual axis. |
+| Human `Done` | Handoff Semantics | Completion evidence only. It is not semantic success, authentication success, target-service identity proof, or approval. |
+| MCP principal vs target-service account/session | Handoff Semantics / consumer authorization boundary | Remain distinct. Handoff binds the MCP principal/invocation/epoch; consumers must freshly verify target-service identity/context when required. |
+
+The compatibility aliases above are the complete public rename for v0.2.0. No authority, replay, completion, principal-binding, transport-selection, exact-window, or PTY semantics change with this terminology convergence. Consumer transport selection also remains outside the generic public Handoff policy API.
 
 ### 3. Target Surface
 
@@ -60,7 +84,7 @@ This describes what execution surface the Human controls. Real consumer evidence
 - `os_window` — a bounded OS application/window surface;
 - `terminal_pty` — one bounded, consumer-owned PTY/session with byte-stream input/output, resize, staged writer drains, process continuity, and mandatory post-Human Agent state synchronization.
 
-`terminal_pty` is an architecture label for the proven shape, not a frozen public enum value. #46 documents the semantic-domain/Target Surface admission baseline; #45 owns remaining public terminology/API convergence. A future native-application/device abstraction remains non-contractual until a real consumer proves a materially different boundary. Architecture terminology prefers **Target Surface**; “takeover type” may be used informally, but should not replace the canonical term.
+`terminal_pty` is an architecture label for the proven shape, not a frozen public enum value. #46 documents the semantic-domain/Target Surface admission baseline; the v0.2 compatibility decision above completes the public terminology convergence without introducing a Target Surface enum. A future native-application/device abstraction remains non-contractual until a real consumer proves a materially different boundary. Architecture terminology prefers **Target Surface**; “takeover type” may be used informally, but should not replace the canonical term.
 
 A new Target Surface shape is admitted only when its execution boundary differs materially in authority, capture/input model, lifecycle, or postcondition handling. A different application technology, product/domain, OS/device, or transport does not create a new shape by itself. `native_app` remains `os_window` when the authority boundary is still one bounded application window; `device` is normally a host/runtime property; whole `desktop` control is not a normal Target Surface and requires a separate explicit security review because it widens the current exact-surface boundary. Editor/document/IDE labels are product categories, not generic authority boundaries.
 
@@ -149,9 +173,9 @@ A higher-assurance **consumer-specific target-service identity verification gate
 
 Real consumer evidence follows this separation: Maps exposes only coarse authentication readiness and requires fresh semantic reissue/revalidation rather than treating Google sign-in completion as account proof; Japan Cinema keeps member sign-in data out of Handoff state and never turns Human completion into checkout/purchase authority. These examples validate the generic boundary without moving provider-specific identity logic into Handoff.
 
-The package does not decide which intervention reasons need this surface. `selectHumanSurface()` lets each consumer configure its own identity-sensitive reason set without moving provider-specific policy into the generic core.
+The package does not decide which intervention reasons need this boundary. `selectHumanInteractionPolicy()` lets each consumer configure its own identity-sensitive reason set without moving provider-specific policy into the generic core; `selectHumanSurface()` remains its compatibility alias.
 
-## Browser takeover
+## Browser Handoff (compatibility API: browser takeover)
 
 `BrowserHandoffAdapter` is the first-class consumer-level Browser WebRTC composition. It owns construction of the bounded WebRTC runtime + broker pair and intentionally exposes no generic HTTP-frame start operation. Consumers provide an already-authorized exact process/window target, an explicit `{ tap, scroll, text, key }` input policy, and retain ownership of browser/profile start-stop, target-service authentication semantics, checkpoint/restore policy, and fresh post-Human verification. The input policy is immutable for the active takeover session, returned to the browser client as bounded booleans, and enforced server-side before OS input so UI bugs cannot widen authority.
 
@@ -165,7 +189,7 @@ The lower-level optional `TakeoverBroker` owns transport/session concerns for de
 
 A new binding cannot implicitly reclaim an already-owned lease. Native clients may instead use the explicit claim/reconnect API. Reconnect requires the same authenticated principal, a generation-bound reconnect handle, and an idle/released prior lease. Successful reconnect increments the client generation and rotates both capability and reconnect handle, so the old client generation is immediately fenced. Browser WebRTC recovery coalesces overlapping Safari lifecycle/failure triggers into one reconnect, waits for exact-generation release, bounds active-lease conflict retries, and never replays Human input across generations. Physical same-LAN iPhone acceptance recovered through three background/foreground cycles without a 409 loop or black-frame stall. Full browser-app termination intentionally loses memory-only reconnect state and requires a fresh authorized flow. Expired/revoked sessions, active prior clients, wrong principals, wrong handles, or stale generations fail closed. The reconnect handle contains no browser content or target-service credential material.
 
-For the WebRTC browser transport, ICE remains direct-first and Handoff owns the full signaling/data-plane policy. Safari uses host candidates only; the Node/werift peer uses an explicit Cloudflare STUN server so dependency behavior cannot silently select a different third-party default. TURN, when configured, is fallback-only and uses generation-bounded short-lived peer credentials. Network diagnostics retain only candidate type/count, peer state, and bounded timing; candidate strings, addresses, SDP, and credentials are excluded.
+For the WebRTC transport carrying the Browser Target Surface, ICE remains direct-first and Handoff owns the full signaling/data-plane policy. Safari uses host candidates only; the Node/werift peer uses an explicit Cloudflare STUN server so dependency behavior cannot silently select a different third-party default. TURN, when configured, is fallback-only and uses generation-bounded short-lived peer credentials. Network diagnostics retain only candidate type/count, peer state, and bounded timing; candidate strings, addresses, SDP, and credentials are excluded.
 
 For dense mobile UIs, the client also provides a client-side **Aim mode**. Enabling Aim moves the view to a bounded 4× scale; video drag/pinch remains local pan/zoom and emits no remote input. The Human aligns the target under a fixed center crosshair and only the explicit `Tap` control emits one ordinary server-policy-gated remote tap. Reconnect, orientation change, and teardown reset Aim/view state, and this does not widen consumer semantics or server-side input authority.
 

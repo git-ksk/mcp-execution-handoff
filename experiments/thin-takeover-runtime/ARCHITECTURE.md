@@ -157,7 +157,7 @@ This prevents app lifecycle transitions from silently reviving stale Human autho
 
 The macOS host:
 
-- preflights Screen Recording and Accessibility before starting the Human surface;
+- preflights Screen Recording and Accessibility before starting the Human-control session;
 - accepts an optional consumer-bound target process ID; if present, exactly one eligible on-screen window must resolve and be fully contained in one capturable display;
 - uses a one-window ScreenCaptureKit inclusion filter plus display-local source cropping and maps Human input to that exact window bounds;
 - commits ordinary non-secure focused AppKit text through `AXSelectedText` only after exact-window, PID, and non-web ancestry revalidation, while unsupported controls retain the bounded keyboard-event path and mismatches fail closed; route diagnostics expose only a bounded payload-free stage;
@@ -195,9 +195,9 @@ client event
 
 Host and client monotonic clocks are not interchangeable. Cross-device glass-to-glass results require physical instrumentation or an explicit clock-correlation method.
 
-## WebRTC browser transport
+## WebRTC transport for Browser Handoff
 
-The install-free browser transport is a sibling data plane under the same Handoff control plane; it does not replace the Native Thin Takeover Runtime.
+The install-free WebRTC transport for the Browser Target Surface is a sibling data plane under the same Handoff control plane; it does not replace the Native Thin Takeover Runtime.
 
 ```text
 control plane: intervention / epoch / principal / client generation / expiry

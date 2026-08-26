@@ -21,7 +21,7 @@ MCPで動く処理の途中でHumanによる手動操作が必要になったと
 - 署名付きのdurable control-plane checkpointを扱う
 - MCP MRTRの `input_required` と `requestState` をbindingする
 - principal、invocation、canonical argumentsへownershipをbindingする
-- short-lived capabilityとone-client leaseを持つoptional browser takeover transportを提供する
+- short-lived capabilityとone-client leaseを持つoptionalなBrowser Handoff / bounded Human-control transportを提供する
 - normal/non-automated browserが必要なprovider向けに、credential-safe external Human surfaceをcoordinationする
 
 一方で、CAPTCHA solver、challenge bypass、credential relay、payment automation、generic browser agent、remote-desktop platform、DOM/network export、重大操作のautomatic approvalは提供しません。Browser/Window Human-control transportはoptionalなbounded componentでありproduct定義そのものではありません。詳細は [位置づけ](docs/positioning.ja.md) を参照してください。
@@ -56,7 +56,7 @@ src/browser-takeover/
 - `awaiting_human` の初期状態を過ぎた後に、owner未設定のinterventionを別ownerへ付け替えない。
 - durable checkpointへ保存するのは限定されたcontrol-plane metadataだけ。raw action arguments、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptは保存しない。
 - restart後のrecoveryは常に `reissue_and_revalidate`。古い実行権限を復元せず、actionを黙って再実行しない。
-- browser takeover URLはlocatorだけを含み、capabilityはauthenticated same-origin bootstrapの後にだけ返す。
+- Browser Handoff locator（compatibility takeover URL API）はlocatorだけを含み、capabilityはauthenticated same-origin bootstrapの後にだけ返す。
 - capabilityはsession、intervention、resource epoch、principal、remote client binding、有効期限へscopeする。
 - takeover leaseを所有できるのは1つのremote client generationだけ。reload/new tab/new deviceによる新しいbindingが、既存leaseを暗黙に奪うことはできない。native reconnectは旧leaseがidleになった後だけ、WebRTC browserはsuspend/disconnect時に現在generationを明示releaseしてからreconnectする。どちらも同じauthenticated principalとgeneration-bound reconnect handleを要求し、新しいclient generationへrotateすると同時に古いcapability/handleを即時無効化する。
 - takeover responseでは `no-store`、`no-referrer`、nonce-bound CSP client asset、bounded inputを維持する。
@@ -89,7 +89,7 @@ identity providerによっては、software-controlled browserやembedded browse
 
 normal non-automated browserを要求するproviderでは、consumerはautomationを完全に停止し、同じ専用non-default profileをCDP / remote-debugging attachmentなしでnormal browserとして起動します。external sessionのrevokeとprofile lockの解放を確認するまでautomationを復元しません。
 
-hosted browser execution planeでtarget serviceがbrowser automation infrastructureを明示的に許容している場合、`HostedBrowserTakeoverProvider` は **automation-compatibleなHuman surface** に限ってbounded `TakeoverBroker` を利用できます。ただし、CDPを隠したりnormal browser相当に変えたりする機能ではありません。automation-managed browserを拒否するcredential surfaceで、normal-browser boundaryの代わりに使ってはいけません。
+hosted browser execution planeでtarget serviceがbrowser automation infrastructureを明示的に許容している場合、`HostedBrowserTakeoverProvider` は **automation-compatibleなHuman-control boundary** に限ってbounded `TakeoverBroker` を利用できます。ただし、CDPを隠したりnormal browser相当に変えたりする機能ではありません。automation-managed browserを拒否するcredential surfaceで、normal-browser boundaryの代わりに使ってはいけません。
 
 Humanが入力したtextはin-memory Human transport/input adapterだけを通し、MCP/model result、durable state、diagnostic、log、process argvへ入れません。
 
@@ -113,7 +113,7 @@ credential-safe browser handoffでは、このlifecycleをOS共通ルールと�
 
 Linux hostはtarget PIDに属するX11 windowを厳密に1つだけ解決し、そのwindowだけをbounded CPU H.264 pipelineでcaptureします。window discovery / PID ownership / geometry / activation / focusはNode側のfail-closed policyとして維持します。primary pointerのmotion / down / upだけは、小型standalone Xlib/libXtst helperへ委譲し、1 Handoff hostの間は1本のX11 connectionを維持して、各XTEST mutationを `XSync` 完了後にackします。scroll / key / textは既存のbounded OS/window pathを維持し、WebRTC generation / TURN / revoke machineryもそのまま再利用します。Human textはprivate stdin / transient clipboardだけを通し、clipboardはすぐclearします。Browser/profile persistenceはconsumer/deployment側の責務であり、Handoffのcontinuity stateにはしません。
 
-`selectHumanSurface()` は、sign-in / consentなどconsumerが設定したreasonを `credential_safe_external` へrouteし、それ以外を `automation_adjacent` に残す小さなpolicy helperです。どのreasonがidentity-sensitiveかはcoreでは決めません。
+`selectHumanInteractionPolicy()` は、sign-in / consentなどconsumerが設定したreasonを `credential_safe_external` へrouteし、それ以外を `automation_adjacent` に残すcanonical policy helperです。既存consumer向けに `selectHumanSurface()` はsource/runtime-compatible aliasとして維持します。どのreasonがidentity-sensitiveかはcoreでは決めません。
 
 ## First-class surface component
 
@@ -125,9 +125,9 @@ consumer-facingなcomponent familyを明示しています。共通化できるH
 | `WindowHandoffAdapter` | exact bounded OS application window。desktop fallbackなし | #85で完成しCUMGも利用中。merged-code physical iPhone acceptanceはpublic Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。 |
 | `TerminalHandoffAdapter` | 1つのconsumer-owned bounded PTY/session + DataChannel WebRTC | #86で完了。CUMGはexperimental部品の直接compositionから移行済みで、merged-code real PTY E2Eとphysical iPhone Human acceptanceも通過済みです。#91でmobileのconnection / Human authority / verifying stateを明示的かつfail-closedにしました。 |
 
-これらadapterの存在だけでgenericなpublic Target Surface enumをfreezeしません。実証済みsurface shapeはBrowser / bounded OS Window / bounded Terminal-PTYの3つです。#46がsemantic-domain / Target Surface admission baselineをdocumentし、残るterminology/API convergenceは #45が担当します。どのcomponentでもHuman `Done`はtransport/lifecycle stepの完了evidenceに過ぎず、semantic successや重大操作のapprovalではありません。
+これらadapterの存在だけでgenericなpublic Target Surface enumをfreezeしません。実証済みsurface shapeはBrowser / bounded OS Window / bounded Terminal-PTYの3つです。#46がsemantic-domain / Target Surface admission baselineをdocumentし、v0.2 terminology convergenceではこのlabelをdocumentation-firstのまま維持しつつ、Human Interaction Policyだけをcompatibility-safeなpublic nameへ収束します。どのcomponentでもHuman `Done`はtransport/lifecycle stepの完了evidenceに過ぎず、semantic successや重大操作のapprovalではありません。
 
-## Browser takeover
+## Browser Handoff（compatibility module: `browser-takeover`）
 
 Standaloneなbrowser MCP consumer向けのcanonical high-level WebRTC compositionは `BrowserHandoffAdapter` です。consumerが渡すのはintervention / principal binding、exact target process/window、明示的でboundedなHuman input policy、自分で所有するbrowser/profile lifecycleで、HandoffがWebRTC runtime + broker compositionを内部で構成します。Consumer-facing surfaceは `start()` / `revoke()` / HTTP routing + bounded diagnosticsに絞り、canonical Browser Handoffがlegacy HTTP frame/input transportへsilent downgradeすることはありません。Locator発行はcontrol-plane setupに過ぎず、media/input pathがusableになる前にhost-window readinessとfirst-media-frame gateを通ります。Browser profile persistence、target-service authentication、post-Human checkpoint / verificationはconsumer責務のままです。
 
@@ -224,7 +224,7 @@ direct-first ICE、TURN fallback、one-client lease、stale generation/capabilit
 
 native operator client向けには明示的なclaim/reconnect pathも提供します。ただしreconnectはimplicit lease transferではありません。以前のclientがidleで、authenticated principalが一致し、generation-bound reconnect handleも一致した場合だけ新generationへrotateできます。成功すると旧capabilityと旧reconnect handleを即時無効化します。reconnect handleはcontinuity用control-plane metadataであり、target-service credentialやbrowser/session contentを含みません。
 
-optionalなWebRTC browser transportは、signaling、H.264/RTP、DataChannel input、Safari lifecycle、reconnect fencingをHandoff内部へ閉じ込めます。macOS hostはScreenCaptureKit / CoreGraphics、Linux hostはisolated X11 display + exact target-window capture + bounded CPU H.264 + OS/window inputを使います。
+Browser Target Surface向けのoptional WebRTC transportは、signaling、H.264/RTP、DataChannel input、Safari lifecycle、reconnect fencingをHandoff内部へ閉じ込めます。macOS hostはScreenCaptureKit / CoreGraphics、Linux hostはisolated X11 display + exact target-window capture + bounded CPU H.264 + OS/window inputを使います。
 
 モバイルの密集UI向けにはclient-sideの **Aim（照準）モード** も用意します。Aimを有効にすると表示だけをbounded 4×へ拡大し、映像drag/pinchはローカルpan/zoomに限定されremote inputを送りません。中央crosshairへ対象を合わせ、明示的な `Tap` controlを押した時だけ既存のserver-side `tap` policyを通る1回のremote tapを送ります。reconnect / orientation change / teardownではAimとview transformをresetし、consumer semantic verificationやserver input authorityは一切広げません。
 
@@ -273,7 +273,7 @@ npm audit --audit-level=moderate
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` が現在の **source release only** baselineです。次のsource releaseは `v0.2.0` を予定し、#45のpublic terminology/API gate後にIssue #119で追跡します。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` が現在の **source release only** baselineです。次のsource releaseは `v0.2.0` を予定し、Issue #119で追跡します。public terminology/API gateは上記のcompatibility-safeなv0.2 convergenceで満たします。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
 
 ## License
 

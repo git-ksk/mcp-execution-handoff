@@ -52,7 +52,31 @@ Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはt
 - `automation_adjacent` — automation-managedな実行surfaceに隣接したままHuman controlを行う
 - `credential_safe_external` — automation-managedなcredential surfaceを使うべきでないintervention向けに、Human-onlyな外部boundaryへcontrolを移す
 
-既存TypeScript APIではこれらを `HumanSurfaceKind` と呼びます。ただしdocsでは、実際に操作するsurface（browser / OS window）と混同しないよう、**Human Interaction Policy** を正式な説明用語として使います。このtaxonomyのためだけにpublic APIをrenameする必要はありません。
+canonical TypeScript APIとして `HumanInteractionPolicyKind`、`HUMAN_INTERACTION_POLICY_KINDS`、`selectHumanInteractionPolicy()` を公開します。既存の `HumanSurfaceKind`、`HUMAN_SURFACE_KINDS`、`selectHumanSurface()` はcompatibility aliasとして維持し、v0.2.0でconsumerを壊しません。
+
+### v0.2 terminology inventory / compatibility decision
+
+v0.2.0のpublic vocabularyはadditiveに収束させます。docsの用語へ合わせるためだけに既存consumerへimport renameを要求しません。
+
+| 既存term / symbol | canonical axis | v0.2.0での判断 |
+| --- | --- | --- |
+| `HumanInteractionPolicyKind`, `HUMAN_INTERACTION_POLICY_KINDS`, `selectHumanInteractionPolicy()` | Human Interaction Policy | `automation_adjacent` / `credential_safe_external` を表すcanonical public name。 |
+| `HumanSurfaceKind`, `HUMAN_SURFACE_KINDS`, `selectHumanSurface()` | Human Interaction Policy | compatibility aliasとして維持。source/runtime compatibilityを保ち、削除はconsumer migration後の明示的なbreaking releaseだけで検討する。 |
+| credential-safe external Human surface/provider/runtime | Human Interaction Policy + concrete Human-control boundary | 実際のexternal operator boundaryを指す場合はこの表現を維持する。Target Surface kindではなく、target-service identityをattestもしない。 |
+| `BrowserHandoffAdapter` / Browser | Target Surface | consumer-level Browser surfaceのcanonical表現。 |
+| `WindowHandoffAdapter` / bounded OS Window | Target Surface | canonicalな `os_window` architecture label。exact PID/window ownershipはfail closedのままで、desktop-wide fallbackはない。 |
+| `TerminalHandoffAdapter` / bounded Terminal/PTY | Target Surface | canonicalな `terminal_pty` architecture label。PTY/process ownershipはconsumer側に維持する。 |
+| `browser`, `os_window`, `terminal_pty` | Target Surface | 実証済みのdocumentation labelのみ。共通runtime compatibility/diagnostic discriminatorの実需要がまだないため、v0.2.0では `TargetSurfaceKind` をexportしない。 |
+| Native, WebRTC, WebSocket; direct ICE / TURN fallback | Transport | Transport family / connectivity behaviorだけを表す。Target Surfaceを決めず、Handoff authorityも変更しない。 |
+| `browser-takeover`, `window-takeover`, `terminal-takeover` package subpath; `TakeoverBroker` | compatibility/API naming | consumer breakageを避けるため維持する。これらの“takeover”はhistorical API/product proseで、5つ目のarchitecture axisではない。新しいarchitecture proseではBrowser/Window/Terminal **Handoff** と、必要なら明示的なTransportを使う。 |
+| “browser takeover” | product prose / compatibility naming | historical API/moduleまたはbrowser Human-control feature全体を指す場合のみ許容。TransportやHandoff Semanticsの同義語にはしない。 |
+| “browser transport” | Transport | Browser Target Surfaceのmedia/inputを運ぶ具体的transport実装だけを指す。Browser自体をtransportとは呼ばない。 |
+| “OS takeover”, “desktop takeover”, “window takeover” | Target Surface prose | **bounded OS Window Handoff** を優先する。whole-desktop controlは現在の通常boundary外で、“window-takeover”はcompatibility module nameとしてのみ残す。 |
+| 修飾なしの“Human surface” | context-dependent | policy説明では避け、実際のaxisに応じて **Human Interaction Policy** / **Target Surface** / **Human-control session/boundary** を使う。 |
+| Human `Done` | Handoff Semantics | completion evidenceだけを意味する。semantic success、authentication success、target-service identity proof、approvalではない。 |
+| MCP principal と target-service account/session | Handoff Semantics / consumer authorization boundary | 分離を維持する。HandoffはMCP principal/invocation/epochへbindingし、必要なtarget-service identity/contextはconsumerがfreshに検証する。 |
+
+上記compatibility aliasがv0.2.0で行うpublic renameの全てです。このterminology convergenceではauthority、replay、completion、principal binding、transport selection、exact-window、PTY semanticsを変更しません。consumerのtransport選択もgeneric public Handoff policy APIへ持ち込みません。
 
 ### 3. Target Surface
 
@@ -62,7 +86,7 @@ Handoff SemanticsはTarget SurfaceやTransportに依存しません。これはt
 - `os_window` — scopeを限定したOS application/window surface
 - `terminal_pty` — 1つのboundedでconsumer-ownedなPTY/session。byte-stream input/output、resize、staged writer drain、process continuity、post-Human Agent state sync必須化を含む
 
-`terminal_pty` は実証済みshapeを説明するarchitecture labelであり、frozenなpublic enum valueではありません。#46がsemantic-domain / Target Surface admission baselineをdocumentし、残るpublic terminology/API convergenceは #45が担当します。別のnative-application/device abstractionは、実consumerで本質的に異なるboundaryが証明されるまでnon-contractualな候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
+`terminal_pty` は実証済みshapeを説明するarchitecture labelであり、frozenなpublic enum valueではありません。#46がsemantic-domain / Target Surface admission baselineをdocumentし、上記v0.2 compatibility decisionでTarget Surface enumを追加せずpublic terminology convergenceを完了します。別のnative-application/device abstractionは、実consumerで本質的に異なるboundaryが証明されるまでnon-contractualな候補に留めます。architecture上の正式用語は **Target Surface** とし、「takeover type」は説明上の言い回しに留めます。
 
 新しいTarget Surface shapeは、authority、capture/input model、lifecycle、postcondition handlingのいずれかでexecution boundaryが本質的に異なる場合だけ追加します。application technology、product/domain、OS/device、transportが違うだけでは新shapeにしません。authority boundaryが1つのbounded application windowなら `native_app` は `os_window` のまま、`device` は通常host/runtime propertyです。whole `desktop` controlは通常のTarget Surfaceにせず、exact-surface boundaryを広げるため別の明示security reviewを要求します。editor/document/IDEもgeneric authority boundaryではなくproduct categoryです。
 
@@ -160,9 +184,9 @@ consumerがexpected service account/contextをauthorizationに使う必要があ
 
 実consumerもこの分離を使っています。Mapsはcoarseなauthentication readinessだけを扱い、Google sign-in completionをaccount proofにせずfresh semantic reissue/revalidationを要求します。Japan Cinemaもmember sign-in dataをHandoff stateへ入れず、Human completionをcheckout/purchase authorityへ昇格させません。これらはprovider-specific identity logicをHandoff coreへ移さずgeneric boundaryを実証しています。
 
-どのintervention reasonでこのsurfaceを使うかはpackage側では決めません。`selectHumanSurface()` を使ってconsumerごとにidentity-sensitiveなreasonを設定し、provider固有policyをgeneric coreへ持ち込みません。
+どのintervention reasonでこのboundaryを使うかはpackage側では決めません。`selectHumanInteractionPolicy()` を使ってconsumerごとにidentity-sensitiveなreasonを設定し、provider固有policyをgeneric coreへ持ち込みません。`selectHumanSurface()` はcompatibility aliasとして維持します。
 
-## Browser takeover
+## Browser Handoff（compatibility API: browser takeover）
 
 `BrowserHandoffAdapter` はconsumer-levelのfirst-class Browser WebRTC compositionです。bounded WebRTC runtime + broker pairの構築をHandoff内部へ閉じ、generic HTTP-frame start operationは公開しません。consumerはすでにauthorize済みのexact process/window targetと、明示的な `{ tap, scroll, text, key }` input policyを渡し、browser/profileのstart-stop、target-service authentication semantics、checkpoint/restore policy、fresh post-Human verificationは自分で所有し続けます。Input policyはactive takeover session中に不変で、browser clientへbounded booleanだけを返し、OS inputの直前にserver側でも強制するため、UI bugでauthorityが広がることはありません。
 
@@ -176,7 +200,7 @@ low-level optional `TakeoverBroker` はcustom compositionを明示的に必要�
 
 新しいbindingが、すでに所有されているleaseを暗黙に奪うことはできません。native clientは明示的なclaim/reconnect APIを使えます。reconnectには、同じauthenticated principal、generation-bound reconnect handle、以前のleaseがidle/releasedであることが必要です。成功するとclient generationを進め、capabilityとreconnect handleを両方rotateします。Browser WebRTC recoveryはSafariの重複lifecycle/failure triggerを1本のreconnectへ集約し、exact-generation releaseを待ち、active-lease conflict retryをboundedにし、generationをまたぐHuman input replayを行いません。same-LAN iPhone physical acceptanceではbackground/foregroundを3回連続復帰し、409 loopやblack-frame固定は発生しませんでした。browser app完全終了ではmemory-only reconnect stateを復元せずfresh authorized flowを要求します。expired/revoked session、activeな旧client、wrong principal、wrong handle、stale generationはfail closedします。reconnect handleにbrowser contentやtarget-service credentialを含めません。
 
-WebRTC browser transportではdirect-first ICEを維持し、signaling/data-plane policyをHandoff側に閉じ込めます。Safariはhost candidateのみを使い、Node/werift peerはCloudflare STUNを明示的に利用して、dependency内部のdefaultが別third-partyへ勝手に切り替わらないようにします。TURNを設定してもfallback専用で、client generationに紐づくshort-lived peer credentialを使います。network diagnosticにはcandidate type/count、peer state、限定されたtimingだけを残し、candidate文字列、address、SDP、credentialは保存しません。
+Browser Target Surfaceを運ぶWebRTC transportではdirect-first ICEを維持し、signaling/data-plane policyをHandoff側に閉じ込めます。Safariはhost candidateのみを使い、Node/werift peerはCloudflare STUNを明示的に利用して、dependency内部のdefaultが別third-partyへ勝手に切り替わらないようにします。TURNを設定してもfallback専用で、client generationに紐づくshort-lived peer credentialを使います。network diagnosticにはcandidate type/count、peer state、限定されたtimingだけを残し、candidate文字列、address、SDP、credentialは保存しません。
 
 モバイルの密集UI向けにはclient-sideの **Aim（照準）モード** も用意します。Aimを有効にすると表示だけをbounded 4×へ拡大し、映像drag/pinchはローカルpan/zoomに限定されremote inputを送りません。中央crosshairへ対象を合わせ、明示的な `Tap` controlを押した時だけ既存のserver-side `tap` policyを通る1回のremote tapを送ります。reconnect / orientation change / teardownではAimとview transformをresetし、consumer semantic verificationやserver input authorityは一切広げません。
 

@@ -4,8 +4,13 @@ import {
   CredentialSafeHumanSurfaceRuntime,
   ExecutionHandoffState,
   ExternalHumanSurfaceError,
+  HUMAN_INTERACTION_POLICY_KINDS,
+  HUMAN_SURFACE_KINDS,
+  selectHumanInteractionPolicy,
   selectHumanSurface,
-  type ExternalHumanSurfaceProvider
+  type ExternalHumanSurfaceProvider,
+  type HumanInteractionPolicyKind,
+  type HumanSurfaceKind
 } from "../src/core/index.js";
 
 type Action = { kind: "search"; query: string };
@@ -38,11 +43,17 @@ function providerFixture(extra: Record<string, unknown> = {}) {
   return { provider, calls };
 }
 
-test("identity-sensitive reasons can select a credential-safe external Human surface", () => {
+test("Human Interaction Policy has canonical names with source-compatible HumanSurface aliases", () => {
   const sensitive = new Set<Reason>(["sign_in", "consent"]);
-  assert.equal(selectHumanSurface("sign_in", sensitive), "credential_safe_external");
-  assert.equal(selectHumanSurface("consent", sensitive), "credential_safe_external");
-  assert.equal(selectHumanSurface("access_challenge", sensitive), "automation_adjacent");
+  const canonical: HumanInteractionPolicyKind = selectHumanInteractionPolicy("sign_in", sensitive);
+  const compatibility: HumanSurfaceKind = selectHumanSurface("sign_in", sensitive);
+
+  assert.equal(canonical, "credential_safe_external");
+  assert.equal(compatibility, canonical);
+  assert.deepEqual(HUMAN_INTERACTION_POLICY_KINDS, ["automation_adjacent", "credential_safe_external"]);
+  assert.equal(HUMAN_SURFACE_KINDS, HUMAN_INTERACTION_POLICY_KINDS);
+  assert.equal(selectHumanInteractionPolicy("consent", sensitive), "credential_safe_external");
+  assert.equal(selectHumanInteractionPolicy("access_challenge", sensitive), "automation_adjacent");
 });
 
 test("credential-safe external control cannot begin before Human authority owns the intervention", async () => {
