@@ -25,6 +25,15 @@ export declare function scaledVideoSize(width: number, height: number): {
 };
 export declare function avccFromNalUnits(units: readonly Buffer[]): Buffer;
 export declare function frameRecord(avcc: Buffer, timestamp: number, keyframe: boolean, width: number, height: number): Buffer;
+export declare function jpegFrameRecord(jpeg: Buffer, width: number, height: number): Buffer;
+export declare class JpegFrameParser {
+    private readonly emit;
+    private pending;
+    constructor(emit: (jpeg: Buffer) => void);
+    push(chunk: Buffer): void;
+    end(): void;
+    private drain;
+}
 /** Splits Annex-B H.264 into access units using mandatory AUD NALs emitted by the Linux encoder. */
 export declare class AnnexBAccessUnitParser {
     private readonly emit;
