@@ -65,7 +65,7 @@ src/browser-takeover/
 - **Human takeoverの完了は、別actionへの承認ではない。** 重大操作にはconsumer側で別の明示的approval mechanismが必要。
 - stateful / consequential actionは、安全なreplayが別途確認できない限りhandoff後に自動再実行しない。
 
-詳細は [アーキテクチャ](docs/architecture.ja.md)、[位置づけ](docs/positioning.ja.md)、[ロードマップ](ROADMAP.ja.md)、[セキュリティポリシー](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
+詳細は [アーキテクチャ](docs/architecture.ja.md)、[位置づけ](docs/positioning.ja.md)、[ロードマップ](ROADMAP.ja.md)、[リリース手順](RELEASING.ja.md)、[セキュリティポリシー](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
 
 ## Resume policy
 
@@ -273,7 +273,7 @@ npm audit --audit-level=moderate
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` は2つの実consumerで検証した後に確定した最初の **source release** です。npm publishは別判断のままで、`private: true` を維持しています。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.1.0` が現在の **source release only** baselineです。次のsource releaseは `v0.2.0` を予定し、#45のpublic terminology/API gate後にIssue #119で追跡します。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
 
 ## License
 

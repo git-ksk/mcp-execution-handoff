@@ -32,16 +32,17 @@ Documentation/design closeout is complete for #42 (positioning), #46 (semantic d
 
 The next implementation priority is #94: investigate an explicit Human-only macOS native input backend for secure system UI without silently widening bounded Window Handoff to whole-desktop authority. Media quality (#56) and Linux editable-region parity (#34) follow as bounded transport/host improvements rather than authority-model changes.
 
-### Open issue map — 6 issues
+### Open issue map — 7 issues
 
 Every currently open issue is assigned below so backlog state is visible from the roadmap rather than inferred from GitHub history.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
-| #94 | v0.2 Window hardening | **Next implementation priority.** Human-only, explicitly selected secure-system-UI input backend; no TCC bypass or hidden desktop fallback. |
-| #56 | v0.2 media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
-| #34 | v0.2 cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
-| #45 | v0.2 API/terminology convergence | Audit/align public terminology using the #46 architecture baseline; avoid speculative enums and unnecessary breaking renames. |
+| #119 | v0.2.0 source release | **Release gate.** Source-only v0.2.0 checklist; npm stays private. #45 is the only product/API blocker assigned to the release milestone. |
+| #94 | v0.2.x Window hardening | **Next implementation priority.** Human-only, explicitly selected secure-system-UI input backend; no TCC bypass or hidden desktop fallback. |
+| #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
+| #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
+| #45 | v0.2.0 API/terminology blocker | Audit/align public terminology using the #46 architecture baseline; avoid speculative enums and unnecessary breaking renames. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
 
@@ -67,6 +68,14 @@ Focus:
 - migration notes for any unavoidable pre-1.0 breaking fix.
 
 Exit condition: each patch must preserve the documented security invariants and remain green in both established real consumers.
+
+## Next source release: v0.2.0
+
+`v0.2.0` is the next planned **GitHub source release**. It is justified as a minor pre-1.0 boundary because the public surface has materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are now exported, and the Window/Terminal package subpaths are part of the source package shape.
+
+The release is tracked by milestone `v0.2.0 — Source Release` and Issue #119. The only current product/API blocker assigned to that milestone is #45. #94, #56, and #34 remain important v0.2.x hardening work but do not block the first v0.2 source release; #19 and #12 remain later transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
+
+See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
 ## v0.2 — Target Surface contract and bounded host hardening
 
