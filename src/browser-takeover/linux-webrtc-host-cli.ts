@@ -341,12 +341,22 @@ class LinuxWindowInput {
     // recycled after a process exits; stale geometry must never widen input authority to a new
     // owner. A move/resize of the same owned window refreshes only its bounded geometry.
     this.geometry = await this.currentOwnedGeometry();
-    await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
-    // Pointer operations may establish browser focus. Text/key operations must preserve the
-    // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
-    // the top-level X11 window here can steal that internal focus before paste/Enter.
-    if (input.kind === "tap" || input.kind === "pointer_button" || input.kind === "scroll") {
-      await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+    const continuingPrimaryRelease = input.kind === "pointer_button" && input.state === "up" && this.primaryPressed;
+    if (input.kind === "pointer_button" && input.state === "up" && !this.primaryPressed) {
+      throw new Error("Linux WebRTC primary button is not pressed");
+    }
+    // Establish exact-window activation before a new pointer lifecycle, scroll, text, or key.
+    // A primary release is different: mutating WM activation/focus between the admitted down/up
+    // pair can cancel Chromium's click lifecycle. For release, revalidate ownership above and
+    // verify active/focus below without issuing another focus mutation while Button1 is held.
+    if (!continuingPrimaryRelease) {
+      await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
+      // Pointer operations may establish browser focus. Text/key operations must preserve the
+      // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
+      // the top-level X11 window here can steal that internal focus before paste/Enter.
+      if (input.kind === "tap" || input.kind === "pointer_button" || input.kind === "scroll") {
+        await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+      }
     }
     await this.confirmActiveTarget();
     await this.confirmInputFocusOwnedByTarget();
