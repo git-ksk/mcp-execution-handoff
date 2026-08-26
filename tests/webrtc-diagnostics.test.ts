@@ -90,6 +90,12 @@ test("Linux pointer delivery diagnostics retain only bounded stage names", () =>
     "host.input.pointer.delivery_helper_ready",
     "host.input.pointer.delivery_helper_failure",
     "host.input.pointer.delivery_arm_failure",
+    "host.input.pointer.delivery_wait_no_event",
+    "host.input.pointer.delivery_wait_event_mismatch",
+    "host.input.pointer.delivery_wait_xi2_mismatch",
+    "host.input.pointer.delivery_wait_window_mismatch",
+    "host.input.pointer.delivery_wait_coord_mismatch",
+    "host.input.pointer.delivery_wait_io_failure",
     "host.input.pointer.delivery_wait_failure",
     "host.input.pointer.delivery_ready"
   ] as const;

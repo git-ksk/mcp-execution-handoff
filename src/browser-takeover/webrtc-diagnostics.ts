@@ -37,6 +37,12 @@ export type WebRtcDiagnosticStage =
   | "host.input.pointer.delivery_helper_ready"
   | "host.input.pointer.delivery_helper_failure"
   | "host.input.pointer.delivery_arm_failure"
+  | "host.input.pointer.delivery_wait_no_event"
+  | "host.input.pointer.delivery_wait_event_mismatch"
+  | "host.input.pointer.delivery_wait_xi2_mismatch"
+  | "host.input.pointer.delivery_wait_window_mismatch"
+  | "host.input.pointer.delivery_wait_coord_mismatch"
+  | "host.input.pointer.delivery_wait_io_failure"
   | "host.input.pointer.delivery_wait_failure"
   | "host.input.pointer.delivery_ready"
   | "host.input.text.native_ax"
@@ -113,6 +119,12 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.input.pointer.delivery_helper_ready",
   "host.input.pointer.delivery_helper_failure",
   "host.input.pointer.delivery_arm_failure",
+  "host.input.pointer.delivery_wait_no_event",
+  "host.input.pointer.delivery_wait_event_mismatch",
+  "host.input.pointer.delivery_wait_xi2_mismatch",
+  "host.input.pointer.delivery_wait_window_mismatch",
+  "host.input.pointer.delivery_wait_coord_mismatch",
+  "host.input.pointer.delivery_wait_io_failure",
   "host.input.pointer.delivery_wait_failure",
   "host.input.pointer.delivery_ready",
   "host.input.text.native_ax",
@@ -214,6 +226,12 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.input.pointer.delivery_helper_ready": ["stage"],
     "host.input.pointer.delivery_helper_failure": ["stage"],
     "host.input.pointer.delivery_arm_failure": ["stage"],
+    "host.input.pointer.delivery_wait_no_event": ["stage"],
+    "host.input.pointer.delivery_wait_event_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_xi2_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_window_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_coord_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_io_failure": ["stage"],
     "host.input.pointer.delivery_wait_failure": ["stage"],
     "host.input.pointer.delivery_ready": ["stage"],
     "host.input.text.native_ax": ["stage"],

@@ -378,6 +378,20 @@ class LinuxXTestPointerHelper {
   }
 }
 
+type LinuxXRecordDeliveryWaitFailure =
+  | "WAIT_NO_EVENT"
+  | "WAIT_EVENT_MISMATCH"
+  | "WAIT_XI2_MISMATCH"
+  | "WAIT_WINDOW_MISMATCH"
+  | "WAIT_COORD_MISMATCH"
+  | "WAIT_IO";
+
+class LinuxXRecordDeliveryWaitError extends Error {
+  constructor(readonly reason: LinuxXRecordDeliveryWaitFailure) {
+    super("Linux XRecord delivery helper did not confirm pointer delivery");
+  }
+}
+
 class LinuxXRecordDeliveryHelper {
   private readonly child: ChildProcessByStdio<Writable, Readable, null>;
   private output = "";
@@ -509,7 +523,14 @@ class LinuxXRecordDeliveryHelper {
         pending.resolve();
         continue;
       }
-      pending.reject(new Error("Linux XRecord delivery helper rejected a command"));
+      const waitFailure = pending.expected === "PRESS"
+        ? /^ERR (WAIT_NO_EVENT|WAIT_EVENT_MISMATCH|WAIT_XI2_MISMATCH|WAIT_WINDOW_MISMATCH|WAIT_COORD_MISMATCH|WAIT_IO)$/.exec(line)
+        : null;
+      if (waitFailure) {
+        pending.reject(new LinuxXRecordDeliveryWaitError(waitFailure[1] as LinuxXRecordDeliveryWaitFailure));
+      } else {
+        pending.reject(new Error("Linux XRecord delivery helper rejected a command"));
+      }
       void this.close();
       return;
     }
@@ -783,6 +804,17 @@ class LinuxWindowInput {
         try {
           await delivery.waitPrimaryPress();
         } catch (error) {
+          if (error instanceof LinuxXRecordDeliveryWaitError) {
+            const stages: Record<LinuxXRecordDeliveryWaitFailure, string> = {
+              WAIT_NO_EVENT: "input_pointer_delivery_wait_no_event",
+              WAIT_EVENT_MISMATCH: "input_pointer_delivery_wait_event_mismatch",
+              WAIT_XI2_MISMATCH: "input_pointer_delivery_wait_xi2_mismatch",
+              WAIT_WINDOW_MISMATCH: "input_pointer_delivery_wait_window_mismatch",
+              WAIT_COORD_MISMATCH: "input_pointer_delivery_wait_coord_mismatch",
+              WAIT_IO: "input_pointer_delivery_wait_io_failure"
+            };
+            process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${stages[error.reason]}\n`);
+          }
           process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_wait_failure\n");
           throw error;
         }

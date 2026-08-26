@@ -41,6 +41,10 @@ typedef struct {
   int expected_x;
   int expected_y;
   bool delivered;
+  bool saw_event;
+  bool saw_xi2_mismatch;
+  bool saw_window_mismatch;
+  bool saw_coordinate_mismatch;
 } DeliveryState;
 
 static int x_error_seen = 0;
@@ -197,29 +201,36 @@ static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
       && recorded->data_len >= (X_EVENT_BYTES / 4UL)) {
     const unsigned char *event = recorded->data;
     const unsigned char type = (unsigned char)(event[WIRE_EVENT_TYPE_OFFSET] & 0x7fU);
+    state->saw_event = true;
     if (type == ButtonPress) {
       const unsigned char detail = event[WIRE_CORE_DETAIL_OFFSET];
       const Window event_window = (Window)read_u32(event, WIRE_CORE_EVENT_WINDOW_OFFSET);
       const int root_x = (int)read_i16(event, WIRE_CORE_ROOT_X_OFFSET);
       const int root_y = (int)read_i16(event, WIRE_CORE_ROOT_Y_OFFSET);
-      if (detail == 1U
-          && root_x == state->expected_x && root_y == state->expected_y
-          && window_descends_from(state->control, state->expected_window, event_window)) {
-        state->delivered = true;
+      if (detail == 1U) {
+        const bool coordinate_matches = root_x == state->expected_x && root_y == state->expected_y;
+        const bool window_matches = window_descends_from(state->control, state->expected_window, event_window);
+        if (!coordinate_matches) state->saw_coordinate_mismatch = true;
+        if (!window_matches) state->saw_window_mismatch = true;
+        if (coordinate_matches && window_matches) state->delivered = true;
       }
-    } else if (type == GenericEvent
-        && (int)event[WIRE_XI2_EXTENSION_OFFSET] == state->xinput_opcode
-        && read_u16(event, WIRE_XI2_EVTYPE_OFFSET) == XI_ButtonPress
-        && read_u32(event, WIRE_XI2_DETAIL_OFFSET) == 1U) {
-      const Window event_window = (Window)read_u32(event, WIRE_XI2_EVENT_WINDOW_OFFSET);
-      // RECORD's delivered-event hook exposes only the 32-byte GenericEvent header, so XI2
-      // root_x/root_y are unavailable here. Node arms this observer only after the XTEST MOVE has
-      // XSync'd and XQueryPointer has proved the exact admitted root coordinate, then it revalidates
-      // exact Window ownership/geometry plus active/focus authority immediately before DOWN. The
-      // observer therefore owns only the remaining delivery fact: Button1 reached the exact X11
-      // client that created the admitted Window resource, inside that Window subtree.
-      if (window_descends_from(state->control, state->expected_window, event_window)) {
-        state->delivered = true;
+    } else if (type == GenericEvent && (int)event[WIRE_XI2_EXTENSION_OFFSET] == state->xinput_opcode) {
+      if (read_u16(event, WIRE_XI2_EVTYPE_OFFSET) == XI_ButtonPress
+          && read_u32(event, WIRE_XI2_DETAIL_OFFSET) == 1U) {
+        const Window event_window = (Window)read_u32(event, WIRE_XI2_EVENT_WINDOW_OFFSET);
+        // RECORD's delivered-event hook exposes only the 32-byte GenericEvent header, so XI2
+        // root_x/root_y are unavailable here. Node arms this observer only after the XTEST MOVE has
+        // XSync'd and XQueryPointer has proved the exact admitted root coordinate, then it revalidates
+        // exact Window ownership/geometry plus active/focus authority immediately before DOWN. The
+        // observer therefore owns only the remaining delivery fact: Button1 reached the scoped X11
+        // client inside the exact admitted Window subtree.
+        if (window_descends_from(state->control, state->expected_window, event_window)) {
+          state->delivered = true;
+        } else {
+          state->saw_window_mismatch = true;
+        }
+      } else {
+        state->saw_xi2_mismatch = true;
       }
     }
   }
@@ -237,6 +248,10 @@ static void disable_context(DeliveryState *state) {
   state->context = 0;
   state->expected_window = None;
   state->delivered = false;
+  state->saw_event = false;
+  state->saw_xi2_mismatch = false;
+  state->saw_window_mismatch = false;
+  state->saw_coordinate_mismatch = false;
 }
 
 static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, int x, int y) {
@@ -283,6 +298,10 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
   state->expected_x = x;
   state->expected_y = y;
   state->delivered = false;
+  state->saw_event = false;
+  state->saw_xi2_mismatch = false;
+  state->saw_window_mismatch = false;
+  state->saw_coordinate_mismatch = false;
   x_error_seen = 0;
   if (!XRecordEnableContextAsync(state->data, state->context, record_callback, (XPointer)state)) {
     disable_context(state);
@@ -295,25 +314,34 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
   return true;
 }
 
-static bool wait_for_delivery(DeliveryState *state) {
+static const char *wait_failure_code(const DeliveryState *state) {
+  if (!state->saw_event) return "WAIT_NO_EVENT";
+  if (state->saw_window_mismatch) return "WAIT_WINDOW_MISMATCH";
+  if (state->saw_coordinate_mismatch) return "WAIT_COORD_MISMATCH";
+  if (state->saw_xi2_mismatch) return "WAIT_XI2_MISMATCH";
+  return "WAIT_EVENT_MISMATCH";
+}
+
+static const char *wait_for_delivery(DeliveryState *state) {
   const int fd = ConnectionNumber(state->data);
   const int64_t start = monotonic_ms();
-  if (fd < 0 || start < 0 || state->context == 0) return false;
+  if (fd < 0 || start < 0 || state->context == 0) return "WAIT_IO";
 
   for (;;) {
     struct pollfd descriptor;
     const int64_t now = monotonic_ms();
     int remaining;
     int result;
-    if (now < 0) return false;
+    if (now < 0) return "WAIT_IO";
     XRecordProcessReplies(state->data);
     if (state->delivered) {
       disable_context(state);
-      return true;
+      return NULL;
     }
     if (now - start >= DELIVERY_WAIT_TIMEOUT_MS) {
+      const char *failure = wait_failure_code(state);
       disable_context(state);
-      return false;
+      return failure;
     }
     remaining = (int)(DELIVERY_WAIT_TIMEOUT_MS - (now - start));
     descriptor.fd = fd;
@@ -323,12 +351,13 @@ static bool wait_for_delivery(DeliveryState *state) {
       result = poll(&descriptor, 1, remaining);
     } while (result < 0 && errno == EINTR);
     if (result <= 0) {
+      const char *failure = result == 0 ? wait_failure_code(state) : "WAIT_IO";
       disable_context(state);
-      return false;
+      return failure;
     }
     if ((descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
       disable_context(state);
-      return false;
+      return "WAIT_IO";
     }
   }
 }
@@ -378,9 +407,12 @@ static int run_protocol(DeliveryState *state) {
         reply("ERR", "STATE");
         return 2;
       }
-      if (!wait_for_delivery(state)) {
-        reply("ERR", "TIMEOUT");
-        return 3;
+      {
+        const char *failure = wait_for_delivery(state);
+        if (failure != NULL) {
+          reply("ERR", failure);
+          return 3;
+        }
       }
       reply("OK", "PRESS");
       continue;
