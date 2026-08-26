@@ -94,21 +94,21 @@ jobs:
           dist/native/mcp-handoff-linux-xrecord-delivery-helper --version
           dist/native/mcp-handoff-linux-x11-pointer-query --version
           sha256sum dist/native/mcp-handoff-linux-xtest-helper dist/native/mcp-handoff-linux-xrecord-delivery-helper dist/native/mcp-handoff-linux-x11-pointer-query
+      - name: Run cold Linux Chrome acceptance without Openbox Client grab
+        id: no_client_grab
+        continue-on-error: true
+        env:
+          HANDOFF_ACCEPT_OPENBOX_NO_CLIENT_GRAB: "1"
+        run: npm run accept:webrtc:linux
       - name: Run Linux Chrome stable acceptance 1
         id: stable_chrome_1
+        if: always()
         continue-on-error: true
         run: npm run accept:webrtc:linux
       - name: Run Linux Chrome stable acceptance 2
         id: stable_chrome_2
         if: always()
         continue-on-error: true
-        run: npm run accept:webrtc:linux
-      - name: Run Linux Chrome acceptance without Openbox Client grab
-        id: no_client_grab
-        if: always()
-        continue-on-error: true
-        env:
-          HANDOFF_ACCEPT_OPENBOX_NO_CLIENT_GRAB: "1"
         run: npm run accept:webrtc:linux
       - name: Require repeated Linux Chrome stable acceptance
         if: always()
