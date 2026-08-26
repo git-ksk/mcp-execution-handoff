@@ -2,7 +2,7 @@
 
 [日本語](positioning.ja.md)
 
-Last reviewed: 2026-08-23.
+Last reviewed: 2026-08-26.
 
 `mcp-execution-handoff` is intentionally **not** a general human-in-the-loop framework, approval product, workflow engine, or browser automation system. It is a small security-oriented control-plane runtime for transferring execution authority from an Agent to a Human during an MCP-driven operation and deciding how execution may safely resume afterward.
 
@@ -29,7 +29,7 @@ The project uses four separate architectural axes:
 
 1. **Handoff Semantics** — authority, epoch, ownership, replay/resume, and recovery. This is the security-oriented invariant core and the primary differentiation.
 2. **Human Interaction Policy** — the trust boundary under which the Human interacts. Current implementation values are `automation_adjacent` and `credential_safe_external` (named `HumanSurfaceKind` in the existing TypeScript API).
-3. **Target Surface** — what the Human controls. Current proven categories are browser and bounded OS/window surfaces.
+3. **Target Surface** — what the Human controls. Current proven shapes are browser, bounded OS/window, and bounded Terminal/PTY surfaces; this evidence does not by itself freeze a public enum.
 4. **Transport** — how Human control/media is delivered, such as Native or WebRTC. Direct ICE vs TURN is WebRTC connectivity behavior, not a takeover type.
 
 These axes must not be conflated. In particular, browser takeover is an optional Human-control surface/transport capability around the core semantics; it is not the definition of the product. Architecture terminology uses **Target Surface** rather than overloading “takeover type,” and uses **Human Interaction Policy** in documentation to avoid confusing policy with the controlled surface.
@@ -88,6 +88,26 @@ Agent Control Plane provides durable agent execution, scheduling/control-loop in
 Reference:
 
 - https://github.com/humanlayer/agentcontrolplane
+
+## Responsibility-boundary comparisons
+
+These comparisons describe ownership boundaries, not a feature ranking or security superiority claim.
+
+### Remote desktop systems
+
+Systems such as RustDesk or Apache Guacamole primarily expose a device/session/desktop as the Human-controlled resource. `mcp-execution-handoff` instead treats Human control as one bounded intervention inside an existing MCP execution context: authority is bound to intervention + resource epoch + principal + exact invocation, and the default Window contract does not silently widen to an unrelated desktop. Remote-desktop systems and Handoff therefore solve different layers of the problem.
+
+### Browser takeover / cloud browser systems
+
+Browser platforms may own the browser runtime, session persistence, automation stack, and Human live-view/takeover plane as one integrated product. Handoff keeps browser/profile lifecycle and target-service authentication semantics consumer-owned. The optional Browser Handoff component supplies bounded Human control and session fencing, while fresh semantic verification remains outside the transport.
+
+### Integrated agent sandbox / execution platforms
+
+Larger execution platforms may own the sandbox/VM/browser/desktop, agent runtime, Human interaction surface, and routing together. Handoff is deliberately smaller: it is intended to be embedded into an existing MCP consumer/runtime and preserve the consumer's process/profile/authorization ownership instead of becoming the execution platform itself.
+
+### HITL / approval systems
+
+Approval and interrupt frameworks can pause work and ask a Human for a decision or input. Handoff's distinct responsibility is temporary **execution-authority transfer** plus freshness/ownership/replay fencing. Human `Done` ends the manual intervention only; it does not approve a later consequential action and does not make a stale semantic action replayable.
 
 ## Relationship to browser takeover systems
 

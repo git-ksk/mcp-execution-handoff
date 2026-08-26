@@ -52,6 +52,7 @@ src/browser-takeover/
 - AgentとHumanが同時に実行権限を持たない。
 - Human handoffを開始するとresource epochを進め、古いstateはfail closedする。
 - handoff ownershipは、認証済みlogical principalと正確なinvocation argumentsへbindingする。
+- MCP principalとtarget service/browser内でactiveなidentityは別security domainとして扱う。Human completionはtarget-service accountのattestationではなく、必要なidentity確認はconsumer固有のfresh verificationで行い、credential/token passthroughを使わない。
 - `awaiting_human` の初期状態を過ぎた後に、owner未設定のinterventionを別ownerへ付け替えない。
 - durable checkpointへ保存するのは限定されたcontrol-plane metadataだけ。raw action arguments、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptは保存しない。
 - restart後のrecoveryは常に `reissue_and_revalidate`。古い実行権限を復元せず、actionを黙って再実行しない。
@@ -121,8 +122,8 @@ consumer-facingなcomponent familyを明示しています。共通化できるH
 | Component | Boundary | 現在のevidence |
 | --- | --- | --- |
 | `BrowserHandoffAdapter` | exact browser/window + WebRTC上のbounded Human input | #70で完了。既存browser consumerとphysical mobile transport acceptanceをbaselineとして維持します。 |
-| `WindowHandoffAdapter` | exact bounded OS application window。desktop fallbackなし | 実装済みでCUMGも利用中。merged-code iPhone public Tunnel/TURN relay acceptanceとstale locator拒否は通過済みで、#85に残るのはfirst-class adapterのsame-LAN direct再Acceptanceだけです。 |
-| `TerminalHandoffAdapter` | 1つのconsumer-owned bounded PTY/session + DataChannel WebRTC | #86で完了。CUMGはexperimental部品の直接compositionから移行済みで、merged-code real PTY E2Eとphysical iPhone Human acceptanceも通過済みです。#91はmobile connection/status表示だけを追跡します。 |
+| `WindowHandoffAdapter` | exact bounded OS application window。desktop fallbackなし | #85で完成しCUMGも利用中。merged-code physical iPhone acceptanceはpublic Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。 |
+| `TerminalHandoffAdapter` | 1つのconsumer-owned bounded PTY/session + DataChannel WebRTC | #86で完了。CUMGはexperimental部品の直接compositionから移行済みで、merged-code real PTY E2Eとphysical iPhone Human acceptanceも通過済みです。#91でmobileのconnection / Human authority / verifying stateを明示的かつfail-closedにしました。 |
 
 これらadapterの存在だけでgenericなpublic Target Surface enumをfreezeしません。実証済みsurface shapeはBrowser / bounded OS Window / bounded Terminal-PTYの3つですが、最終的なsemantic-domainとterminology/API収束は #46/#45で行います。どのcomponentでもHuman `Done`はtransport/lifecycle stepの完了evidenceに過ぎず、semantic successや重大操作のapprovalではありません。
 
@@ -231,7 +232,7 @@ Safari transportは最大1280×720に制限します。現在のacceptanceでは
 
 touch対応SafariではTouch Eventsをswipeのauthoritative pathとし、touch Pointer Eventsは二重入力防止のため無視します。consumerはruntimeをtarget processへbindingでき、その場合はon-screenの対象windowを厳密に1つだけ解決できることを要求し、captureとinputを同じwindow boundsへ限定してdesktop全体を公開しません。legacy HTTP frame/input UIへfallbackすることもありません。
 
-background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundでmediaを復旧する場合はfresh generationを取得してから新peerを作ります。media/input authorityとは別のprincipal / intervention / epoch / expiry-boundなcompletion-only capabilityにより、同じauthorized locatorをreloadしてもstale generationを復活させず `Done` だけ配送できます。`Done` はtransport authorityをfenceしてからconsumer completion callbackへ通知し、認証成功やapprovalとは扱いません。Linux hostでは明示PID/window bindingを実際に検証し、各Human mutation直前にも同じX11 windowのPID ownershipとbounded geometryを再検証します。target消失やownership変更時はtransportをfenceし、別windowやdesktopへscopeを広げません。LinuxのXTEST helperはmechanism-onlyで、boundedなroot座標とbutton lifecycleだけを受け取り、PID / XID / title / session authorityは保持しません。`XSendEvent` を使わず、primary gesture失敗時にxdotoolへ自動fallbackもしません。
+background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundでmediaを復旧する場合はfresh generationを取得してから新peerを作ります。reconnectはSafariの重複lifecycle/failure triggerをsingle-flightへ集約し、exact generation release完了を待ち、active-lease conflict retryをboundedにし、generationをまたぐHuman inputのqueue/replayは行いません。same-LAN iPhoneのphysical runではbackground/foregroundを3回連続で復帰し、409 loopやblack-frame固定は発生しませんでした。browser appを完全終了するとmemory-only reconnect stateが失われるため、implicit lease transferではなくfresh authorized flowを要求します。media/input authorityとは別のprincipal / intervention / epoch / expiry-boundなcompletion-only capabilityにより、同じauthorized locatorをreloadしてもstale generationを復活させず `Done` だけ配送できます。`Done` はtransport authorityをfenceしてからconsumer completion callbackへ通知し、認証成功やapprovalとは扱いません。Linux hostでは明示PID/window bindingを実際に検証し、各Human mutation直前にも同じX11 windowのPID ownershipとbounded geometryを再検証します。target消失やownership変更時はtransportをfenceし、別windowやdesktopへscopeを広げません。LinuxのXTEST helperはmechanism-onlyで、boundedなroot座標とbutton lifecycleだけを受け取り、PID / XID / title / session authorityは保持しません。`XSendEvent` を使わず、primary gesture失敗時にxdotoolへ自動fallbackもしません。
 
 物理iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方をacceptance済みです。window-scoped video、別Mac appがfrontmostな状態からのtarget-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しています。completion-onlyなreload recoveryはdeterministic testで固定済みです。boundedなclient-side precision zoom/panも実装・transform/gesture regressionで固定し、次のmobile UX gateはportraitでのphysical precision acceptanceです。target-window resizeやより広いkeyboard compositionはfollow-upで、transport baselineの前提条件ではありません。
 

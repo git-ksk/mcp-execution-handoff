@@ -32,9 +32,16 @@ The architecture uses four separate axes. They compose, but they are not interch
 
 ### 1. Handoff Semantics
 
-This is the invariant core: who owns execution authority, which state is still valid, and under what conditions execution may resume. It includes Agent/Human authority exclusivity, resource-epoch fencing, principal/invocation ownership binding, bounded checkpoints, replay/resume policy, stale reconnect rejection, and recovery by `reissue_and_revalidate`.
+This is the invariant core: who owns execution authority, which state is still valid, and under what conditions execution may resume. It is organized into four semantic domains rather than treating every mechanism as a peer concept:
+
+- **Authority state-machine semantics** — exclusive `agent` / `human` / `none` authority and explicit `awaiting_human -> human_active -> verifying -> ready_to_resume` transitions, including cancel, return-to-Human, and explicit resume.
+- **Freshness and ownership fencing semantics** — monotonic resource epochs, stale-state rejection, principal binding, exact invocation/canonical-argument ownership, and no owner rebinding after the initial ownership window.
+- **Completion and continuation semantics** — Human `Done` ends the manual step only; fresh consumer verification and the stricter replay/call-site policy decide whether execution may continue. `Done` is neither semantic success nor consequential-action approval.
+- **Recovery semantics** — durable state contains bounded control-plane metadata only, checkpoint integrity/expiry is enforced, and restart recovery is always `reissue_and_revalidate` rather than restoration of stale Agent/Human authority or browser/request state.
 
 Handoff Semantics are target- and transport-agnostic. They are not a takeover type.
+
+**Takeover Session Semantics are a separate optional layer.** Short-lived capability, one-client lease, client generation, reconnect handle, release/revoke/expiry, and stale capability rejection are security-critical but belong to the remote Human-control session rather than the invariant authority state machine. They remain bound to intervention + epoch + principal and may be reused by Native, WebRTC, WebSocket, or future transports without becoming core Handoff state solely because they are security mechanisms.
 
 ### 2. Human Interaction Policy
 
@@ -54,6 +61,10 @@ This describes what execution surface the Human controls. Real consumer evidence
 - `terminal_pty` — one bounded, consumer-owned PTY/session with byte-stream input/output, resize, staged writer drains, process continuity, and mandatory post-Human Agent state synchronization.
 
 `terminal_pty` is an architecture label for the proven shape, not a frozen public enum value. #46/#45 still own the final semantic-domain and public terminology decision. A future native-application/device abstraction remains non-contractual until a real consumer proves a materially different boundary. Architecture terminology prefers **Target Surface**; “takeover type” may be used informally, but should not replace the canonical term.
+
+A new Target Surface shape is admitted only when its execution boundary differs materially in authority, capture/input model, lifecycle, or postcondition handling. A different application technology, product/domain, OS/device, or transport does not create a new shape by itself. `native_app` remains `os_window` when the authority boundary is still one bounded application window; `device` is normally a host/runtime property; whole `desktop` control is not a normal Target Surface and requires a separate explicit security review because it widens the current exact-surface boundary. Editor/document/IDE labels are product categories, not generic authority boundaries.
+
+Target Surface remains descriptive/documentation-first unless a concrete runtime compatibility or diagnostics need justifies a machine-readable public discriminator. The existence of three proven shapes does not by itself require a public enum.
 
 ### 4. Transport
 
@@ -128,6 +139,12 @@ Provider output is deliberately narrowed to bounded fields: provider kind, inter
 
 Before restoring automation, the consumer must revoke the external session and verify any consumer-specific execution boundary, such as closing a normal browser and releasing its dedicated profile lock. Human completion then advances through the existing `verifying -> ready_to_resume` lifecycle. Authentication success must be revalidated from fresh browser state, and stale pre-auth semantic actions must not be replayed.
 
+### MCP principal vs target-service identity
+
+The authenticated MCP principal that owns the intervention is not the same security domain as the account/session active inside the target service. Handoff binds control-plane ownership to the MCP principal + invocation + resource epoch, but it does not attest a Google/Apple/member/enterprise account merely because the Human completed sign-in, MFA, account selection, CAPTCHA, or consent. A consumer that needs account identity for authorization must perform its own fresh identity/context verification and fail closed on unknown, changed, or ambiguous state. Credentials, cookies, session tokens, MFA/OTP values, and challenge answers must not be copied into Handoff state to create that binding.
+
+Single-user deployments should use a dedicated browser profile/runtime for the logical principal. Unrelated principals must not share one authenticated profile without an explicit per-principal isolation design. Human `Done` remains separate from both target-service identity attestation and any later consequential-action approval.
+
 The package does not decide which intervention reasons need this surface. `selectHumanSurface()` lets each consumer configure its own identity-sensitive reason set without moving provider-specific policy into the generic core.
 
 ## Browser takeover
@@ -142,7 +159,7 @@ WebRTC media/input generation authority and Human completion authority are delib
 
 The lower-level optional `TakeoverBroker` owns transport/session concerns for deliberate custom compositions. A public locator contains no media/input capability. Same-origin bootstrap claims one remote-client lease and returns a short-lived generation capability. Legacy HTTP frame/input/done operations still require the matching capability, principal binding, and client binding; the canonical WebRTC completion path uses the separate completion-only capability described above.
 
-A new binding cannot implicitly reclaim an already-owned lease. Native clients may instead use the explicit claim/reconnect API. Reconnect requires the same authenticated principal, a generation-bound reconnect handle, and an idle prior lease. Successful reconnect increments the client generation and rotates both capability and reconnect handle, so the old client generation is immediately fenced. Expired/revoked sessions, active prior clients, wrong principals, wrong handles, or stale generations fail closed. The reconnect handle contains no browser content or target-service credential material.
+A new binding cannot implicitly reclaim an already-owned lease. Native clients may instead use the explicit claim/reconnect API. Reconnect requires the same authenticated principal, a generation-bound reconnect handle, and an idle/released prior lease. Successful reconnect increments the client generation and rotates both capability and reconnect handle, so the old client generation is immediately fenced. Browser WebRTC recovery coalesces overlapping Safari lifecycle/failure triggers into one reconnect, waits for exact-generation release, bounds active-lease conflict retries, and never replays Human input across generations. Physical same-LAN iPhone acceptance recovered through three background/foreground cycles without a 409 loop or black-frame stall. Full browser-app termination intentionally loses memory-only reconnect state and requires a fresh authorized flow. Expired/revoked sessions, active prior clients, wrong principals, wrong handles, or stale generations fail closed. The reconnect handle contains no browser content or target-service credential material.
 
 For the WebRTC browser transport, ICE remains direct-first and Handoff owns the full signaling/data-plane policy. Safari uses host candidates only; the Node/werift peer uses an explicit Cloudflare STUN server so dependency behavior cannot silently select a different third-party default. TURN, when configured, is fallback-only and uses generation-bounded short-lived peer credentials. Network diagnostics retain only candidate type/count, peer state, and bounded timing; candidate strings, addresses, SDP, and credentials are excluded.
 
@@ -158,7 +175,7 @@ The broker cannot widen the set of surfaces eligible for takeover. The consumer 
 
 The Window adapter requires a positive `processId`, an optional exact `windowId`, and an explicit bounded `{ tap, scroll, text, key }` Human input policy. There is no display-wide or whole-desktop fallback. If only `processId` is supplied, the host must resolve exactly one eligible owned window; if `windowId` is supplied, ownership is revalidated against that process. Target disappearance, ambiguity, ownership mismatch, or input-host failure fences the Human transport rather than widening scope.
 
-CUMG is the real non-browser consumer. It migrated from consumer-local `TakeoverBroker` + WebRTC runtime assembly to `WindowHandoffAdapter` without moving CUMG authorization, quarantine, replay, or semantic verification into Handoff. Merged-code physical iPhone acceptance through a public Cloudflare Tunnel confirmed the relay path and stale-locator rejection. Issue #85 remains open only for the equivalent same-LAN direct rerun on the first-class adapter; older shared transport direct evidence does not substitute for that final component-level rerun.
+CUMG is the real non-browser consumer. It migrated from consumer-local `TakeoverBroker` + WebRTC runtime assembly to `WindowHandoffAdapter` without moving CUMG authorization, quarantine, replay, or semantic verification into Handoff. Merged-code physical iPhone acceptance passed on both a public Cloudflare Tunnel/TURN relay path and the equivalent same-LAN direct path, including stale-locator rejection. Issue #85 is complete; future Window work should extend bounded capability rather than re-prove the first-class adapter boundary.
 
 ## Terminal / PTY handoff
 
@@ -166,7 +183,7 @@ CUMG is the real non-browser consumer. It migrated from consumer-local `Takeover
 
 The lifecycle is intentionally stronger than a generic byte tunnel. `begin()` fences Agent input/observation/resize before the consumer drains writes admitted before that fence. Human claim is allowed only after that drain and exact transport readiness. Ordered Human `Done` fences the Human transport before the event is exposed, then the consumer drains already-admitted Human writes before verification may succeed. Explicit resume retains `agentStateSynchronizationRequired`; Agent PTY operations remain fenced until the consumer discards/re-reads Human-period output and other PTY assumptions and acknowledges fresh state synchronization. Disconnect is not Done, PTY exit never synthesizes a replacement session, and Human-period output is never replayed to Agent.
 
-CUMG now consumes only `TerminalHandoffAdapter`; its runtime and production staging no longer depend directly on `ExperimentalTerminalPtyAuthority` or `ExperimentalTerminalWebRtcTakeover`. CUMG retains PTY allocation, Unix descendant containment, process truth, bounded PTY I/O, and content-free verification. Merged Handoff/CUMG code passed real `/bin/cat` cross-repo WebRTC E2E and physical iPhone Human acceptance through the first-class adapter. The physical run used an external Cloudflare Tunnel with TURN configured, but the selected ICE pair was not recorded, so it must not be cited as proof that that specific Terminal run relayed through TURN. Issue #91 separately tracks a mobile status-display ambiguity where Safari could appear to remain on “Connecting” even though the backend lifecycle reached Human input, Done, verifying, explicit resume, and state synchronization successfully.
+CUMG now consumes only `TerminalHandoffAdapter`; its runtime and production staging no longer depend directly on `ExperimentalTerminalPtyAuthority` or `ExperimentalTerminalWebRtcTakeover`. CUMG retains PTY allocation, Unix descendant containment, process truth, bounded PTY I/O, and content-free verification. Merged Handoff/CUMG code passed real `/bin/cat` cross-repo WebRTC E2E and physical iPhone Human acceptance through the first-class adapter. The physical run used an external Cloudflare Tunnel with TURN configured, but the selected ICE pair was not recorded, so it must not be cited as proof that that specific Terminal run relayed through TURN. Issue #91 resolved the mobile status-display ambiguity: Safari now distinguishes transport readiness, waiting-for-Human-authority, Human-active, and verifying/failure states without weakening the backend authority lifecycle.
 
 ## Consequential actions
 
