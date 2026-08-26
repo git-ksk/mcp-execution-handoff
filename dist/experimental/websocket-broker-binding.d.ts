@@ -18,6 +18,7 @@ export declare class ExperimentalWebSocketBrokerBinding {
     #private;
     constructor(broker: TakeoverBroker, options: ExperimentalWebSocketBrokerBindingOptions);
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined, inputPolicy: WebSocketTakeoverInputPolicy): string | undefined;
+    validateLocator(sessionId: string, boundPrincipal: string | undefined): boolean;
     handleBootstrap(request: Request, boundPrincipal: string | undefined): Response | undefined;
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     hasActiveConnection(sessionId: string): boolean;

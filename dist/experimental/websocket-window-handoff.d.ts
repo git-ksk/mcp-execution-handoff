@@ -44,6 +44,7 @@ export declare class ExperimentalWebSocketWindowHandoff {
     #private;
     constructor(config: ExperimentalWebSocketWindowHandoffConfig);
     start(request: ExperimentalWebSocketWindowStartRequest): string;
+    authorizeClientPage(sessionId: string, boundPrincipal: string | undefined): boolean;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response> | Response;
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     ownsPath(pathname: string): boolean;

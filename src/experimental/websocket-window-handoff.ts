@@ -196,6 +196,10 @@ export class ExperimentalWebSocketWindowHandoff {
     return locator;
   }
 
+  authorizeClientPage(sessionId: string, boundPrincipal: string | undefined): boolean {
+    return this.#sessionsById.has(sessionId) && this.#binding.validateLocator(sessionId, boundPrincipal);
+  }
+
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> | Response {
     return this.#binding.handleBootstrap(request, boundPrincipal)
       ?? this.#broker.handle(request, boundPrincipal);

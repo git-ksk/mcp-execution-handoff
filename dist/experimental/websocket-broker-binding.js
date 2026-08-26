@@ -51,6 +51,17 @@ export class ExperimentalWebSocketBrokerBinding {
         }
         return session.url;
     }
+    validateLocator(sessionId, boundPrincipal) {
+        if (!boundPrincipal || !this.#policies.has(sessionId))
+            return false;
+        try {
+            this.#port.sessions.validateLocator(sessionId, boundPrincipal);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
     handleBootstrap(request, boundPrincipal) {
         const url = new URL(request.url);
         const match = BOOTSTRAP_PATH.exec(url.pathname);
