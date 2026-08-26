@@ -72,6 +72,10 @@ export class ExperimentalWebSocketBrokerBinding {
     const session = this.#port.createSession(intervention, principalBinding);
     if (!session) return undefined;
     const sessionId = session.locator.id;
+    const existingPolicy = this.#policies.get(sessionId);
+    if (existingPolicy) {
+      return sameInputPolicy(existingPolicy, policy) ? session.url : undefined;
+    }
     this.#policies.set(sessionId, policy);
     if (!this.#port.attachRevokeHandler(sessionId, async () => {
       this.#policies.delete(sessionId);
@@ -111,6 +115,10 @@ export class ExperimentalWebSocketBrokerBinding {
     return this.#ingress.handleUpgrade(request, socket, head);
   }
 
+  hasActiveConnection(sessionId: string): boolean {
+    return this.#ingress.hasActiveConnection(sessionId);
+  }
+
   pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean> {
     return this.#ingress.pushFrame(sessionId, frame);
   }
@@ -118,6 +126,16 @@ export class ExperimentalWebSocketBrokerBinding {
   revoke(sessionId: string): void {
     this.#port.revokeSession(sessionId);
   }
+}
+
+function sameInputPolicy(
+  left: WebSocketTakeoverInputPolicy,
+  right: WebSocketTakeoverInputPolicy
+): boolean {
+  return left.tap === right.tap
+    && left.scroll === right.scroll
+    && left.text === right.text
+    && left.key === right.key;
 }
 
 function normalizeInputPolicy(

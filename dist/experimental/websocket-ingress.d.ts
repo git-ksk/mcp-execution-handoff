@@ -59,6 +59,7 @@ export declare class ExperimentalWebSocketTakeoverIngress {
      * trusted binding.
      */
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
+    hasActiveConnection(sessionId: string): boolean;
     pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean>;
     revoke(sessionId: string): Promise<void>;
 }
