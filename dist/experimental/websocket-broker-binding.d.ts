@@ -20,6 +20,7 @@ export declare class ExperimentalWebSocketBrokerBinding {
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined, inputPolicy: WebSocketTakeoverInputPolicy): string | undefined;
     handleBootstrap(request: Request, boundPrincipal: string | undefined): Response | undefined;
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
+    hasActiveConnection(sessionId: string): boolean;
     pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean>;
     revoke(sessionId: string): void;
 }

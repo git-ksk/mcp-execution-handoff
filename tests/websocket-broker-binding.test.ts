@@ -125,6 +125,21 @@ async function closeServer(server: Server): Promise<void> {
   });
 }
 
+test("WSS broker binding is idempotent only for the same session-bound input policy", async () => {
+  const broker = runtimeBroker();
+  const binding = new ExperimentalWebSocketBrokerBinding(broker, {
+    allowedOrigins: [ORIGIN],
+    async onInput() {}
+  });
+  const intervention = { id: "wss-idempotent", epoch: 6 };
+  const first = binding.createLink(intervention, PRINCIPAL, POLICY);
+  assert.ok(first);
+  assert.equal(binding.createLink(intervention, PRINCIPAL, POLICY), first);
+  assert.equal(binding.createLink(intervention, PRINCIPAL, { ...POLICY, text: true }), undefined);
+  const sessionId = sessionIdFrom(first);
+  assert.equal((await bootstrapProtocols(binding, sessionId)).length, 2, "policy mismatch must not revoke the original locator");
+});
+
 test("WSS marker fences legacy HTTP, Native and WebRTC for the same broker locator", async () => {
   const broker = runtimeBroker();
   const binding = new ExperimentalWebSocketBrokerBinding(broker, {

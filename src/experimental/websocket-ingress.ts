@@ -391,9 +391,13 @@ export class ExperimentalWebSocketTakeoverIngress {
     return true;
   }
 
+  hasActiveConnection(sessionId: string): boolean {
+    return this.#active.get(sessionId)?.channel.state === "open";
+  }
+
   async pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean> {
     const active = this.#active.get(sessionId);
-    if (!active) return false;
+    if (!active || active.channel.state !== "open") return false;
     await active.channel.pushFrame(frame);
     return true;
   }
