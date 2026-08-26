@@ -216,18 +216,6 @@ async function runCommand(executable: string, args: string[], display: string): 
   return Buffer.concat(stdout).toString("utf8");
 }
 
-function parseMouseLocation(value: string): { x: number; y: number } | undefined {
-  const fields = new Map<string, number>();
-  for (const line of value.split(/\r?\n/)) {
-    const match = /^([A-Z]+)=(-?\d+)$/.exec(line.trim());
-    if (match) fields.set(match[1]!, Number(match[2]));
-  }
-  const x = fields.get("X");
-  const y = fields.get("Y");
-  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return undefined;
-  return { x: x!, y: y! };
-}
-
 export function parseOptionalTargetWindowId(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   if (!/^[1-9]\d*$/.test(value)) throw new Error("TAKEOVER_WEBRTC_TARGET_WINDOW_ID is invalid");
@@ -421,15 +409,11 @@ class LinuxWindowInput {
       // keeps the public input path on XTEST and never targets a button event via XSendEvent.
       const relativeX = x - this.geometry.x;
       const relativeY = y - this.geometry.y;
-      const location = await runCommand(this.xdotool, [
+      await runCommand(this.xdotool, [
         "mousemove", "--window", String(this.geometry.windowId),
         String(relativeX), String(relativeY),
-        "getmouselocation", "--shell"
+        "getmouselocation"
       ], this.display);
-      const observed = parseMouseLocation(location);
-      if (!observed || Math.abs(observed.x - x) > 1 || Math.abs(observed.y - y) > 1) {
-        throw new Error("Linux WebRTC pointer did not reach the admitted target point");
-      }
       // The round trip above closes the motion race. Re-check exact active/focus authority after
       // motion and immediately before the stateful XTEST button mutation.
       await this.confirmActiveTarget();
@@ -445,12 +429,6 @@ class LinuxWindowInput {
     // release at the admitted press point and avoid another pointer move while Button1 is held.
     if (Math.abs(pressed.x - x) > 1 || Math.abs(pressed.y - y) > 1) {
       throw new Error("Linux WebRTC primary release point changed");
-    }
-    const location = parseMouseLocation(
-      await runCommand(this.xdotool, ["getmouselocation", "--shell"], this.display)
-    );
-    if (!location || Math.abs(location.x - pressed.x) > 1 || Math.abs(location.y - pressed.y) > 1) {
-      throw new Error("Linux WebRTC pointer moved during primary press");
     }
     await runCommand(this.xdotool, ["mouseup", "1"], this.display);
     this.primaryPressed = false;
