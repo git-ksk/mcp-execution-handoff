@@ -231,6 +231,26 @@ test("WebSocket takeover flushes the newest frame after backlog clears", async (
   assert.deepEqual(h.frames, [2]);
 });
 
+test("WebSocket slow-client stress keeps one latest pending frame across a long backlog", async () => {
+  const h = createHarness();
+  h.setBuffered(99);
+
+  const backlogFrames = 10_000;
+  for (let id = 1; id <= backlogFrames; id += 1) {
+    await h.channel.pushFrame(frame(id & 0xff));
+  }
+
+  assert.deepEqual(h.frames, []);
+  assert.equal(h.channel.diagnostics.sentFrames, 0);
+  assert.equal(h.channel.diagnostics.droppedFrames, backlogFrames - 1);
+  assert.equal(h.channel.state, "open");
+
+  h.setBuffered(0);
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  assert.deepEqual(h.frames, [backlogFrames & 0xff]);
+  assert.equal(h.channel.diagnostics.sentFrames, 1);
+});
+
 test("WebSocket configured limits have non-overridable hard ceilings", () => {
   const options = {
     binding: {

@@ -14,6 +14,8 @@ const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
 const XTEST_HELPER_ACK_TIMEOUT_MS = 2_000;
 const XTEST_HELPER_MAX_OUTPUT_BYTES = 4_096;
+const JPEG_SOI = Buffer.from([0xff, 0xd8]);
+const JPEG_EOI = Buffer.from([0xff, 0xd9]);
 export function parseWindowIds(value) {
     const ids = value.split(/\s+/).filter(Boolean).map((item) => Number(item));
     return ids.filter((item) => Number.isSafeInteger(item) && item > 0);
@@ -71,6 +73,69 @@ export function frameRecord(avcc, timestamp, keyframe, width, height) {
     record.writeUInt32BE(payload.byteLength, 1);
     payload.copy(record, 5);
     return record;
+}
+export function jpegFrameRecord(jpeg, width, height) {
+    if (jpeg.byteLength < 4 || jpeg.byteLength > MAX_HOST_FRAME_BYTES - 4) {
+        throw new Error("Linux WebSocket host JPEG frame is out of bounds");
+    }
+    if (jpeg.subarray(0, 2).compare(JPEG_SOI) !== 0 || jpeg.subarray(-2).compare(JPEG_EOI) !== 0) {
+        throw new Error("Linux WebSocket host JPEG frame is invalid");
+    }
+    if (![width, height].every(Number.isSafeInteger) || width < 1 || width > 65_535 || height < 1 || height > 65_535) {
+        throw new Error("Linux WebSocket host JPEG metadata is invalid");
+    }
+    const payload = Buffer.allocUnsafe(4 + jpeg.byteLength);
+    payload.writeUInt16BE(width, 0);
+    payload.writeUInt16BE(height, 2);
+    jpeg.copy(payload, 4);
+    const record = Buffer.allocUnsafe(5 + payload.byteLength);
+    record[0] = 2;
+    record.writeUInt32BE(payload.byteLength, 1);
+    payload.copy(record, 5);
+    return record;
+}
+export class JpegFrameParser {
+    emit;
+    pending = Buffer.alloc(0);
+    constructor(emit) {
+        this.emit = emit;
+    }
+    push(chunk) {
+        if (chunk.byteLength === 0)
+            return;
+        this.pending = this.pending.byteLength === 0 ? Buffer.from(chunk) : Buffer.concat([this.pending, chunk]);
+        this.drain();
+    }
+    end() {
+        this.drain();
+        this.pending = Buffer.alloc(0);
+    }
+    drain() {
+        for (;;) {
+            const start = this.pending.indexOf(JPEG_SOI);
+            if (start < 0) {
+                if (this.pending.byteLength > 1)
+                    this.pending = this.pending.subarray(-1);
+                return;
+            }
+            if (start > 0)
+                this.pending = this.pending.subarray(start);
+            const end = this.pending.indexOf(JPEG_EOI, 2);
+            if (end < 0) {
+                if (this.pending.byteLength > MAX_HOST_FRAME_BYTES) {
+                    throw new Error("Linux WebSocket host JPEG buffer exceeded bounds");
+                }
+                return;
+            }
+            const frameEnd = end + JPEG_EOI.byteLength;
+            const jpeg = this.pending.subarray(0, frameEnd);
+            this.pending = this.pending.subarray(frameEnd);
+            if (jpeg.byteLength > MAX_HOST_FRAME_BYTES) {
+                throw new Error("Linux WebSocket host JPEG frame exceeded bounds");
+            }
+            this.emit(Buffer.from(jpeg));
+        }
+    }
 }
 function startCodeAt(buffer, offset) {
     for (let i = offset; i + 3 <= buffer.length; i += 1) {
@@ -744,6 +809,7 @@ class LinuxCapture {
     geometry;
     display;
     ffmpeg;
+    frameFormat;
     writer;
     onFailure;
     child;
@@ -751,10 +817,11 @@ class LinuxCapture {
     startedAt = performance.now();
     restartPromise = Promise.resolve();
     frameDiagnosticSent = false;
-    constructor(geometry, display, ffmpeg, writer, onFailure) {
+    constructor(geometry, display, ffmpeg, frameFormat, writer, onFailure) {
         this.geometry = geometry;
         this.display = display;
         this.ffmpeg = ffmpeg;
+        this.frameFormat = frameFormat;
         this.writer = writer;
         this.onFailure = onFailure;
     }
@@ -795,29 +862,42 @@ class LinuxCapture {
     }
     spawnEncoder() {
         const output = scaledVideoSize(this.geometry.width, this.geometry.height);
-        const args = [
+        const captureArgs = [
             "-hide_banner", "-loglevel", "error",
             "-f", "x11grab", "-framerate", String(DEFAULT_FPS), "-draw_mouse", "0",
             "-window_id", String(this.geometry.windowId), "-i", this.display,
-            "-an", "-vf", `scale=${output.width}:${output.height}`,
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-            "-profile:v", "baseline", "-pix_fmt", "yuv420p",
-            "-g", String(DEFAULT_FPS), "-keyint_min", String(DEFAULT_FPS), "-sc_threshold", "0",
-            "-x264-params", `aud=1:repeat-headers=1:keyint=${DEFAULT_FPS}:min-keyint=${DEFAULT_FPS}:scenecut=0`,
-            "-b:v", "1600k", "-maxrate", "2000k", "-bufsize", "2000k",
-            "-f", "h264", "pipe:1"
+            "-an", "-vf", `scale=${output.width}:${output.height}`
         ];
+        const args = this.frameFormat === "jpeg"
+            ? [...captureArgs, "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1"]
+            : [
+                ...captureArgs,
+                "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+                "-profile:v", "baseline", "-pix_fmt", "yuv420p",
+                "-g", String(DEFAULT_FPS), "-keyint_min", String(DEFAULT_FPS), "-sc_threshold", "0",
+                "-x264-params", `aud=1:repeat-headers=1:keyint=${DEFAULT_FPS}:min-keyint=${DEFAULT_FPS}:scenecut=0`,
+                "-b:v", "1600k", "-maxrate", "2000k", "-bufsize", "2000k",
+                "-f", "h264", "pipe:1"
+            ];
         const child = spawn(this.ffmpeg, args, { env: boundedEnvironment(this.display), stdio: ["ignore", "pipe", "pipe"] });
         this.child = child;
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=capture_started\n");
-        const parser = new AnnexBAccessUnitParser((units, keyframe) => {
-            if (!this.frameDiagnosticSent) {
-                this.frameDiagnosticSent = true;
-                process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=frame_ready\n");
-            }
-            const timestamp = Math.max(0, Math.floor((performance.now() - this.startedAt) * 90)) >>> 0;
-            this.writer.submit(frameRecord(avccFromNalUnits(units), timestamp, keyframe, output.width, output.height));
-        });
+        const frameReady = () => {
+            if (this.frameDiagnosticSent)
+                return;
+            this.frameDiagnosticSent = true;
+            process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=frame_ready\n");
+        };
+        const parser = this.frameFormat === "jpeg"
+            ? new JpegFrameParser((jpeg) => {
+                frameReady();
+                this.writer.submit(jpegFrameRecord(jpeg, output.width, output.height));
+            })
+            : new AnnexBAccessUnitParser((units, keyframe) => {
+                frameReady();
+                const timestamp = Math.max(0, Math.floor((performance.now() - this.startedAt) * 90)) >>> 0;
+                this.writer.submit(frameRecord(avccFromNalUnits(units), timestamp, keyframe, output.width, output.height));
+            });
         child.stdout.on("data", (chunk) => parser.push(chunk));
         child.stdout.once("end", () => parser.end());
         let ffmpegDiagnostic = "";
@@ -856,6 +936,12 @@ export async function linuxWebRtcHostMain() {
     const targetWindowId = parseOptionalTargetWindowId(process.env.TAKEOVER_WEBRTC_TARGET_WINDOW_ID);
     const expiresAt = Number(process.env.TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS);
     const display = process.env.TAKEOVER_WEBRTC_DISPLAY_NAME?.trim();
+    const frameFormatValue = process.env.TAKEOVER_WEBRTC_FRAME_FORMAT?.trim();
+    const frameFormat = frameFormatValue === undefined || frameFormatValue === ""
+        ? "h264"
+        : frameFormatValue === "jpeg"
+            ? "jpeg"
+            : (() => { throw new Error("TAKEOVER_WEBRTC_FRAME_FORMAT is invalid"); })();
     if (!Number.isSafeInteger(targetPid) || targetPid <= 0) {
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=target_missing\n");
         throw new Error("TAKEOVER_WEBRTC_TARGET_PID is required");
@@ -897,7 +983,7 @@ export async function linuxWebRtcHostMain() {
     const input = new LinuxWindowInput(geometry, targetPid, display, xdotool, pointer);
     let stopped = false;
     let stopHost;
-    const capture = new LinuxCapture(geometry, display, ffmpeg, new LatestFrameWriter(), () => {
+    const capture = new LinuxCapture(geometry, display, ffmpeg, frameFormat, new LatestFrameWriter(), () => {
         process.exitCode = 1;
         void stopHost();
     });
@@ -955,6 +1041,9 @@ export async function linuxWebRtcHostMain() {
             }
             inputChain = inputChain
                 .then(() => input.apply(command))
+                .then(() => {
+                process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_applied\n");
+            })
                 .catch(() => {
                 process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_failure\n");
                 void stopHost();

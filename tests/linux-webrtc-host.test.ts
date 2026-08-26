@@ -7,8 +7,10 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import {
   AnnexBAccessUnitParser,
+  JpegFrameParser,
   avccFromNalUnits,
   frameRecord,
+  jpegFrameRecord,
   isLinuxWebRtcHostCliEntryPoint,
   parseOptionalTargetWindowId,
   parseWindowGeometry,
@@ -57,6 +59,26 @@ test("Linux host H264 parser keeps access units bounded and converts Annex-B to 
   const avcc = avccFromNalUnits(frames[0]!.units);
   assert.equal(avcc.readUInt32BE(0), sps.length);
   assert.deepEqual(avcc.subarray(4, 4 + sps.length), sps);
+});
+
+test("Linux host JPEG parser emits bounded WSS-ready image records without changing H264 framing", () => {
+  const jpegA = Buffer.from([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]);
+  const jpegB = Buffer.from([0xff, 0xd8, 0x03, 0x04, 0x05, 0xff, 0xd9]);
+  const frames: Buffer[] = [];
+  const parser = new JpegFrameParser((jpeg) => frames.push(jpeg));
+  const stream = Buffer.concat([Buffer.from([0x00, 0x01]), jpegA, jpegB]);
+  parser.push(stream.subarray(0, 7));
+  parser.push(stream.subarray(7, 11));
+  parser.push(stream.subarray(11));
+  parser.end();
+  assert.deepEqual(frames, [jpegA, jpegB]);
+
+  const record = jpegFrameRecord(jpegB, 900, 700);
+  assert.equal(record[0], 2);
+  assert.equal(record.readUInt32BE(1), record.length - 5);
+  assert.equal(record.readUInt16BE(5), 900);
+  assert.equal(record.readUInt16BE(7), 700);
+  assert.deepEqual(record.subarray(9), jpegB);
 });
 
 test("Linux host emits the existing WebRTC host frame wire and caps video geometry", () => {
