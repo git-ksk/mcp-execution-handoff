@@ -1,24 +1,29 @@
 #include <X11/X.h>
 #include <X11/Xlib.h>
+#include <X11/extensions/XRes.h>
 #include <X11/extensions/record.h>
 
 #include <errno.h>
+#include <limits.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <time.h>
 
 #define PROTOCOL_VERSION 1
 #define MAX_LINE_BYTES 192
-#define MAX_TOKENS 5
+#define MAX_TOKENS 6
 #define DELIVERY_WAIT_TIMEOUT_MS 1000
+#define MAX_WINDOW_ANCESTRY 32
 #define X_EVENT_BYTES 32
 
 #define WIRE_EVENT_TYPE_OFFSET 0
 #define WIRE_DETAIL_OFFSET 1
+#define WIRE_EVENT_WINDOW_OFFSET 12
 #define WIRE_ROOT_X_OFFSET 20
 #define WIRE_ROOT_Y_OFFSET 22
 
@@ -26,6 +31,7 @@ typedef struct {
   Display *control;
   Display *data;
   XRecordContext context;
+  Window expected_window;
   int expected_x;
   int expected_y;
   bool delivered;
@@ -74,10 +80,96 @@ static int64_t monotonic_ms(void) {
   return ((int64_t)now.tv_sec * 1000) + ((int64_t)now.tv_nsec / 1000000);
 }
 
+static uint32_t read_u32(const unsigned char *data, size_t offset) {
+  uint32_t value = 0;
+  (void)memcpy(&value, data + offset, sizeof(value));
+  return value;
+}
+
 static int16_t read_i16(const unsigned char *data, size_t offset) {
   int16_t value = 0;
   (void)memcpy(&value, data + offset, sizeof(value));
   return value;
+}
+
+static bool window_descends_from(Display *display, Window ancestor, Window candidate) {
+  int depth;
+  if (ancestor == None || candidate == None) return false;
+  for (depth = 0; depth < MAX_WINDOW_ANCESTRY; depth += 1) {
+    Window root = None;
+    Window parent = None;
+    Window *children = NULL;
+    unsigned int child_count = 0;
+    Status status;
+    if (candidate == ancestor) return true;
+    x_error_seen = 0;
+    status = XQueryTree(display, candidate, &root, &parent, &children, &child_count);
+    (void)root;
+    (void)child_count;
+    if (children != NULL) XFree(children);
+    if (status == 0 || x_error_seen != 0 || parent == None || parent == candidate) return false;
+    candidate = parent;
+  }
+  return false;
+}
+
+static bool collect_target_clients(
+    Display *display,
+    pid_t target_pid,
+    XRecordClientSpec **clients_return,
+    int *count_return) {
+  XResClientIdSpec spec;
+  XResClientIdValue *ids = NULL;
+  XRecordClientSpec *clients = NULL;
+  long id_count = 0;
+  long index;
+  int client_count = 0;
+  int major = 0;
+  int minor = 0;
+
+  *clients_return = NULL;
+  *count_return = 0;
+  if (XResQueryVersion(display, &major, &minor) != Success) return false;
+  if (major < 1 || (major == 1 && minor < 2)) return false;
+
+  spec.client = None;
+  spec.mask = XRES_CLIENT_ID_PID_MASK;
+  if (XResQueryClientIds(display, 1, &spec, &id_count, &ids) != Success || id_count <= 0 || ids == NULL) {
+    if (ids != NULL) XResClientIdsDestroy(id_count, ids);
+    return false;
+  }
+  if (id_count > INT_MAX) {
+    XResClientIdsDestroy(id_count, ids);
+    return false;
+  }
+  clients = calloc((size_t)id_count, sizeof(*clients));
+  if (clients == NULL) {
+    XResClientIdsDestroy(id_count, ids);
+    return false;
+  }
+
+  for (index = 0; index < id_count; index += 1) {
+    int existing;
+    const pid_t pid = XResGetClientPid(&ids[index]);
+    const XRecordClientSpec client = (XRecordClientSpec)ids[index].spec.client;
+    bool duplicate = false;
+    if (pid != target_pid || client == (XRecordClientSpec)None) continue;
+    for (existing = 0; existing < client_count; existing += 1) {
+      if (clients[existing] == client) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) clients[client_count++] = client;
+  }
+  XResClientIdsDestroy(id_count, ids);
+  if (client_count == 0) {
+    free(clients);
+    return false;
+  }
+  *clients_return = clients;
+  *count_return = client_count;
+  return true;
 }
 
 static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
@@ -91,13 +183,16 @@ static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
     const unsigned char *event = recorded->data;
     const unsigned char type = (unsigned char)(event[WIRE_EVENT_TYPE_OFFSET] & 0x7fU);
     const unsigned char detail = event[WIRE_DETAIL_OFFSET];
+    const Window event_window = (Window)read_u32(event, WIRE_EVENT_WINDOW_OFFSET);
     const int root_x = (int)read_i16(event, WIRE_ROOT_X_OFFSET);
     const int root_y = (int)read_i16(event, WIRE_ROOT_Y_OFFSET);
-    // XRecordClientSpec is the exact target XID resource, so this context already scopes
-    // delivered events to the client that created that resource. The event field itself may name
-    // a descendant/input child; do not incorrectly require it to equal the top-level exact XID.
+    // The RECORD context is limited to X11 clients whose local PID equals the Node-owned target
+    // process. Also require the delivered event to remain inside the exact target XID subtree and
+    // at the admitted root coordinate. Openbox's synchronous passive-grab delivery is therefore
+    // not sufficient; only replay/delivery to the target process can satisfy this barrier.
     if (type == ButtonPress && detail == 1U
-        && root_x == state->expected_x && root_y == state->expected_y) {
+        && root_x == state->expected_x && root_y == state->expected_y
+        && window_descends_from(state->control, state->expected_window, event_window)) {
       state->delivered = true;
     }
   }
@@ -113,13 +208,15 @@ static void disable_context(DeliveryState *state) {
   (void)XRecordFreeContext(state->control, state->context);
   XSync(state->control, False);
   state->context = 0;
+  state->expected_window = None;
   state->delivered = false;
 }
 
-static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
-  XRecordClientSpec client;
+static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, int x, int y) {
+  XRecordClientSpec *clients = NULL;
   XRecordRange *range;
   XRecordRange *ranges[1];
+  int client_count = 0;
   int major = 0;
   int minor = 0;
 
@@ -127,17 +224,21 @@ static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
   if (!XRecordQueryVersion(state->control, &major, &minor)) return false;
   (void)major;
   (void)minor;
+  if (!collect_target_clients(state->control, target_pid, &clients, &client_count)) return false;
 
   range = XRecordAllocRange();
-  if (range == NULL) return false;
+  if (range == NULL) {
+    free(clients);
+    return false;
+  }
   range->delivered_events.first = ButtonPress;
   range->delivered_events.last = ButtonPress;
   ranges[0] = range;
-  client = (XRecordClientSpec)window;
 
   x_error_seen = 0;
-  state->context = XRecordCreateContext(state->control, 0, &client, 1, ranges, 1);
+  state->context = XRecordCreateContext(state->control, 0, clients, client_count, ranges, 1);
   XFree(range);
+  free(clients);
   if (state->context == 0) return false;
   XSync(state->control, False);
   if (x_error_seen != 0) {
@@ -145,6 +246,7 @@ static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
     return false;
   }
 
+  state->expected_window = window;
   state->expected_x = x;
   state->expected_y = y;
   state->delivered = false;
@@ -205,6 +307,7 @@ static int run_protocol(DeliveryState *state) {
     char *tokens[MAX_TOKENS] = {0};
     int count;
     long window;
+    long target_pid;
     long x;
     long y;
 
@@ -222,13 +325,14 @@ static int run_protocol(DeliveryState *state) {
     }
 
     if (strcmp(tokens[0], "ARM") == 0) {
-      if (count != 4 || !parse_long_token(tokens[1], &window) || !parse_long_token(tokens[2], &x)
-          || !parse_long_token(tokens[3], &y) || window <= 0 || (unsigned long)window > UINT32_MAX
+      if (count != 5 || !parse_long_token(tokens[1], &window) || !parse_long_token(tokens[2], &target_pid)
+          || !parse_long_token(tokens[3], &x) || !parse_long_token(tokens[4], &y)
+          || window <= 0 || (unsigned long)window > UINT32_MAX || target_pid <= 0 || target_pid > INT_MAX
           || x < INT16_MIN || x > INT16_MAX || y < INT16_MIN || y > INT16_MAX) {
         reply("ERR", "PROTOCOL");
         return 2;
       }
-      if (!arm_delivery(state, (Window)(unsigned long)window, (int)x, (int)y)) {
+      if (!arm_delivery(state, (Window)(unsigned long)window, (pid_t)target_pid, (int)x, (int)y)) {
         reply("ERR", "RECORD");
         return 3;
       }

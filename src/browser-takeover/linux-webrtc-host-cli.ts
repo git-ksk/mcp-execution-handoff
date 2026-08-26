@@ -420,8 +420,8 @@ class LinuxXRecordDeliveryHelper {
     return helper;
   }
 
-  arm(windowId: number, x: number, y: number): Promise<void> {
-    return this.command(`ARM ${windowId} ${x} ${y}`, "ARM");
+  arm(windowId: number, targetPid: number, x: number, y: number): Promise<void> {
+    return this.command(`ARM ${windowId} ${targetPid} ${x} ${y}`, "ARM");
   }
 
   waitPrimaryPress(): Promise<void> {
@@ -741,10 +741,10 @@ class LinuxWindowInput {
       const geometryBeforeMove = { ...this.geometry };
       const cleanup = await this.cancellationPoint({ x, y });
       const delivery = await this.deliveryHelper();
-      // Arm a query-only RECORD context before any pointer mutation. The exact target XID and root
-      // coordinate remain Node-owned policy inputs; the observer only confirms that this Button1
-      // press was actually delivered to the client that created the exact X11 window resource.
-      await delivery.arm(geometryBeforeMove.windowId, x, y);
+      // Arm a query-only RECORD context before any pointer mutation. The exact target PID/XID and
+      // root coordinate remain Node-owned policy inputs; the observer confirms that this Button1
+      // press reached an X11 connection of that process inside the exact target window subtree.
+      await delivery.arm(geometryBeforeMove.windowId, this.targetPid, x, y);
       try {
         // The XTEST helper still owns only injection state and never receives PID/XID/window policy.
         // MOVE is acknowledged only after XSync(False).

@@ -134,7 +134,7 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_pointer_move_ready/);
   assert.match(host, /linux_stage=input_pointer_authority_ready/);
   assert.match(host, /linux_stage=input_pointer_down_sent/);
-  assert.match(host, /delivery\.arm\(geometryBeforeMove\.windowId, x, y\)/);
+  assert.match(host, /delivery\.arm\(geometryBeforeMove\.windowId, this\.targetPid, x, y\)/);
   assert.match(host, /await delivery\.waitPrimaryPress\(\)/);
   assert.match(host, /linux_stage=input_pointer_delivery_ready/);
   assert.match(host, /input_pointer_delivery_helper_failure/);
@@ -196,14 +196,18 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
 test("Linux XRecord helper waits for exact delivered Button1 press without injecting input", () => {
   const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");
   assert.match(helper, /XRecordQueryVersion/);
+  assert.match(helper, /XResQueryVersion/);
+  assert.match(helper, /XResQueryClientIds/);
+  assert.match(helper, /XResGetClientPid/);
+  assert.match(helper, /XRES_CLIENT_ID_PID_MASK/);
   assert.match(helper, /delivered_events\.first = ButtonPress/);
-  assert.match(helper, /XRecordCreateContext/);
+  assert.match(helper, /XRecordCreateContext\(state->control, 0, clients, client_count/);
   assert.match(helper, /XRecordEnableContextAsync/);
   assert.match(helper, /XRecordProcessReplies/);
-  assert.match(helper, /client = \(XRecordClientSpec\)window/);
-  assert.doesNotMatch(helper, /event_window == state->expected_window/);
+  assert.match(helper, /window_descends_from\(state->control, state->expected_window, event_window\)/);
   assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
   assert.match(helper, /DELIVERY_WAIT_TIMEOUT_MS 1000/);
+  assert.doesNotMatch(helper, /XRecordAllClients|XRecordCurrentClients|XRecordFutureClients/);
   assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
 });
 
