@@ -34,16 +34,17 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
 
-### OPEN Issue map — 6件
+### OPEN Issue map — 7件
 
 現在OPENのIssueはすべて以下へ配置し、backlog状態をGitHub履歴から推測しなくてもRoadmapだけで分かるようにします。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
-| #94 | v0.2 Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
-| #56 | v0.2 media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
-| #34 | v0.2 cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
-| #45 | v0.2 API/terminology convergence | #46のarchitecture baselineを使ってpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
+| #119 | v0.2.0 source release | **Release gate。** v0.2.0 source-only checklist。npmはprivateのまま。release milestoneのproduct/API blockerは #45だけ。 |
+| #94 | v0.2.x Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
+| #56 | v0.2.x media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
+| #34 | v0.2.x cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
+| #45 | v0.2.0 API/terminology blocker | #46のarchitecture baselineを使ってpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
 
@@ -69,6 +70,14 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - pre-1.0で避けられないbreaking fixがある場合のmigration note
 
 完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
+
+## 次のsource release: v0.2.0
+
+次の **GitHub source release** は `v0.2.0` を予定します。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張しているため、pre-1.0 minor boundaryとして扱います。
+
+releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、現在そのmilestoneへ割り当てるproduct/API blockerは #45だけです。#94 / #56 / #34は重要なv0.2.x hardeningですが最初のv0.2 source releaseをblockしません。#19 / #12は後続のtransport/deployment maturityとして維持します。npm publicationは明示的に別gateで、`private: true` を維持します。
+
+repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
 ## v0.2 — Target Surface contractとbounded host hardening
 

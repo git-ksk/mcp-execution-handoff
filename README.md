@@ -63,7 +63,7 @@ src/browser-takeover/
 - Completing Human takeover **does not approve another action**. Consequential actions require a separate explicit approval mechanism owned by the consumer.
 - Stateful/consequential actions must not be automatically replayed after handoff unless the consumer has independently established that replay is safe.
 
-See [Architecture](docs/architecture.md), [Positioning](docs/positioning.md), [Roadmap](ROADMAP.md), [Security Policy](SECURITY.md), and [Changelog](CHANGELOG.md).
+See [Architecture](docs/architecture.md), [Positioning](docs/positioning.md), [Roadmap](ROADMAP.md), [Release process](RELEASING.md), [Security Policy](SECURITY.md), and [Changelog](CHANGELOG.md).
 
 ## Resume policy
 
@@ -257,7 +257,7 @@ The two-real-adapter extraction gate is now satisfied:
 - authority, epoch, ownership, checkpoint, takeover-lease, capability, CSP, and replay invariants remain covered by deterministic tests.
 - both consumers pin an immutable commit from this repository and pass clean-install CI.
 
-This repository is the upstream source of truth. `v0.1.0` is a **source release only**: it establishes the first versioned repository baseline after validation with two real adapters. npm publication is a separate decision and has not been performed; `private: true` remains in effect.
+This repository is the upstream source of truth. `v0.1.0` is the current **source release only** baseline. The next planned source release is `v0.2.0`, tracked by Issue #119 after the #45 public terminology/API gate. npm publication is a separate decision and has not been performed; `private: true` remains in effect. See [Release process](RELEASING.md).
 
 ## License
 
