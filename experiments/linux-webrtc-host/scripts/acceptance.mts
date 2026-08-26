@@ -129,6 +129,17 @@ function x11IsAncestor(ancestor: number, descendant: number, env: NodeJS.Process
   return false;
 }
 
+function x11RawPointerChain(executable: string, env: NodeJS.ProcessEnv): number[] | undefined {
+  const result = spawnSync(executable, [], { env, encoding: "utf8" });
+  if (result.status !== 0) return undefined;
+  const match = /^CHAIN=(\d+(?:,\d+)*) ROOT_X=-?\d+ ROOT_Y=-?\d+ MASK=\d+\s*$/.exec(result.stdout);
+  if (!match) return undefined;
+  const chain = match[1]!.split(",").map(Number);
+  return chain.length > 0 && chain.length <= 17 && chain.every((value) => Number.isSafeInteger(value) && value > 0)
+    ? chain
+    : undefined;
+}
+
 type X11WindowSnapshot = {
   parent?: number;
   absoluteX?: number;
@@ -201,6 +212,8 @@ async function main(): Promise<void> {
   assert.equal(await exists(helper), true, "compiled Linux helper is required");
   const xtestHelper = path.resolve("dist/native/mcp-handoff-linux-xtest-helper");
   assert.equal(await exists(xtestHelper), true, "compiled Linux XTEST pointer helper is required");
+  const x11PointerQuery = path.resolve("dist/native/mcp-handoff-linux-x11-pointer-query");
+  assert.equal(await exists(x11PointerQuery), true, "compiled Linux X11 pointer query probe is required");
   await chmod(helper, 0o755);
 
   const root = await mkdtemp(path.join(os.tmpdir(), "handoff-linux-webrtc-"));
@@ -422,7 +435,17 @@ async function main(): Promise<void> {
     const rawFocusDescendsExact = Number.isSafeInteger(rawFocusWindow) && rawFocusWindow! > 0
       ? x11IsAncestor(acceptedWindowIdNumber, rawFocusWindow!, xEnv)
       : false;
-    process.stdout.write(`LINUX_WEBRTC_X11_DIAG ${formatX11WindowSnapshot("exact", exactSnapshot)} ${formatX11WindowSnapshot("parent", parentSnapshot)} geometry_matches=${geometryMatchesX11} pointer_inside_exact=${pointerInsideX11Exact} raw_focus_descends_exact=${rawFocusDescendsExact}\n`);
+    const rawPointerChain = x11RawPointerChain(x11PointerQuery, xEnv);
+    const rawPointerDeepest = rawPointerChain?.at(-1);
+    const rawPointerHasExact = rawPointerChain?.includes(acceptedWindowIdNumber) ?? false;
+    const rawPointerHasParent = exactSnapshot.parent !== undefined
+      ? rawPointerChain?.includes(exactSnapshot.parent) ?? false
+      : false;
+    const rawPointerDeepestIsExact = rawPointerDeepest === acceptedWindowIdNumber;
+    const rawPointerDeepestDescendsExact = rawPointerDeepest !== undefined
+      ? x11IsAncestor(acceptedWindowIdNumber, rawPointerDeepest, xEnv)
+      : false;
+    process.stdout.write(`LINUX_WEBRTC_X11_DIAG ${formatX11WindowSnapshot("exact", exactSnapshot)} ${formatX11WindowSnapshot("parent", parentSnapshot)} geometry_matches=${geometryMatchesX11} pointer_inside_exact=${pointerInsideX11Exact} raw_focus_descends_exact=${rawFocusDescendsExact} raw_chain_valid=${rawPointerChain !== undefined} raw_chain_depth=${rawPointerChain?.length ?? 0} raw_chain_has_exact=${rawPointerHasExact} raw_chain_has_parent=${rawPointerHasParent} raw_deepest_is_exact=${rawPointerDeepestIsExact} raw_deepest_descends_exact=${rawPointerDeepestDescendsExact}\n`);
     const pointerWindow = pointerFields.get("WINDOW");
     if (Number.isSafeInteger(pointerWindow) && pointerWindow! > 0) {
       const pointerPid = spawnSync("/usr/bin/xdotool", ["getwindowpid", String(pointerWindow)], { env: xEnv, encoding: "utf8" });

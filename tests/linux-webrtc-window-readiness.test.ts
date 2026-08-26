@@ -131,6 +131,10 @@ test("Linux real-browser acceptance carries the accepted exact window into WebRT
   assert.match(source, /waitForOpenboxReady\(openbox, xEnv\)/);
   assert.match(source, /_NET_SUPPORTING_WM_CHECK/);
   assert.match(source, /_NET_WM_NAME/);
+  assert.match(source, /mcp-handoff-linux-x11-pointer-query/);
+  assert.match(source, /x11RawPointerChain\(x11PointerQuery, xEnv\)/);
+  assert.match(source, /raw_chain_has_exact=/);
+  assert.match(source, /raw_deepest_descends_exact=/);
   assert.doesNotMatch(source, /openbox\.once\("error"[\s\S]{0,160}setTimeout\(resolve, 250\)/);
   assert.match(source, /kind: "pointer_button", button: "primary", state: "down"/);
   assert.match(source, /kind: "pointer_button", button: "primary", state: "up"/);

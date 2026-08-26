@@ -186,6 +186,16 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
   assert.doesNotMatch(helper, /_NET_WM_PID|window title|targetPid|windowId/);
 });
 
+test("Linux X11 pointer query probe remains query-only and non-invasive", () => {
+  const probe = readFileSync("experiments/linux-webrtc-host/native/x11-pointer-query.c", "utf8");
+  assert.match(probe, /XOpenDisplay\(NULL\)/);
+  assert.match(probe, /RootWindow/);
+  assert.match(probe, /XQueryPointer/);
+  assert.match(probe, /MAX_POINTER_DEPTH 16/);
+  assert.match(probe, /CHAIN=%lu/);
+  assert.doesNotMatch(probe, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer/);
+});
+
 test("Node WebRTC runtime passes an explicit Linux display without widening the child environment", () => {
   const runtime = readFileSync("src/browser-takeover/webrtc-runtime.ts", "utf8");
   assert.match(runtime, /displayName\?: string/);
