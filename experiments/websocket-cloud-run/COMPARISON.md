@@ -12,7 +12,7 @@ This note records the evidence for the private WebSocket takeover experiment. It
 | TURN/STUN/ICE required | No | ICE direct path | TURN only when relay is selected |
 | Slow-client video backlog | Bounded: at most one pending latest frame; older pending frames are dropped | Bounded real-time RTP/DataChannel policies; not TCP reliable-video | Same WebRTC policy; relay changes network path, not authority semantics |
 | Reconnect authority | Fresh server-derived generation; stale generation/reconnect state is fenced | Fresh generation | Fresh generation and fresh ICE/TURN session |
-| Managed-runtime public `run.app` route | BLOCKED by Google Frontend 404 before the container despite Ready/RoutesReady/public ingress; reproduced in `us-central1` and `asia-northeast1` | Not the target of this experiment | Not the target of this experiment |
+| Managed-runtime public `run.app` route | PASS for application reachability in `asia-northeast1`: physical iPhone `/start` reached the acceptance app and received an application-owned `takeover_unavailable` response after redirect. The stale-locator reuse in the acceptance harness was then fixed and deterministic `/start` rotation proves old locator 404 / fresh locator 200. A second full Human action sequence on Cloud Run was not rerun before teardown; the physical action evidence remains the accepted iPhone HTTPS/WSS run, while Cloud Run evidence is application reachability plus the deterministic fresh-locator/container acceptance. | Not the target of this experiment | Not the target of this experiment |
 
 The physical WSS run was also confirmed server-side with content-free booleans: target ready, tap observed, text observed, scroll observed, submit observed, and Done observed were all true. The temporary public Tunnel/container were stopped after acceptance.
 
@@ -63,4 +63,4 @@ A future numeric comparison should capture the same identifier-free metrics for 
 
 ## Decision
 
-Keep WebRTC as the primary browser low-latency transport. Keep WebSocket as a private experimental sibling because it successfully provides physical iPhone Safari Human takeover without TURN and preserves the same authority boundary. Do not promote the WebSocket API to stable/public while the Cloud Run public hostname path remains externally blocked and same-session numeric latency data is absent.
+Keep WebRTC as the primary browser low-latency transport. Keep WebSocket as a private experimental sibling because it successfully provides physical iPhone Safari Human takeover without TURN and preserves the same authority boundary. Cloud Run application reachability is now proven; the acceptance-only stale-locator reuse bug was fixed before teardown. Do not promote the WebSocket API to stable/public while same-session numeric latency data is absent and the experiment remains intentionally private.
