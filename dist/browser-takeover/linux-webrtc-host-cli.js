@@ -193,58 +193,30 @@ async function runCommand(executable, args, display) {
 }
 class XdotoolPointerSession {
     child;
-    output = "";
-    stderrText = "";
-    failureHint;
-    pending;
     closing;
     constructor(executable, display) {
         this.child = spawn(executable, ["-"], {
             env: boundedEnvironment(display),
-            stdio: ["pipe", "pipe", "pipe"]
+            stdio: ["pipe", "ignore", "ignore"]
         });
-        this.child.stdout.on("data", (chunk) => this.consume(chunk));
-        this.child.stderr.on("data", (chunk) => this.consumeStderr(chunk));
-        this.child.once("error", () => {
-            this.diagnostic("pointer_session_write_failure");
-            this.failPending("Linux WebRTC pointer helper failed");
-        });
-        this.child.once("close", () => {
-            if (!this.closing && this.pending)
-                this.diagnostic("pointer_session_closed");
-            this.failPending("Linux WebRTC pointer helper closed");
-        });
+        this.child.once("error", () => undefined);
     }
-    command(args, expectedWindowId) {
+    command(args) {
         if (this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
             return Promise.reject(new Error("Linux WebRTC pointer helper is unavailable"));
         }
-        if (this.pending)
-            return Promise.reject(new Error("Linux WebRTC pointer helper is busy"));
         if (args.length < 1 || args.some((arg) => /\s/.test(arg))) {
             return Promise.reject(new Error("Linux WebRTC pointer helper command is invalid"));
         }
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                if (!this.pending)
-                    return;
-                this.pending = undefined;
-                if (this.failureHint === "parse_failure")
-                    this.diagnostic("pointer_session_parse_failure");
-                if (this.failureHint === "x11_failure")
-                    this.diagnostic("pointer_session_x11_failure");
-                if (this.failureHint === "stderr_other")
-                    this.diagnostic("pointer_session_stderr_other");
-                this.diagnostic("pointer_session_ack_timeout");
-                reject(new Error("Linux WebRTC pointer helper acknowledgement timed out"));
-                void this.close();
-            }, 2_000);
-            this.pending = { expectedWindowId, resolve, reject, timer };
-            // `getactivewindow` is an acknowledgement emitted by the same xdotool/X11 connection after
-            // the preceding XTEST commands. The value is checked but never exposed in diagnostics.
-            this.child.stdin.write(`${args.join(" ")} getactivewindow\n`, (error) => {
+            // Script mode executes complete lines in order on one xdo/X11 connection. The write
+            // callback only confirms admission to that ordered stream; exact PID/window and focus
+            // authority are independently revalidated by LinuxWindowInput before every mutation.
+            this.child.stdin.write(`${args.join(" ")}\n`, (error) => {
                 if (error)
-                    this.failPending("Linux WebRTC pointer helper write failed");
+                    reject(new Error("Linux WebRTC pointer helper write failed"));
+                else
+                    resolve();
             });
         });
     }
@@ -271,63 +243,6 @@ class XdotoolPointerSession {
                 this.child.kill("SIGKILL");
         })();
         return this.closing;
-    }
-    consume(chunk) {
-        this.output += chunk.toString("utf8");
-        if (this.output.length > 4_096) {
-            this.output = "";
-            this.failPending("Linux WebRTC pointer helper output exceeded limit");
-            void this.close();
-            return;
-        }
-        while (true) {
-            const newline = this.output.indexOf("\n");
-            if (newline < 0)
-                return;
-            const line = this.output.slice(0, newline).trim();
-            this.output = this.output.slice(newline + 1);
-            const pending = this.pending;
-            if (!pending)
-                continue;
-            if (!/^[1-9]\d*$/.test(line))
-                continue;
-            clearTimeout(pending.timer);
-            this.pending = undefined;
-            if (Number(line) !== pending.expectedWindowId) {
-                this.diagnostic("pointer_session_ack_authority");
-                pending.reject(new Error("Linux WebRTC pointer target lost active authority"));
-            }
-            else {
-                this.diagnostic("pointer_session_ack");
-                pending.resolve();
-            }
-        }
-    }
-    consumeStderr(chunk) {
-        if (this.stderrText.length >= 4_096)
-            return;
-        this.stderrText = (this.stderrText + chunk.toString("utf8")).slice(0, 4_096);
-        if (/Unknown command|wrong number of args|Usage:|needs at least|invalid option|unrecognized option/i.test(this.stderrText)) {
-            this.failureHint = "parse_failure";
-            return;
-        }
-        if (/xdo_mouse_(?:down|up)|XTEST|XTest|XGetWindowProperty|X Error|reported an error|XSendEvent/i.test(this.stderrText)) {
-            this.failureHint = "x11_failure";
-            return;
-        }
-        if (this.stderrText.trim().length > 0)
-            this.failureHint = "stderr_other";
-    }
-    failPending(message) {
-        const pending = this.pending;
-        if (!pending)
-            return;
-        clearTimeout(pending.timer);
-        this.pending = undefined;
-        pending.reject(new Error(message));
-    }
-    diagnostic(stage) {
-        process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${stage}\n`);
     }
 }
 export function parseOptionalTargetWindowId(value) {
@@ -521,7 +436,7 @@ class LinuxWindowInput {
                 "mousemove", "--window", String(this.geometry.windowId),
                 String(relativeX), String(relativeY),
                 "mousedown", "1"
-            ], this.geometry.windowId);
+            ]);
             return;
         }
         const pressed = this.primaryPoint;
@@ -533,7 +448,7 @@ class LinuxWindowInput {
         if (Math.abs(pressed.x - x) > 1 || Math.abs(pressed.y - y) > 1) {
             throw new Error("Linux WebRTC primary release point changed");
         }
-        await session.command(["mouseup", "1"], this.geometry.windowId);
+        await session.command(["mouseup", "1"]);
         this.primaryPressed = false;
         this.primaryPoint = undefined;
         this.primarySession = undefined;
@@ -555,7 +470,7 @@ class LinuxWindowInput {
             released = await session.command([
                 "mousemove", String(releasePoint.x), String(releasePoint.y),
                 "mouseup", "1"
-            ], this.geometry.windowId).then(() => true, () => false);
+            ]).then(() => true, () => false);
             await session.close();
         }
         if (!released) {
