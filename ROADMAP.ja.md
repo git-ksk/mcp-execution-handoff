@@ -30,11 +30,11 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。#46でsemantic-domain / admission baselineはdocument済みで、#45がterminology / public API convergenceを担当します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidenceと、より狭い #94 / #56 / #19 / #12 へ分離され、whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
 
-### OPEN Issue map — 8件
+### OPEN Issue map — 6件
 
 現在OPENのIssueはすべて以下へ配置し、backlog状態をGitHub履歴から推測しなくてもRoadmapだけで分かるようにします。
 
@@ -46,8 +46,6 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #45 | v0.2 API/terminology convergence | #46のarchitecture baselineを使ってpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
-| #13 | v0.4+ transport umbrella | **追加実装前に再スコープ。** 旧Phase 1/2、WebRTC、mobile lifecycleの多くはすでに実証済み。uniqueな残課題だけ残す。 |
-| #11 | v0.2/v0.4 cleanup umbrella | **supersede監査対象。** first-class Window、#94 secure UI、#56 qualityが元Issueの大部分を吸収済み。重複実装せずnarrow/closeを判断。 |
 
 ## 基本原則
 
@@ -123,8 +121,8 @@ npm publicationは **v0.2の完了条件ではありません**。
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - #19でprovider-neutral connectivity/relay boundaryを仕上げ、ICE/TURN/provider選択をconsumerへ露出しない
 - #12でbounded durable stateとauthenticated outbound worker connectivityを持つhosted control-plane + stateful execution-worker topologyを定義する
-- historicalな#13 Thin Takeover umbrellaは、現在のWebRTC/WSS/mobile evidenceと照合して追加transport codeの前に再スコープする
-- #11はfirst-class Window、#94 secure UI、#56 media quality分離後にuniqueな残作業だけを監査し、land済みOS-provider workを重複実装しない
+- #13のcloseout decisionを維持する。historical Thin Takeover / mandatory custom Native-client umbrellaはaccepted WebRTC pathと完了済みWSS evaluationにsupersedeされ、将来native-clientが必要なら新しいnarrowなevidence-based Issueとして起こす
+- #11のcloseout decisionを維持する。first-class bounded Windowと #94 secure UI / #56 media qualityが旧full-desktop/provider-latency umbrellaをsupersedeし、desktop-wide authorityはdefault boundary外のままにする
 - 追加のlow-latency push/latest-frame / native Human Takeover pathは、現在のWebRTC/WSS acceptanceでは得られない新しいevidenceがある場合だけ検証する
 
 ### Transport familyの方向性
