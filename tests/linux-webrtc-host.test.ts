@@ -200,6 +200,7 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
 test("Linux XRecord helper waits for exact delivered Button1 press without injecting input", () => {
   const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");
   assert.match(helper, /PROTOCOL_VERSION 2/);
+  assert.match(helper, /reply\("READY", "2"\)/);
   assert.match(helper, /XRecordQueryVersion/);
   assert.match(helper, /XQueryExtension\(state.control, "XInputExtension"/);
   assert.match(helper, /delivered_events\.first = ButtonPress/);

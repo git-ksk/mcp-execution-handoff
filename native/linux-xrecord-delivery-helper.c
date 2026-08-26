@@ -268,7 +268,7 @@ static bool wait_for_delivery(DeliveryState *state) {
 
 static int run_protocol(DeliveryState *state) {
   char line[MAX_LINE_BYTES];
-  reply("READY", "1");
+  reply("READY", "2");
   while (fgets(line, sizeof(line), stdin) != NULL) {
     char *tokens[MAX_TOKENS] = {0};
     int count;
