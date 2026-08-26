@@ -34,6 +34,7 @@ export type WebRtcDiagnosticStage =
   | "host.input.pointer.move_ready"
   | "host.input.pointer.authority_ready"
   | "host.input.pointer.down_sent"
+  | "host.input.pointer.post_authority_ready"
   | "host.input.pointer.delivery_helper_ready"
   | "host.input.pointer.delivery_helper_failure"
   | "host.input.pointer.delivery_arm_failure"
@@ -121,6 +122,7 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.input.pointer.move_ready",
   "host.input.pointer.authority_ready",
   "host.input.pointer.down_sent",
+  "host.input.pointer.post_authority_ready",
   "host.input.pointer.delivery_helper_ready",
   "host.input.pointer.delivery_helper_failure",
   "host.input.pointer.delivery_arm_failure",
@@ -233,6 +235,7 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.input.pointer.move_ready": ["stage"],
     "host.input.pointer.authority_ready": ["stage"],
     "host.input.pointer.down_sent": ["stage"],
+    "host.input.pointer.post_authority_ready": ["stage"],
     "host.input.pointer.delivery_helper_ready": ["stage"],
     "host.input.pointer.delivery_helper_failure": ["stage"],
     "host.input.pointer.delivery_arm_failure": ["stage"],

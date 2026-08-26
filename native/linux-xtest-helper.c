@@ -18,6 +18,9 @@ typedef struct {
   int width;
   int height;
   bool primary_pressed;
+  bool pointer_position_known;
+  int pointer_x;
+  int pointer_y;
   int cleanup_x;
   int cleanup_y;
 } PointerState;
@@ -109,18 +112,25 @@ static bool primary_button_state(PointerState *state, bool pressed) {
 
 static bool inject_move(PointerState *state, int x, int y) {
   x_error_seen = 0;
+  state->pointer_position_known = false;
   if (!XTestFakeMotionEvent(state->display, state->screen, x, y, CurrentTime)) return false;
-  if (!sync_display(state)) return false;
-  return pointer_at(state, x, y);
+  if (!sync_display(state) || !pointer_at(state, x, y)) return false;
+  state->pointer_x = x;
+  state->pointer_y = y;
+  state->pointer_position_known = true;
+  return true;
 }
 
 static bool inject_button_down(PointerState *state) {
+  if (!state->pointer_position_known) return false;
   x_error_seen = 0;
   if (!XTestFakeButtonEvent(state->display, 1, True, CurrentTime)) return false;
   // Once the press request has been accepted by Xlib, cleanup must assume Button1 may be held even
   // if the following XSync reports a protocol error. This keeps EOF/error teardown conservative.
   state->primary_pressed = true;
-  if (sync_display(state) && primary_button_state(state, true)) return true;
+  if (sync_display(state)
+      && primary_button_state(state, true)
+      && pointer_at(state, state->pointer_x, state->pointer_y)) return true;
   (void)cleanup_pressed_button(state);
   return false;
 }

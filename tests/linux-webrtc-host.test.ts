@@ -118,7 +118,6 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /Math\.round\(point\.y\)/);
   assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
   assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xtest-helper", moduleUrl\)/);
-  assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xrecord-delivery-helper", moduleUrl\)/);
   assert.doesNotMatch(host, /TAKEOVER_LINUX_XTEST_HELPER/);
   assert.match(host, /await this\.pointer\.move\(x, y\)/);
   assert.match(host, /currentGeometry = await this\.currentOwnedGeometry\(\)/);
@@ -134,26 +133,15 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_pointer_move_ready/);
   assert.match(host, /linux_stage=input_pointer_authority_ready/);
   assert.match(host, /linux_stage=input_pointer_down_sent/);
-  assert.match(host, /delivery\.arm\(geometryBeforeMove\.windowId, this\.targetPid, x, y\)/);
-  assert.match(host, /input_pointer_authority_ready[\s\S]*delivery\.arm[\s\S]*pointer\.down/);
-  assert.match(host, /await delivery\.waitPrimaryPress\(\)/);
-  assert.match(host, /linux_stage=input_pointer_delivery_helper_ready/);
-  assert.match(host, /linux_stage=input_pointer_delivery_helper_failure/);
-  assert.match(host, /linux_stage=input_pointer_delivery_arm_failure/);
-  assert.match(host, /LinuxXRecordDeliveryWaitError/);
-  assert.match(host, /WAIT_NO_FROM_SERVER_CREATOR_MATCH/);
-  assert.match(host, /WAIT_NO_FROM_SERVER_CREATOR_MISMATCH/);
-  assert.match(host, /WAIT_NO_FROM_SERVER_CREATOR_UNKNOWN/);
-  assert.match(host, /WAIT_SWAPPED/);
-  assert.match(host, /WAIT_SHORT_DATA/);
-  assert.match(host, /WAIT_NO_EVENT/);
-  assert.match(host, /WAIT_EVENT_MISMATCH/);
-  assert.match(host, /WAIT_XI2_MISMATCH/);
-  assert.match(host, /WAIT_WINDOW_MISMATCH/);
-  assert.match(host, /WAIT_COORD_MISMATCH/);
-  assert.match(host, /WAIT_IO/);
-  assert.match(host, /linux_stage=input_pointer_delivery_wait_failure/);
-  assert.match(host, /linux_stage=input_pointer_delivery_ready/);
+  assert.match(host, /linux_stage=input_pointer_post_authority_ready/);
+  assert.match(host, /input_pointer_authority_ready[\s\S]*await this\.pointer\.down/);
+  assert.match(host, /await this\.confirmPostDownAuthority\(geometryBeforeMove\)/);
+  assert.match(host, /target geometry changed after primary press/);
+  assert.match(host, /lost active authority after primary press/);
+  assert.match(host, /lost input focus after primary press/);
+  assert.doesNotMatch(host, /LinuxXRecordDeliveryHelper|LinuxXRecordDeliveryWaitError/);
+  assert.doesNotMatch(host, /packagedLinuxXRecordDeliveryHelper/);
+  assert.doesNotMatch(host, /delivery\.arm|waitPrimaryPress|deliveryHelper\(\)/);
   assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
@@ -196,6 +184,8 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
   assert.match(helper, /Button1Mask/);
   assert.match(helper, /pointer_at\(state, x, y\)/);
   assert.match(helper, /primary_button_state\(state, true\)/);
+  assert.match(helper, /pointer_position_known/);
+  assert.match(helper, /pointer_at\(state, state->pointer_x, state->pointer_y\)/);
   assert.match(helper, /primary_button_state\(state, false\)/);
   assert.match(helper, /READY.*1/);
   assert.match(helper, /strcmp\(tokens\[0\], "MOVE"\)/);
@@ -209,7 +199,7 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
 });
 
 
-test("Linux XRecord helper waits for exact delivered Button1 press without injecting input", () => {
+test("Linux XRecord diagnostic helper remains strict and non-injecting", () => {
   const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");
   assert.match(helper, /PROTOCOL_VERSION 3/);
   assert.match(helper, /reply\("READY", "3"\)/);

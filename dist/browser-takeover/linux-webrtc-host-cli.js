@@ -14,8 +14,6 @@ const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
 const XTEST_HELPER_ACK_TIMEOUT_MS = 2_000;
 const XTEST_HELPER_MAX_OUTPUT_BYTES = 4_096;
-const XRECORD_HELPER_ACK_TIMEOUT_MS = 2_000;
-const XRECORD_HELPER_MAX_OUTPUT_BYTES = 4_096;
 export function parseWindowIds(value) {
     const ids = value.split(/\s+/).filter(Boolean).map((item) => Number(item));
     return ids.filter((item) => Number.isSafeInteger(item) && item > 0);
@@ -348,173 +346,8 @@ class LinuxXTestPointerHelper {
         pending.reject(new Error(message));
     }
 }
-class LinuxXRecordDeliveryWaitError extends Error {
-    reason;
-    constructor(reason) {
-        super("Linux XRecord delivery helper did not confirm pointer delivery");
-        this.reason = reason;
-    }
-}
-class LinuxXRecordDeliveryHelper {
-    child;
-    output = "";
-    readyState = "waiting";
-    readyPromise;
-    readyResolve;
-    readyReject;
-    readyTimer;
-    pending;
-    closing;
-    constructor(executable, display) {
-        this.readyPromise = new Promise((resolve, reject) => {
-            this.readyResolve = resolve;
-            this.readyReject = reject;
-        });
-        this.readyTimer = setTimeout(() => {
-            if (this.readyState !== "waiting")
-                return;
-            this.readyState = "failed";
-            this.readyReject(new Error("Linux XRecord delivery helper readiness timed out"));
-            void this.close();
-        }, XRECORD_HELPER_ACK_TIMEOUT_MS);
-        this.child = spawn(executable, [], {
-            env: boundedEnvironment(display),
-            stdio: ["pipe", "pipe", "ignore"]
-        });
-        this.child.stdout.on("data", (chunk) => this.consume(chunk));
-        this.child.once("error", () => this.fail("Linux XRecord delivery helper failed"));
-        this.child.once("close", () => this.fail("Linux XRecord delivery helper closed"));
-    }
-    static async start(executable, display) {
-        const helper = new LinuxXRecordDeliveryHelper(executable, display);
-        await helper.readyPromise;
-        return helper;
-    }
-    arm(windowId, targetPid, x, y) {
-        return this.command(`ARM ${windowId} ${targetPid} ${x} ${y}`, "ARM");
-    }
-    waitPrimaryPress() {
-        return this.command("WAIT", "PRESS");
-    }
-    disarm() {
-        return this.command("DISARM", "DISARM");
-    }
-    async close() {
-        if (this.closing)
-            return this.closing;
-        this.closing = (async () => {
-            clearTimeout(this.readyTimer);
-            if (this.child.exitCode !== null || this.child.signalCode !== null)
-                return;
-            this.child.stdin.end();
-            const closed = once(this.child, "close").then(() => true, () => true);
-            const ended = await Promise.race([
-                closed,
-                new Promise((resolve) => setTimeout(() => resolve(false), 750))
-            ]);
-            if (ended || this.child.exitCode !== null || this.child.signalCode !== null)
-                return;
-            this.child.kill("SIGTERM");
-            await Promise.race([
-                once(this.child, "close").catch(() => undefined),
-                new Promise((resolve) => setTimeout(resolve, 250))
-            ]);
-            if (this.child.exitCode === null && this.child.signalCode === null)
-                this.child.kill("SIGKILL");
-        })();
-        return this.closing;
-    }
-    command(line, expected) {
-        if (this.readyState !== "ready" || this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
-            return Promise.reject(new Error("Linux XRecord delivery helper is unavailable"));
-        }
-        if (this.pending)
-            return Promise.reject(new Error("Linux XRecord delivery helper is busy"));
-        if (!/^[A-Z0-9 -]{3,96}$/.test(line))
-            return Promise.reject(new Error("Linux XRecord delivery helper command is invalid"));
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                if (!this.pending || this.pending.expected !== expected)
-                    return;
-                this.pending = undefined;
-                reject(new Error("Linux XRecord delivery helper acknowledgement timed out"));
-                void this.close();
-            }, XRECORD_HELPER_ACK_TIMEOUT_MS);
-            this.pending = { expected, resolve, reject, timer };
-            this.child.stdin.write(`${line}\n`, (error) => {
-                if (error)
-                    this.fail("Linux XRecord delivery helper write failed");
-            });
-        });
-    }
-    consume(chunk) {
-        this.output += chunk.toString("utf8");
-        if (this.output.length > XRECORD_HELPER_MAX_OUTPUT_BYTES) {
-            this.fail("Linux XRecord delivery helper output exceeded limit");
-            void this.close();
-            return;
-        }
-        while (true) {
-            const newline = this.output.indexOf("\n");
-            if (newline < 0)
-                return;
-            const line = this.output.slice(0, newline).trim();
-            this.output = this.output.slice(newline + 1);
-            if (this.readyState === "waiting") {
-                if (line !== "READY 3") {
-                    this.fail("Linux XRecord delivery helper protocol mismatch");
-                    void this.close();
-                    return;
-                }
-                clearTimeout(this.readyTimer);
-                this.readyState = "ready";
-                this.readyResolve();
-                continue;
-            }
-            const pending = this.pending;
-            if (!pending) {
-                this.fail("Linux XRecord delivery helper emitted an unexpected response");
-                void this.close();
-                return;
-            }
-            clearTimeout(pending.timer);
-            this.pending = undefined;
-            if (line === `OK ${pending.expected}`) {
-                pending.resolve();
-                continue;
-            }
-            const waitFailure = pending.expected === "PRESS"
-                ? /^ERR (WAIT_NO_FROM_SERVER_CREATOR_MATCH|WAIT_NO_FROM_SERVER_CREATOR_MISMATCH|WAIT_NO_FROM_SERVER_CREATOR_UNKNOWN|WAIT_SWAPPED|WAIT_SHORT_DATA|WAIT_NO_EVENT|WAIT_EVENT_MISMATCH|WAIT_XI2_MISMATCH|WAIT_WINDOW_MISMATCH|WAIT_COORD_MISMATCH|WAIT_IO)$/.exec(line)
-                : null;
-            if (waitFailure) {
-                pending.reject(new LinuxXRecordDeliveryWaitError(waitFailure[1]));
-            }
-            else {
-                pending.reject(new Error("Linux XRecord delivery helper rejected a command"));
-            }
-            void this.close();
-            return;
-        }
-    }
-    fail(message) {
-        if (this.readyState === "waiting") {
-            clearTimeout(this.readyTimer);
-            this.readyState = "failed";
-            this.readyReject(new Error(message));
-        }
-        const pending = this.pending;
-        if (!pending)
-            return;
-        clearTimeout(pending.timer);
-        this.pending = undefined;
-        pending.reject(new Error(message));
-    }
-}
 function packagedLinuxXTestHelper(moduleUrl) {
     return fileURLToPath(new URL("../native/mcp-handoff-linux-xtest-helper", moduleUrl));
-}
-function packagedLinuxXRecordDeliveryHelper(moduleUrl) {
-    return fileURLToPath(new URL("../native/mcp-handoff-linux-xrecord-delivery-helper", moduleUrl));
 }
 export function parseOptionalTargetWindowId(value) {
     if (value === undefined)
@@ -622,17 +455,14 @@ class LinuxWindowInput {
     display;
     xdotool;
     pointer;
-    deliveryExecutable;
     primaryPressed = false;
     primaryPoint;
-    delivery;
-    constructor(geometry, targetPid, display, xdotool, pointer, deliveryExecutable) {
+    constructor(geometry, targetPid, display, xdotool, pointer) {
         this.geometry = geometry;
         this.targetPid = targetPid;
         this.display = display;
         this.xdotool = xdotool;
         this.pointer = pointer;
-        this.deliveryExecutable = deliveryExecutable;
     }
     async apply(input) {
         // Revalidate the exact X11 window immediately before every Human mutation. Window ids can be
@@ -710,7 +540,6 @@ class LinuxWindowInput {
                 throw new Error("Linux WebRTC primary button is already pressed");
             const geometryBeforeMove = { ...this.geometry };
             const cleanup = await this.cancellationPoint({ x, y });
-            const delivery = await this.deliveryHelper();
             try {
                 // The XTEST helper still owns only injection state and never receives PID/XID/window policy.
                 // MOVE is acknowledged only after XSync(False) and an exact XQueryPointer coordinate check.
@@ -731,51 +560,18 @@ class LinuxWindowInput {
                 await this.confirmActiveTarget();
                 await this.confirmInputFocusOwnedByTarget();
                 process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_authority_ready\n");
-                // Arm only after MOVE and the post-move authority check. The observer resolves only X11
-                // clients whose local peer PID equals the Node-owned target, while the exact Window subtree
-                // remains an independent delivery predicate. If it cannot arm, fail closed before DOWN.
-                try {
-                    await delivery.arm(geometryBeforeMove.windowId, this.targetPid, x, y);
-                }
-                catch (error) {
-                    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_arm_failure\n");
-                    throw error;
-                }
+                // DOWN is acknowledged by the native helper only after XTestFakeButtonEvent, XSync(False),
+                // Button1Mask=true, and an unchanged root pointer position. Treat that server-processed ACK
+                // as the X11 compatibility barrier, then immediately revalidate the exact authority tuple.
                 await this.pointer.down(cleanup.x, cleanup.y);
                 process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_down_sent\n");
                 this.primaryPressed = true;
                 this.primaryPoint = { x, y };
-                // XSync proves server state on the injector connection, but another client may hold a
-                // synchronous passive grab. Do not admit UP until RECORD proves the press was delivered to
-                // the exact Chrome X11 client. This is a condition barrier, not a timing/sleep heuristic.
-                try {
-                    await delivery.waitPrimaryPress();
-                }
-                catch (error) {
-                    if (error instanceof LinuxXRecordDeliveryWaitError) {
-                        const stages = {
-                            WAIT_NO_FROM_SERVER_CREATOR_MATCH: "input_pointer_delivery_wait_no_from_server_creator_match",
-                            WAIT_NO_FROM_SERVER_CREATOR_MISMATCH: "input_pointer_delivery_wait_no_from_server_creator_mismatch",
-                            WAIT_NO_FROM_SERVER_CREATOR_UNKNOWN: "input_pointer_delivery_wait_no_from_server_creator_unknown",
-                            WAIT_SWAPPED: "input_pointer_delivery_wait_swapped",
-                            WAIT_SHORT_DATA: "input_pointer_delivery_wait_short_data",
-                            WAIT_NO_EVENT: "input_pointer_delivery_wait_no_event",
-                            WAIT_EVENT_MISMATCH: "input_pointer_delivery_wait_event_mismatch",
-                            WAIT_XI2_MISMATCH: "input_pointer_delivery_wait_xi2_mismatch",
-                            WAIT_WINDOW_MISMATCH: "input_pointer_delivery_wait_window_mismatch",
-                            WAIT_COORD_MISMATCH: "input_pointer_delivery_wait_coord_mismatch",
-                            WAIT_IO: "input_pointer_delivery_wait_io_failure"
-                        };
-                        process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${stages[error.reason]}\n`);
-                    }
-                    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_wait_failure\n");
-                    throw error;
-                }
-                process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_ready\n");
+                await this.confirmPostDownAuthority(geometryBeforeMove);
+                process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_post_authority_ready\n");
                 return;
             }
             catch (error) {
-                await delivery.disarm().catch(() => undefined);
                 if (this.primaryPressed) {
                     await this.pointer.cancel().catch(() => undefined);
                     this.primaryPressed = false;
@@ -797,7 +593,6 @@ class LinuxWindowInput {
         this.primaryPoint = undefined;
     }
     async releaseAll() {
-        await this.delivery?.disarm().catch(() => undefined);
         if (!this.primaryPressed)
             return;
         // The helper was armed with a Node-computed safe cleanup point before DOWN. CANCEL performs
@@ -808,20 +603,23 @@ class LinuxWindowInput {
     }
     async shutdown() {
         await this.releaseAll();
-        await this.delivery?.close();
         await this.pointer.close();
     }
-    async deliveryHelper() {
-        if (this.delivery)
-            return this.delivery;
-        try {
-            this.delivery = await LinuxXRecordDeliveryHelper.start(this.deliveryExecutable, this.display);
-            process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_helper_ready\n");
-            return this.delivery;
+    async confirmPostDownAuthority(expected) {
+        const current = await this.currentOwnedGeometry();
+        if (current.windowId !== expected.windowId
+            || current.x !== expected.x
+            || current.y !== expected.y
+            || current.width !== expected.width
+            || current.height !== expected.height) {
+            throw new Error("Linux WebRTC target geometry changed after primary press");
         }
-        catch (error) {
-            process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_helper_failure\n");
-            throw error;
+        this.geometry = current;
+        if (!await this.activeTargetOnce()) {
+            throw new Error("Linux WebRTC target window lost active authority after primary press");
+        }
+        if (!await this.inputFocusOwnedByTargetOnce()) {
+            throw new Error("Linux WebRTC target process lost input focus after primary press");
         }
     }
     async cancellationPoint(pressedPoint) {
@@ -1077,7 +875,6 @@ export async function linuxWebRtcHostMain() {
     const xdotool = absoluteTool("xdotool", "TAKEOVER_LINUX_XDOTOOL");
     const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
     const xtestHelperExecutable = packagedLinuxXTestHelper(import.meta.url);
-    const xrecordDeliveryExecutable = packagedLinuxXRecordDeliveryHelper(import.meta.url);
     let geometry;
     try {
         geometry = await resolveExactWindow(targetPid, targetWindowId, display, xdotool);
@@ -1097,7 +894,7 @@ export async function linuxWebRtcHostMain() {
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_failure\n");
         throw error;
     }
-    const input = new LinuxWindowInput(geometry, targetPid, display, xdotool, pointer, xrecordDeliveryExecutable);
+    const input = new LinuxWindowInput(geometry, targetPid, display, xdotool, pointer);
     let stopped = false;
     let stopHost;
     const capture = new LinuxCapture(geometry, display, ffmpeg, new LatestFrameWriter(), () => {
