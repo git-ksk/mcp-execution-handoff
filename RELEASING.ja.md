@@ -9,7 +9,7 @@
 1. **GitHub source release** — reviewedな`main` commitにversion tagを付け、GitHub Releaseを公開する。
 2. **npm publication** — 将来の別gate。packageは `private: true` のままで、source releaseを出しても `npm publish` を意味しません。
 
-次のsource releaseは **v0.2.0** を予定し、milestone `v0.2.0 — Source Release` とIssue #119で追跡します。v0.2.0のpublic terminology/API blockerは #45です。残るWindow/media/Linux/relay/hosted-topology issueはfollow-upであり、v0.2.0 blockerにはしません。
+**v0.2.0** が現在のGitHub/source-release baselineで、milestone `v0.2.0 — Source Release` とIssue #119で追跡します。#45のpublic terminology/API gateは完了済みです。Window/media/Linux hardening（#94/#56/#34）とrelay/hosted-topology maturity（#19/#12）はfollow-upであり、v0.2.0 blockerにはしません。
 
 ## Versioning policy
 

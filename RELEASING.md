@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-The next planned source release is **v0.2.0**, tracked by milestone `v0.2.0 — Source Release` and Issue #119. Issue #45 is the public terminology/API blocker for that release. The remaining Window/media/Linux/relay/hosted-topology issues are follow-up work, not v0.2.0 blockers.
+**v0.2.0** is the current GitHub/source-release baseline, tracked through milestone `v0.2.0 — Source Release` and Issue #119. The #45 public terminology/API gate is complete. Window/media/Linux hardening (#94/#56/#34) and relay/hosted-topology maturity (#19/#12) remain follow-up work and are not v0.2.0 blockers.
 
 ## Versioning policy
 

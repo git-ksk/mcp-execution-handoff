@@ -6,12 +6,9 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.1.0
+## 現在のbaseline: v0.2.0
 
-`v0.1.0` は最初のsource releaseです。次の2つの実consumerで検証したうえで、このrepositoryをupstream source of truthとして確立しました。
-
-- `git-ksk/maps-browser-mcp`
-- `git-ksk/japan-cinema-browser-mcp`
+`v0.2.0` が現在のGitHub/source-release baselineです。`v0.1.0` でMaps / Japan Cinemaの実consumer検証をもとにupstream source of truthを確立し、v0.2.0ではfirst-class Browser / bounded OS Window / bounded Terminal-PTY component、compatibility-safeなHuman Interaction Policy名、exact-surface hardening、accepted済みdirect/TURN/WSSのsource-level transport workまでbaselineを拡張しました。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -34,13 +31,12 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
 
-### OPEN Issue map — 6件
+### v0.2.0後のfollow-up Issue map — 5件
 
-現在OPENのIssueはすべて以下へ配置し、backlog状態をGitHub履歴から推測しなくてもRoadmapだけで分かるようにします。
+#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にだけcloseします。release後も継続するbacklogは以下の5件です。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
-| #119 | v0.2.0 source release | **Release gate。** v0.2.0 source-only checklist。npmはprivateのまま。terminology/API blockerは満たされ、release bookkeepingだけが残る。 |
 | #94 | v0.2.x Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
 | #56 | v0.2.x media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
 | #34 | v0.2.x cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
@@ -57,7 +53,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 6. **Browser Handoffはoptionalのままにする。** Browser Target SurfaceやBrowser固有transportがなくてもcoreが成立する状態を維持する。
 7. **bypass productにしない。** CAPTCHA solving、anti-bot evasion、credential relay、stealth/fingerprint spoofing、payment automationは明示的な非目標として維持する。
 
-## v0.1.x — 現在のbaselineを固める
+## v0.1.x — historical maintenance line
 
 対象:
 
@@ -70,11 +66,11 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
 
-## 次のsource release: v0.2.0
+## v0.2.0 source release
 
-次の **GitHub source release** は `v0.2.0` を予定します。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張しているため、pre-1.0 minor boundaryとして扱います。
+`v0.2.0` が現在の **GitHub source release** です。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張したため、pre-1.0 minor boundaryとして扱います。
 
-releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡します。public terminology/API blockerは満たされ、#119が残るsource-release bookkeeping gateです。#94 / #56 / #34は重要なv0.2.x hardeningですが最初のv0.2 source releaseをblockしません。#19 / #12は後続のtransport/deployment maturityとして維持します。npm publicationは明示的に別gateで、`private: true` を維持します。
+releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、tag / GitHub Release検証後にだけcloseします。#94 / #56 / #34が直近のv0.2.x hardening follow-upで、#19 / #12は後続のtransport/deployment maturityです。npm publicationは明示的に別gateで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -170,7 +166,7 @@ Issue #40で初期WebSocket managed-runtime evaluationは完了しました。ph
 
 ## npm publication gate
 
-npm publishはdelivery decisionであり、maturity signalではありません。`v0.1.0` のようにsource releaseだけを成立させることもできます。
+npm publishはdelivery decisionであり、maturity signalではありません。`v0.1.0` と `v0.2.0` のようにsource releaseだけを成立させることもできます。
 
 `private: false` へ変更、またはnpm publishする前に最低限次を確認します。
 

@@ -4,12 +4,9 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.1.0
+## Current baseline: v0.2.0
 
-`v0.1.0` is the first source release. It established the repository as the upstream source of truth after validation with two real adapters:
-
-- `git-ksk/maps-browser-mcp`
-- `git-ksk/japan-cinema-browser-mcp`
+`v0.2.0` is the current GitHub/source-release baseline. `v0.1.0` established the repository as the upstream source of truth after validation with Maps and Japan Cinema; v0.2.0 extends that baseline with first-class Browser, bounded OS Window, and bounded Terminal/PTY components, compatibility-safe Human Interaction Policy names, exact-surface hardening, and the accepted direct/TURN/WSS source-level transport work.
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -32,13 +29,12 @@ Documentation/design closeout is complete for #42 (positioning), #46 (semantic d
 
 The next implementation priority is #94: investigate an explicit Human-only macOS native input backend for secure system UI without silently widening bounded Window Handoff to whole-desktop authority. Media quality (#56) and Linux editable-region parity (#34) follow as bounded transport/host improvements rather than authority-model changes.
 
-### Open issue map — 6 issues
+### Post-v0.2.0 follow-up issue map — 5 issues
 
-Every currently open issue is assigned below so backlog state is visible from the roadmap rather than inferred from GitHub history.
+The release gate #119 closes only after the v0.2.0 tag and GitHub Release are verified. The durable post-release backlog is mapped below.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
-| #119 | v0.2.0 source release | **Release gate.** Source-only v0.2.0 checklist; npm stays private. The terminology/API blocker is satisfied; release bookkeeping remains. |
 | #94 | v0.2.x Window hardening | **Next implementation priority.** Human-only, explicitly selected secure-system-UI input backend; no TCC bypass or hidden desktop fallback. |
 | #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
 | #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
@@ -55,7 +51,7 @@ Every currently open issue is assigned below so backlog state is visible from th
 6. **Browser Handoff stays optional.** The core must remain useful without a Browser Target Surface or any Browser-specific transport.
 7. **No bypass product.** CAPTCHA solving, anti-bot evasion, credential relay, stealth/fingerprint spoofing, and payment automation remain explicit non-goals.
 
-## v0.1.x — hardening the established baseline
+## v0.1.x — historical maintenance line
 
 Focus:
 
@@ -68,11 +64,11 @@ Focus:
 
 Exit condition: each patch must preserve the documented security invariants and remain green in both established real consumers.
 
-## Next source release: v0.2.0
+## v0.2.0 source release
 
-`v0.2.0` is the next planned **GitHub source release**. It is justified as a minor pre-1.0 boundary because the public surface has materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are now exported, and the Window/Terminal package subpaths are part of the source package shape.
+`v0.2.0` is the current **GitHub source release**. It is a minor pre-1.0 boundary because the public surface materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are exported, and the Window/Terminal package subpaths are part of the source package shape.
 
-The release is tracked by milestone `v0.2.0 — Source Release` and Issue #119. The public terminology/API blocker is now satisfied; #119 is the remaining source-release bookkeeping gate. #94, #56, and #34 remain important v0.2.x hardening work but do not block the first v0.2 source release; #19 and #12 remain later transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
+The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closes only after the tag and GitHub Release are verified. #94, #56, and #34 are the immediate v0.2.x hardening follow-ups; #19 and #12 remain later transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -168,7 +164,7 @@ Minimum exit criteria:
 
 ## npm publication gate
 
-npm publication is a delivery decision, not a maturity signal. A source release may exist without an npm package, as `v0.1.0` does.
+npm publication is a delivery decision, not a maturity signal. A source release may exist without an npm package; both `v0.1.0` and `v0.2.0` use that source-only model.
 
 Before setting `private: false` or publishing any package, verify all of the following:
 
