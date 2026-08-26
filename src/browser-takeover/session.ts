@@ -172,10 +172,11 @@ export class TakeoverSessionManager {
     if (!record.clientBinding || !record.lastSeenAt || record.clientGeneration < 1) {
       throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "Takeover session is unavailable");
     }
-    if (record.inFlight > 0 || (!record.released && this.now() - record.lastSeenAt < this.reconnectIdleMs)) {
+    this.assertReconnectHandle(record, reconnectHandle);
+    const idleMs = Math.max(0, this.now() - record.lastSeenAt);
+    if (record.inFlight > 0 || (!record.released && idleMs < this.reconnectIdleMs)) {
       throw new TakeoverSessionError("TAKEOVER_CLIENT_ACTIVE", "Takeover client is still active");
     }
-    this.assertReconnectHandle(record, reconnectHandle);
     record.clientBinding = nextClientBinding;
     record.clientGeneration += 1;
     record.lastSeenAt = this.now();

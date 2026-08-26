@@ -326,6 +326,194 @@ async function flushAsync(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+
+type ReconnectClientHarness = {
+  status: FakeBrowserElement;
+  peers: FakeLifecyclePeer[];
+  setVisibility(value: "visible" | "hidden"): void;
+  dispatchDocument(type: string): void;
+  dispatchWindow(type: string, persisted?: boolean): void;
+  disconnectCurrent(): void;
+  resolveSuspend(): void;
+  suspendRequests(): number;
+  reconnectPrepareRequests(): number;
+};
+
+class FakeLifecycleChannel {
+  readonly readyState = "open";
+  readonly bufferedAmount = 0;
+  readonly sent: string[] = [];
+  onmessage: ((event: { data: string }) => void) | null = null;
+  send(value: string): void { this.sent.push(value); }
+}
+
+class FakeLifecyclePeer {
+  connectionState = "new";
+  iceGatheringState = "complete";
+  localDescription: { type: "offer"; sdp: string } | null = null;
+  ontrack: ((event: { streams: unknown[]; track: unknown }) => void) | null = null;
+  onconnectionstatechange: (() => void) | null = null;
+  readonly critical = new FakeLifecycleChannel();
+  readonly realtime = new FakeLifecycleChannel();
+
+  addEventListener(): void {}
+  removeEventListener(): void {}
+  addTransceiver(): void {}
+  createDataChannel(label: string): FakeLifecycleChannel {
+    return label === "human-critical" ? this.critical : this.realtime;
+  }
+  async createOffer(): Promise<{ type: "offer"; sdp: string }> { return { type: "offer", sdp: "v=0\r\n" }; }
+  async setLocalDescription(offer: { type: "offer"; sdp: string }): Promise<void> { this.localDescription = offer; }
+  async setRemoteDescription(): Promise<void> {
+    this.connectionState = "connected";
+    queueMicrotask(() => this.onconnectionstatechange?.());
+  }
+  async getStats(): Promise<Map<string, unknown>> { return new Map(); }
+  close(): void { this.connectionState = "closed"; }
+  disconnect(): void {
+    this.connectionState = "disconnected";
+    this.onconnectionstatechange?.();
+  }
+}
+
+async function reconnectClientHarness(
+  broker: TakeoverBroker,
+  reconnectConflicts = 0
+): Promise<ReconnectClientHarness> {
+  const response = await broker.handle(new Request("http://localhost/takeover/webrtc-client.js"), PRINCIPAL);
+  assert.equal(response.status, 200);
+  const script = await response.text();
+  const elements = new Map<string, FakeBrowserElement>();
+  for (const selector of [
+    "#status", "#video", ".screen", "#zoom", "#aim", "#aim-tap", "#aim-crosshair",
+    "#keyboard", "#keyboard-open", "#keyboard-backspace", "#done"
+  ]) elements.set(selector, new FakeBrowserElement());
+  elements.get("#done")!.dataset.completion = "completion-capability";
+  const status = elements.get("#status")!;
+  status.textContent = "Connecting…";
+
+  const documentListeners = new Map<string, Array<(event: { persisted?: boolean }) => void>>();
+  const windowListeners = new Map<string, Array<(event: { persisted?: boolean }) => void>>();
+  let visibilityState: "visible" | "hidden" = "visible";
+  const addListener = (
+    target: Map<string, Array<(event: { persisted?: boolean }) => void>>,
+    type: string,
+    listener: (event: { persisted?: boolean }) => void
+  ) => target.set(type, [...(target.get(type) ?? []), listener]);
+  const documentStub = {
+    get visibilityState() { return visibilityState; },
+    activeElement: undefined,
+    querySelector(selector: string) { return elements.get(selector); },
+    addEventListener(type: string, listener: (event: { persisted?: boolean }) => void) {
+      addListener(documentListeners, type, listener);
+    }
+  };
+  const windowStub = {
+    addEventListener(type: string, listener: (event: { persisted?: boolean }) => void) {
+      addListener(windowListeners, type, listener);
+    }
+  };
+
+  let resolveSuspendResponse!: (response: Response) => void;
+  let suspendPromise = new Promise<Response>((resolve) => { resolveSuspendResponse = resolve; });
+  let suspendCount = 0;
+  let reconnectPrepareCount = 0;
+  let conflictsRemaining = reconnectConflicts;
+  let generation = 1;
+  const peers: FakeLifecyclePeer[] = [];
+  const PeerCtor = class extends FakeLifecyclePeer {
+    constructor() { super(); peers.push(this); }
+  };
+  const grant = () => ({
+    capability: `capability-${generation}`.padEnd(32, "x"),
+    reconnectHandle: `reconnect-${generation}`.padEnd(40, "y"),
+    clientGeneration: generation,
+    inputPolicy: { tap: true, scroll: true, text: true, key: true },
+    webrtcIce: { iceServers: [], relay: "disabled" }
+  });
+  const fetchStub = async (url: string): Promise<Response> => {
+    if (url.includes("/takeover/api/webrtc-prepare-claim/")) return Response.json(grant());
+    if (url.includes("/takeover/api/webrtc-prepare-reconnect/")) {
+      reconnectPrepareCount += 1;
+      if (conflictsRemaining > 0) {
+        conflictsRemaining -= 1;
+        return Response.json({ error: "takeover_client_active", retryAfterMs: 750 }, { status: 409 });
+      }
+      generation += 1;
+      return Response.json(grant());
+    }
+    if (url.includes("/takeover/api/webrtc-connect/")) {
+      return Response.json({ webrtc: { type: "answer", sdp: "v=0\r\n" } });
+    }
+    if (url.includes("/takeover/api/webrtc-suspend/")) {
+      suspendCount += 1;
+      return suspendPromise;
+    }
+    if (url.includes("/takeover/api/webrtc-diagnostics/") || url.includes("/takeover/api/webrtc-metrics/")) {
+      return Response.json({ accepted: true });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+  let randomSeed = 1;
+  const cryptoStub = {
+    getRandomValues(bytes: Uint8Array) {
+      bytes.fill(randomSeed++ % 251 || 1);
+      return bytes;
+    }
+  };
+  let clock = 1;
+  let timerId = 0;
+  const setTimeoutStub = (callback: () => void, ms = 0) => {
+    const id = ++timerId;
+    if (ms < 10_000) queueMicrotask(callback);
+    return id;
+  };
+  const run = new Function(
+    "location", "document", "window", "navigator", "crypto", "btoa", "performance", "fetch",
+    "TextEncoder", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "MediaStream", "RTCPeerConnection",
+    script
+  );
+  run(
+    { pathname: "/takeover/browser-reconnect-test" },
+    documentStub,
+    windowStub,
+    { maxTouchPoints: 0 },
+    cryptoStub,
+    (value: string) => Buffer.from(value, "binary").toString("base64"),
+    { now: () => clock++ },
+    fetchStub,
+    TextEncoder,
+    setTimeoutStub,
+    () => undefined,
+    () => ++timerId,
+    () => undefined,
+    class {},
+    PeerCtor
+  );
+  await flushAsync();
+  await flushAsync();
+  assert.equal(peers.length, 1);
+
+  return {
+    status,
+    peers,
+    setVisibility(value) { visibilityState = value; },
+    dispatchDocument(type) {
+      for (const listener of documentListeners.get(type) ?? []) listener({});
+    },
+    dispatchWindow(type, persisted = false) {
+      for (const listener of windowListeners.get(type) ?? []) listener({ persisted });
+    },
+    disconnectCurrent() { peers.at(-1)!.disconnect(); },
+    resolveSuspend() {
+      resolveSuspendResponse(Response.json({ suspended: true, reconnectRequired: true }));
+      suspendPromise = Promise.resolve(Response.json({ suspended: true, reconnectRequired: true }));
+    },
+    suspendRequests() { return suspendCount; },
+    reconnectPrepareRequests() { return reconnectPrepareCount; }
+  };
+}
+
 async function prepareAndConnect(
   broker: TakeoverBroker,
   sessionId: string,
@@ -451,6 +639,56 @@ test("WebRTC Done failure remains fail-closed and shows completion-specific stat
   harness.rejectPrepare();
   await flushAsync();
   assert.equal(harness.status.textContent, "Completion unavailable. Remote control remains closed.");
+});
+
+
+
+test("Browser reconnect waits for the exact generation release and coalesces Safari lifecycle triggers", async () => {
+  const { broker } = fixture();
+  const harness = await reconnectClientHarness(broker);
+
+  harness.disconnectCurrent();
+  await flushAsync();
+  assert.equal(harness.suspendRequests(), 1);
+  assert.equal(harness.reconnectPrepareRequests(), 0);
+
+  harness.setVisibility("visible");
+  harness.dispatchDocument("visibilitychange");
+  harness.dispatchWindow("pageshow", true);
+  await flushAsync();
+  assert.equal(
+    harness.reconnectPrepareRequests(),
+    0,
+    "foreground events must wait for the old generation release to settle"
+  );
+
+  harness.resolveSuspend();
+  await flushAsync();
+  await flushAsync();
+  await flushAsync();
+  assert.equal(harness.reconnectPrepareRequests(), 1, "concurrent Safari lifecycle triggers must share one reconnect");
+  assert.equal(harness.peers.length, 2);
+  assert.deepEqual(harness.peers.flatMap((peer) => peer.critical.sent), [], "Human input must not replay across reconnect");
+  assert.match(harness.status.textContent, /Connected .*waiting for video|Live/);
+});
+
+
+
+test("Browser reconnect consumes bounded 409 retry hint and recovers without a reconnect loop", async () => {
+  const { broker } = fixture();
+  const harness = await reconnectClientHarness(broker, 1);
+
+  harness.disconnectCurrent();
+  await flushAsync();
+  harness.resolveSuspend();
+  await flushAsync();
+  await flushAsync();
+  await flushAsync();
+  await flushAsync();
+
+  assert.equal(harness.reconnectPrepareRequests(), 2, "one active-lease conflict should produce one bounded retry");
+  assert.equal(harness.peers.length, 2, "409 must not create an extra peer before a generation is granted");
+  assert.match(harness.status.textContent, /Connected .*waiting for video|Live/);
 });
 
 test("WebRTC locator renders direct touch UI and direct-first relay-capable client without legacy buttons", async () => {
@@ -713,6 +951,25 @@ test("background suspend waits for an in-flight WebRTC connect before revoking t
   assert.deepEqual(runtime.revokes, [sessionId]);
 });
 
+test("reconnect active-lease conflict is bounded and peer loss releases the exact stale generation", async () => {
+  const { broker, runtime, sessionId } = fixture();
+  const first = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+
+  const conflict = await prepare(broker, sessionId, "reconnect", CLIENT_B, first.reconnectHandle);
+  assert.equal(conflict.status, 409);
+  assert.deepEqual(await conflict.json(), { error: "takeover_client_active", retryAfterMs: 500 });
+  assert.deepEqual(runtime.diagnostics.slice(-2).map((event) => event.stage), [
+    "broker.prepare.failure",
+    "broker.reconnect.conflict.active_lease"
+  ]);
+
+  runtime.starts[0]!.hooks.disconnected();
+  assert.equal(runtime.diagnostics.at(-1)?.stage, "broker.generation.release.peer_loss");
+
+  const second = await prepareAndConnect(broker, sessionId, "reconnect", CLIENT_B, first.reconnectHandle);
+  assert.equal(second.clientGeneration, 2);
+});
+
 test("background suspend fences stale capability and reconnect prepares a fresh generation", async () => {
   const { broker, runtime, sessionId } = fixture();
   const first = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
@@ -732,6 +989,7 @@ test("background suspend fences stale capability and reconnect prepares a fresh 
   }), PRINCIPAL);
   assert.equal(suspend.status, 200);
   assert.deepEqual(await suspend.json(), { suspended: true, reconnectRequired: true });
+  assert.equal(runtime.diagnostics.at(-1)?.stage, "broker.generation.release.suspend");
   assert.throws(() => firstHooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 }), /stale|unavailable/i);
 
   const staleConnect = await connect(broker, sessionId, CLIENT_A, first.capability);

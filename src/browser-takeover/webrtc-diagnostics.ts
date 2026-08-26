@@ -12,6 +12,9 @@ export type WebRtcDiagnosticStage =
   | "broker.prepare.request"
   | "broker.prepare.success"
   | "broker.prepare.failure"
+  | "broker.reconnect.conflict.active_lease"
+  | "broker.generation.release.suspend"
+  | "broker.generation.release.peer_loss"
   | "relay.credential.unavailable"
   | "browser.gather.complete"
   | "browser.peer.state"
@@ -100,6 +103,9 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "broker.prepare.request",
   "broker.prepare.success",
   "broker.prepare.failure",
+  "broker.reconnect.conflict.active_lease",
+  "broker.generation.release.suspend",
+  "broker.generation.release.peer_loss",
   "relay.credential.unavailable",
   "browser.gather.complete",
   "browser.peer.state",
@@ -213,6 +219,9 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "broker.prepare.request": ["stage"],
     "broker.prepare.success": ["stage", "durationMs"],
     "broker.prepare.failure": ["stage", "durationMs"],
+    "broker.reconnect.conflict.active_lease": ["stage", "durationMs"],
+    "broker.generation.release.suspend": ["stage"],
+    "broker.generation.release.peer_loss": ["stage"],
     "relay.credential.unavailable": ["stage", "reason"],
     "browser.gather.complete": ["stage", "candidateCounts", "durationMs"],
     "browser.peer.state": ["stage", "state"],
