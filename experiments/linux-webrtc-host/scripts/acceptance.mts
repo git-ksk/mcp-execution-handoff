@@ -35,6 +35,37 @@ async function waitForX(displayNumber: number): Promise<void> {
   await waitFor("xvfb-socket", () => exists(socket), 5_000);
 }
 
+function ewmhSupportingWindow(env: NodeJS.ProcessEnv, windowId?: number): number | undefined {
+  const args = windowId === undefined
+    ? ["-root", "_NET_SUPPORTING_WM_CHECK"]
+    : ["-id", String(windowId), "_NET_SUPPORTING_WM_CHECK"];
+  const result = spawnSync("/usr/bin/xprop", args, { env, encoding: "utf8" });
+  if (result.status !== 0) return undefined;
+  const match = /window id # (0x[0-9a-fA-F]+)/.exec(result.stdout);
+  if (!match) return undefined;
+  const value = Number.parseInt(match[1]!, 16);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function ewmhWindowManagerName(windowId: number, env: NodeJS.ProcessEnv): string | undefined {
+  const result = spawnSync("/usr/bin/xprop", ["-id", String(windowId), "_NET_WM_NAME"], { env, encoding: "utf8" });
+  if (result.status !== 0) return undefined;
+  const match = /_NET_WM_NAME\([^)]*\) = "([^"]{1,80})"/.exec(result.stdout);
+  return match?.[1];
+}
+
+async function waitForOpenboxReady(openbox: ChildProcess, env: NodeJS.ProcessEnv): Promise<void> {
+  await waitFor("openbox-ewmh-ready", () => {
+    if (openbox.exitCode !== null || openbox.signalCode !== null) {
+      throw new Error("Openbox exited before EWMH readiness");
+    }
+    const supportingWindow = ewmhSupportingWindow(env);
+    if (!supportingWindow) return false;
+    if (ewmhSupportingWindow(env, supportingWindow) !== supportingWindow) return false;
+    return ewmhWindowManagerName(supportingWindow, env) === "Openbox";
+  }, 5_000);
+}
+
 
 async function within<T>(label: string, promise: Promise<T>, timeoutMs = 5_000): Promise<T> {
   return Promise.race([
@@ -162,7 +193,7 @@ async function main(): Promise<void> {
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
   ]);
-  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/ffmpeg"]) {
+  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/xprop", "/usr/bin/ffmpeg"]) {
     assert.equal(await exists(executable), true, `${executable} is required`);
   }
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
@@ -267,7 +298,7 @@ async function main(): Promise<void> {
     await waitForX(displayNumber);
     openbox = spawn(openboxExecutable, ["--sm-disable"], { env: xEnv, stdio: ["ignore", "ignore", "ignore"] });
     openbox.once("error", () => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await waitForOpenboxReady(openbox, xEnv);
 
     const chromeArgs = [
       `--user-data-dir=${profile}`,

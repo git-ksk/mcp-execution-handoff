@@ -128,6 +128,10 @@ test("Linux real-browser acceptance carries the accepted exact window into WebRT
   assert.match(source, /timeoutMs:\s*45_000/);
   assert.match(source, /stableSamples:\s*2/);
   assert.match(source, /targetWindowId:\s*acceptedWindowIdNumber/);
+  assert.match(source, /waitForOpenboxReady\(openbox, xEnv\)/);
+  assert.match(source, /_NET_SUPPORTING_WM_CHECK/);
+  assert.match(source, /_NET_WM_NAME/);
+  assert.doesNotMatch(source, /openbox\.once\("error"[\s\S]{0,160}setTimeout\(resolve, 250\)/);
   assert.match(source, /kind: "pointer_button", button: "primary", state: "down"/);
   assert.match(source, /kind: "pointer_button", button: "primary", state: "up"/);
   assert.doesNotMatch(source, /critical\.send\(JSON\.stringify\(\{ kind: "tap"/);
