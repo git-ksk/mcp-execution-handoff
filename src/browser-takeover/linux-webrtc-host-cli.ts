@@ -379,6 +379,9 @@ class LinuxXTestPointerHelper {
 }
 
 type LinuxXRecordDeliveryWaitFailure =
+  | "WAIT_NO_FROM_SERVER"
+  | "WAIT_SWAPPED"
+  | "WAIT_SHORT_DATA"
   | "WAIT_NO_EVENT"
   | "WAIT_EVENT_MISMATCH"
   | "WAIT_XI2_MISMATCH"
@@ -524,7 +527,7 @@ class LinuxXRecordDeliveryHelper {
         continue;
       }
       const waitFailure = pending.expected === "PRESS"
-        ? /^ERR (WAIT_NO_EVENT|WAIT_EVENT_MISMATCH|WAIT_XI2_MISMATCH|WAIT_WINDOW_MISMATCH|WAIT_COORD_MISMATCH|WAIT_IO)$/.exec(line)
+        ? /^ERR (WAIT_NO_FROM_SERVER|WAIT_SWAPPED|WAIT_SHORT_DATA|WAIT_NO_EVENT|WAIT_EVENT_MISMATCH|WAIT_XI2_MISMATCH|WAIT_WINDOW_MISMATCH|WAIT_COORD_MISMATCH|WAIT_IO)$/.exec(line)
         : null;
       if (waitFailure) {
         pending.reject(new LinuxXRecordDeliveryWaitError(waitFailure[1] as LinuxXRecordDeliveryWaitFailure));
@@ -806,6 +809,9 @@ class LinuxWindowInput {
         } catch (error) {
           if (error instanceof LinuxXRecordDeliveryWaitError) {
             const stages: Record<LinuxXRecordDeliveryWaitFailure, string> = {
+              WAIT_NO_FROM_SERVER: "input_pointer_delivery_wait_no_from_server",
+              WAIT_SWAPPED: "input_pointer_delivery_wait_swapped",
+              WAIT_SHORT_DATA: "input_pointer_delivery_wait_short_data",
               WAIT_NO_EVENT: "input_pointer_delivery_wait_no_event",
               WAIT_EVENT_MISMATCH: "input_pointer_delivery_wait_event_mismatch",
               WAIT_XI2_MISMATCH: "input_pointer_delivery_wait_xi2_mismatch",

@@ -141,6 +141,9 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_pointer_delivery_helper_failure/);
   assert.match(host, /linux_stage=input_pointer_delivery_arm_failure/);
   assert.match(host, /LinuxXRecordDeliveryWaitError/);
+  assert.match(host, /WAIT_NO_FROM_SERVER/);
+  assert.match(host, /WAIT_SWAPPED/);
+  assert.match(host, /WAIT_SHORT_DATA/);
   assert.match(host, /WAIT_NO_EVENT/);
   assert.match(host, /WAIT_EVENT_MISMATCH/);
   assert.match(host, /WAIT_XI2_MISMATCH/);
@@ -224,6 +227,9 @@ test("Linux XRecord helper waits for exact delivered Button1 press without injec
   assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
   assert.match(helper, /WIRE_XI2_EVENT_WINDOW_OFFSET/);
   assert.match(helper, /DELIVERY_WAIT_TIMEOUT_MS 1000/);
+  assert.match(helper, /WAIT_NO_FROM_SERVER/);
+  assert.match(helper, /WAIT_SWAPPED/);
+  assert.match(helper, /WAIT_SHORT_DATA/);
   assert.match(helper, /WAIT_NO_EVENT/);
   assert.match(helper, /WAIT_EVENT_MISMATCH/);
   assert.match(helper, /WAIT_XI2_MISMATCH/);

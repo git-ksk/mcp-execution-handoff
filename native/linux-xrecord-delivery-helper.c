@@ -41,6 +41,9 @@ typedef struct {
   int expected_x;
   int expected_y;
   bool delivered;
+  bool saw_from_server;
+  bool saw_swapped;
+  bool saw_short_data;
   bool saw_event;
   bool saw_xi2_mismatch;
   bool saw_window_mismatch;
@@ -194,6 +197,14 @@ static bool collect_target_clients(
 static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
   DeliveryState *state = (DeliveryState *)closure;
   if (recorded == NULL) return;
+  if (!state->delivered && recorded->category == XRecordFromServer) {
+    state->saw_from_server = true;
+    if (recorded->client_swapped) {
+      state->saw_swapped = true;
+    } else if (recorded->data == NULL || recorded->data_len < (X_EVENT_BYTES / 4UL)) {
+      state->saw_short_data = true;
+    }
+  }
   if (!state->delivered
       && recorded->category == XRecordFromServer
       && !recorded->client_swapped
@@ -248,6 +259,9 @@ static void disable_context(DeliveryState *state) {
   state->context = 0;
   state->expected_window = None;
   state->delivered = false;
+  state->saw_from_server = false;
+  state->saw_swapped = false;
+  state->saw_short_data = false;
   state->saw_event = false;
   state->saw_xi2_mismatch = false;
   state->saw_window_mismatch = false;
@@ -298,6 +312,9 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
   state->expected_x = x;
   state->expected_y = y;
   state->delivered = false;
+  state->saw_from_server = false;
+  state->saw_swapped = false;
+  state->saw_short_data = false;
   state->saw_event = false;
   state->saw_xi2_mismatch = false;
   state->saw_window_mismatch = false;
@@ -315,6 +332,9 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
 }
 
 static const char *wait_failure_code(const DeliveryState *state) {
+  if (!state->saw_from_server) return "WAIT_NO_FROM_SERVER";
+  if (!state->saw_event && state->saw_swapped) return "WAIT_SWAPPED";
+  if (!state->saw_event && state->saw_short_data) return "WAIT_SHORT_DATA";
   if (!state->saw_event) return "WAIT_NO_EVENT";
   if (state->saw_window_mismatch) return "WAIT_WINDOW_MISMATCH";
   if (state->saw_coordinate_mismatch) return "WAIT_COORD_MISMATCH";
