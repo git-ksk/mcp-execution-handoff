@@ -196,6 +196,136 @@ async function diagnostic(
   ), PRINCIPAL);
 }
 
+
+class FakeBrowserElement {
+  textContent = "";
+  value = "";
+  disabled = false;
+  readonly dataset: Record<string, string> = {};
+  readonly style: Record<string, string> = {};
+  readonly attributes = new Map<string, string>();
+  readonly listeners = new Map<string, Array<(event: Record<string, unknown>) => void>>();
+  videoWidth = 1280;
+  videoHeight = 720;
+
+  addEventListener(type: string, listener: (event: Record<string, unknown>) => void): void {
+    const listeners = this.listeners.get(type) ?? [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  dispatch(type: string): void {
+    const event = {
+      preventDefault() {},
+      stopPropagation() {},
+      persisted: false,
+      touches: [],
+      changedTouches: []
+    };
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  getAttribute(name: string): string | undefined {
+    return this.attributes.get(name);
+  }
+
+  blur(): void {}
+  focus(): void {}
+  setSelectionRange(): void {}
+  setPointerCapture(): void {}
+  getBoundingClientRect(): { left: number; top: number; width: number; height: number } {
+    return { left: 0, top: 0, width: 1280, height: 720 };
+  }
+  play(): Promise<void> { return Promise.resolve(); }
+}
+
+type CompletionClientHarness = {
+  status: FakeBrowserElement;
+  done: FakeBrowserElement;
+  rejectPrepare(error?: Error): void;
+  resolveCompletion(ok: boolean): void;
+  completionRequests(): number;
+};
+
+async function completionClientHarness(broker: TakeoverBroker): Promise<CompletionClientHarness> {
+  const response = await broker.handle(new Request("http://localhost/takeover/webrtc-client.js"), PRINCIPAL);
+  assert.equal(response.status, 200);
+  const script = await response.text();
+  const elements = new Map<string, FakeBrowserElement>();
+  for (const selector of [
+    "#status", "#video", ".screen", "#zoom", "#aim", "#aim-tap", "#aim-crosshair",
+    "#keyboard", "#keyboard-open", "#keyboard-backspace", "#done"
+  ]) elements.set(selector, new FakeBrowserElement());
+  const done = elements.get("#done")!;
+  done.dataset.completion = "completion-capability";
+  const status = elements.get("#status")!;
+  status.textContent = "Connecting…";
+
+  let rejectPrepare!: (error: Error) => void;
+  const preparePromise = new Promise<never>((_resolve, reject) => { rejectPrepare = reject; });
+  let resolveCompletion!: (response: { ok: boolean }) => void;
+  const completionPromise = new Promise<{ ok: boolean }>((resolve) => { resolveCompletion = resolve; });
+  let completeCount = 0;
+  const fetchStub = (url: string): Promise<unknown> => {
+    if (url.includes("/takeover/api/webrtc-prepare-claim/")) return preparePromise;
+    if (url.includes("/takeover/api/complete/")) {
+      completeCount += 1;
+      return completionPromise;
+    }
+    return Promise.reject(new Error(`unexpected fetch: ${url}`));
+  };
+
+  const documentStub = {
+    visibilityState: "visible",
+    activeElement: undefined,
+    querySelector(selector: string) { return elements.get(selector); },
+    addEventListener() {}
+  };
+  const windowStub = { addEventListener() {} };
+  const cryptoStub = { getRandomValues(bytes: Uint8Array) { bytes.fill(7); return bytes; } };
+  const noTimer = () => 1;
+  const clearTimer = () => undefined;
+  const run = new Function(
+    "location", "document", "window", "navigator", "crypto", "btoa", "performance", "fetch",
+    "TextEncoder", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "MediaStream", "RTCPeerConnection",
+    script
+  );
+  run(
+    { pathname: "/takeover/browser-completion-test" },
+    documentStub,
+    windowStub,
+    { maxTouchPoints: 0 },
+    cryptoStub,
+    (value: string) => Buffer.from(value, "binary").toString("base64"),
+    { now: () => 1 },
+    fetchStub,
+    TextEncoder,
+    noTimer,
+    clearTimer,
+    noTimer,
+    clearTimer,
+    class {},
+    class { constructor() { throw new Error("peer should not start before prepare resolves"); } }
+  );
+  return {
+    status,
+    done,
+    rejectPrepare(error = new Error("connection failed")) { rejectPrepare(error); },
+    resolveCompletion(ok: boolean) { resolveCompletion({ ok }); },
+    completionRequests() { return completeCount; }
+  };
+}
+
+async function flushAsync(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 async function prepareAndConnect(
   broker: TakeoverBroker,
   sessionId: string,
@@ -272,6 +402,55 @@ test("WebRTC broker rejects invalid exact host window targets", () => {
     PRINCIPAL,
     { processId: 4242, windowId: 0 }
   ), undefined);
+});
+
+
+test("WebRTC Done immediately fences local Human controls and remains one-shot while completion is pending", async () => {
+  const { broker } = fixture();
+  const harness = await completionClientHarness(broker);
+
+  harness.done.dispatch("touchend");
+  assert.equal(harness.done.disabled, true);
+  assert.equal(harness.done.getAttribute("aria-disabled"), "true");
+  assert.equal(harness.done.textContent, "Closing…");
+  assert.equal(harness.status.textContent, "Closing…");
+  assert.equal(harness.completionRequests(), 1);
+
+  harness.done.dispatch("click");
+  harness.done.dispatch("touchend");
+  assert.equal(harness.completionRequests(), 1, "duplicate Done gestures must remain local no-ops");
+
+  harness.rejectPrepare();
+  await flushAsync();
+  assert.equal(harness.status.textContent, "Closing…", "connection failure must not overwrite in-flight completion state");
+
+  harness.resolveCompletion(true);
+  await flushAsync();
+  assert.equal(harness.done.disabled, true);
+  assert.equal(harness.done.textContent, "Closed");
+  assert.equal(harness.status.textContent, "Remote control closed. Return to the requesting workflow.");
+  assert.equal(harness.completionRequests(), 1);
+});
+
+test("WebRTC Done failure remains fail-closed and shows completion-specific status without restoring authority", async () => {
+  const { broker } = fixture();
+  const harness = await completionClientHarness(broker);
+
+  harness.done.dispatch("click");
+  assert.equal(harness.done.disabled, true);
+  assert.equal(harness.status.textContent, "Closing…");
+  harness.resolveCompletion(false);
+  await flushAsync();
+
+  assert.equal(harness.done.disabled, true);
+  assert.equal(harness.done.textContent, "Closed");
+  assert.equal(harness.status.textContent, "Completion unavailable. Remote control remains closed.");
+  harness.done.dispatch("click");
+  assert.equal(harness.completionRequests(), 1, "a failed completion response must not restore the consumed capability");
+
+  harness.rejectPrepare();
+  await flushAsync();
+  assert.equal(harness.status.textContent, "Completion unavailable. Remote control remains closed.");
 });
 
 test("WebRTC locator renders direct touch UI and direct-first relay-capable client without legacy buttons", async () => {
