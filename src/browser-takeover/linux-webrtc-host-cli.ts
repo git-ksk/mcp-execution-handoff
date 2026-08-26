@@ -515,7 +515,17 @@ class LinuxWindowInput {
     // pair can cancel Chromium's click lifecycle. For release, revalidate ownership above and
     // verify active/focus below without issuing another focus mutation while Button1 is held.
     if (!continuingPrimaryRelease) {
-      await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
+      const pointerLifecycle = input.kind === "tap" || input.kind === "pointer_button";
+      // Avoid perturbing an already-authorized pointer route. Openbox and other reparenting WMs
+      // can own passive click-to-focus grabs; repeatedly sending _NET_ACTIVE_WINDOW immediately
+      // before XTEST Button1 creates needless WM bookkeeping. If active/focus already prove exact
+      // authority, leave the WM untouched. Otherwise request activation through EWMH and verify it.
+      const alreadyAuthorized = pointerLifecycle
+        && await this.activeTargetOnce()
+        && await this.inputFocusOwnedByTargetOnce();
+      if (!alreadyAuthorized) {
+        await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
+      }
       // Let the EWMH-aware window manager own pointer focus transitions. Calling windowfocus here
       // would bypass the WM with XSetInputFocus and can diverge from its click/grab bookkeeping.
       // Scroll retains the legacy direct-focus behavior; pointer down proceeds only after the
@@ -678,10 +688,23 @@ class LinuxWindowInput {
     return geometry;
   }
 
+  private async activeTargetOnce(): Promise<boolean> {
+    const active = await runCommand(this.xdotool, ["getactivewindow"], this.display).catch(() => "");
+    return Number(active.trim()) === this.geometry.windowId;
+  }
+
+  private async inputFocusOwnedByTargetOnce(): Promise<boolean> {
+    const focused = await runCommand(this.xdotool, ["getwindowfocus"], this.display).catch(() => "");
+    const focusedWindowId = Number(focused.trim());
+    if (!Number.isSafeInteger(focusedWindowId) || focusedWindowId <= 0) return false;
+    if (focusedWindowId === this.geometry.windowId) return true;
+    const focusedPid = await runCommand(this.xdotool, ["getwindowpid", String(focusedWindowId)], this.display).catch(() => "");
+    return Number(focusedPid.trim()) === this.targetPid;
+  }
+
   private async confirmActiveTarget(): Promise<void> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const active = await runCommand(this.xdotool, ["getactivewindow"], this.display).catch(() => "");
-      if (Number(active.trim()) === this.geometry.windowId) return;
+      if (await this.activeTargetOnce()) return;
       if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
     }
     throw new Error("Linux WebRTC target window did not become active");
@@ -689,13 +712,7 @@ class LinuxWindowInput {
 
   private async confirmInputFocusOwnedByTarget(): Promise<void> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const focused = await runCommand(this.xdotool, ["getwindowfocus"], this.display).catch(() => "");
-      const focusedWindowId = Number(focused.trim());
-      if (Number.isSafeInteger(focusedWindowId) && focusedWindowId > 0) {
-        if (focusedWindowId === this.geometry.windowId) return;
-        const focusedPid = await runCommand(this.xdotool, ["getwindowpid", String(focusedWindowId)], this.display).catch(() => "");
-        if (Number(focusedPid.trim()) === this.targetPid) return;
-      }
+      if (await this.inputFocusOwnedByTargetOnce()) return;
       if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
     }
     throw new Error("Linux WebRTC input focus is not owned by the target process");

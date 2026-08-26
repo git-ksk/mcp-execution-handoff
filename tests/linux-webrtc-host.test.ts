@@ -108,6 +108,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /if \(!continuingPrimaryRelease\) \{[\s\S]*windowactivate[\s\S]*windowfocus/);
   assert.match(host, /verify active\/focus below without issuing another focus mutation/);
   assert.match(host, /if \(input\.kind === "scroll"\)[\s\S]*windowfocus/);
+  assert.match(host, /const alreadyAuthorized = pointerLifecycle[\s\S]*activeTargetOnce\(\)[\s\S]*inputFocusOwnedByTargetOnce\(\)/);
+  assert.match(host, /if \(!alreadyAuthorized\) \{[\s\S]*windowactivate/);
   assert.doesNotMatch(host, /input\.kind === "tap" \|\| input\.kind === "pointer_button" \|\| input\.kind === "scroll"/);
   assert.match(host, /spawn\(this\.xdotool, \["type", "--clearmodifiers", "--delay", "5", "--file", "-"\]/);
   assert.match(host, /child\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
