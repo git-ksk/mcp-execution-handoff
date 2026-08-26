@@ -128,7 +128,7 @@ async function main(): Promise<void> {
 
   let pageInteractive = false;
   let formOpened = false;
-  const pointerEvents = { pointerdown: false, mousedown: false, pointerup: false, mouseup: false, click: false };
+  const pointerEvents = { pointermove: false, mousemove: false, pointerdown: false, mousedown: false, pointerup: false, mouseup: false, click: false };
   let typedLength = 0;
   let submitted: string | undefined;
   const server = http.createServer((req, res) => {
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     }
     if (url.pathname === "/pointer-event") {
       const kind = url.searchParams.get("kind");
-      if (kind === "pointerdown" || kind === "mousedown" || kind === "pointerup" || kind === "mouseup" || kind === "click") {
+      if (kind === "pointermove" || kind === "mousemove" || kind === "pointerdown" || kind === "mousedown" || kind === "pointerup" || kind === "mouseup" || kind === "click") {
         pointerEvents[kind] = true;
         res.end("ok");
         return;
@@ -167,7 +167,7 @@ async function main(): Promise<void> {
       res.end("<!doctype html><html><body>submitted</body></html>");
       return;
     }
-    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button id="open-form" onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button><script>const b=document.getElementById('open-form');for(const k of ['pointerdown','mousedown','pointerup','mouseup','click'])b.addEventListener(k,()=>fetch('/pointer-event?kind='+k,{cache:'no-store',keepalive:true}).catch(()=>{}));window.addEventListener('load',()=>fetch('/ready',{cache:'no-store'}).catch(()=>{}),{once:true});</script></body></html>`);
+    res.end(`<!doctype html><html><head><title>Handoff Linux Acceptance</title></head><body style="margin:0"><button id="open-form" onclick="location.href='/form'" style="position:fixed;inset:0;border:0;font-size:32px">Open form</button><script>const b=document.getElementById('open-form');for(const k of ['pointermove','mousemove','pointerdown','mousedown','pointerup','mouseup','click'])b.addEventListener(k,()=>fetch('/pointer-event?kind='+k,{cache:'no-store',keepalive:true}).catch(()=>{}));window.addEventListener('load',()=>fetch('/ready',{cache:'no-store'}).catch(()=>{}),{once:true});</script></body></html>`);
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
