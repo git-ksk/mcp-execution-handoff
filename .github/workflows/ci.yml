@@ -79,6 +79,10 @@ jobs:
         run: npm run build:linux-xrecord-delivery-helper
       - name: Build Linux X11 pointer query probe
         run: npm run build:linux-x11-pointer-query
+      - name: Build Linux XRecord self-test target
+        run: cc -O2 -std=c11 -Wall -Wextra -Werror native/linux-xrecord-selftest-target.c -o /tmp/mcp-handoff-linux-xrecord-selftest-target -lX11
+      - name: Verify strict XRecord delivery against one-client X11 target
+        run: node --import tsx experiments/linux-webrtc-host/scripts/xrecord-delivery-selftest.mts
       - name: Normalize runner Chrome stable
         run: |
           if command -v google-chrome-stable >/dev/null 2>&1; then

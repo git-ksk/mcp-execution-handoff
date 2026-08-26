@@ -246,6 +246,13 @@ test("Linux XRecord helper waits for exact delivered Button1 press without injec
   assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
 });
 
+test("Linux XRecord self-test target stays a minimal real X11 recipient", () => {
+  const target = readFileSync("native/linux-xrecord-selftest-target.c", "utf8");
+  assert.match(target, /XSelectInput\(display, window, ButtonPressMask \| ButtonReleaseMask/);
+  assert.match(target, /XNextEvent/);
+  assert.doesNotMatch(target, /XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
+});
+
 test("Linux X11 pointer query probe remains query-only and non-invasive", () => {
   const probe = readFileSync("experiments/linux-webrtc-host/native/x11-pointer-query.c", "utf8");
   assert.match(probe, /XOpenDisplay\(NULL\)/);
