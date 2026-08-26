@@ -123,6 +123,9 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /record\.kind === "pointer_button"/);
   assert.match(host, /record\.button === "primary"/);
   assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
+  assert.match(host, /linux_stage=input_pointer_move_ready/);
+  assert.match(host, /linux_stage=input_pointer_authority_ready/);
+  assert.match(host, /linux_stage=input_pointer_down_sent/);
   assert.match(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
   assert.match(host, /"mousemove", String\(releasePoint\.x\), String\(releasePoint\.y\),[\s\S]*"mouseup", "1"/);

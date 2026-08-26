@@ -414,11 +414,14 @@ class LinuxWindowInput {
         String(relativeX), String(relativeY),
         "getmouselocation"
       ], this.display);
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_move_ready\n");
       // The round trip above closes the motion race. Re-check exact active/focus authority after
       // motion and immediately before the stateful XTEST button mutation.
       await this.confirmActiveTarget();
       await this.confirmInputFocusOwnedByTarget();
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_authority_ready\n");
       await runCommand(this.xdotool, ["mousedown", "1"], this.display);
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_down_sent\n");
       this.primaryPressed = true;
       this.primaryPoint = { x, y };
       return;
