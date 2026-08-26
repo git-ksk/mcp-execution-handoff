@@ -389,6 +389,19 @@ static const char *wait_for_delivery(DeliveryState *state) {
   const int64_t start = monotonic_ms();
   if (fd < 0 || start < 0 || state->context == 0) return "WAIT_IO";
 
+  // RECORD batches intercepted protocol until an X server output flush. The injector has already
+  // synchronously acknowledged DOWN before Node sends WAIT, so a control-connection round trip is
+  // a causal flush barrier for any delivery already recorded by the server. This is not a timing
+  // delay and does not widen the recorded client/window authority.
+  x_error_seen = 0;
+  XSync(state->control, False);
+  if (x_error_seen != 0) return "WAIT_IO";
+  XRecordProcessReplies(state->data);
+  if (state->delivered) {
+    disable_context(state);
+    return NULL;
+  }
+
   for (;;) {
     struct pollfd descriptor;
     const int64_t now = monotonic_ms();

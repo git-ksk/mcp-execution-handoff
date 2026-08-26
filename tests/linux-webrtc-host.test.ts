@@ -225,6 +225,7 @@ test("Linux XRecord helper waits for exact delivered Button1 press without injec
   assert.match(helper, /XRecordCreateContext\(state->control, 0, clients, client_count, ranges, 2\)/);
   assert.match(helper, /XRecordEnableContextAsync/);
   assert.match(helper, /XRecordProcessReplies/);
+  assert.match(helper, /XSync\(state->control, False\)/);
   assert.match(helper, /window_descends_from\(state->control, state->expected_window, event_window\)/);
   assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
   assert.match(helper, /WIRE_XI2_EVENT_WINDOW_OFFSET/);
