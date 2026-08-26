@@ -485,7 +485,7 @@ struct MacHost {
         let lease = try sessionConfiguration.makeLease()
 
         // Permission checks happen before capture/input sockets become active. A takeover runtime
-        // without both required macOS permissions is not a usable Human surface and fails closed.
+        // without both required macOS permissions is not a usable Human-control session and fails closed.
         try preflightHumanSurfacePermissions()
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)

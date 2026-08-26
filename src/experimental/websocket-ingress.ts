@@ -271,7 +271,7 @@ interface ActiveConnection {
   readonly channel: ExperimentalWebSocketTakeoverChannel;
 }
 
-/** Concrete Node HTTPS/WSS ingress for the experimental browser transport. */
+/** Concrete Node HTTPS/WSS ingress for the experimental WebSocket transport carrying Browser Handoff. */
 export class ExperimentalWebSocketTakeoverIngress {
   readonly #origins: ReadonlySet<string>;
   readonly #server: WebSocketServer;

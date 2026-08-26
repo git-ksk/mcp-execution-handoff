@@ -1,5 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
-export const HUMAN_SURFACE_KINDS = ["automation_adjacent", "credential_safe_external"];
+export const HUMAN_INTERACTION_POLICY_KINDS = [
+    "automation_adjacent",
+    "credential_safe_external"
+];
+/** @deprecated Use HUMAN_INTERACTION_POLICY_KINDS. Kept for source/runtime compatibility. */
+export const HUMAN_SURFACE_KINDS = HUMAN_INTERACTION_POLICY_KINDS;
 export class ExternalHumanSurfaceError extends Error {
     code;
     constructor(code, message) {
@@ -8,11 +13,18 @@ export class ExternalHumanSurfaceError extends Error {
         this.name = "ExternalHumanSurfaceError";
     }
 }
-export function selectHumanSurface(reason, credentialSafeReasons) {
+export function selectHumanInteractionPolicy(reason, credentialSafeReasons) {
     const matches = Array.isArray(credentialSafeReasons)
         ? credentialSafeReasons.includes(reason)
         : credentialSafeReasons.has(reason);
     return matches ? "credential_safe_external" : "automation_adjacent";
+}
+/**
+ * @deprecated Use selectHumanInteractionPolicy(). This alias remains source/runtime compatible
+ * until an intentional breaking release after consumers have migrated.
+ */
+export function selectHumanSurface(reason, credentialSafeReasons) {
+    return selectHumanInteractionPolicy(reason, credentialSafeReasons);
 }
 export class CredentialSafeHumanSurfaceRuntime {
     provider;

@@ -173,7 +173,7 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
         this.#sessionsById.delete(record.sessionId);
     }
 }
-/** Concrete Node HTTPS/WSS ingress for the experimental browser transport. */
+/** Concrete Node HTTPS/WSS ingress for the experimental WebSocket transport carrying Browser Handoff. */
 export class ExperimentalWebSocketTakeoverIngress {
     options;
     #origins;

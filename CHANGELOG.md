@@ -4,6 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Added canonical Human Interaction Policy API names (`HumanInteractionPolicyKind`, `HUMAN_INTERACTION_POLICY_KINDS`, `selectHumanInteractionPolicy`) while retaining the historical Human-surface names as source/runtime-compatible aliases; documented Browser/OS Window/Terminal as Target Surface labels without freezing a public `TargetSurfaceKind`.
 - Document a repeatable GitHub source-release process, explicitly separate npm publication, and establish the v0.2.0 / v0.2.x / v0.4+ milestone split so optional hardening does not become an accidental source-release blocker.
 - Retire historical umbrella issues #11 and #13 as superseded: bounded Window/WebRTC/WSS acceptance now carries the supported path, while secure-system-UI input, media quality, provider-neutral relay, and hosted topology remain in narrower issues; whole-desktop and mandatory custom Native-client scope are not restored by default.
 - Clarify the generic architecture/positioning boundary (#5/#42/#46): separate MCP principal from target-service identity, define the four Handoff semantic domains and Takeover Session layer, make Target Surface admission evidence-based/documentation-first, and compare responsibility boundaries without claiming remote-desktop/browser/HITL superiority.

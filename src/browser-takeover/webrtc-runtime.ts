@@ -730,7 +730,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       endUse = runtime.hooks.beginInput(input);
       this.writeHostInput(runtime, input);
     } catch {
-      // Stale/revoked generation or an unavailable local Human surface fails closed.
+      // Stale/revoked generation or an unavailable local Human-control session fails closed.
     } finally {
       endUse?.();
     }

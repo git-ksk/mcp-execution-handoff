@@ -12,7 +12,7 @@ PRを作成する前に、次を確認してください。
 2. セキュリティ境界を変更する場合は、失敗すべきケースを確認する決定的なネガティブテストを追加する。
 3. テスト目的で実サービスのCAPTCHAやチャレンジを意図的に発生させない。
 4. `core` にMaps、Cinema、特定provider、Chrome/CDP、製品固有の意味や判定を持ち込まない。
-5. browser takeoverは任意機能かつtransport層だけに保つ。
+5. Browser Handoffは任意機能のままにし、Browser Target SurfaceとTransport固有処理をgeneric coreへ入れない。
 6. principal binding、epoch fencing、単一クライアントlease、capabilityの有効期限・失効、CSP、永続checkpointの制約を弱めない。
 7. 人間が手動作業を完了したことを、別の操作への承認として扱わない。
 8. secret、token、private endpoint、credential、OTP/MFA値、決済情報、challenge answerをfixture、log、docsへ入れない。

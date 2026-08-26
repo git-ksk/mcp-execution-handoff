@@ -32,7 +32,7 @@ MCPで動く処理の途中で、Agentだけでは進められない、または
 本プロジェクトでは、次の4軸を分けて扱います。
 
 1. **Handoff Semantics** — authority、epoch、ownership、replay/resume、recovery。security-orientedな不変のcoreであり、差別化の中心です。
-2. **Human Interaction Policy** — Humanがどのtrust boundaryで操作するか。現在の実装値は `automation_adjacent` と `credential_safe_external` です。既存TypeScript APIでは `HumanSurfaceKind` と呼びます。
+2. **Human Interaction Policy** — Humanがどのtrust boundaryで操作するか。現在の実装値は `automation_adjacent` と `credential_safe_external` です。canonical TypeScript名は `HumanInteractionPolicyKind` とし、`HumanSurfaceKind` はcompatibility aliasとして維持します。
 3. **Target Surface** — Humanが何を操作するか。現在の実証済みshapeはbrowser、bounded OS/window、bounded Terminal/PTYです。このevidenceだけでpublic enumをfreezeしません。
 4. **Transport** — Human control/media pathをどう届けるか。NativeやWebRTCなどが該当し、direct ICEかTURN fallbackかはWebRTC connectivityの違いです。
 

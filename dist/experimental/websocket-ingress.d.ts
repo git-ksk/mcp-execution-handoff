@@ -42,7 +42,7 @@ export interface ExperimentalWebSocketTakeoverIngressOptions {
     onInput(binding: Readonly<WebSocketTakeoverBinding>, input: WebSocketTakeoverHumanInput): void | Promise<void>;
     maxInboundBytes?: number;
 }
-/** Concrete Node HTTPS/WSS ingress for the experimental browser transport. */
+/** Concrete Node HTTPS/WSS ingress for the experimental WebSocket transport carrying Browser Handoff. */
 export declare class ExperimentalWebSocketTakeoverIngress {
     #private;
     private readonly options;

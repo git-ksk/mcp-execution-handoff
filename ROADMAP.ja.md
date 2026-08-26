@@ -17,7 +17,7 @@ npm packageは引き続き `private: true` です。npmへの公開はroadmap上
 
 ### 現在の作業状態 — 2026-08-26
 
-v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みですが、最終的なpublic terminologyは #45がcloseするまで意図的に固定しません。
+v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みで、v0.2 terminology convergenceでは `TargetSurfaceKind` enumをfreezeせずHuman Interaction Policyへcanonical aliasを追加します。
 
 - `BrowserHandoffAdapter` は #70で完成し、canonicalなhigh-level Browser WebRTC compositionです。Human側のBrowser `Done` は #84で即時one-shot化されました。
 - `WindowHandoffAdapter` は #85で完成し、CUMGもconsumer-localな `TakeoverBroker` / runtime手組みから移行済みです。merged codeのphysical iPhone acceptanceでは、public Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。
@@ -28,23 +28,22 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
 - CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。
 
-したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。#46でsemantic-domain / admission baselineはdocument済みで、#45がterminology / public API convergenceを担当します。
+したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
 #42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidenceと、より狭い #94 / #56 / #19 / #12 へ分離され、whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
 
-### OPEN Issue map — 7件
+### OPEN Issue map — 6件
 
 現在OPENのIssueはすべて以下へ配置し、backlog状態をGitHub履歴から推測しなくてもRoadmapだけで分かるようにします。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
-| #119 | v0.2.0 source release | **Release gate。** v0.2.0 source-only checklist。npmはprivateのまま。release milestoneのproduct/API blockerは #45だけ。 |
+| #119 | v0.2.0 source release | **Release gate。** v0.2.0 source-only checklist。npmはprivateのまま。terminology/API blockerは満たされ、release bookkeepingだけが残る。 |
 | #94 | v0.2.x Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
 | #56 | v0.2.x media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
 | #34 | v0.2.x cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
-| #45 | v0.2.0 API/terminology blocker | #46のarchitecture baselineを使ってpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
 
@@ -55,7 +54,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 3. **generic contractをconsumer policyより小さく保つ。** domain detection、provider policy、postcondition verification、native execution、重大操作のapprovalはconsumer責務に残す。
 4. **実consumerで抽象化を証明する。** synthetic exampleだけを根拠に新しいpublic abstractionを固定しない。
 5. **handoffはapprovalではない。** Human completionが別の重大操作を暗黙に承認することはない。
-6. **browser takeoverはoptionalのままにする。** browser transportがなくてもcoreが成立する状態を維持する。
+6. **Browser Handoffはoptionalのままにする。** Browser Target SurfaceやBrowser固有transportがなくてもcoreが成立する状態を維持する。
 7. **bypass productにしない。** CAPTCHA solving、anti-bot evasion、credential relay、stealth/fingerprint spoofing、payment automationは明示的な非目標として維持する。
 
 ## v0.1.x — 現在のbaselineを固める
@@ -75,7 +74,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 次の **GitHub source release** は `v0.2.0` を予定します。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張しているため、pre-1.0 minor boundaryとして扱います。
 
-releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、現在そのmilestoneへ割り当てるproduct/API blockerは #45だけです。#94 / #56 / #34は重要なv0.2.x hardeningですが最初のv0.2 source releaseをblockしません。#19 / #12は後続のtransport/deployment maturityとして維持します。npm publicationは明示的に別gateで、`private: true` を維持します。
+releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡します。public terminology/API blockerは満たされ、#119が残るsource-release bookkeeping gateです。#94 / #56 / #34は重要なv0.2.x hardeningですが最初のv0.2 source releaseをblockしません。#19 / #12は後続のtransport/deployment maturityとして維持します。npm publicationは明示的に別gateで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -90,7 +89,7 @@ repeatableなsource-release checklistとnpm publicationとの分離は [リリ�
 - CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す
 - authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalizeする
 - #5でdocumentしたMCP principalとtarget-service identityの境界を維持し、Handoffをservice-account attestation APIにはしない
-- #46のsemantic-domain / Target Surface admission decisionをarchitecture baselineとし、#45でstable public terminologyを決める。3adapterが存在するだけではpublic enumを要件にしない
+- #46のsemantic-domain / Target Surface admission decisionをarchitecture baselineとし、v0.2ではHuman Interaction Policyへcanonical name + compatibility aliasを追加しつつTarget Surfaceはdocumentation-firstに維持する。3adapterが存在するだけではpublic enumを要件にしない
 
 Target Surface admissionは引き続きevidence-basedです。provenな Browser / bounded OS Window / bounded Terminal-PTY shapeと比べて、authority boundary、capture/input model、lifecycle、postcondition handlingが本質的に異なる場合だけ新shapeとして認めます。別app・別OS・別device・別transport・別deploymentというだけでは追加理由にしません。
 
@@ -100,7 +99,7 @@ Target Surface admissionは引き続きevidence-basedです。provenな Browser 
 - first-class Window adapterでexact targetに対する Agent → Human → verifying → Agent を必要な両connectivity baselineで実証
 - Terminal/PTYがshell/process runnerへ広がらずbounded session/stream componentのままで、real PTY / iPhone evidenceを再現可能
 - CUMGがHandoff experimental internalsではなくfirst-class Window/Terminal componentだけへ依存
-- #46をsemantic-domain / Target Surface admission baselineとして維持し、#45でterminology/API convergenceを完了してsecurity invariantを弱めない
+- #46をsemantic-domain / Target Surface admission baselineとして維持し、完了済みv0.2 terminology convergenceでcompatibilityとsecurity invariantを維持する
 - 将来generic surface APIを追加する場合、target-specific mechanicsより小さいabstractionであるevidenceとcompatibility strategyを持つ
 
 npm publicationは **v0.2の完了条件ではありません**。
@@ -163,7 +162,7 @@ Issue #40で初期WebSocket managed-runtime evaluationは完了しました。ph
 - 3つ以上の実consumerでgeneric boundaryを検証し、複数application domainを含む
 - Target Surface boundaryをsynthetic exampleだけでなく実consumerで検証済み
 - MCP標準との重複を再監査し、不要なprotocol duplicationがない
-- browser takeoverがoptional / transport-onlyのまま
+- Browser Handoffはoptionalのまま、Browser Target SurfaceとTransportをgeneric coreから分離する
 - Human completionと重大操作のapprovalが分離されたまま
 - automatic replayがconsumer policyで明示的に制限されたまま
 - CI / cross-platform portability gate / Dependency Review / CodeQL / secret scanning / security reportingが運用中

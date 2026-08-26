@@ -1,8 +1,16 @@
 import { timingSafeEqual } from "node:crypto";
 import type { ExecutionAuthority, InterventionStatus } from "./lifecycle.js";
 
-export const HUMAN_SURFACE_KINDS = ["automation_adjacent", "credential_safe_external"] as const;
-export type HumanSurfaceKind = (typeof HUMAN_SURFACE_KINDS)[number];
+export const HUMAN_INTERACTION_POLICY_KINDS = [
+  "automation_adjacent",
+  "credential_safe_external"
+] as const;
+export type HumanInteractionPolicyKind = (typeof HUMAN_INTERACTION_POLICY_KINDS)[number];
+
+/** @deprecated Use HUMAN_INTERACTION_POLICY_KINDS. Kept for source/runtime compatibility. */
+export const HUMAN_SURFACE_KINDS = HUMAN_INTERACTION_POLICY_KINDS;
+/** @deprecated Use HumanInteractionPolicyKind. Kept for source compatibility. */
+export type HumanSurfaceKind = HumanInteractionPolicyKind;
 
 export interface HumanSurfaceInterventionRef {
   id: string;
@@ -49,14 +57,25 @@ export class ExternalHumanSurfaceError extends Error {
   }
 }
 
-export function selectHumanSurface<TReason extends string>(
+export function selectHumanInteractionPolicy<TReason extends string>(
   reason: TReason,
   credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]
-): HumanSurfaceKind {
+): HumanInteractionPolicyKind {
   const matches = Array.isArray(credentialSafeReasons)
     ? credentialSafeReasons.includes(reason)
     : (credentialSafeReasons as ReadonlySet<TReason>).has(reason);
   return matches ? "credential_safe_external" : "automation_adjacent";
+}
+
+/**
+ * @deprecated Use selectHumanInteractionPolicy(). This alias remains source/runtime compatible
+ * until an intentional breaking release after consumers have migrated.
+ */
+export function selectHumanSurface<TReason extends string>(
+  reason: TReason,
+  credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]
+): HumanSurfaceKind {
+  return selectHumanInteractionPolicy(reason, credentialSafeReasons);
 }
 
 export class CredentialSafeHumanSurfaceRuntime {

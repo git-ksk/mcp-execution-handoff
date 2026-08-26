@@ -1,6 +1,10 @@
 import type { ExecutionAuthority, InterventionStatus } from "./lifecycle.js";
+export declare const HUMAN_INTERACTION_POLICY_KINDS: readonly ["automation_adjacent", "credential_safe_external"];
+export type HumanInteractionPolicyKind = (typeof HUMAN_INTERACTION_POLICY_KINDS)[number];
+/** @deprecated Use HUMAN_INTERACTION_POLICY_KINDS. Kept for source/runtime compatibility. */
 export declare const HUMAN_SURFACE_KINDS: readonly ["automation_adjacent", "credential_safe_external"];
-export type HumanSurfaceKind = (typeof HUMAN_SURFACE_KINDS)[number];
+/** @deprecated Use HumanInteractionPolicyKind. Kept for source compatibility. */
+export type HumanSurfaceKind = HumanInteractionPolicyKind;
 export interface HumanSurfaceInterventionRef {
     id: string;
     epoch: number;
@@ -32,6 +36,11 @@ export declare class ExternalHumanSurfaceError extends Error {
     readonly code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_PROVIDER_INVALID";
     constructor(code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_PROVIDER_INVALID", message: string);
 }
+export declare function selectHumanInteractionPolicy<TReason extends string>(reason: TReason, credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]): HumanInteractionPolicyKind;
+/**
+ * @deprecated Use selectHumanInteractionPolicy(). This alias remains source/runtime compatible
+ * until an intentional breaking release after consumers have migrated.
+ */
 export declare function selectHumanSurface<TReason extends string>(reason: TReason, credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]): HumanSurfaceKind;
 export declare class CredentialSafeHumanSurfaceRuntime {
     private readonly provider;
