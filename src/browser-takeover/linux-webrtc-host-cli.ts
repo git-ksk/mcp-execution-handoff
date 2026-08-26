@@ -420,8 +420,8 @@ class LinuxXRecordDeliveryHelper {
     return helper;
   }
 
-  arm(windowId: number, x: number, y: number): Promise<void> {
-    return this.command(`ARM ${windowId} ${x} ${y}`, "ARM");
+  arm(windowId: number, targetPid: number, x: number, y: number): Promise<void> {
+    return this.command(`ARM ${windowId} ${targetPid} ${x} ${y}`, "ARM");
   }
 
   waitPrimaryPress(): Promise<void> {
@@ -487,7 +487,7 @@ class LinuxXRecordDeliveryHelper {
       const line = this.output.slice(0, newline).trim();
       this.output = this.output.slice(newline + 1);
       if (this.readyState === "waiting") {
-        if (line !== "READY 2") {
+        if (line !== "READY 3") {
           this.fail("Linux XRecord delivery helper protocol mismatch");
           void this.close();
           return;
@@ -764,11 +764,11 @@ class LinuxWindowInput {
         await this.confirmActiveTarget();
         await this.confirmInputFocusOwnedByTarget();
         process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_authority_ready\n");
-        // Arm only after MOVE and the post-move authority check. The exact Window resource is a
-        // RECORD ClientSpec for its creator X11 client, while Node remains the sole PID/Window
-        // authority owner. If the observer cannot arm, fail closed before injecting DOWN.
+        // Arm only after MOVE and the post-move authority check. The observer resolves only X11
+        // clients whose local peer PID equals the Node-owned target, while the exact Window subtree
+        // remains an independent delivery predicate. If it cannot arm, fail closed before DOWN.
         try {
-          await delivery.arm(geometryBeforeMove.windowId, x, y);
+          await delivery.arm(geometryBeforeMove.windowId, this.targetPid, x, y);
         } catch (error) {
           process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_delivery_arm_failure\n");
           throw error;

@@ -72,7 +72,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Install Linux normal-browser takeover dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libx11-dev libxtst-dev xvfb xdotool x11-utils openbox ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libx11-dev libxtst-dev libxres-dev xvfb xdotool x11-utils openbox ffmpeg
       - name: Build Linux XTEST pointer helper
         run: npm run build:linux-xtest-helper
       - name: Build Linux XRecord delivery helper

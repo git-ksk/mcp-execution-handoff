@@ -1,20 +1,23 @@
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/XI2.h>
+#include <X11/extensions/XRes.h>
 #include <X11/extensions/record.h>
 
 #include <errno.h>
+#include <limits.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <time.h>
 
-#define PROTOCOL_VERSION 2
+#define PROTOCOL_VERSION 3
 #define MAX_LINE_BYTES 192
-#define MAX_TOKENS 5
+#define MAX_TOKENS 6
 #define DELIVERY_WAIT_TIMEOUT_MS 1000
 #define MAX_WINDOW_ANCESTRY 32
 #define X_EVENT_BYTES 32
@@ -122,6 +125,68 @@ static bool window_descends_from(Display *display, Window ancestor, Window candi
   return false;
 }
 
+static bool collect_target_clients(
+    Display *display,
+    pid_t target_pid,
+    XRecordClientSpec **clients_return,
+    int *count_return) {
+  XResClientIdSpec spec;
+  XResClientIdValue *ids = NULL;
+  XRecordClientSpec *clients = NULL;
+  long id_count = 0;
+  long index;
+  int client_count = 0;
+  int major = 0;
+  int minor = 0;
+
+  *clients_return = NULL;
+  *count_return = 0;
+  // libXRes uses Bool-like Status for QueryVersion (1 on success), while QueryClientIds returns
+  // protocol Success (0). Keep the two contracts explicit; treating QueryVersion as Success == 0
+  // makes every healthy XRes server fail closed before client resolution.
+  if (!XResQueryVersion(display, &major, &minor)) return false;
+  if (major < 1 || (major == 1 && minor < 2)) return false;
+
+  spec.client = None;
+  spec.mask = XRES_CLIENT_ID_PID_MASK;
+  if (XResQueryClientIds(display, 1, &spec, &id_count, &ids) != Success || id_count <= 0 || ids == NULL) {
+    if (ids != NULL) XResClientIdsDestroy(id_count, ids);
+    return false;
+  }
+  if (id_count > INT_MAX) {
+    XResClientIdsDestroy(id_count, ids);
+    return false;
+  }
+  clients = calloc((size_t)id_count, sizeof(*clients));
+  if (clients == NULL) {
+    XResClientIdsDestroy(id_count, ids);
+    return false;
+  }
+
+  for (index = 0; index < id_count; index += 1) {
+    int existing;
+    const pid_t pid = XResGetClientPid(&ids[index]);
+    const XRecordClientSpec client = (XRecordClientSpec)ids[index].spec.client;
+    bool duplicate = false;
+    if (pid != target_pid || client == (XRecordClientSpec)None) continue;
+    for (existing = 0; existing < client_count; existing += 1) {
+      if (clients[existing] == client) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) clients[client_count++] = client;
+  }
+  XResClientIdsDestroy(id_count, ids);
+  if (client_count == 0) {
+    free(clients);
+    return false;
+  }
+  *clients_return = clients;
+  *count_return = client_count;
+  return true;
+}
+
 static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
   DeliveryState *state = (DeliveryState *)closure;
   if (recorded == NULL) return;
@@ -174,9 +239,10 @@ static void disable_context(DeliveryState *state) {
   state->delivered = false;
 }
 
-static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
-  XRecordClientSpec client;
+static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, int x, int y) {
+  XRecordClientSpec *clients = NULL;
   XRecordRange *ranges[2] = {NULL, NULL};
+  int client_count = 0;
   int major = 0;
   int minor = 0;
 
@@ -184,12 +250,14 @@ static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
   if (!XRecordQueryVersion(state->control, &major, &minor)) return false;
   (void)major;
   (void)minor;
+  if (!collect_target_clients(state->control, target_pid, &clients, &client_count)) return false;
 
   ranges[0] = XRecordAllocRange();
   ranges[1] = XRecordAllocRange();
   if (ranges[0] == NULL || ranges[1] == NULL) {
     if (ranges[0] != NULL) XFree(ranges[0]);
     if (ranges[1] != NULL) XFree(ranges[1]);
+    free(clients);
     return false;
   }
   ranges[0]->delivered_events.first = ButtonPress;
@@ -197,14 +265,13 @@ static bool arm_delivery(DeliveryState *state, Window window, int x, int y) {
   ranges[1]->delivered_events.first = GenericEvent;
   ranges[1]->delivered_events.last = GenericEvent;
 
-  // A resource id is a valid RECORD ClientSpec and names the X11 client that created it. Node has
-  // already proven this exact Window belongs to the generation-bound target PID; do not broaden
-  // observation to all clients or infer X11 connection ownership from a process-wide PID scan.
-  client = (XRecordClientSpec)window;
+  // Observe only X11 connections whose local peer PID is the Node-owned generation-bound target.
+  // The exact Window subtree remains a second independent delivery predicate in record_callback.
   x_error_seen = 0;
-  state->context = XRecordCreateContext(state->control, 0, &client, 1, ranges, 2);
+  state->context = XRecordCreateContext(state->control, 0, clients, client_count, ranges, 2);
   XFree(ranges[0]);
   XFree(ranges[1]);
+  free(clients);
   if (state->context == 0) return false;
   XSync(state->control, False);
   if (x_error_seen != 0) {
@@ -268,11 +335,12 @@ static bool wait_for_delivery(DeliveryState *state) {
 
 static int run_protocol(DeliveryState *state) {
   char line[MAX_LINE_BYTES];
-  reply("READY", "2");
+  reply("READY", "3");
   while (fgets(line, sizeof(line), stdin) != NULL) {
     char *tokens[MAX_TOKENS] = {0};
     int count;
     long window;
+    long target_pid;
     long x;
     long y;
 
@@ -290,13 +358,14 @@ static int run_protocol(DeliveryState *state) {
     }
 
     if (strcmp(tokens[0], "ARM") == 0) {
-      if (count != 4 || !parse_long_token(tokens[1], &window) || !parse_long_token(tokens[2], &x)
-          || !parse_long_token(tokens[3], &y) || window <= 0 || (unsigned long)window > UINT32_MAX
+      if (count != 5 || !parse_long_token(tokens[1], &window) || !parse_long_token(tokens[2], &target_pid)
+          || !parse_long_token(tokens[3], &x) || !parse_long_token(tokens[4], &y)
+          || window <= 0 || (unsigned long)window > UINT32_MAX || target_pid <= 0 || target_pid > INT_MAX
           || x < INT16_MIN || x > INT16_MAX || y < INT16_MIN || y > INT16_MAX) {
         reply("ERR", "PROTOCOL");
         return 2;
       }
-      if (!arm_delivery(state, (Window)(unsigned long)window, (int)x, (int)y)) {
+      if (!arm_delivery(state, (Window)(unsigned long)window, (pid_t)target_pid, (int)x, (int)y)) {
         reply("ERR", "RECORD");
         return 3;
       }
