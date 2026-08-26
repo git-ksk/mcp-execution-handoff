@@ -98,37 +98,6 @@ function x11IsAncestor(ancestor: number, descendant: number, env: NodeJS.Process
   return false;
 }
 
-function x11DescendantWindows(windowId: number, env: NodeJS.ProcessEnv): number[] {
-  if (!Number.isSafeInteger(windowId) || windowId <= 0) return [];
-  const result = spawnSync(
-    "/usr/bin/xwininfo",
-    ["-id", String(windowId), "-int", "-tree"],
-    { env, encoding: "utf8" }
-  );
-  if (result.status !== 0) return [];
-  const ids: number[] = [];
-  for (const line of result.stdout.split(/\r?\n/)) {
-    const match = /^\s+(\d+)\s+/.exec(line);
-    if (!match) continue;
-    const id = Number(match[1]);
-    if (Number.isSafeInteger(id) && id > 0 && id !== windowId && !ids.includes(id)) ids.push(id);
-    if (ids.length >= 32) break;
-  }
-  return ids;
-}
-
-function x11AncestorWindows(windowId: number, env: NodeJS.ProcessEnv): number[] {
-  const ids: number[] = [];
-  let current = windowId;
-  for (let depth = 0; depth < 6; depth += 1) {
-    const parent = x11ParentWindow(current, env);
-    if (!parent || parent === current) break;
-    ids.push(parent);
-    current = parent;
-  }
-  return ids;
-}
-
 async function main(): Promise<void> {
   if (process.platform !== "linux") throw new Error("Linux acceptance must run on Linux");
   const chromeExecutable = await firstExecutable([
@@ -137,7 +106,7 @@ async function main(): Promise<void> {
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
   ]);
-  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/xev", "/usr/bin/stdbuf", "/usr/bin/ffmpeg"]) {
+  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/ffmpeg"]) {
     assert.equal(await exists(executable), true, `${executable} is required`);
   }
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
@@ -232,13 +201,6 @@ async function main(): Promise<void> {
   let pointerWindowIsExact = false;
   let pointerWindowDescendsFromExact = false;
   let pointerWindowAncestorsExact = false;
-  const x11Probes: Array<{ child: ChildProcess; category: "exact" | "descendant" | "ancestor" }> = [];
-  const x11ProbeAlive = { exact: false, descendant: false, ancestor: false };
-  const x11PointerEvents = {
-    exact: { motion: false, buttonPress: false, buttonRelease: false },
-    descendant: { motion: false, buttonPress: false, buttonRelease: false },
-    ancestor: { motion: false, buttonPress: false, buttonRelease: false }
-  };
   client.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { rtpPackets += 1; }));
 
   try {
@@ -300,28 +262,8 @@ async function main(): Promise<void> {
     const acceptedWindowIdNumber = Number(acceptedWindowId);
     assert.equal(Number.isSafeInteger(acceptedWindowIdNumber) && acceptedWindowIdNumber > 0, true, "accepted X11 window id must be a positive integer");
     process.stdout.write("LINUX_WEBRTC_STAGE page-ready\n");
-    // Diagnostic-only observer: another X11 client selects mouse events on the already-authorized
-    // exact Chrome client window. It never sends input or changes Handoff authority. Keep output
-    // bounded and collapse it to event-presence booleans before reporting.
-    const startX11Probe = (windowId: number, category: "exact" | "descendant" | "ancestor") => {
-      const probe = spawn("/usr/bin/stdbuf", ["-oL", "/usr/bin/xev", "-id", String(windowId), "-event", "mouse"], {
-        env: xEnv,
-        stdio: ["ignore", "pipe", "ignore"]
-      });
-      x11Probes.push({ child: probe, category });
-      probe.once("error", () => undefined);
-      let output = "";
-      probe.stdout?.on("data", (chunk: Buffer) => {
-        if (output.length >= 4_096) return;
-        output = (output + chunk.toString("utf8")).slice(0, 4_096);
-        x11PointerEvents[category].motion ||= /MotionNotify/.test(output);
-        x11PointerEvents[category].buttonPress ||= /ButtonPress/.test(output);
-        x11PointerEvents[category].buttonRelease ||= /ButtonRelease/.test(output);
-      });
-    };
-    startX11Probe(acceptedWindowIdNumber, "exact");
-    for (const windowId of x11DescendantWindows(acceptedWindowIdNumber, xEnv)) startX11Probe(windowId, "descendant");
-    for (const windowId of x11AncestorWindows(acceptedWindowIdNumber, xEnv)) startX11Probe(windowId, "ancestor");
+    // Keep pointer diagnostics query-only. X11 allows only one client to select ButtonPressMask
+    // on a window, so an xev observer would itself perturb the Chrome/Openbox input route.
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
 
@@ -361,9 +303,6 @@ async function main(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 20));
     critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "up", x: 0.5, y: 0.55 }));
     await new Promise((resolve) => setTimeout(resolve, 100));
-    for (const probe of x11Probes) {
-      if (probe.child.exitCode === null && probe.child.signalCode === null) x11ProbeAlive[probe.category] = true;
-    }
     const pointerLocation = spawnSync("/usr/bin/xdotool", ["getmouselocation", "--shell"], { env: xEnv, encoding: "utf8" });
     const pointerFields = new Map<string, number>();
     if (pointerLocation.status === 0) {
@@ -397,7 +336,7 @@ async function main(): Promise<void> {
       await waitFor("tap-form", () => inputUses >= 2 && endedUses >= 2 && formOpened);
     } catch (error) {
       const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
-      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}; pointer_is_exact=${pointerWindowIsExact}; pointer_descends_exact=${pointerWindowDescendsFromExact}; pointer_ancestors_exact=${pointerWindowAncestorsExact}; x11_probe_alive=${JSON.stringify(x11ProbeAlive)}; x11_events=${JSON.stringify(x11PointerEvents)}`);
+      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}; pointer_is_exact=${pointerWindowIsExact}; pointer_descends_exact=${pointerWindowDescendsFromExact}; pointer_ancestors_exact=${pointerWindowAncestorsExact}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
 
@@ -420,14 +359,12 @@ async function main(): Promise<void> {
     await waitFor("enter-submit", () => inputUses >= 6 && endedUses >= 6 && submitted === marker);
 
     assert.ok(rtpPackets > 0, "no H264 RTP reached the WebRTC peer");
-    process.stdout.write(`LINUX_WEBRTC_X11_POINTER_PROBE alive=${JSON.stringify(x11ProbeAlive)} events=${JSON.stringify(x11PointerEvents)}\n`);
     process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses}\n`);
   } finally {
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-client\n");
     await within("cleanup-client", client.close().catch(() => undefined));
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-provider\n");
     await within("cleanup-provider", provider.revoke("linux-host-acceptance").catch(() => undefined));
-    await within("cleanup-xev", Promise.all(x11Probes.map((probe) => stopAndWait(probe.child))).then(() => undefined));
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-chrome\n");
     await within("cleanup-chrome", stopAndWait(chrome));
     await within("cleanup-openbox", stopAndWait(openbox));
