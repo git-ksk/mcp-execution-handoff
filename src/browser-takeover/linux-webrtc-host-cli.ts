@@ -516,10 +516,11 @@ class LinuxWindowInput {
     // verify active/focus below without issuing another focus mutation while Button1 is held.
     if (!continuingPrimaryRelease) {
       await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
-      // Pointer operations may establish browser focus. Text/key operations must preserve the
-      // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
-      // the top-level X11 window here can steal that internal focus before paste/Enter.
-      if (input.kind === "tap" || input.kind === "pointer_button" || input.kind === "scroll") {
+      // Let the EWMH-aware window manager own pointer focus transitions. Calling windowfocus here
+      // would bypass the WM with XSetInputFocus and can diverge from its click/grab bookkeeping.
+      // Scroll retains the legacy direct-focus behavior; pointer down proceeds only after the
+      // exact active/focus checks below prove the target already owns authority.
+      if (input.kind === "scroll") {
         await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
       }
     }

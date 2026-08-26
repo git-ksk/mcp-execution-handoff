@@ -103,11 +103,12 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /did not converge to exactly one eligible window/);
   assert.match(host, /-window_id/);
   assert.match(host, /windowactivate/);
-  assert.match(host, /input\.kind === "tap" \|\| input\.kind === "pointer_button" \|\| input\.kind === "scroll"/);
   assert.match(host, /windowfocus/);
   assert.match(host, /const continuingPrimaryRelease = input\.kind === "pointer_button" && input\.state === "up" && this\.primaryPressed/);
   assert.match(host, /if \(!continuingPrimaryRelease\) \{[\s\S]*windowactivate[\s\S]*windowfocus/);
   assert.match(host, /verify active\/focus below without issuing another focus mutation/);
+  assert.match(host, /if \(input\.kind === "scroll"\)[\s\S]*windowfocus/);
+  assert.doesNotMatch(host, /input\.kind === "tap" \|\| input\.kind === "pointer_button" \|\| input\.kind === "scroll"/);
   assert.match(host, /spawn\(this\.xdotool, \["type", "--clearmodifiers", "--delay", "5", "--file", "-"\]/);
   assert.match(host, /child\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
   assert.doesNotMatch(host, /xclip|TAKEOVER_LINUX_XCLIP/);
