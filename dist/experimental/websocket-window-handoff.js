@@ -95,6 +95,9 @@ export class ExperimentalWebSocketWindowHandoff {
         this.#sessionsById.set(state.sessionId, state);
         return locator;
     }
+    authorizeClientPage(sessionId, boundPrincipal) {
+        return this.#sessionsById.has(sessionId) && this.#binding.validateLocator(sessionId, boundPrincipal);
+    }
     handle(request, boundPrincipal) {
         return this.#binding.handleBootstrap(request, boundPrincipal)
             ?? this.#broker.handle(request, boundPrincipal);

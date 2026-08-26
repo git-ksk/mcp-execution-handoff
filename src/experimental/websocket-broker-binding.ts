@@ -88,6 +88,16 @@ export class ExperimentalWebSocketBrokerBinding {
     return session.url;
   }
 
+  validateLocator(sessionId: string, boundPrincipal: string | undefined): boolean {
+    if (!boundPrincipal || !this.#policies.has(sessionId)) return false;
+    try {
+      this.#port.sessions.validateLocator(sessionId, boundPrincipal);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   handleBootstrap(
     request: Request,
     boundPrincipal: string | undefined
