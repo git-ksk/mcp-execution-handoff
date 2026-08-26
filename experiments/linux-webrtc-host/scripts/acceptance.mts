@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
   ]);
-  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/ffmpeg"]) {
+  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/xev", "/usr/bin/ffmpeg"]) {
     assert.equal(await exists(executable), true, `${executable} is required`);
   }
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
@@ -201,6 +201,9 @@ async function main(): Promise<void> {
   let pointerWindowIsExact = false;
   let pointerWindowDescendsFromExact = false;
   let pointerWindowAncestorsExact = false;
+  let x11Probe: ChildProcess | undefined;
+  let x11ProbeOutput = "";
+  const x11PointerEvents = { motion: false, buttonPress: false, buttonRelease: false };
   client.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { rtpPackets += 1; }));
 
   try {
@@ -262,6 +265,21 @@ async function main(): Promise<void> {
     const acceptedWindowIdNumber = Number(acceptedWindowId);
     assert.equal(Number.isSafeInteger(acceptedWindowIdNumber) && acceptedWindowIdNumber > 0, true, "accepted X11 window id must be a positive integer");
     process.stdout.write("LINUX_WEBRTC_STAGE page-ready\n");
+    // Diagnostic-only observer: another X11 client selects mouse events on the already-authorized
+    // exact Chrome client window. It never sends input or changes Handoff authority. Keep output
+    // bounded and collapse it to event-presence booleans before reporting.
+    x11Probe = spawn("/usr/bin/xev", ["-id", acceptedWindowId, "-event", "mouse"], {
+      env: xEnv,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    x11Probe.once("error", () => undefined);
+    x11Probe.stdout?.on("data", (chunk: Buffer) => {
+      if (x11ProbeOutput.length >= 16_384) return;
+      x11ProbeOutput = (x11ProbeOutput + chunk.toString("utf8")).slice(0, 16_384);
+      x11PointerEvents.motion ||= /MotionNotify/.test(x11ProbeOutput);
+      x11PointerEvents.buttonPress ||= /ButtonPress/.test(x11ProbeOutput);
+      x11PointerEvents.buttonRelease ||= /ButtonRelease/.test(x11ProbeOutput);
+    });
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
 
@@ -334,7 +352,7 @@ async function main(): Promise<void> {
       await waitFor("tap-form", () => inputUses >= 2 && endedUses >= 2 && formOpened);
     } catch (error) {
       const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
-      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}; pointer_is_exact=${pointerWindowIsExact}; pointer_descends_exact=${pointerWindowDescendsFromExact}; pointer_ancestors_exact=${pointerWindowAncestorsExact}`);
+      throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}; pointer_is_exact=${pointerWindowIsExact}; pointer_descends_exact=${pointerWindowDescendsFromExact}; pointer_ancestors_exact=${pointerWindowAncestorsExact}; x11_events=${JSON.stringify(x11PointerEvents)}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
 
@@ -357,12 +375,14 @@ async function main(): Promise<void> {
     await waitFor("enter-submit", () => inputUses >= 6 && endedUses >= 6 && submitted === marker);
 
     assert.ok(rtpPackets > 0, "no H264 RTP reached the WebRTC peer");
+    process.stdout.write(`LINUX_WEBRTC_X11_POINTER_PROBE motion=${x11PointerEvents.motion} button_press=${x11PointerEvents.buttonPress} button_release=${x11PointerEvents.buttonRelease}\n`);
     process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses}\n`);
   } finally {
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-client\n");
     await within("cleanup-client", client.close().catch(() => undefined));
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-provider\n");
     await within("cleanup-provider", provider.revoke("linux-host-acceptance").catch(() => undefined));
+    await within("cleanup-xev", stopAndWait(x11Probe));
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-chrome\n");
     await within("cleanup-chrome", stopAndWait(chrome));
     await within("cleanup-openbox", stopAndWait(openbox));
