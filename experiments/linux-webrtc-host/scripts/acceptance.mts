@@ -98,6 +98,62 @@ function x11IsAncestor(ancestor: number, descendant: number, env: NodeJS.Process
   return false;
 }
 
+type X11WindowSnapshot = {
+  parent?: number;
+  absoluteX?: number;
+  absoluteY?: number;
+  relativeX?: number;
+  relativeY?: number;
+  width?: number;
+  height?: number;
+  mapState?: string;
+  overrideRedirect?: string;
+  events?: string;
+};
+
+function x11WindowSnapshot(windowId: number, env: NodeJS.ProcessEnv): X11WindowSnapshot {
+  const result = spawnSync(
+    "/usr/bin/xwininfo",
+    ["-id", String(windowId), "-int", "-all"],
+    { env, encoding: "utf8" }
+  );
+  if (result.status !== 0) return {};
+  const number = (pattern: RegExp): number | undefined => {
+    const match = pattern.exec(result.stdout);
+    if (!match) return undefined;
+    const value = Number(match[1]);
+    return Number.isSafeInteger(value) ? value : undefined;
+  };
+  const text = (pattern: RegExp): string | undefined => pattern.exec(result.stdout)?.[1]?.trim().replace(/\s+/g, "_");
+  const events = /Someone wants these events:\s*([\s\S]*?)\n\s*Do not propagate these events:/m.exec(result.stdout)?.[1]
+    ?.trim().replace(/\s+/g, ",");
+  return {
+    parent: number(/Parent window id:\s+(\d+)/),
+    absoluteX: number(/Absolute upper-left X:\s+(-?\d+)/),
+    absoluteY: number(/Absolute upper-left Y:\s+(-?\d+)/),
+    relativeX: number(/Relative upper-left X:\s+(-?\d+)/),
+    relativeY: number(/Relative upper-left Y:\s+(-?\d+)/),
+    width: number(/Width:\s+(\d+)/),
+    height: number(/Height:\s+(\d+)/),
+    mapState: text(/Map State:\s+([^\n]+)/),
+    overrideRedirect: text(/Override Redirect State:\s+([^\n]+)/),
+    events: events || undefined
+  };
+}
+
+function formatX11WindowSnapshot(prefix: string, value: X11WindowSnapshot): string {
+  const field = (name: string, item: unknown) => `${prefix}_${name}=${item === undefined ? "unknown" : String(item)}`;
+  return [
+    field("parent", value.parent),
+    field("abs", value.absoluteX === undefined || value.absoluteY === undefined ? undefined : `${value.absoluteX},${value.absoluteY}`),
+    field("rel", value.relativeX === undefined || value.relativeY === undefined ? undefined : `${value.relativeX},${value.relativeY}`),
+    field("size", value.width === undefined || value.height === undefined ? undefined : `${value.width}x${value.height}`),
+    field("map", value.mapState),
+    field("override", value.overrideRedirect),
+    field("events", value.events)
+  ].join(" ");
+}
+
 async function main(): Promise<void> {
   if (process.platform !== "linux") throw new Error("Linux acceptance must run on Linux");
   const chromeExecutable = await firstExecutable([
@@ -323,6 +379,19 @@ async function main(): Promise<void> {
     const gx = geometryFields.get("X"), gy = geometryFields.get("Y"), gw = geometryFields.get("WIDTH"), gh = geometryFields.get("HEIGHT");
     pointerInsideExactWindow = [px, py, gx, gy, gw, gh].every(Number.isFinite)
       && px! >= gx! && px! < gx! + gw! && py! >= gy! && py! < gy! + gh!;
+    const exactSnapshot = x11WindowSnapshot(acceptedWindowIdNumber, xEnv);
+    const parentSnapshot = exactSnapshot.parent ? x11WindowSnapshot(exactSnapshot.parent, xEnv) : {};
+    const geometryMatchesX11 = [gx, gy, gw, gh, exactSnapshot.absoluteX, exactSnapshot.absoluteY, exactSnapshot.width, exactSnapshot.height].every(Number.isFinite)
+      && gx === exactSnapshot.absoluteX && gy === exactSnapshot.absoluteY && gw === exactSnapshot.width && gh === exactSnapshot.height;
+    const pointerInsideX11Exact = [px, py, exactSnapshot.absoluteX, exactSnapshot.absoluteY, exactSnapshot.width, exactSnapshot.height].every(Number.isFinite)
+      && px! >= exactSnapshot.absoluteX! && px! < exactSnapshot.absoluteX! + exactSnapshot.width!
+      && py! >= exactSnapshot.absoluteY! && py! < exactSnapshot.absoluteY! + exactSnapshot.height!;
+    const rawFocus = spawnSync("/usr/bin/xdotool", ["getwindowfocus", "-f"], { env: xEnv, encoding: "utf8" });
+    const rawFocusWindow = rawFocus.status === 0 ? Number(rawFocus.stdout.trim()) : undefined;
+    const rawFocusDescendsExact = Number.isSafeInteger(rawFocusWindow) && rawFocusWindow! > 0
+      ? x11IsAncestor(acceptedWindowIdNumber, rawFocusWindow!, xEnv)
+      : false;
+    process.stdout.write(`LINUX_WEBRTC_X11_DIAG ${formatX11WindowSnapshot("exact", exactSnapshot)} ${formatX11WindowSnapshot("parent", parentSnapshot)} geometry_matches=${geometryMatchesX11} pointer_inside_exact=${pointerInsideX11Exact} raw_focus_descends_exact=${rawFocusDescendsExact}\n`);
     const pointerWindow = pointerFields.get("WINDOW");
     if (Number.isSafeInteger(pointerWindow) && pointerWindow! > 0) {
       const pointerPid = spawnSync("/usr/bin/xdotool", ["getwindowpid", String(pointerWindow)], { env: xEnv, encoding: "utf8" });
