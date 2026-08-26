@@ -29,6 +29,8 @@ export type WebRtcDiagnosticStage =
   | "host.frame.ready"
   | "host.input.focus.ready"
   | "host.input.tap.sent"
+  | "host.input.pointer.helper_ready"
+  | "host.input.pointer.helper_failure"
   | "host.input.pointer.move_ready"
   | "host.input.pointer.authority_ready"
   | "host.input.pointer.down_sent"
@@ -98,6 +100,8 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.frame.ready",
   "host.input.focus.ready",
   "host.input.tap.sent",
+  "host.input.pointer.helper_ready",
+  "host.input.pointer.helper_failure",
   "host.input.pointer.move_ready",
   "host.input.pointer.authority_ready",
   "host.input.pointer.down_sent",
@@ -192,6 +196,8 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.frame.ready": ["stage"],
     "host.input.focus.ready": ["stage"],
     "host.input.tap.sent": ["stage"],
+    "host.input.pointer.helper_ready": ["stage"],
+    "host.input.pointer.helper_failure": ["stage"],
     "host.input.pointer.move_ready": ["stage"],
     "host.input.pointer.authority_ready": ["stage"],
     "host.input.pointer.down_sent": ["stage"],

@@ -112,6 +112,8 @@ async function main(): Promise<void> {
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
   const helper = path.resolve("dist/browser-takeover/linux-webrtc-host-cli.js");
   assert.equal(await exists(helper), true, "compiled Linux helper is required");
+  const xtestHelper = path.resolve("dist/native/mcp-handoff-linux-xtest-helper");
+  assert.equal(await exists(xtestHelper), true, "compiled Linux XTEST pointer helper is required");
   await chmod(helper, 0o755);
 
   const root = await mkdtemp(path.join(os.tmpdir(), "handoff-linux-webrtc-"));

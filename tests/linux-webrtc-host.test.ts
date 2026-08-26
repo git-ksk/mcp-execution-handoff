@@ -113,28 +113,32 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /xclip|TAKEOVER_LINUX_XCLIP/);
   assert.match(host, /Math\.round\(point\.x\)/);
   assert.match(host, /Math\.round\(point\.y\)/);
-  assert.match(host, /"mousemove", "--window", String\(this\.geometry\.windowId\)[\s\S]*"getmouselocation"/);
-  assert.doesNotMatch(host, /"mousemove", "--sync", "--window", String\(this\.geometry\.windowId\)/);
-  assert.match(host, /const relativeX = x - this\.geometry\.x/);
-  assert.match(host, /const relativeY = y - this\.geometry\.y/);
-  assert.doesNotMatch(host, /parseMouseLocation/);
-  assert.match(host, /await this\.confirmActiveTarget\(\)[\s\S]*await this\.confirmInputFocusOwnedByTarget\(\)[\s\S]*\["mousedown", "1"\]/);
+  assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
+  assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xtest-helper", moduleUrl\)/);
+  assert.doesNotMatch(host, /TAKEOVER_LINUX_XTEST_HELPER/);
+  assert.match(host, /await this\.pointer\.move\(x, y\)/);
+  assert.match(host, /currentGeometry = await this\.currentOwnedGeometry\(\)/);
+  assert.match(host, /target geometry changed during primary press admission/);
+  assert.match(host, /await this\.confirmActiveTarget\(\)[\s\S]*await this\.confirmInputFocusOwnedByTarget\(\)[\s\S]*await this\.pointer\.down/);
   assert.match(host, /kind: "tap" \| "pointer_button"/);
   assert.match(host, /record\.kind === "pointer_button"/);
   assert.match(host, /record\.button === "primary"/);
   assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
-  assert.match(host, /const POINTER_INPUT_SETTLE_MS = 20/);
+  assert.doesNotMatch(host, /POINTER_INPUT_SETTLE_MS/);
+  assert.match(host, /linux_stage=input_pointer_helper_ready/);
+  assert.match(host, /linux_stage=input_pointer_helper_failure/);
   assert.match(host, /linux_stage=input_pointer_move_ready/);
-  assert.match(host, /setTimeout\(resolve, POINTER_INPUT_SETTLE_MS\)[\s\S]*this\.geometry = await this\.currentOwnedGeometry\(\)[\s\S]*confirmActiveTarget/);
   assert.match(host, /linux_stage=input_pointer_authority_ready/);
   assert.match(host, /linux_stage=input_pointer_down_sent/);
-  assert.match(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
+  assert.match(host, /await this\.pointer\.up\(\)/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
-  assert.match(host, /"mousemove", String\(releasePoint\.x\), String\(releasePoint\.y\),[\s\S]*"mouseup", "1"/);
-  assert.doesNotMatch(host, /"mousemove", "--sync", String\(releasePoint\.x\)/);
+  assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
+  assert.match(host, /Never fall back to xdotool/);
   assert.match(host, /private primaryPressed = false/);
   assert.match(host, /async releaseAll\(\): Promise<void>/);
-  assert.match(host, /inputChain = inputChain[\s\S]*input\.releaseAll\(\)[\s\S]*stopPromise = inputChain\.then\(\(\) => capture\.stop\(\)\)/);
+  assert.match(host, /inputChain = inputChain[\s\S]*input\.shutdown\(\)[\s\S]*stopPromise = inputChain\.then\(\(\) => capture\.stop\(\)\)/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
   assert.match(host, /getwindowfocus/);
   assert.match(host, /Linux WebRTC input focus is not owned by the target process/);
@@ -152,6 +156,26 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /\["type"[^\]]*text/);
   assert.doesNotMatch(host, /shell:\s*true/);
   assert.doesNotMatch(host, /console\.(?:log|error)[^\n]*text/);
+});
+
+
+test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", () => {
+  const helper = readFileSync("native/linux-xtest-helper.c", "utf8");
+  assert.match(helper, /XOpenDisplay\(NULL\)/);
+  assert.match(helper, /XTestQueryExtension/);
+  assert.match(helper, /XGetPointerMapping/);
+  assert.match(helper, /XTestFakeMotionEvent/);
+  assert.match(helper, /XTestFakeButtonEvent/);
+  assert.match(helper, /XSync\(state->display, False\)/);
+  assert.match(helper, /READY.*1/);
+  assert.match(helper, /strcmp\(tokens\[0\], "MOVE"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "DOWN"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "UP"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "CANCEL"\)/);
+  assert.match(helper, /cleanup_pressed_button/);
+  assert.doesNotMatch(helper, /XSendEvent/);
+  assert.doesNotMatch(helper, /XTestGrabControl/);
+  assert.doesNotMatch(helper, /_NET_WM_PID|window title|targetPid|windowId/);
 });
 
 test("Node WebRTC runtime passes an explicit Linux display without widening the child environment", () => {

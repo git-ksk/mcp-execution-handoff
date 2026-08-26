@@ -72,7 +72,9 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Install Linux normal-browser takeover dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xdotool x11-utils openbox ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libx11-dev libxtst-dev xvfb xdotool x11-utils openbox ffmpeg
+      - name: Build Linux XTEST pointer helper
+        run: npm run build:linux-xtest-helper
       - name: Normalize runner Chrome stable
         run: |
           if command -v google-chrome-stable >/dev/null 2>&1; then
@@ -83,4 +85,6 @@ jobs:
         run: |
           command -v google-chrome-stable || command -v google-chrome || command -v chromium || command -v chromium-browser
           xdotool --version
+          dist/native/mcp-handoff-linux-xtest-helper --version
+          sha256sum dist/native/mcp-handoff-linux-xtest-helper
       - run: npm run accept:webrtc:linux

@@ -110,7 +110,7 @@ automation profile + CDP
 
 credential-safe browser handoffでは、このlifecycleをOS共通ルールとして扱います。Humanはautomation-managed browserではなくnormal browser processを使います。macOSとLinuxで異なるのはOS/window capture-input helperだけです。
 
-Linux helperはtarget PIDに属するX11 windowを厳密に1つだけ解決し、そのwindowだけをbounded CPU H.264 pipelineでcaptureします。tap / scroll / key / textはOS/window層で配送し、既存のWebRTC generation / TURN / revoke machineryを再利用します。Human textはprivate stdin / transient clipboardだけを通し、clipboardはすぐclearします。Browser/profile persistenceはconsumer/deployment側の責務であり、Handoffのcontinuity stateにはしません。
+Linux hostはtarget PIDに属するX11 windowを厳密に1つだけ解決し、そのwindowだけをbounded CPU H.264 pipelineでcaptureします。window discovery / PID ownership / geometry / activation / focusはNode側のfail-closed policyとして維持します。primary pointerのmotion / down / upだけは、小型standalone Xlib/libXtst helperへ委譲し、1 Handoff hostの間は1本のX11 connectionを維持して、各XTEST mutationを `XSync` 完了後にackします。scroll / key / textは既存のbounded OS/window pathを維持し、WebRTC generation / TURN / revoke machineryもそのまま再利用します。Human textはprivate stdin / transient clipboardだけを通し、clipboardはすぐclearします。Browser/profile persistenceはconsumer/deployment側の責務であり、Handoffのcontinuity stateにはしません。
 
 `selectHumanSurface()` は、sign-in / consentなどconsumerが設定したreasonを `credential_safe_external` へrouteし、それ以外を `automation_adjacent` に残す小さなpolicy helperです。どのreasonがidentity-sensitiveかはcoreでは決めません。
 
@@ -231,7 +231,7 @@ Safari transportは最大1280×720に制限します。現在のacceptanceでは
 
 touch対応SafariではTouch Eventsをswipeのauthoritative pathとし、touch Pointer Eventsは二重入力防止のため無視します。consumerはruntimeをtarget processへbindingでき、その場合はon-screenの対象windowを厳密に1つだけ解決できることを要求し、captureとinputを同じwindow boundsへ限定してdesktop全体を公開しません。legacy HTTP frame/input UIへfallbackすることもありません。
 
-background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundでmediaを復旧する場合はfresh generationを取得してから新peerを作ります。media/input authorityとは別のprincipal / intervention / epoch / expiry-boundなcompletion-only capabilityにより、同じauthorized locatorをreloadしてもstale generationを復活させず `Done` だけ配送できます。`Done` はtransport authorityをfenceしてからconsumer completion callbackへ通知し、認証成功やapprovalとは扱いません。Linux hostでは明示PID/window bindingを実際に検証し、各Human mutation直前にも同じX11 windowのPID ownershipとbounded geometryを再検証します。target消失やownership変更時はtransportをfenceし、別windowやdesktopへscopeを広げません。
+background、peer disconnect、explicit suspendではpeerを破棄し、そのclient generationをreleaseします。foregroundでmediaを復旧する場合はfresh generationを取得してから新peerを作ります。media/input authorityとは別のprincipal / intervention / epoch / expiry-boundなcompletion-only capabilityにより、同じauthorized locatorをreloadしてもstale generationを復活させず `Done` だけ配送できます。`Done` はtransport authorityをfenceしてからconsumer completion callbackへ通知し、認証成功やapprovalとは扱いません。Linux hostでは明示PID/window bindingを実際に検証し、各Human mutation直前にも同じX11 windowのPID ownershipとbounded geometryを再検証します。target消失やownership変更時はtransportをfenceし、別windowやdesktopへscopeを広げません。LinuxのXTEST helperはmechanism-onlyで、boundedなroot座標とbutton lifecycleだけを受け取り、PID / XID / title / session authorityは保持しません。`XSendEvent` を使わず、primary gesture失敗時にxdotoolへ自動fallbackもしません。
 
 物理iPhone Safariで、same-LAN direct WebRTCとcellular/4G TURN relayの両方をacceptance済みです。window-scoped video、別Mac appがfrontmostな状態からのtarget-window再activation、tap/focus、text、Backspace、scroll、Done/revoke後のstale locator拒否まで確認しています。completion-onlyなreload recoveryはdeterministic testで固定済みです。boundedなclient-side precision zoom/panも実装・transform/gesture regressionで固定し、次のmobile UX gateはportraitでのphysical precision acceptanceです。target-window resizeやより広いkeyboard compositionはfollow-upで、transport baselineの前提条件ではありません。
 
