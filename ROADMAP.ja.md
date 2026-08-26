@@ -17,7 +17,7 @@ npm packageは引き続き `private: true` です。npmへの公開はroadmap上
 
 ### 現在の作業状態 — 2026-08-26
 
-v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。ただし最終的なTarget Surface用語は #45/#46 がcloseするまで意図的に固定しません。
+v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みですが、最終的なpublic terminologyは #45がcloseするまで意図的に固定しません。
 
 - `BrowserHandoffAdapter` は #70で完成し、canonicalなhigh-level Browser WebRTC compositionです。Human側のBrowser `Done` は #84で即時one-shot化されました。
 - `WindowHandoffAdapter` は #85で完成し、CUMGもconsumer-localな `TakeoverBroker` / runtime手組みから移行済みです。merged codeのphysical iPhone acceptanceでは、public Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。
@@ -28,11 +28,13 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
 - CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。
 
-したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。残るsemantic-domain / admission wordingは #46、terminology / public API convergenceは #45が担当します。
+したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumや最終命名をfreezeしたという意味ではありません。#46でsemantic-domain / admission baselineはdocument済みで、#45がterminology / public API convergenceを担当します。
+
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。
 
 次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
 
-### OPEN Issue map — 11件
+### OPEN Issue map — 8件
 
 現在OPENのIssueはすべて以下へ配置し、backlog状態をGitHub履歴から推測しなくてもRoadmapだけで分かるようにします。
 
@@ -41,10 +43,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #94 | v0.2 Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
 | #56 | v0.2 media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
 | #34 | v0.2 cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
-| #46 | v0.2 architecture contract | semantic-domain、takeover-session分離、evidence-based Target Surface admission ruleの最終化。 |
-| #45 | v0.2 API/terminology convergence | #46後にpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
-| #5 | v0.2 identity boundary | MCP principalとtarget-service/browser identityを分離。Human completionはidentity attestationでもapprovalでもない。 |
-| #42 | v0.1.x documentation | remote desktop、browser takeover、integrated sandbox、HITL/approvalとの責任境界を明確化。 |
+| #45 | v0.2 API/terminology convergence | #46のarchitecture baselineを使ってpublic terminologyを監査・収束。speculative enumや不要なbreaking renameは避ける。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
 | #13 | v0.4+ transport umbrella | **追加実装前に再スコープ。** 旧Phase 1/2、WebRTC、mobile lifecycleの多くはすでに実証済み。uniqueな残課題だけ残す。 |
@@ -66,7 +65,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 - bug / security fix
 - 現在のcontractを維持するspec alignment fix
-- docs / diagnostics改善。#42のresponsibility-boundary positioningも含む
+- docs / diagnostics改善。#42でresponsibility-boundary positioning baselineは確立済み
 - Maps / Japan Cinemaで見つかったregression coverage
 - Target Surface内部をrefactorしている間もcross-platform portability gateとreal-browser acceptanceを維持
 - pre-1.0で避けられないbreaking fixがある場合のmigration note
@@ -83,8 +82,8 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - #56でlatency/backpressureを悪化させずWindow media可読性を改善し、#34でCDP / DOM / credential露出なしにLinux editable-region parityを閉じる
 - CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す
 - authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalizeする
-- #5のMCP principalとtarget-service identityの境界をdocumentし、Handoffをservice-account attestation APIにはしない
-- #46/#45でstable terminologyとpublic Target Surface discriminatorが本当に必要かを決める。3adapterが存在するだけではpublic enumを要件にしない
+- #5でdocumentしたMCP principalとtarget-service identityの境界を維持し、Handoffをservice-account attestation APIにはしない
+- #46のsemantic-domain / Target Surface admission decisionをarchitecture baselineとし、#45でstable public terminologyを決める。3adapterが存在するだけではpublic enumを要件にしない
 
 Target Surface admissionは引き続きevidence-basedです。provenな Browser / bounded OS Window / bounded Terminal-PTY shapeと比べて、authority boundary、capture/input model、lifecycle、postcondition handlingが本質的に異なる場合だけ新shapeとして認めます。別app・別OS・別device・別transport・別deploymentというだけでは追加理由にしません。
 
@@ -94,7 +93,7 @@ Target Surface admissionは引き続きevidence-basedです。provenな Browser 
 - first-class Window adapterでexact targetに対する Agent → Human → verifying → Agent を必要な両connectivity baselineで実証
 - Terminal/PTYがshell/process runnerへ広がらずbounded session/stream componentのままで、real PTY / iPhone evidenceを再現可能
 - CUMGがHandoff experimental internalsではなくfirst-class Window/Terminal componentだけへ依存
-- #46/#45でsemantic-domain / terminologyの最終判断を文書化し、security invariantを弱めない
+- #46をsemantic-domain / Target Surface admission baselineとして維持し、#45でterminology/API convergenceを完了してsecurity invariantを弱めない
 - 将来generic surface APIを追加する場合、target-specific mechanicsより小さいabstractionであるevidenceとcompatibility strategyを持つ
 
 npm publicationは **v0.2の完了条件ではありません**。

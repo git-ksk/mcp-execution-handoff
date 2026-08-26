@@ -22,7 +22,7 @@ The public contract is deliberately narrow:
 - optional browser takeover transport with short-lived capabilities and a one-client lease,
 - credential-safe external Human surface coordination for providers that require a normal non-automated browser.
 
-It does **not** provide a CAPTCHA solver, challenge bypass, credential relay, payment automation, generic browser agent, DOM/network export, or automatic approval of consequential actions.
+It does **not** provide a CAPTCHA solver, challenge bypass, credential relay, payment automation, generic browser agent, remote-desktop platform, DOM/network export, or automatic approval of consequential actions. Browser/Window Human-control transports are optional bounded components, not the definition of the product; see [Positioning](docs/positioning.md).
 
 ## Packages / modules
 
@@ -119,7 +119,7 @@ The consumer-facing component family is now explicit. These components share Han
 | `WindowHandoffAdapter` | exact bounded OS application window; no desktop fallback | Complete in #85 and consumed by CUMG. Merged-code physical iPhone acceptance passed on both public Tunnel/TURN relay and same-LAN direct paths, including stale-locator rejection. |
 | `TerminalHandoffAdapter` | one consumer-owned bounded PTY/session + DataChannel WebRTC | Complete in #86. CUMG migrated off direct experimental composition; merged-code real-PTY E2E and physical iPhone Human acceptance passed. #91 made mobile connection, Human-authority, and verifying state explicit and fail-closed. |
 
-These adapters do not freeze a generic public Target Surface enum. The proven surface shapes are Browser, bounded OS Window, and bounded Terminal/PTY; #46/#45 still own the final semantic-domain and terminology/API convergence. A component's Human `Done` remains transport/lifecycle completion evidence only, never semantic success or consequential-action approval.
+These adapters do not freeze a generic public Target Surface enum. The proven surface shapes are Browser, bounded OS Window, and bounded Terminal/PTY; #46 documents the semantic-domain/Target Surface admission baseline and #45 owns remaining terminology/API convergence. A component's Human `Done` remains transport/lifecycle completion evidence only, never semantic success or consequential-action approval.
 
 ## Browser takeover
 

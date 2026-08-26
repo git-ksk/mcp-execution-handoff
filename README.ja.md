@@ -24,7 +24,7 @@ MCPで動く処理の途中でHumanによる手動操作が必要になったと
 - short-lived capabilityとone-client leaseを持つoptional browser takeover transportを提供する
 - normal/non-automated browserが必要なprovider向けに、credential-safe external Human surfaceをcoordinationする
 
-一方で、CAPTCHA solver、challenge bypass、credential relay、payment automation、generic browser agent、DOM/network export、重大操作のautomatic approvalは提供しません。
+一方で、CAPTCHA solver、challenge bypass、credential relay、payment automation、generic browser agent、remote-desktop platform、DOM/network export、重大操作のautomatic approvalは提供しません。Browser/Window Human-control transportはoptionalなbounded componentでありproduct定義そのものではありません。詳細は [位置づけ](docs/positioning.ja.md) を参照してください。
 
 ## Packages / modules
 
@@ -125,7 +125,7 @@ consumer-facingなcomponent familyを明示しています。共通化できるH
 | `WindowHandoffAdapter` | exact bounded OS application window。desktop fallbackなし | #85で完成しCUMGも利用中。merged-code physical iPhone acceptanceはpublic Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。 |
 | `TerminalHandoffAdapter` | 1つのconsumer-owned bounded PTY/session + DataChannel WebRTC | #86で完了。CUMGはexperimental部品の直接compositionから移行済みで、merged-code real PTY E2Eとphysical iPhone Human acceptanceも通過済みです。#91でmobileのconnection / Human authority / verifying stateを明示的かつfail-closedにしました。 |
 
-これらadapterの存在だけでgenericなpublic Target Surface enumをfreezeしません。実証済みsurface shapeはBrowser / bounded OS Window / bounded Terminal-PTYの3つですが、最終的なsemantic-domainとterminology/API収束は #46/#45で行います。どのcomponentでもHuman `Done`はtransport/lifecycle stepの完了evidenceに過ぎず、semantic successや重大操作のapprovalではありません。
+これらadapterの存在だけでgenericなpublic Target Surface enumをfreezeしません。実証済みsurface shapeはBrowser / bounded OS Window / bounded Terminal-PTYの3つです。#46がsemantic-domain / Target Surface admission baselineをdocumentし、残るterminology/API convergenceは #45が担当します。どのcomponentでもHuman `Done`はtransport/lifecycle stepの完了evidenceに過ぎず、semantic successや重大操作のapprovalではありません。
 
 ## Browser takeover
 
