@@ -41,6 +41,8 @@ typedef struct {
   int expected_x;
   int expected_y;
   bool delivered;
+  bool creator_pid_known;
+  bool creator_pid_matches_target;
   bool saw_from_server;
   bool saw_swapped;
   bool saw_short_data;
@@ -194,6 +196,35 @@ static bool collect_target_clients(
   return true;
 }
 
+static void resolve_window_creator_pid_relation(
+    Display *display,
+    Window window,
+    pid_t target_pid,
+    bool *known_return,
+    bool *matches_return) {
+  XResClientIdSpec spec;
+  XResClientIdValue *ids = NULL;
+  long id_count = 0;
+  long index;
+
+  *known_return = false;
+  *matches_return = false;
+  spec.client = window;
+  spec.mask = XRES_CLIENT_ID_PID_MASK;
+  if (XResQueryClientIds(display, 1, &spec, &id_count, &ids) != Success || id_count <= 0 || ids == NULL) {
+    if (ids != NULL) XResClientIdsDestroy(id_count, ids);
+    return;
+  }
+  for (index = 0; index < id_count; index += 1) {
+    const pid_t pid = XResGetClientPid(&ids[index]);
+    if (pid <= 0) continue;
+    *known_return = true;
+    *matches_return = pid == target_pid;
+    break;
+  }
+  XResClientIdsDestroy(id_count, ids);
+}
+
 static void record_callback(XPointer closure, XRecordInterceptData *recorded) {
   DeliveryState *state = (DeliveryState *)closure;
   if (recorded == NULL) return;
@@ -259,6 +290,8 @@ static void disable_context(DeliveryState *state) {
   state->context = 0;
   state->expected_window = None;
   state->delivered = false;
+  state->creator_pid_known = false;
+  state->creator_pid_matches_target = false;
   state->saw_from_server = false;
   state->saw_swapped = false;
   state->saw_short_data = false;
@@ -312,6 +345,8 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
   state->expected_x = x;
   state->expected_y = y;
   state->delivered = false;
+  state->creator_pid_known = false;
+  state->creator_pid_matches_target = false;
   state->saw_from_server = false;
   state->saw_swapped = false;
   state->saw_short_data = false;
@@ -319,6 +354,8 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
   state->saw_xi2_mismatch = false;
   state->saw_window_mismatch = false;
   state->saw_coordinate_mismatch = false;
+  resolve_window_creator_pid_relation(
+      state->control, window, target_pid, &state->creator_pid_known, &state->creator_pid_matches_target);
   x_error_seen = 0;
   if (!XRecordEnableContextAsync(state->data, state->context, record_callback, (XPointer)state)) {
     disable_context(state);
@@ -332,7 +369,12 @@ static bool arm_delivery(DeliveryState *state, Window window, pid_t target_pid, 
 }
 
 static const char *wait_failure_code(const DeliveryState *state) {
-  if (!state->saw_from_server) return "WAIT_NO_FROM_SERVER";
+  if (!state->saw_from_server) {
+    if (!state->creator_pid_known) return "WAIT_NO_FROM_SERVER_CREATOR_UNKNOWN";
+    return state->creator_pid_matches_target
+      ? "WAIT_NO_FROM_SERVER_CREATOR_MATCH"
+      : "WAIT_NO_FROM_SERVER_CREATOR_MISMATCH";
+  }
   if (!state->saw_event && state->saw_swapped) return "WAIT_SWAPPED";
   if (!state->saw_event && state->saw_short_data) return "WAIT_SHORT_DATA";
   if (!state->saw_event) return "WAIT_NO_EVENT";

@@ -37,7 +37,9 @@ export type WebRtcDiagnosticStage =
   | "host.input.pointer.delivery_helper_ready"
   | "host.input.pointer.delivery_helper_failure"
   | "host.input.pointer.delivery_arm_failure"
-  | "host.input.pointer.delivery_wait_no_from_server"
+  | "host.input.pointer.delivery_wait_no_from_server_creator_match"
+  | "host.input.pointer.delivery_wait_no_from_server_creator_mismatch"
+  | "host.input.pointer.delivery_wait_no_from_server_creator_unknown"
   | "host.input.pointer.delivery_wait_swapped"
   | "host.input.pointer.delivery_wait_short_data"
   | "host.input.pointer.delivery_wait_no_event"
@@ -122,7 +124,9 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.input.pointer.delivery_helper_ready",
   "host.input.pointer.delivery_helper_failure",
   "host.input.pointer.delivery_arm_failure",
-  "host.input.pointer.delivery_wait_no_from_server",
+  "host.input.pointer.delivery_wait_no_from_server_creator_match",
+  "host.input.pointer.delivery_wait_no_from_server_creator_mismatch",
+  "host.input.pointer.delivery_wait_no_from_server_creator_unknown",
   "host.input.pointer.delivery_wait_swapped",
   "host.input.pointer.delivery_wait_short_data",
   "host.input.pointer.delivery_wait_no_event",
@@ -232,7 +236,9 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.input.pointer.delivery_helper_ready": ["stage"],
     "host.input.pointer.delivery_helper_failure": ["stage"],
     "host.input.pointer.delivery_arm_failure": ["stage"],
-    "host.input.pointer.delivery_wait_no_from_server": ["stage"],
+    "host.input.pointer.delivery_wait_no_from_server_creator_match": ["stage"],
+    "host.input.pointer.delivery_wait_no_from_server_creator_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_no_from_server_creator_unknown": ["stage"],
     "host.input.pointer.delivery_wait_swapped": ["stage"],
     "host.input.pointer.delivery_wait_short_data": ["stage"],
     "host.input.pointer.delivery_wait_no_event": ["stage"],
