@@ -1,5 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { TakeoverSessionError, TakeoverSessionManager, type TakeoverGrant } from "./session.js";
+import {
+  TakeoverSessionError,
+  TakeoverSessionManager,
+  type TakeoverCompletionResult,
+  type TakeoverGrant
+} from "./session.js";
+import { registerExperimentalWebSocketBrokerPort } from "./experimental-websocket-port.js";
 import {
   NativeTakeoverRuntimeError,
   nativeBindingFromGrant,
@@ -255,6 +261,8 @@ export class TakeoverBroker {
   private readonly publicOrigin: string | undefined;
   private readonly nativeOnlySessions = new Map<string, string>();
   private readonly webRtcOnlySessions = new Map<string, string>();
+  private readonly webSocketOnlySessions = new Map<string, string>();
+  private readonly webSocketRevokeHandlers = new Map<string, () => void | Promise<void>>();
   private readonly nativeTargetProcessIds = new Map<string, number>();
   private readonly nativeTargetWindowIds = new Map<string, number>();
   private readonly webRtcTargetProcessIds = new Map<string, number>();
@@ -282,6 +290,15 @@ export class TakeoverBroker {
       this.completionGraceMs
     );
     this.publicOrigin = config.publicBaseUrl ? new URL(config.publicBaseUrl).origin : undefined;
+    registerExperimentalWebSocketBrokerPort(this, {
+      sessions: this.sessions,
+      createSession: (intervention, principalBinding) =>
+        this.createExperimentalWebSocketSession(intervention, principalBinding),
+      attachRevokeHandler: (sessionId, handler) =>
+        this.attachExperimentalWebSocketRevokeHandler(sessionId, handler),
+      completeSession: (completion) => this.completeExperimentalWebSocketSession(completion),
+      revokeSession: (sessionId) => this.revokeExperimentalWebSocketSession(sessionId)
+    });
   }
 
   isEnabled(): boolean {
@@ -298,6 +315,7 @@ export class TakeoverBroker {
   ): string | undefined {
     if (!this.config.enabled || !this.config.publicBaseUrl || !principalBinding) return undefined;
     const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
+    if (this.webSocketOnlySessions.has(locator.id)) return undefined;
     return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
   }
 
@@ -310,7 +328,7 @@ export class TakeoverBroker {
     if (target && (!Number.isSafeInteger(target.processId) || target.processId < 1
       || (target.windowId !== undefined && (!Number.isSafeInteger(target.windowId) || target.windowId < 1)))) return undefined;
     const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
-    if (this.webRtcOnlySessions.has(locator.id)) return undefined;
+    if (this.webRtcOnlySessions.has(locator.id) || this.webSocketOnlySessions.has(locator.id)) return undefined;
     for (const [sessionId, currentIntervention] of this.nativeOnlySessions) {
       if (currentIntervention === intervention.id && sessionId !== locator.id) {
         this.nativeOnlySessions.delete(sessionId);
@@ -344,7 +362,7 @@ export class TakeoverBroker {
     const normalizedInputPolicy = normalizeWebRtcInputPolicy(inputPolicy ?? ALLOW_ALL_WEBRTC_INPUT);
     if (!normalizedInputPolicy) return undefined;
     const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
-    if (this.nativeOnlySessions.has(locator.id)) return undefined;
+    if (this.nativeOnlySessions.has(locator.id) || this.webSocketOnlySessions.has(locator.id)) return undefined;
     for (const [sessionId, currentIntervention] of this.webRtcOnlySessions) {
       if (currentIntervention === intervention.id && sessionId !== locator.id) {
         // A prior session can exist here only after its mutable media/input lease expired or was
@@ -387,6 +405,7 @@ export class TakeoverBroker {
     this.sessions.revokeForIntervention(interventionId);
     this.forgetNativeOnlyIntervention(interventionId);
     this.forgetWebRtcOnlyIntervention(interventionId);
+    this.forgetWebSocketOnlyIntervention(interventionId, true);
     if (this.nativeRuntime) void this.nativeRuntime.revokeForIntervention(interventionId).catch(() => undefined);
     if (this.webRtcRuntime) void this.webRtcRuntime.revokeForIntervention(interventionId).catch(() => undefined);
   }
@@ -425,6 +444,7 @@ export class TakeoverBroker {
     }
     const pageMatch = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(url.pathname);
     if (pageMatch) {
+      if (this.webSocketOnlySessions.has(pageMatch[1]!)) return json(404, { error: "takeover_unavailable" });
       if (request.method !== "GET" && request.method !== "HEAD") return json(405, { error: "method_not_allowed" });
       let completionCapability: string | undefined;
       try {
@@ -451,6 +471,7 @@ export class TakeoverBroker {
     if (!apiMatch) return json(404, { error: "not_found" });
     const operation = apiMatch[1]!;
     const id = apiMatch[2]!;
+    if (this.webSocketOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });
 
     if (operation === "complete") {
       if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
@@ -468,6 +489,8 @@ export class TakeoverBroker {
       }
       this.nativeOnlySessions.delete(id);
       this.webRtcOnlySessions.delete(id);
+      this.webSocketOnlySessions.delete(id);
+      this.webSocketRevokeHandlers.delete(id);
       this.nativeTargetProcessIds.delete(id);
       this.nativeTargetWindowIds.delete(id);
       this.webRtcTargetProcessIds.delete(id);
@@ -693,7 +716,7 @@ export class TakeoverBroker {
     }
 
     if (operation === "bootstrap") {
-      if (this.nativeOnlySessions.has(id) || this.webRtcOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });
+      if (this.nativeOnlySessions.has(id) || this.webRtcOnlySessions.has(id) || this.webSocketOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });
       if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
       if (request.headers.get("sec-fetch-site") !== "same-origin") {
         return json(403, { error: "bootstrap_not_same_origin" });
@@ -708,7 +731,7 @@ export class TakeoverBroker {
     }
 
     if (operation === "claim" || operation === "reconnect") {
-      if (this.webRtcOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });
+      if (this.webRtcOnlySessions.has(id) || this.webSocketOnlySessions.has(id)) return json(404, { error: "takeover_unavailable" });
       if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
       if (!this.nativeMutationAllowed(request)) return json(403, { error: "native_client_required" });
       const reconnectHandle = operation === "reconnect"
@@ -762,7 +785,7 @@ export class TakeoverBroker {
       request.headers.get("authorization")
     );
     if (!capability) return json(404, { error: "takeover_unavailable" });
-    if ((this.nativeOnlySessions.has(id) || this.webRtcOnlySessions.has(id)) && (operation === "frame" || operation === "input")) {
+    if ((this.nativeOnlySessions.has(id) || this.webRtcOnlySessions.has(id) || this.webSocketOnlySessions.has(id)) && (operation === "frame" || operation === "input")) {
       return json(404, { error: "takeover_unavailable" });
     }
 
@@ -808,6 +831,8 @@ export class TakeoverBroker {
       this.sessions.revoke(id);
       this.nativeOnlySessions.delete(id);
       this.webRtcOnlySessions.delete(id);
+      this.webSocketOnlySessions.delete(id);
+      this.webSocketRevokeHandlers.delete(id);
       this.nativeTargetProcessIds.delete(id);
       this.nativeTargetWindowIds.delete(id);
       this.webRtcTargetProcessIds.delete(id);
@@ -851,6 +876,74 @@ export class TakeoverBroker {
       return json(409, { error: "takeover_input_rejected" });
     } finally {
       this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
+    }
+  }
+
+  private createExperimentalWebSocketSession(
+    intervention: TakeoverInterventionRef,
+    principalBinding: string | undefined
+  ): { locator: ReturnType<TakeoverSessionManager["ensure"]>; url: string } | undefined {
+    if (!this.config.enabled || !this.config.publicBaseUrl || !principalBinding) return undefined;
+    const locator = this.sessions.ensure(intervention.id, intervention.epoch, principalBinding);
+    if (this.nativeOnlySessions.has(locator.id) || this.webRtcOnlySessions.has(locator.id)) return undefined;
+
+    for (const [sessionId, currentIntervention] of this.webSocketOnlySessions) {
+      if (currentIntervention !== intervention.id || sessionId === locator.id) continue;
+      this.forgetWebSocketOnlySession(sessionId, true);
+    }
+    this.webSocketOnlySessions.set(locator.id, intervention.id);
+    const expiryCleanup = setTimeout(() => {
+      this.forgetWebSocketOnlySession(locator.id, true);
+    }, this.config.ttlMs + 1_000);
+    expiryCleanup.unref();
+    return {
+      locator,
+      url: new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString()
+    };
+  }
+
+  private attachExperimentalWebSocketRevokeHandler(
+    sessionId: string,
+    handler: () => void | Promise<void>
+  ): boolean {
+    if (!this.webSocketOnlySessions.has(sessionId) || this.webSocketRevokeHandlers.has(sessionId)) return false;
+    this.webSocketRevokeHandlers.set(sessionId, handler);
+    return true;
+  }
+
+  private async completeExperimentalWebSocketSession(
+    completion: TakeoverCompletionResult
+  ): Promise<void> {
+    const interventionId = this.webSocketOnlySessions.get(completion.id);
+    if (interventionId !== completion.interventionId) {
+      throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "WebSocket takeover session is unavailable");
+    }
+    this.forgetWebSocketOnlySession(completion.id, false);
+    if (this.completionDelivered.has(completion.id)) return;
+    await this.hooks.completed?.({
+      interventionId: completion.interventionId,
+      epoch: completion.epoch
+    });
+    this.completionDelivered.add(completion.id);
+  }
+
+  private revokeExperimentalWebSocketSession(sessionId: string): void {
+    if (!this.webSocketOnlySessions.has(sessionId)) return;
+    this.sessions.revoke(sessionId);
+    this.forgetWebSocketOnlySession(sessionId, true);
+  }
+
+  private forgetWebSocketOnlySession(sessionId: string, notifyTransport: boolean): void {
+    this.webSocketOnlySessions.delete(sessionId);
+    this.completionDelivered.delete(sessionId);
+    const handler = this.webSocketRevokeHandlers.get(sessionId);
+    this.webSocketRevokeHandlers.delete(sessionId);
+    if (notifyTransport && handler) void Promise.resolve(handler()).catch(() => undefined);
+  }
+
+  private forgetWebSocketOnlyIntervention(interventionId: string, notifyTransport: boolean): void {
+    for (const [sessionId, currentIntervention] of this.webSocketOnlySessions) {
+      if (currentIntervention === interventionId) this.forgetWebSocketOnlySession(sessionId, notifyTransport);
     }
   }
 

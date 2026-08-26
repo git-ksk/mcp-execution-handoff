@@ -2,7 +2,11 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
-import { TakeoverSessionError, TakeoverSessionManager } from "../browser-takeover/session.js";
+import {
+  TakeoverSessionError,
+  TakeoverSessionManager,
+  type TakeoverCompletionResult
+} from "../browser-takeover/session.js";
 import {
   ExperimentalWebSocketTakeoverChannel,
   type WebSocketTakeoverBinding,
@@ -43,6 +47,10 @@ export interface ExperimentalWebSocketAcceptedSession {
   readonly lease: WebSocketTakeoverLease;
 }
 
+export interface ExperimentalWebSocketTakeoverSessionAuthorityHooks {
+  completed?(completion: TakeoverCompletionResult): void | Promise<void>;
+}
+
 /**
  * Handoff-owned WSS authentication/claim authority.
  *
@@ -63,7 +71,8 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
     private readonly sessions: TakeoverSessionManager,
     private readonly now: () => number = Date.now,
     private readonly createTicket: () => string = () => randomBytes(32).toString("base64url"),
-    private readonly createClientBinding: () => string = () => randomBytes(24).toString("base64url")
+    private readonly createClientBinding: () => string = () => randomBytes(24).toString("base64url"),
+    private readonly hooks: ExperimentalWebSocketTakeoverSessionAuthorityHooks = {}
   ) {}
 
   issueHandshakeTicket(
@@ -194,12 +203,13 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
       },
       complete: () => {
         assertRecordBinding();
-        this.sessions.complete(
+        const completion = this.sessions.complete(
           record.sessionId,
           record.completionCapability,
           record.principalBinding
         );
         this.#forgetRecord(record);
+        return this.hooks.completed?.(completion);
       },
       release: () => {
         // A newer generation already fences an older socket. Treat that as successful cleanup,
@@ -211,12 +221,22 @@ export class ExperimentalWebSocketTakeoverSessionAuthority {
         ) {
           return;
         }
-        this.sessions.releaseClientGeneration(
-          record.sessionId,
-          record.principalBinding,
-          binding.clientBinding,
-          binding.clientGeneration
-        );
+        try {
+          this.sessions.releaseClientGeneration(
+            record.sessionId,
+            record.principalBinding,
+            binding.clientBinding,
+            binding.clientGeneration
+          );
+        } catch (error) {
+          if (
+            error instanceof TakeoverSessionError
+            && (error.code === "TAKEOVER_NOT_FOUND" || error.code === "TAKEOVER_EXPIRED")
+          ) {
+            return;
+          }
+          throw error;
+        }
       }
     };
   }
