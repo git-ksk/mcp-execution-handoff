@@ -29,6 +29,28 @@ export type WebRtcDiagnosticStage =
   | "host.frame.ready"
   | "host.input.focus.ready"
   | "host.input.tap.sent"
+  | "host.input.pointer.helper_ready"
+  | "host.input.pointer.helper_failure"
+  | "host.input.pointer.move_ready"
+  | "host.input.pointer.authority_ready"
+  | "host.input.pointer.down_sent"
+  | "host.input.pointer.post_authority_ready"
+  | "host.input.pointer.delivery_helper_ready"
+  | "host.input.pointer.delivery_helper_failure"
+  | "host.input.pointer.delivery_arm_failure"
+  | "host.input.pointer.delivery_wait_no_from_server_creator_match"
+  | "host.input.pointer.delivery_wait_no_from_server_creator_mismatch"
+  | "host.input.pointer.delivery_wait_no_from_server_creator_unknown"
+  | "host.input.pointer.delivery_wait_swapped"
+  | "host.input.pointer.delivery_wait_short_data"
+  | "host.input.pointer.delivery_wait_no_event"
+  | "host.input.pointer.delivery_wait_event_mismatch"
+  | "host.input.pointer.delivery_wait_xi2_mismatch"
+  | "host.input.pointer.delivery_wait_window_mismatch"
+  | "host.input.pointer.delivery_wait_coord_mismatch"
+  | "host.input.pointer.delivery_wait_io_failure"
+  | "host.input.pointer.delivery_wait_failure"
+  | "host.input.pointer.delivery_ready"
   | "host.input.text.native_ax"
   | "host.input.text.pid_keyboard"
   | "host.input.text.event_creation_failure"
@@ -95,6 +117,28 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.frame.ready",
   "host.input.focus.ready",
   "host.input.tap.sent",
+  "host.input.pointer.helper_ready",
+  "host.input.pointer.helper_failure",
+  "host.input.pointer.move_ready",
+  "host.input.pointer.authority_ready",
+  "host.input.pointer.down_sent",
+  "host.input.pointer.post_authority_ready",
+  "host.input.pointer.delivery_helper_ready",
+  "host.input.pointer.delivery_helper_failure",
+  "host.input.pointer.delivery_arm_failure",
+  "host.input.pointer.delivery_wait_no_from_server_creator_match",
+  "host.input.pointer.delivery_wait_no_from_server_creator_mismatch",
+  "host.input.pointer.delivery_wait_no_from_server_creator_unknown",
+  "host.input.pointer.delivery_wait_swapped",
+  "host.input.pointer.delivery_wait_short_data",
+  "host.input.pointer.delivery_wait_no_event",
+  "host.input.pointer.delivery_wait_event_mismatch",
+  "host.input.pointer.delivery_wait_xi2_mismatch",
+  "host.input.pointer.delivery_wait_window_mismatch",
+  "host.input.pointer.delivery_wait_coord_mismatch",
+  "host.input.pointer.delivery_wait_io_failure",
+  "host.input.pointer.delivery_wait_failure",
+  "host.input.pointer.delivery_ready",
   "host.input.text.native_ax",
   "host.input.text.pid_keyboard",
   "host.input.text.event_creation_failure",
@@ -186,6 +230,28 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.frame.ready": ["stage"],
     "host.input.focus.ready": ["stage"],
     "host.input.tap.sent": ["stage"],
+    "host.input.pointer.helper_ready": ["stage"],
+    "host.input.pointer.helper_failure": ["stage"],
+    "host.input.pointer.move_ready": ["stage"],
+    "host.input.pointer.authority_ready": ["stage"],
+    "host.input.pointer.down_sent": ["stage"],
+    "host.input.pointer.post_authority_ready": ["stage"],
+    "host.input.pointer.delivery_helper_ready": ["stage"],
+    "host.input.pointer.delivery_helper_failure": ["stage"],
+    "host.input.pointer.delivery_arm_failure": ["stage"],
+    "host.input.pointer.delivery_wait_no_from_server_creator_match": ["stage"],
+    "host.input.pointer.delivery_wait_no_from_server_creator_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_no_from_server_creator_unknown": ["stage"],
+    "host.input.pointer.delivery_wait_swapped": ["stage"],
+    "host.input.pointer.delivery_wait_short_data": ["stage"],
+    "host.input.pointer.delivery_wait_no_event": ["stage"],
+    "host.input.pointer.delivery_wait_event_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_xi2_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_window_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_coord_mismatch": ["stage"],
+    "host.input.pointer.delivery_wait_io_failure": ["stage"],
+    "host.input.pointer.delivery_wait_failure": ["stage"],
+    "host.input.pointer.delivery_ready": ["stage"],
     "host.input.text.native_ax": ["stage"],
     "host.input.text.pid_keyboard": ["stage"],
     "host.input.text.event_creation_failure": ["stage"],

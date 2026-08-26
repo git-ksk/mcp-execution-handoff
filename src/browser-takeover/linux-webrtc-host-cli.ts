@@ -2,7 +2,7 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { once } from "node:events";
-import type { Readable } from "node:stream";
+import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
   normalizedPointInWindow,
@@ -18,6 +18,8 @@ const DEFAULT_MAX_WIDTH = 1280;
 const DEFAULT_MAX_HEIGHT = 720;
 const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
+const XTEST_HELPER_ACK_TIMEOUT_MS = 2_000;
+const XTEST_HELPER_MAX_OUTPUT_BYTES = 4_096;
 
 export interface LinuxWindowGeometry {
   windowId: number;
@@ -28,7 +30,9 @@ export interface LinuxWindowGeometry {
 }
 
 export interface LinuxHostInput {
-  kind: "tap" | "scroll" | "text" | "key";
+  kind: "tap" | "pointer_button" | "scroll" | "text" | "key";
+  button?: "primary";
+  state?: "down" | "up";
   x?: number;
   y?: number;
   deltaX?: number;
@@ -214,6 +218,169 @@ async function runCommand(executable: string, args: string[], display: string): 
   return Buffer.concat(stdout).toString("utf8");
 }
 
+class LinuxXTestPointerHelper {
+  private readonly child: ChildProcessByStdio<Writable, Readable, null>;
+  private output = "";
+  private readyState: "waiting" | "ready" | "failed" = "waiting";
+  private readonly readyPromise: Promise<void>;
+  private readyResolve!: () => void;
+  private readyReject!: (error: Error) => void;
+  private readyTimer: NodeJS.Timeout;
+  private pending: {
+    expected: "MOVE" | "DOWN" | "UP" | "CANCEL";
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timer: NodeJS.Timeout;
+  } | undefined;
+  private closing: Promise<void> | undefined;
+
+  private constructor(executable: string, display: string) {
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
+    this.readyTimer = setTimeout(() => {
+      if (this.readyState !== "waiting") return;
+      this.readyState = "failed";
+      this.readyReject(new Error("Linux XTEST pointer helper readiness timed out"));
+      void this.close();
+    }, XTEST_HELPER_ACK_TIMEOUT_MS);
+    this.child = spawn(executable, [], {
+      env: boundedEnvironment(display),
+      stdio: ["pipe", "pipe", "ignore"]
+    });
+    this.child.stdout.on("data", (chunk: Buffer) => this.consume(chunk));
+    this.child.once("error", () => this.fail("Linux XTEST pointer helper failed"));
+    this.child.once("close", () => this.fail("Linux XTEST pointer helper closed"));
+  }
+
+  static async start(executable: string, display: string): Promise<LinuxXTestPointerHelper> {
+    const helper = new LinuxXTestPointerHelper(executable, display);
+    await helper.readyPromise;
+    return helper;
+  }
+
+  move(x: number, y: number): Promise<void> {
+    return this.command(`MOVE ${x} ${y}`, "MOVE");
+  }
+
+  down(cleanupX: number, cleanupY: number): Promise<void> {
+    return this.command(`DOWN 1 ${cleanupX} ${cleanupY}`, "DOWN");
+  }
+
+  up(): Promise<void> {
+    return this.command("UP 1", "UP");
+  }
+
+  cancel(): Promise<void> {
+    return this.command("CANCEL 1", "CANCEL");
+  }
+
+  async close(): Promise<void> {
+    if (this.closing) return this.closing;
+    this.closing = (async () => {
+      clearTimeout(this.readyTimer);
+      if (this.child.exitCode !== null || this.child.signalCode !== null) return;
+      // EOF is part of the helper protocol: if Button1 is armed, the helper performs its bounded
+      // cleanup move/release and XSync before exiting. This is also the fallback when an ACK path
+      // fails; never continue the same gesture through xdotool or a replacement helper.
+      this.child.stdin.end();
+      const closed = once(this.child, "close").then(() => true, () => true);
+      const ended = await Promise.race([
+        closed,
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 750))
+      ]);
+      if (ended || this.child.exitCode !== null || this.child.signalCode !== null) return;
+      this.child.kill("SIGTERM");
+      await Promise.race([
+        once(this.child, "close").catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 250))
+      ]);
+      if (this.child.exitCode === null && this.child.signalCode === null) this.child.kill("SIGKILL");
+    })();
+    return this.closing;
+  }
+
+  private command(line: string, expected: "MOVE" | "DOWN" | "UP" | "CANCEL"): Promise<void> {
+    if (this.readyState !== "ready" || this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
+      return Promise.reject(new Error("Linux XTEST pointer helper is unavailable"));
+    }
+    if (this.pending) return Promise.reject(new Error("Linux XTEST pointer helper is busy"));
+    if (!/^[A-Z0-9 -]{2,96}$/.test(line)) return Promise.reject(new Error("Linux XTEST pointer helper command is invalid"));
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this.pending || this.pending.expected !== expected) return;
+        this.pending = undefined;
+        reject(new Error("Linux XTEST pointer helper acknowledgement timed out"));
+        void this.close();
+      }, XTEST_HELPER_ACK_TIMEOUT_MS);
+      this.pending = { expected, resolve, reject, timer };
+      this.child.stdin.write(`${line}\n`, (error) => {
+        if (error) this.fail("Linux XTEST pointer helper write failed");
+      });
+    });
+  }
+
+  private consume(chunk: Buffer): void {
+    this.output += chunk.toString("utf8");
+    if (this.output.length > XTEST_HELPER_MAX_OUTPUT_BYTES) {
+      this.fail("Linux XTEST pointer helper output exceeded limit");
+      void this.close();
+      return;
+    }
+    while (true) {
+      const newline = this.output.indexOf("\n");
+      if (newline < 0) return;
+      const line = this.output.slice(0, newline).trim();
+      this.output = this.output.slice(newline + 1);
+      if (this.readyState === "waiting") {
+        if (line !== "READY 1") {
+          this.fail("Linux XTEST pointer helper protocol mismatch");
+          void this.close();
+          return;
+        }
+        clearTimeout(this.readyTimer);
+        this.readyState = "ready";
+        this.readyResolve();
+        continue;
+      }
+      const pending = this.pending;
+      if (!pending) {
+        this.fail("Linux XTEST pointer helper emitted an unexpected response");
+        void this.close();
+        return;
+      }
+      clearTimeout(pending.timer);
+      this.pending = undefined;
+      if (line === `OK ${pending.expected}`) {
+        pending.resolve();
+        continue;
+      }
+      pending.reject(new Error("Linux XTEST pointer helper rejected a command"));
+      void this.close();
+      return;
+    }
+  }
+
+  private fail(message: string): void {
+    if (this.readyState === "waiting") {
+      clearTimeout(this.readyTimer);
+      this.readyState = "failed";
+      this.readyReject(new Error(message));
+    }
+    const pending = this.pending;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pending = undefined;
+    pending.reject(new Error(message));
+  }
+}
+
+function packagedLinuxXTestHelper(moduleUrl: string): string {
+  return fileURLToPath(new URL("../native/mcp-handoff-linux-xtest-helper", moduleUrl));
+}
+
+
 export function parseOptionalTargetWindowId(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   if (!/^[1-9]\d*$/.test(value)) throw new Error("TAKEOVER_WEBRTC_TARGET_WINDOW_ID is invalid");
@@ -303,6 +470,12 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
     const x = Number(record.x), y = Number(record.y);
     return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { kind: "tap", x, y } : undefined;
   }
+  if (record.kind === "pointer_button" && record.button === "primary" && (record.state === "down" || record.state === "up")) {
+    const x = Number(record.x), y = Number(record.y);
+    return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1
+      ? { kind: "pointer_button", button: "primary", state: record.state, x, y }
+      : undefined;
+  }
   if (record.kind === "scroll") {
     const deltaX = Number(record.deltaX), deltaY = Number(record.deltaY);
     return Number.isFinite(deltaX) && Number.isFinite(deltaY) && Math.abs(deltaX) <= 2_000 && Math.abs(deltaY) <= 2_000
@@ -318,11 +491,15 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
 }
 
 class LinuxWindowInput {
+  private primaryPressed = false;
+  private primaryPoint: { x: number; y: number } | undefined;
+
   constructor(
     private geometry: LinuxWindowGeometry,
     private readonly targetPid: number,
     private readonly display: string,
-    private readonly xdotool: string
+    private readonly xdotool: string,
+    private readonly pointer: LinuxXTestPointerHelper
   ) {}
 
   async apply(input: LinuxHostInput): Promise<void> {
@@ -330,17 +507,38 @@ class LinuxWindowInput {
     // recycled after a process exits; stale geometry must never widen input authority to a new
     // owner. A move/resize of the same owned window refreshes only its bounded geometry.
     this.geometry = await this.currentOwnedGeometry();
-    await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
-    // Pointer operations may establish browser focus. Text/key operations must preserve the
-    // Chromium-internal focused editable element selected by the preceding Human tap. Re-focusing
-    // the top-level X11 window here can steal that internal focus before paste/Enter.
-    if (input.kind === "tap" || input.kind === "scroll") {
-      await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+    const continuingPrimaryRelease = input.kind === "pointer_button" && input.state === "up" && this.primaryPressed;
+    if (input.kind === "pointer_button" && input.state === "up" && !this.primaryPressed) {
+      throw new Error("Linux WebRTC primary button is not pressed");
+    }
+    // Establish exact-window activation before a new pointer lifecycle, scroll, text, or key.
+    // A primary release is different: mutating WM activation/focus between the admitted down/up
+    // pair can cancel Chromium's click lifecycle. For release, revalidate ownership above and
+    // verify active/focus below without issuing another focus mutation while Button1 is held.
+    if (!continuingPrimaryRelease) {
+      const pointerLifecycle = input.kind === "tap" || input.kind === "pointer_button";
+      // Avoid perturbing an already-authorized pointer route. Openbox and other reparenting WMs
+      // can own passive click-to-focus grabs; repeatedly sending _NET_ACTIVE_WINDOW immediately
+      // before XTEST Button1 creates needless WM bookkeeping. If active/focus already prove exact
+      // authority, leave the WM untouched. Otherwise request activation through EWMH and verify it.
+      const alreadyAuthorized = pointerLifecycle
+        && await this.activeTargetOnce()
+        && await this.inputFocusOwnedByTargetOnce();
+      if (!alreadyAuthorized) {
+        await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
+      }
+      // Let the EWMH-aware window manager own pointer focus transitions. Calling windowfocus here
+      // would bypass the WM with XSetInputFocus and can diverge from its click/grab bookkeeping.
+      // Scroll retains the legacy direct-focus behavior; pointer down proceeds only after the
+      // exact active/focus checks below prove the target already owns authority.
+      if (input.kind === "scroll") {
+        await runCommand(this.xdotool, ["windowfocus", "--sync", String(this.geometry.windowId)], this.display);
+      }
     }
     await this.confirmActiveTarget();
     await this.confirmInputFocusOwnedByTarget();
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_focus_ready\n");
-    if (input.kind === "tap") {
+    if (input.kind === "tap" || input.kind === "pointer_button") {
       const point = normalizedPointInWindow(
         {
           id: this.geometry.windowId,
@@ -354,12 +552,15 @@ class LinuxWindowInput {
       );
       const x = Math.round(point.x);
       const y = Math.round(point.y);
-      // Move through XTest using root coordinates derived from the exact target window. This avoids
-      // reparenting/window-decoration differences in --window-relative pointer semantics while
-      // keeping the point strictly inside the already-resolved browser window.
-      await runCommand(this.xdotool, ["mousemove", "--sync", String(x), String(y)], this.display);
-      await runCommand(this.xdotool, ["click", "1"], this.display);
-      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
+      if (input.kind === "tap") {
+        await this.postPrimaryButton("down", x, y);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await this.postPrimaryButton("up", x, y);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
+        return;
+      }
+      await this.postPrimaryButton(input.state!, x, y);
+      if (input.state === "up") process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_tap_sent\n");
       return;
     }
     if (input.kind === "scroll") {
@@ -373,6 +574,136 @@ class LinuxWindowInput {
       return;
     }
     await this.typeText(input.text!);
+  }
+
+
+  private async postPrimaryButton(state: "down" | "up", x: number, y: number): Promise<void> {
+    if (state === "down") {
+      if (this.primaryPressed) throw new Error("Linux WebRTC primary button is already pressed");
+      const geometryBeforeMove = { ...this.geometry };
+      const cleanup = await this.cancellationPoint({ x, y });
+      try {
+        // The XTEST helper still owns only injection state and never receives PID/XID/window policy.
+        // MOVE is acknowledged only after XSync(False) and an exact XQueryPointer coordinate check.
+        await this.pointer.move(x, y);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_move_ready\n");
+
+        // MOVE itself is a Human mutation, but DOWN is a separate mutation. Revalidate exact
+        // PID/window ownership and active/focus after the X server ACK. A geometry change invalidates
+        // the already-admitted root point instead of silently retargeting it.
+        const currentGeometry = await this.currentOwnedGeometry();
+        if (
+          currentGeometry.windowId !== geometryBeforeMove.windowId
+          || currentGeometry.x !== geometryBeforeMove.x
+          || currentGeometry.y !== geometryBeforeMove.y
+          || currentGeometry.width !== geometryBeforeMove.width
+          || currentGeometry.height !== geometryBeforeMove.height
+        ) {
+          throw new Error("Linux WebRTC target geometry changed during primary press admission");
+        }
+        this.geometry = currentGeometry;
+        await this.confirmActiveTarget();
+        await this.confirmInputFocusOwnedByTarget();
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_authority_ready\n");
+        // DOWN is acknowledged by the native helper only after XTestFakeButtonEvent, XSync(False),
+        // Button1Mask=true, and an unchanged root pointer position. Treat that server-processed ACK
+        // as the X11 compatibility barrier, then immediately revalidate the exact authority tuple.
+        await this.pointer.down(cleanup.x, cleanup.y);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_down_sent\n");
+        this.primaryPressed = true;
+        this.primaryPoint = { x, y };
+        await this.confirmPostDownAuthority(geometryBeforeMove);
+        process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_post_authority_ready\n");
+        return;
+      } catch (error) {
+        if (this.primaryPressed) {
+          await this.pointer.cancel().catch(() => undefined);
+          this.primaryPressed = false;
+          this.primaryPoint = undefined;
+        }
+        throw error;
+      }
+    }
+    const pressed = this.primaryPoint;
+    if (!this.primaryPressed || !pressed) throw new Error("Linux WebRTC primary button is not pressed");
+    // `pointer_button` remains a tap lifecycle, not a drag API. Do not inject a same-position
+    // MotionNotify immediately before release; Chromium's X11 injector deliberately avoids that.
+    if (Math.abs(pressed.x - x) > 1 || Math.abs(pressed.y - y) > 1) {
+      throw new Error("Linux WebRTC primary release point changed");
+    }
+    await this.pointer.up();
+    this.primaryPressed = false;
+    this.primaryPoint = undefined;
+  }
+
+  async releaseAll(): Promise<void> {
+    if (!this.primaryPressed) return;
+    // The helper was armed with a Node-computed safe cleanup point before DOWN. CANCEL performs
+    // move-away + Button1 release + XSync on the same connection. Never fall back to xdotool.
+    await this.pointer.cancel().catch(() => undefined);
+    this.primaryPressed = false;
+    this.primaryPoint = undefined;
+  }
+
+  async shutdown(): Promise<void> {
+    await this.releaseAll();
+    await this.pointer.close();
+  }
+
+
+  private async confirmPostDownAuthority(expected: LinuxWindowGeometry): Promise<void> {
+    const current = await this.currentOwnedGeometry();
+    if (
+      current.windowId !== expected.windowId
+      || current.x !== expected.x
+      || current.y !== expected.y
+      || current.width !== expected.width
+      || current.height !== expected.height
+    ) {
+      throw new Error("Linux WebRTC target geometry changed after primary press");
+    }
+    this.geometry = current;
+    if (!await this.activeTargetOnce()) {
+      throw new Error("Linux WebRTC target window lost active authority after primary press");
+    }
+    if (!await this.inputFocusOwnedByTargetOnce()) {
+      throw new Error("Linux WebRTC target process lost input focus after primary press");
+    }
+  }
+
+  private async cancellationPoint(pressedPoint?: { x: number; y: number }): Promise<{ x: number; y: number }> {
+    const raw = await runCommand(this.xdotool, ["getdisplaygeometry"], this.display).catch(() => "");
+    const match = /^(\d+)\s+(\d+)$/.exec(raw.trim());
+    const width = match ? Number(match[1]) : 0;
+    const height = match ? Number(match[2]) : 0;
+    const pressed = pressedPoint ?? this.primaryPoint ?? { x: this.geometry.x, y: this.geometry.y };
+    if (Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 1 && height > 1) {
+      const safeX = Math.min(Math.max(pressed.x, 1), width - 2);
+      const safeY = Math.min(Math.max(pressed.y, 1), height - 2);
+      const margin = 2;
+      if (this.geometry.x - margin >= 0) return { x: this.geometry.x - margin, y: safeY };
+      if (this.geometry.x + this.geometry.width + margin < width) {
+        return { x: this.geometry.x + this.geometry.width + margin, y: safeY };
+      }
+      if (this.geometry.y - margin >= 0) return { x: safeX, y: this.geometry.y - margin };
+      if (this.geometry.y + this.geometry.height + margin < height) {
+        return { x: safeX, y: this.geometry.y + this.geometry.height + margin };
+      }
+      // A full-display target has no off-window point. Fall back to the display corner farthest
+      // from the original press so cleanup becomes an interrupted drag/release, not a control click.
+      const candidates = [
+        { x: 1, y: 1 },
+        { x: width - 2, y: 1 },
+        { x: 1, y: height - 2 },
+        { x: width - 2, y: height - 2 }
+      ];
+      return candidates.reduce((best, candidate) => {
+        const bestDistance = Math.hypot(best.x - pressed.x, best.y - pressed.y);
+        const candidateDistance = Math.hypot(candidate.x - pressed.x, candidate.y - pressed.y);
+        return candidateDistance > bestDistance ? candidate : best;
+      });
+    }
+    return { x: Math.max(0, this.geometry.x - 2), y: Math.max(0, this.geometry.y - 2) };
   }
 
   private async currentOwnedGeometry(): Promise<LinuxWindowGeometry> {
@@ -393,10 +724,23 @@ class LinuxWindowInput {
     return geometry;
   }
 
+  private async activeTargetOnce(): Promise<boolean> {
+    const active = await runCommand(this.xdotool, ["getactivewindow"], this.display).catch(() => "");
+    return Number(active.trim()) === this.geometry.windowId;
+  }
+
+  private async inputFocusOwnedByTargetOnce(): Promise<boolean> {
+    const focused = await runCommand(this.xdotool, ["getwindowfocus"], this.display).catch(() => "");
+    const focusedWindowId = Number(focused.trim());
+    if (!Number.isSafeInteger(focusedWindowId) || focusedWindowId <= 0) return false;
+    if (focusedWindowId === this.geometry.windowId) return true;
+    const focusedPid = await runCommand(this.xdotool, ["getwindowpid", String(focusedWindowId)], this.display).catch(() => "");
+    return Number(focusedPid.trim()) === this.targetPid;
+  }
+
   private async confirmActiveTarget(): Promise<void> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const active = await runCommand(this.xdotool, ["getactivewindow"], this.display).catch(() => "");
-      if (Number(active.trim()) === this.geometry.windowId) return;
+      if (await this.activeTargetOnce()) return;
       if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
     }
     throw new Error("Linux WebRTC target window did not become active");
@@ -404,13 +748,7 @@ class LinuxWindowInput {
 
   private async confirmInputFocusOwnedByTarget(): Promise<void> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const focused = await runCommand(this.xdotool, ["getwindowfocus"], this.display).catch(() => "");
-      const focusedWindowId = Number(focused.trim());
-      if (Number.isSafeInteger(focusedWindowId) && focusedWindowId > 0) {
-        if (focusedWindowId === this.geometry.windowId) return;
-        const focusedPid = await runCommand(this.xdotool, ["getwindowpid", String(focusedWindowId)], this.display).catch(() => "");
-        if (Number(focusedPid.trim()) === this.targetPid) return;
-      }
+      if (await this.inputFocusOwnedByTargetOnce()) return;
       if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
     }
     throw new Error("Linux WebRTC input focus is not owned by the target process");
@@ -570,6 +908,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
 
   const xdotool = absoluteTool("xdotool", "TAKEOVER_LINUX_XDOTOOL");
   const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
+  const xtestHelperExecutable = packagedLinuxXTestHelper(import.meta.url);
   let geometry: LinuxWindowGeometry;
   try {
     geometry = await resolveExactWindow(targetPid, targetWindowId, display, xdotool);
@@ -579,7 +918,15 @@ export async function linuxWebRtcHostMain(): Promise<void> {
     throw error;
   }
   process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
-  const input = new LinuxWindowInput(geometry, targetPid, display, xdotool);
+  let pointer: LinuxXTestPointerHelper;
+  try {
+    pointer = await LinuxXTestPointerHelper.start(xtestHelperExecutable, display);
+    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_ready\n");
+  } catch (error) {
+    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_failure\n");
+    throw error;
+  }
+  const input = new LinuxWindowInput(geometry, targetPid, display, xdotool, pointer);
   let stopped = false;
   let stopHost!: () => Promise<void>;
   const capture = new LinuxCapture(geometry, display, ffmpeg, new LatestFrameWriter(), () => {
@@ -589,10 +936,18 @@ export async function linuxWebRtcHostMain(): Promise<void> {
 
   let pending = Buffer.alloc(0);
   let inputChain = Promise.resolve();
-  stopHost = async () => {
-    if (stopped) return;
+  let stopPromise: Promise<void> | undefined;
+  stopHost = () => {
+    if (stopPromise) return stopPromise;
     stopped = true;
-    await capture.stop();
+    // Serialize lifecycle cleanup after every already-admitted Human mutation. If shutdown races
+    // an in-flight primary-down command, releasing outside the chain can observe primaryPressed
+    // before mousedown completes and leave the X11 button stuck after helper exit.
+    inputChain = inputChain
+      .then(() => input.shutdown())
+      .catch(() => pointer.close());
+    stopPromise = inputChain.then(() => capture.stop());
+    return stopPromise;
   };
   capture.start();
   const expiry = setTimeout(() => { void stopHost(); }, Math.max(0, expiresAt - Date.now()));
@@ -630,7 +985,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
 
   while (!stopped) await new Promise((resolve) => setTimeout(resolve, 40));
   clearTimeout(expiry);
-  await inputChain;
+  await stopPromise;
 }
 
 export function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean {

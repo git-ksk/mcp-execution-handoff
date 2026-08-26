@@ -103,15 +103,56 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /did not converge to exactly one eligible window/);
   assert.match(host, /-window_id/);
   assert.match(host, /windowactivate/);
-  assert.match(host, /input\.kind === "tap" \|\| input\.kind === "scroll"/);
   assert.match(host, /windowfocus/);
+  assert.match(host, /const continuingPrimaryRelease = input\.kind === "pointer_button" && input\.state === "up" && this\.primaryPressed/);
+  assert.match(host, /if \(!continuingPrimaryRelease\) \{[\s\S]*windowactivate[\s\S]*windowfocus/);
+  assert.match(host, /verify active\/focus below without issuing another focus mutation/);
+  assert.match(host, /if \(input\.kind === "scroll"\)[\s\S]*windowfocus/);
+  assert.match(host, /const alreadyAuthorized = pointerLifecycle[\s\S]*activeTargetOnce\(\)[\s\S]*inputFocusOwnedByTargetOnce\(\)/);
+  assert.match(host, /if \(!alreadyAuthorized\) \{[\s\S]*windowactivate/);
+  assert.doesNotMatch(host, /input\.kind === "tap" \|\| input\.kind === "pointer_button" \|\| input\.kind === "scroll"/);
   assert.match(host, /spawn\(this\.xdotool, \["type", "--clearmodifiers", "--delay", "5", "--file", "-"\]/);
   assert.match(host, /child\.stdin\.end\(Buffer\.from\(text, "utf8"\)\)/);
   assert.doesNotMatch(host, /xclip|TAKEOVER_LINUX_XCLIP/);
   assert.match(host, /Math\.round\(point\.x\)/);
   assert.match(host, /Math\.round\(point\.y\)/);
-  assert.match(host, /\["mousemove", "--sync", String\(x\), String\(y\)\]/);
-  assert.match(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
+  assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
+  assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xtest-helper", moduleUrl\)/);
+  assert.doesNotMatch(host, /TAKEOVER_LINUX_XTEST_HELPER/);
+  assert.match(host, /await this\.pointer\.move\(x, y\)/);
+  assert.match(host, /currentGeometry = await this\.currentOwnedGeometry\(\)/);
+  assert.match(host, /target geometry changed during primary press admission/);
+  assert.match(host, /await this\.confirmActiveTarget\(\)[\s\S]*await this\.confirmInputFocusOwnedByTarget\(\)[\s\S]*await this\.pointer\.down/);
+  assert.match(host, /kind: "tap" \| "pointer_button"/);
+  assert.match(host, /record\.kind === "pointer_button"/);
+  assert.match(host, /record\.button === "primary"/);
+  assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
+  assert.doesNotMatch(host, /POINTER_INPUT_SETTLE_MS/);
+  assert.match(host, /linux_stage=input_pointer_helper_ready/);
+  assert.match(host, /linux_stage=input_pointer_helper_failure/);
+  assert.match(host, /linux_stage=input_pointer_move_ready/);
+  assert.match(host, /linux_stage=input_pointer_authority_ready/);
+  assert.match(host, /linux_stage=input_pointer_down_sent/);
+  assert.match(host, /linux_stage=input_pointer_post_authority_ready/);
+  assert.match(host, /input_pointer_authority_ready[\s\S]*await this\.pointer\.down/);
+  assert.match(host, /await this\.confirmPostDownAuthority\(geometryBeforeMove\)/);
+  assert.match(host, /target geometry changed after primary press/);
+  assert.match(host, /lost active authority after primary press/);
+  assert.match(host, /lost input focus after primary press/);
+  assert.doesNotMatch(host, /LinuxXRecordDeliveryHelper|LinuxXRecordDeliveryWaitError/);
+  assert.doesNotMatch(host, /packagedLinuxXRecordDeliveryHelper/);
+  assert.doesNotMatch(host, /delivery\.arm|waitPrimaryPress|deliveryHelper\(\)/);
+  assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
+  assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
+  assert.match(host, /await this\.pointer\.up\(\)/);
+  assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
+  assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
+  assert.match(host, /Never fall back to xdotool/);
+  assert.match(host, /private primaryPressed = false/);
+  assert.match(host, /async releaseAll\(\): Promise<void>/);
+  assert.match(host, /inputChain = inputChain[\s\S]*input\.shutdown\(\)[\s\S]*stopPromise = inputChain\.then\(\(\) => capture\.stop\(\)\)/);
+  assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
   assert.match(host, /getwindowfocus/);
   assert.match(host, /Linux WebRTC input focus is not owned by the target process/);
   assert.match(host, /focusedWindowId === this\.geometry\.windowId/);
@@ -128,6 +169,88 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /\["type"[^\]]*text/);
   assert.doesNotMatch(host, /shell:\s*true/);
   assert.doesNotMatch(host, /console\.(?:log|error)[^\n]*text/);
+});
+
+
+test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", () => {
+  const helper = readFileSync("native/linux-xtest-helper.c", "utf8");
+  assert.match(helper, /XOpenDisplay\(NULL\)/);
+  assert.match(helper, /XTestQueryExtension/);
+  assert.match(helper, /XGetPointerMapping/);
+  assert.match(helper, /XTestFakeMotionEvent/);
+  assert.match(helper, /XTestFakeButtonEvent/);
+  assert.match(helper, /XSync\(state->display, False\)/);
+  assert.match(helper, /XQueryPointer/);
+  assert.match(helper, /Button1Mask/);
+  assert.match(helper, /pointer_at\(state, x, y\)/);
+  assert.match(helper, /primary_button_state\(state, true\)/);
+  assert.match(helper, /pointer_position_known/);
+  assert.match(helper, /pointer_at\(state, state->pointer_x, state->pointer_y\)/);
+  assert.match(helper, /primary_button_state\(state, false\)/);
+  assert.match(helper, /READY.*1/);
+  assert.match(helper, /strcmp\(tokens\[0\], "MOVE"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "DOWN"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "UP"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "CANCEL"\)/);
+  assert.match(helper, /cleanup_pressed_button/);
+  assert.doesNotMatch(helper, /XSendEvent/);
+  assert.doesNotMatch(helper, /XTestGrabControl/);
+  assert.doesNotMatch(helper, /_NET_WM_PID|window title|targetPid|windowId/);
+});
+
+
+test("Linux XRecord diagnostic helper remains strict and non-injecting", () => {
+  const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");
+  assert.match(helper, /PROTOCOL_VERSION 3/);
+  assert.match(helper, /reply\("READY", "3"\)/);
+  assert.match(helper, /XRecordQueryVersion/);
+  assert.match(helper, /!XResQueryVersion\(display, &major, &minor\)/);
+  assert.match(helper, /XResQueryClientIds\(display, 1, &spec, &id_count, &ids\) != Success/);
+  assert.match(helper, /XResGetClientPid/);
+  assert.match(helper, /XRES_CLIENT_ID_PID_MASK/);
+  assert.match(helper, /XQueryExtension\(state.control, "XInputExtension"/);
+  assert.match(helper, /delivered_events\.first = ButtonPress/);
+  assert.match(helper, /delivered_events\.first = GenericEvent/);
+  assert.match(helper, /XI_ButtonPress/);
+  assert.match(helper, /XRecordCreateContext\(state->control, 0, clients, client_count, ranges, 2\)/);
+  assert.match(helper, /XRecordEnableContextAsync/);
+  assert.match(helper, /XRecordProcessReplies/);
+  assert.match(helper, /XSync\(state->control, False\)/);
+  assert.match(helper, /window_descends_from\(state->control, state->expected_window, event_window\)/);
+  assert.match(helper, /root_x == state->expected_x && root_y == state->expected_y/);
+  assert.match(helper, /WIRE_XI2_EVENT_WINDOW_OFFSET/);
+  assert.match(helper, /DELIVERY_WAIT_TIMEOUT_MS 1000/);
+  assert.match(helper, /WAIT_NO_FROM_SERVER_CREATOR_MATCH/);
+  assert.match(helper, /WAIT_NO_FROM_SERVER_CREATOR_MISMATCH/);
+  assert.match(helper, /WAIT_NO_FROM_SERVER_CREATOR_UNKNOWN/);
+  assert.match(helper, /resolve_window_creator_pid_relation/);
+  assert.match(helper, /WAIT_SWAPPED/);
+  assert.match(helper, /WAIT_SHORT_DATA/);
+  assert.match(helper, /WAIT_NO_EVENT/);
+  assert.match(helper, /WAIT_EVENT_MISMATCH/);
+  assert.match(helper, /WAIT_XI2_MISMATCH/);
+  assert.match(helper, /WAIT_WINDOW_MISMATCH/);
+  assert.match(helper, /WAIT_COORD_MISMATCH/);
+  assert.match(helper, /WAIT_IO/);
+  assert.doesNotMatch(helper, /XRecordAllClients|XRecordCurrentClients|XRecordFutureClients/);
+  assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
+});
+
+test("Linux XRecord self-test target stays a minimal real X11 recipient", () => {
+  const target = readFileSync("native/linux-xrecord-selftest-target.c", "utf8");
+  assert.match(target, /XSelectInput\(display, window, ButtonPressMask \| ButtonReleaseMask/);
+  assert.match(target, /XNextEvent/);
+  assert.doesNotMatch(target, /XSendEvent|XTestFake|XWarpPointer|usleep|nanosleep/);
+});
+
+test("Linux X11 pointer query probe remains query-only and non-invasive", () => {
+  const probe = readFileSync("experiments/linux-webrtc-host/native/x11-pointer-query.c", "utf8");
+  assert.match(probe, /XOpenDisplay\(NULL\)/);
+  assert.match(probe, /RootWindow/);
+  assert.match(probe, /XQueryPointer/);
+  assert.match(probe, /MAX_POINTER_DEPTH 16/);
+  assert.match(probe, /CHAIN=%lu/);
+  assert.doesNotMatch(probe, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer/);
 });
 
 test("Node WebRTC runtime passes an explicit Linux display without widening the child environment", () => {

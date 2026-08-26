@@ -125,8 +125,27 @@ test("wrong title or non-interactive page cannot satisfy exact-window readiness"
 test("Linux real-browser acceptance carries the accepted exact window into WebRTC target binding", () => {
   const source = readFileSync("experiments/linux-webrtc-host/scripts/acceptance.mts", "utf8");
   assert.match(source, /waitForLinuxWindowReadiness/);
+  assert.match(source, /timeoutMs:\s*45_000/);
   assert.match(source, /stableSamples:\s*2/);
   assert.match(source, /targetWindowId:\s*acceptedWindowIdNumber/);
+  assert.match(source, /waitForOpenboxReady\(openbox, xEnv\)/);
+  assert.match(source, /_NET_SUPPORTING_WM_CHECK/);
+  assert.match(source, /_NET_WM_NAME/);
+  assert.match(source, /mcp-handoff-linux-xrecord-delivery-helper/);
+  assert.match(source, /mcp-handoff-linux-x11-pointer-query/);
+  assert.match(source, /x11RawPointerChain\(x11PointerQuery, xEnv\)/);
+  assert.match(source, /raw_chain_has_exact=/);
+  assert.match(source, /raw_deepest_descends_exact=/);
+  assert.match(source, /HANDOFF_ACCEPT_OPENBOX_NO_CLIENT_GRAB/);
+  const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+  assert.match(workflow, /Informational control only/);
+  assert.doesNotMatch(workflow, /test "\$\{\{ steps\.no_client_grab\.outcome \}\}" = success/);
+  assert.match(source, /--config-file/);
+  assert.match(source, /<mouse>[\s\S]*<\/mouse>/);
+  assert.doesNotMatch(source, /openbox\.once\("error"[\s\S]{0,160}setTimeout\(resolve, 250\)/);
+  assert.match(source, /kind: "pointer_button", button: "primary", state: "down"/);
+  assert.match(source, /kind: "pointer_button", button: "primary", state: "up"/);
+  assert.doesNotMatch(source, /critical\.send\(JSON\.stringify\(\{ kind: "tap"/);
   const visibleSearches = source.match(/xdotool[\s\S]{0,120}search[\s\S]{0,120}--onlyvisible/g) ?? [];
   assert.equal(visibleSearches.length, 1, "window readiness must use one coherent polling observation path");
   assert.doesNotMatch(source, /assert\.equal\(windowIds\.length,\s*1\)/);

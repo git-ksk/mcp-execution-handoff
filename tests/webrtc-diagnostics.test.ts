@@ -82,3 +82,43 @@ test("native text route diagnostics retain only one bounded payload-free stage",
     true
   );
 });
+
+
+test("Linux pointer authority diagnostics retain only bounded stage names", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  const stages = [
+    "host.input.pointer.move_ready",
+    "host.input.pointer.authority_ready",
+    "host.input.pointer.down_sent",
+    "host.input.pointer.post_authority_ready"
+  ] as const;
+  for (const stage of stages) tracker.record({ stage });
+  assert.deepEqual(tracker.snapshot(), { events: stages.map((stage) => ({ stage })) });
+});
+
+
+test("Linux pointer delivery diagnostics retain only bounded stage names", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  const stages = [
+    "host.input.pointer.delivery_helper_ready",
+    "host.input.pointer.delivery_helper_failure",
+    "host.input.pointer.delivery_arm_failure",
+    "host.input.pointer.delivery_wait_no_from_server_creator_match",
+    "host.input.pointer.delivery_wait_no_from_server_creator_mismatch",
+    "host.input.pointer.delivery_wait_no_from_server_creator_unknown",
+    "host.input.pointer.delivery_wait_swapped",
+    "host.input.pointer.delivery_wait_short_data",
+    "host.input.pointer.delivery_wait_no_event",
+    "host.input.pointer.delivery_wait_event_mismatch",
+    "host.input.pointer.delivery_wait_xi2_mismatch",
+    "host.input.pointer.delivery_wait_window_mismatch",
+    "host.input.pointer.delivery_wait_coord_mismatch",
+    "host.input.pointer.delivery_wait_io_failure",
+    "host.input.pointer.delivery_wait_failure",
+    "host.input.pointer.delivery_ready"
+  ] as const;
+  for (const stage of stages) tracker.record({ stage });
+  assert.deepEqual(tracker.snapshot(), { events: stages.map((stage) => ({ stage })) });
+  tracker.record({ stage: "host.input.pointer.delivery_ready", durationMs: 1 });
+  assert.equal(tracker.snapshot().events.length, stages.length);
+});
