@@ -122,8 +122,11 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /record\.button === "primary"/);
   assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
-  assert.match(host, /moves at all, not until it reaches the requested destination/);
-  assert.match(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
+  assert.match(host, /complete press lifecycle on one xdotool\/X11 connection/);
+  assert.match(host, /spawn\(executable, \["-"\]/);
+  assert.match(host, /getactivewindow\\n/);
+  assert.match(host, /private primarySession: XdotoolPointerSession \| undefined/);
+  assert.match(host, /session\.command\(\["mouseup", "1"\], this\.geometry\.windowId\)/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
   assert.match(host, /"mousemove", String\(releasePoint\.x\), String\(releasePoint\.y\),[\s\S]*"mouseup", "1"/);
   assert.doesNotMatch(host, /"mousemove", "--sync", String\(releasePoint\.x\)/);
