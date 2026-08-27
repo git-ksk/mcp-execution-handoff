@@ -26,7 +26,7 @@ export interface LinuxWebSocketJpegFrame {
   height: number;
 }
 
-/** Parses only the private JPEG record emitted by the existing Linux exact-window host helper. */
+/** Parses private JPEG records while accepting the helper's bounded editable-focus control record. */
 export class LinuxWebSocketHostRecordParser {
   #pending = Buffer.alloc(0);
 
@@ -42,12 +42,19 @@ export class LinuxWebSocketHostRecordParser {
       if (this.#pending.byteLength < 5) return;
       const type = this.#pending[0];
       const length = this.#pending.readUInt32BE(1);
-      if (type !== 2 || length < 8 || length > MAX_HOST_RECORD_BYTES) {
+      if (type !== 2 || length < 1 || length > MAX_HOST_RECORD_BYTES) {
         throw new Error("Linux WSS host emitted an invalid record");
       }
       if (this.#pending.byteLength < 5 + length) return;
       const payload = this.#pending.subarray(5, 5 + length);
       this.#pending = this.#pending.subarray(5 + length);
+      if (length === 1) {
+        if (payload[0] !== 0 && payload[0] !== 1) {
+          throw new Error("Linux WSS host emitted an invalid editable-focus record");
+        }
+        continue;
+      }
+      if (length < 8) throw new Error("Linux WSS host emitted an invalid record");
       const width = payload.readUInt16BE(0);
       const height = payload.readUInt16BE(2);
       const data = payload.subarray(4);
