@@ -149,6 +149,10 @@ test("Browser Handoff keeps WebRTC lifecycle routing and bounded diagnostics Han
 
   const diagnostics = adapter.diagnosticsSnapshot();
   assert.deepEqual(diagnostics, { events: [] });
+  assert.deepEqual(adapter.operatorDiagnosticsSnapshot(), {
+    version: 1, source: "browser_handoff", health: "idle",
+    transport: { namespace: "webrtc", eventCount: 0 }
+  });
   const latency = adapter.latencySnapshot();
   assert.equal(latency.direct.samples, 0);
   assert.equal(latency.relay.samples, 0);

@@ -142,63 +142,38 @@ v1 parserはextra fieldをstrictに拒否し、raw action argument、Human input
 
 ## Operator diagnostics boundary
 
-Diagnosticsはtroubleshooting / acceptance向けで、durable reconstruction向けではありません。現行WebRTC diagnosticsは次の好ましい形をすでに示しています。
+Diagnosticsはtroubleshooting / acceptance向けで、durable reconstruction向けではありません。v0.3ではfirst-class Browser / Window / Terminal adapterの `operatorDiagnosticsSnapshot()` と `OperatorDiagnosticsSnapshot` により、**version 1 operator summary** をstable化します。
 
-- finiteなstage/state category
-- candidate/address文字列ではなくbounded candidate-type count
-- bounded duration / latency distribution
-- bounded event buffer
-- target/session/principal/network/content payloadを持たない
+stable v1 envelopeは意図的にidentifier-freeです。
 
-#129ではBrowser / Window / Terminalで本当に共有できるlifecycle/authority/failure categoryだけをstable化し、target/transport固有detailは各namespaceに残します。1つの巨大generic diagnostics objectを作るためにfalse parityを作ってはいけません。
+- `version: 1`
+- diagnostic sourceは `browser_handoff` / `window_handoff` / `terminal_handoff` のみ。これはdiagnostics producerを示す値であり、**public Target Surface semantic enumをfreezeするものではない**
+- generic healthは `idle` / `starting` / `available` / `degraded` / `failed` のみ
+- optional failure categoryは `target` / `transport` / `input` / `recovery` のbounded categoryだけ
+- generic execution stateを実際に所有するTerminalだけ、execution authorityとintervention phaseを持てる
+- target / transport固有detailはfalse parityへflattenせず明示namespaceへ残す
 
-Diagnosticsのdefault retentionはprocess-memoryです。operatorがprojectionを永続化する場合も、stable operator contractで明示許可したfieldだけをexportします。
+### Namespaced projection
 
-## Crash/restart conformance gate
+Browser / Windowの `webrtc` transport projectionに含めるのは次だけです。
 
-#130をv0.3のrecovery modelに対するrelease gateとします。最低でも次のcrashをdeterministic testで扱います。
+- validation済みevent count（最大128）
+- 存在する場合の最新bounded peer state
+- aggregate ICE candidate **type count** のみ（各最大64）
 
-1. `awaiting_human`
-2. `human_active`
-3. `verifying`
-4. `ready_to_resume` 後、consumer reissue前
-5. Browser/Window locatorまたはcapabilityが存在する状態
-6. reconnect generation / handleが存在する状態
-7. Terminal Human authority中、またはPTY/process exit時
-8. checkpoint write interruption / expiry / tamper / principal/adapter mismatch
+詳細WebRTC stage string、duration series、media profile、latency sample、provider名、candidate/address、target identityはstable operator summaryへコピーしません。既存 `diagnosticsSnapshot()` / `latencySnapshot()` APIはtransport固有troubleshooting / physical acceptance用として変更せず維持します。#129は既存詳細APIを置換せず、その上にstable projectionを追加します。
 
-全ケースでrestart後に古いmutation authorityを利用できないことが必要です。Browser / Window / Terminalは必要に応じてfreshなconsumer-owned target/session reconstructionを要求します。
+Terminalは2つのtarget-specific namespaceを使います。
 
-## v0.3実装順
+- `terminal_session`: session alive / Human disconnected / Agent-state synchronization-required のboolean
+- `terminal_webrtc`: ready / disconnected / completed / faulted のbooleanと、既存transport上限64件にboundedされたqueued-event count
 
-推奨順序:
+Terminalの `sessionId`、session generation、intervention epoch/id、principal binding、PTY byte、client generationはexportしません。Browser / Window operator summaryにはexecution authority / lifecycle fieldを捏造しません。これらfacadeはgeneric execution state machineを所有していないためです。
 
-1. **#127 checkpoint-store contract** — durable interfaceとfailure semanticsを先に固定
-2. **#128 audit contract** と **#129 diagnostics contract** — 共通data-classification ruleを参照しつつ並行可能
-3. **#130 crash/restart conformance** — 他contractがrelease-level invariantとしてtest可能になってからclose
+### Privacy / boundedness / compatibility
 
-## v0.3 exit criteria
+`parseOperatorDiagnosticsSnapshot()` をstrict v1 validatorとします。extra field、false-parity field、上限超過count、session/intervention/principal id、PID/window identity、credential/token、SDP/candidate/IP、framebuffer/media、Human input、PTY/browser/page content、account identity、capability、timestamp、free-form message payloadを入れる経路は拒否します。
 
-次を満たせばv0.3 readyです。
+stable v1 parserは意図的にclosed-worldです。fieldのrename/remove、新しいroot/namespace fieldの追加、enum意味変更はv1を黙って広げず新schema versionを要求します。既存transport-local diagnosticsはそれぞれのtyped API内で進化できますが、cross-surfaceでstableなoperator contractは明示v1 projectionだけです。
 
-- durable schemaを広げずprovider-neutral checkpoint-store interfaceを導入
-- signed-file storeをreference implementationとして維持
-- audit eventにversioned / bounded / privacy-reviewed contractがある
-- operator diagnosticsにstable shared categoryがあり、target/transport固有detailはscope内に残る
-- crash/restart conformanceでstale authority、capability、request state、media/input session、PTY authorityが復元されない
-- recoveryは `reissue_and_revalidate` のままでconsumer semantic verificationが必須
-- Browser / Window / Terminalの既存integrationがgreen
-
-## v0.3の明示的non-goal
-
-- Desktop Handoff (#125)
-- provider-neutral TURN/connectivity productization (#19)
-- hosted control plane / execution worker (#12)
-- distributed database / queue選定
-- active Human sessionのtransparent live migration
-- browser/profile/PTY/media restoration
-- automatic action replay
-- credential vault
-- mandatoryなOpenTelemetry/SIEM/vendor integration
-
-これらは将来v0.3 contractを利用できますが、v0.3のauthority/persistence boundaryには含めません。
+operator summaryのdefault retentionはprocess-memoryです。永続化してもrecovery stateにはなりません。authority、locator/capability、client generation、media/input session、PTY authority、semantic verificationを再構築するためにreplayしてはいけません。operator systemがdiagnosticsを永続化する場合はstable parserを通過した値（または別途review済みallowed projection）だけを保存します。#128 auditは別のevent contractであり、execution transcriptでもgeneric diagnostics storeでもありません。

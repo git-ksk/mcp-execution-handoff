@@ -1,3 +1,4 @@
+import { webRtcOperatorDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "./window-handoff-core.js";
 export class WindowHandoffAdapterError extends Error {
     code;
@@ -44,6 +45,7 @@ export class WindowHandoffAdapter {
     revokeUnclaimed(interventionId) { this.#core.revokeUnclaimed(interventionId); }
     handle(request, boundPrincipal) { return this.#core.handle(request, boundPrincipal); }
     diagnosticsSnapshot() { return this.#core.diagnosticsSnapshot(); }
+    operatorDiagnosticsSnapshot() { return webRtcOperatorDiagnosticsSnapshot("window_handoff", this.#core.diagnosticsSnapshot()); }
     latencySnapshot() { return this.#core.latencySnapshot(); }
 }
 function translateError(error) {

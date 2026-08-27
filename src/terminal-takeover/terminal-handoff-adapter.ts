@@ -1,3 +1,10 @@
+import {
+  OPERATOR_DIAGNOSTICS_SCHEMA_VERSION,
+  parseOperatorDiagnosticsSnapshot,
+  type OperatorDiagnosticsFailureCategory,
+  type OperatorDiagnosticsHealth,
+  type OperatorDiagnosticsSnapshot
+} from "../core/operator-diagnostics.js";
 import { timingSafeEqual } from "node:crypto";
 import type { ExecutionAuthority, InterventionStatus, ResumePolicy } from "../core/lifecycle.js";
 import {
@@ -145,6 +152,10 @@ export class TerminalHandoffAdapter {
       ))
       : null;
     return { ...authority, transport };
+  }
+
+  operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot {
+    return terminalHandoffOperatorDiagnosticsSnapshot(this.status());
   }
 
   /** Fence Agent authority first, then issue the still-input-fenced Human locator. */
@@ -442,4 +453,47 @@ function sameString(left: string, right: string): boolean {
   const expected = Buffer.from(left, "utf8");
   const supplied = Buffer.from(right, "utf8");
   return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
+
+export function terminalHandoffOperatorDiagnosticsSnapshot(status: TerminalHandoffStatus): OperatorDiagnosticsSnapshot {
+  let health: OperatorDiagnosticsHealth = "idle";
+  let failureCategory: OperatorDiagnosticsFailureCategory | undefined;
+  if (!status.sessionAlive) {
+    health = "failed";
+    failureCategory = "target";
+  } else if (status.transport?.faulted) {
+    health = "failed";
+    failureCategory = "transport";
+  } else if (status.humanDisconnected || status.transport?.disconnected || status.agentStateSynchronizationRequired) {
+    health = "degraded";
+    if (status.humanDisconnected || status.transport?.disconnected) failureCategory = "transport";
+  } else if (status.interventionStatus === "awaiting_human" && !status.transport?.transportReady) {
+    health = "starting";
+  } else if (status.interventionStatus !== null || status.transport?.transportReady) {
+    health = "available";
+  }
+
+  return parseOperatorDiagnosticsSnapshot({
+    version: OPERATOR_DIAGNOSTICS_SCHEMA_VERSION,
+    source: "terminal_handoff",
+    health,
+    authority: status.authority,
+    ...(status.interventionStatus === null ? {} : { phase: status.interventionStatus }),
+    ...(failureCategory ? { failureCategory } : {}),
+    terminal: {
+      namespace: "terminal_session",
+      alive: status.sessionAlive,
+      humanDisconnected: status.humanDisconnected,
+      synchronizationRequired: status.agentStateSynchronizationRequired
+    },
+    transport: status.transport === null ? null : {
+      namespace: "terminal_webrtc",
+      ready: status.transport.transportReady,
+      disconnected: status.transport.disconnected,
+      completed: status.transport.completed,
+      faulted: status.transport.faulted,
+      queuedEvents: status.transport.queuedEvents
+    }
+  });
 }

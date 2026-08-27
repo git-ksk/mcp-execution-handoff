@@ -165,6 +165,12 @@ test("Terminal Handoff status is privacy-bounded and exact PTY exit never synthe
   const { intervention, locator } = adapter.begin();
   const encoded = JSON.stringify(adapter.status());
   assert.doesNotMatch(encoded, /pty-session-component|aaaaaaaaaaaaaaaa|takeover\/terminal|credential|token|secret/i);
+  const operator = adapter.operatorDiagnosticsSnapshot();
+  assert.equal(operator.source, "terminal_handoff");
+  assert.equal(operator.health, "starting");
+  assert.equal(operator.authority, "none");
+  assert.equal(operator.phase, "awaiting_human");
+  assert.doesNotMatch(JSON.stringify(operator), /pty-session-component|aaaaaaaaaaaaaaaa|sessionGeneration|interventionEpoch|credential|token|secret/i);
   assert.equal(adapter.isPath(new URL(locator).pathname), true);
   assert.equal(adapter.transportStatus(intervention).humanActive, false);
 

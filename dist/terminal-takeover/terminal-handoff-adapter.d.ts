@@ -1,3 +1,4 @@
+import { type OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
 import type { ExecutionAuthority, InterventionStatus, ResumePolicy } from "../core/lifecycle.js";
 export interface TerminalHandoffBinding {
     /** Opaque consumer-owned PTY/session identity. Never emitted by adapter status/diagnostics. */
@@ -82,6 +83,7 @@ export declare class TerminalHandoffAdapter {
     isPath(pathname: string): boolean;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     status(): TerminalHandoffStatus;
+    operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot;
     /** Fence Agent authority first, then issue the still-input-fenced Human locator. */
     begin(): {
         intervention: TerminalHandoffInterventionRef;
@@ -126,4 +128,5 @@ export declare class TerminalHandoffAdapter {
     /** Tear down only the Human transport. Authority/verification state remains governed separately. */
     revokeTransport(): Promise<void>;
 }
+export declare function terminalHandoffOperatorDiagnosticsSnapshot(status: TerminalHandoffStatus): OperatorDiagnosticsSnapshot;
 //# sourceMappingURL=terminal-handoff-adapter.d.ts.map
