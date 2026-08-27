@@ -204,12 +204,18 @@ test("runtime start error preserves the explicit end cause after expiry cleanup"
   }
 });
 
-test("spawned WebRTC host receives only bounded runtime env plus the Node executable directory", async () => {
+test("spawned Linux WebRTC host receives only bounded runtime and accessibility session env", async () => {
   const child = new FakeHostProcess();
   const expectedBinding = binding();
   let capturedExecutable: string | undefined;
   let capturedArgs: readonly string[] | undefined;
   let capturedEnv: NodeJS.ProcessEnv | undefined;
+  const savedBus = process.env.DBUS_SESSION_BUS_ADDRESS;
+  const savedRuntime = process.env.XDG_RUNTIME_DIR;
+  const savedSecret = process.env.UNRELATED_SECRET;
+  process.env.DBUS_SESSION_BUS_ADDRESS = "unix:path=/tmp/handoff-test-bus";
+  process.env.XDG_RUNTIME_DIR = "/tmp/handoff-runtime";
+  process.env.UNRELATED_SECRET = "must-not-propagate";
   const provider = new SpawnedWebRtcRuntimeProvider({
     hostExecutable: "/fake/handoff-linux-webrtc-host",
     displayName: ":99",
@@ -235,10 +241,44 @@ test("spawned WebRTC host receives only bounded runtime env plus the Node execut
     assert.equal(capturedEnv.TAKEOVER_WEBRTC_TARGET_PID, "31337");
     assert.equal(capturedEnv.TAKEOVER_WEBRTC_TARGET_WINDOW_ID, "42424");
     assert.equal(capturedEnv.TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS, String(expectedBinding.expiresAt));
+    assert.equal(capturedEnv.DBUS_SESSION_BUS_ADDRESS, "unix:path=/tmp/handoff-test-bus");
+    assert.equal(capturedEnv.XDG_RUNTIME_DIR, "/tmp/handoff-runtime");
+    assert.equal(capturedEnv.NO_AT_BRIDGE, "0");
+    assert.equal(capturedEnv.UNRELATED_SECRET, undefined);
     assert.deepEqual(
       Object.keys(capturedEnv).sort(),
-      ["PATH", "TAKEOVER_WEBRTC_DISPLAY_NAME", "TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS", "TAKEOVER_WEBRTC_TARGET_PID", "TAKEOVER_WEBRTC_TARGET_WINDOW_ID"].sort()
+      ["DBUS_SESSION_BUS_ADDRESS", "NO_AT_BRIDGE", "PATH", "TAKEOVER_WEBRTC_DISPLAY_NAME", "TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS", "TAKEOVER_WEBRTC_TARGET_PID", "TAKEOVER_WEBRTC_TARGET_WINDOW_ID", "XDG_RUNTIME_DIR"].sort()
     );
+  } finally {
+    if (savedBus === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS; else process.env.DBUS_SESSION_BUS_ADDRESS = savedBus;
+    if (savedRuntime === undefined) delete process.env.XDG_RUNTIME_DIR; else process.env.XDG_RUNTIME_DIR = savedRuntime;
+    if (savedSecret === undefined) delete process.env.UNRELATED_SECRET; else process.env.UNRELATED_SECRET = savedSecret;
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});
+
+test("Linux editable helper diagnostics expose only bounded availability stages", async () => {
+  const child = new FakeHostProcess();
+  const provider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: "/fake/handoff-linux-webrtc-host",
+    displayName: ":99",
+    spawnProcess: (() => child) as never
+  });
+  const { client, offer } = await clientOffer();
+  try {
+    const started = provider.start(binding(), offer, hooks);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=window_ready\n");
+    child.stdout.write(encodedFrameRecord());
+    await started;
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_ready\n");
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_unavailable\n");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage);
+    assert.equal(stages.includes("host.input.editable_helper_ready"), true);
+    assert.equal(stages.includes("host.input.editable_helper_unavailable"), true);
+    assert.doesNotMatch(JSON.stringify(provider.diagnosticsSnapshot()), /region|text|name|value|pid|windowId|coordinate/i);
   } finally {
     await client.close().catch(() => undefined);
     await provider.revoke("host-ready-session").catch(() => undefined);

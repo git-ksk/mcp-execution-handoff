@@ -293,8 +293,10 @@ export class SpawnedWebRtcRuntimeProvider {
         };
         if (this.config.displayId !== undefined)
             env.TAKEOVER_WEBRTC_DISPLAY_ID = String(this.config.displayId);
-        if (this.config.displayName !== undefined)
+        if (this.config.displayName !== undefined) {
             env.TAKEOVER_WEBRTC_DISPLAY_NAME = this.config.displayName;
+            addBoundedLinuxAccessibilityEnvironment(env, process.env);
+        }
         if (binding.targetProcessId !== undefined)
             env.TAKEOVER_WEBRTC_TARGET_PID = String(binding.targetProcessId);
         if (binding.targetWindowId !== undefined)
@@ -739,6 +741,17 @@ function parseCommaSeparatedIceUrls(value) {
     }
     return values;
 }
+function addBoundedLinuxAccessibilityEnvironment(target, source) {
+    const bus = source.DBUS_SESSION_BUS_ADDRESS;
+    if (bus && bus.length <= 2_048 && !/[\0\r\n]/.test(bus)) {
+        target.DBUS_SESSION_BUS_ADDRESS = bus;
+        target.NO_AT_BRIDGE = "0";
+    }
+    const runtimeDir = source.XDG_RUNTIME_DIR;
+    if (runtimeDir && runtimeDir.startsWith("/") && runtimeDir.length <= 512 && !/[\0\r\n]/.test(runtimeDir)) {
+        target.XDG_RUNTIME_DIR = runtimeDir;
+    }
+}
 function sameBinding(left, right) {
     return left.takeoverSessionId === right.takeoverSessionId
         && left.interventionId === right.interventionId
@@ -841,7 +854,7 @@ class HostMetricParser {
                 });
                 continue;
             }
-            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_pointer_helper_ready|input_pointer_helper_failure|input_pointer_move_ready|input_pointer_authority_ready|input_pointer_down_sent|input_pointer_post_authority_ready|input_pointer_delivery_helper_ready|input_pointer_delivery_helper_failure|input_pointer_delivery_arm_failure|input_pointer_delivery_wait_no_from_server_creator_match|input_pointer_delivery_wait_no_from_server_creator_mismatch|input_pointer_delivery_wait_no_from_server_creator_unknown|input_pointer_delivery_wait_swapped|input_pointer_delivery_wait_short_data|input_pointer_delivery_wait_no_event|input_pointer_delivery_wait_event_mismatch|input_pointer_delivery_wait_xi2_mismatch|input_pointer_delivery_wait_window_mismatch|input_pointer_delivery_wait_coord_mismatch|input_pointer_delivery_wait_io_failure|input_pointer_delivery_wait_failure|input_pointer_delivery_ready|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
+            const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_pointer_helper_ready|input_pointer_helper_failure|input_pointer_move_ready|input_pointer_authority_ready|input_pointer_down_sent|input_pointer_post_authority_ready|input_pointer_delivery_helper_ready|input_pointer_delivery_helper_failure|input_pointer_delivery_arm_failure|input_pointer_delivery_wait_no_from_server_creator_match|input_pointer_delivery_wait_no_from_server_creator_mismatch|input_pointer_delivery_wait_no_from_server_creator_unknown|input_pointer_delivery_wait_swapped|input_pointer_delivery_wait_short_data|input_pointer_delivery_wait_no_event|input_pointer_delivery_wait_event_mismatch|input_pointer_delivery_wait_xi2_mismatch|input_pointer_delivery_wait_window_mismatch|input_pointer_delivery_wait_coord_mismatch|input_pointer_delivery_wait_io_failure|input_pointer_delivery_wait_failure|input_pointer_delivery_ready|editable_helper_ready|editable_helper_unavailable|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);
             if (diagnostic) {
                 const stages = {
                     target_alive: "host.target.alive",
@@ -875,6 +888,8 @@ class HostMetricParser {
                     input_pointer_delivery_wait_io_failure: "host.input.pointer.delivery_wait_io_failure",
                     input_pointer_delivery_wait_failure: "host.input.pointer.delivery_wait_failure",
                     input_pointer_delivery_ready: "host.input.pointer.delivery_ready",
+                    editable_helper_ready: "host.input.editable_helper_ready",
+                    editable_helper_unavailable: "host.input.editable_helper_unavailable",
                     input_failure: "host.input.failure",
                     capture_failure: "host.capture.failure",
                     capture_failure_x11: "host.capture.failure.x11",

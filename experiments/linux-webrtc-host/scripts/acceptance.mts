@@ -204,7 +204,7 @@ async function main(): Promise<void> {
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser"
   ]);
-  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/xprop", "/usr/bin/ffmpeg"]) {
+  for (const executable of ["/usr/bin/Xvfb", "/usr/bin/xdotool", "/usr/bin/xwininfo", "/usr/bin/xprop", "/usr/bin/ffmpeg", "/usr/bin/dbus-run-session"]) {
     assert.equal(await exists(executable), true, `${executable} is required`);
   }
   const openboxExecutable = await firstExecutable(["/usr/bin/openbox"]);
@@ -216,6 +216,9 @@ async function main(): Promise<void> {
   assert.equal(await exists(xrecordDeliveryHelper), true, "compiled Linux XRecord delivery helper is required");
   const x11PointerQuery = path.resolve("dist/native/mcp-handoff-linux-x11-pointer-query");
   assert.equal(await exists(x11PointerQuery), true, "compiled Linux X11 pointer query probe is required");
+  const atspiHelper = path.resolve("dist/native/mcp-handoff-linux-atspi-helper");
+  assert.equal(await exists(atspiHelper), true, "compiled Linux AT-SPI editable helper is required");
+  assert.ok(process.env.DBUS_SESSION_BUS_ADDRESS, "Linux acceptance must run under one session D-Bus");
   await chmod(helper, 0o755);
 
   const root = await mkdtemp(path.join(os.tmpdir(), "handoff-linux-webrtc-"));
@@ -301,7 +304,14 @@ async function main(): Promise<void> {
 
   const displayNumber = 90 + (process.pid % 40);
   const display = `:${displayNumber}`;
-  const xEnv = { DISPLAY: display, HOME: home, XDG_RUNTIME_DIR: runtimeDir, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
+  const xEnv = {
+    DISPLAY: display, HOME: home, XDG_RUNTIME_DIR: runtimeDir, LANG: "C.UTF-8", LC_ALL: "C.UTF-8",
+    DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS!, NO_AT_BRIDGE: "0",
+    // Cloud/headless-like Linux sessions do not have a desktop accessibility preference for
+    // Chromium to discover. This enables Chromium's native ATK/AT-SPI platform bridge while the
+    // separate force-renderer-accessibility bundle keeps renderer metadata limited to form controls.
+    ACCESSIBILITY_ENABLED: "1"
+  };
   let xvfb: ChildProcess | undefined;
   let openbox: ChildProcess | undefined;
   let chrome: ChildProcess | undefined;
@@ -323,6 +333,19 @@ async function main(): Promise<void> {
   let pointerWindowIsExact = false;
   let pointerWindowDescendsFromExact = false;
   let pointerWindowAncestorsExact = false;
+  let latestEditableRegions: number[][] = [];
+  const editableFocusEvents: boolean[] = [];
+  critical.onMessage.subscribe((message) => {
+    try {
+      const value = JSON.parse(String(message)) as { kind?: unknown; regions?: unknown; editable?: unknown; phase?: unknown };
+      if (value.kind === "editableRegions" && Array.isArray(value.regions)) {
+        latestEditableRegions = value.regions as number[][];
+      }
+      if (value.kind === "focus" && value.phase === "tap" && typeof value.editable === "boolean") {
+        editableFocusEvents.push(value.editable);
+      }
+    } catch { /* bounded acceptance ignores unrelated control messages */ }
+  });
   client.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { rtpPackets += 1; }));
 
   try {
@@ -341,11 +364,13 @@ async function main(): Promise<void> {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-session-crashed-bubble",
+      "--force-renderer-accessibility=form-controls",
       "--window-size=1000,700",
       "--new-window",
       pageUrl
     ];
     assert.equal(chromeArgs.some((arg) => /remote-debugging|enable-automation|headless/i.test(arg)), false);
+    assert.equal(chromeArgs.includes("--force-renderer-accessibility=form-controls"), true);
     chrome = spawn(chromeExecutable, chromeArgs, { env: xEnv, stdio: ["ignore", "ignore", "pipe"] });
     chrome.once("error", () => undefined);
     assert.ok(chrome.pid);
@@ -389,6 +414,7 @@ async function main(): Promise<void> {
     // on a window, so an xev observer would itself perturb the Chrome/Openbox input route.
     const liveCmdline = await cmdline(chrome.pid);
     assert.doesNotMatch(liveCmdline, /--remote-debugging(?:-port|-pipe)?|--enable-automation|--headless/i);
+    assert.match(liveCmdline, /--force-renderer-accessibility=form-controls/);
 
     const binding: WebRtcTakeoverRuntimeBinding = {
       takeoverSessionId: "linux-host-acceptance",
@@ -484,14 +510,20 @@ async function main(): Promise<void> {
       const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage).join(",");
       throw new Error(`${error instanceof Error ? error.message : "tap timeout"}; diagnostics=${stages}; pointer_events=${JSON.stringify(pointerEvents)}; pointer_inside=${pointerInsideExactWindow}; pointer_window_owned=${pointerWindowOwnedByTarget}; pointer_is_exact=${pointerWindowIsExact}; pointer_descends_exact=${pointerWindowDescendsFromExact}; pointer_ancestors_exact=${pointerWindowAncestorsExact}`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await waitFor("editable-region", () => latestEditableRegions.some((region) =>
+      Array.isArray(region) && region.length === 4
+      && region.every(Number.isSafeInteger)
+      && region[2]! > 0 && region[3]! > 0
+      && region[0]! >= 0 && region[1]! >= 0
+      && region[0]! + region[2]! <= 10_000 && region[1]! + region[3]! <= 10_000
+    ));
 
     critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "down", x: 0.5, y: 0.5 }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     critical.send(JSON.stringify({ kind: "pointer_button", button: "primary", state: "up", x: 0.5, y: 0.5 }));
     process.stdout.write("LINUX_WEBRTC_STAGE tap-input\n");
     await waitFor("tap-input", () => inputUses >= 4 && endedUses >= 4);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitFor("editable-focus", () => editableFocusEvents.includes(true));
 
     const marker = `handoff-linux-${process.pid}-dummy`;
     critical.send(JSON.stringify({ kind: "text", text: marker }));
@@ -505,7 +537,7 @@ async function main(): Promise<void> {
     await waitFor("enter-submit", () => inputUses >= 6 && endedUses >= 6 && submitted === marker);
 
     assert.ok(rtpPackets > 0, "no H264 RTP reached the WebRTC peer");
-    process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses}\n`);
+    process.stdout.write(`LINUX_WEBRTC_HOST_ACCEPTANCE_PASS rtp=${rtpPackets} inputs=${inputUses} editable_regions=${latestEditableRegions.length} editable_focus=${editableFocusEvents.includes(true)}\n`);
   } finally {
     process.stdout.write("LINUX_WEBRTC_STAGE cleanup-client\n");
     await within("cleanup-client", client.close().catch(() => undefined));

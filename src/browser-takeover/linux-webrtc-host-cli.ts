@@ -20,6 +20,8 @@ const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
 const XTEST_HELPER_ACK_TIMEOUT_MS = 2_000;
 const XTEST_HELPER_MAX_OUTPUT_BYTES = 4_096;
+const ATSPI_HELPER_ACK_TIMEOUT_MS = 1_500;
+const ATSPI_HELPER_MAX_OUTPUT_BYTES = 8_192;
 const JPEG_SOI = Buffer.from([0xff, 0xd8]);
 const JPEG_EOI = Buffer.from([0xff, 0xd9]);
 
@@ -102,6 +104,18 @@ export function frameRecord(avcc: Buffer, timestamp: number, keyframe: boolean, 
   record.writeUInt32BE(payload.byteLength, 1);
   payload.copy(record, 5);
   return record;
+}
+
+function editableRecord(editable: boolean): Buffer {
+  const record = Buffer.allocUnsafe(6);
+  record[0] = 2;
+  record.writeUInt32BE(1, 1);
+  record[5] = editable ? 1 : 0;
+  return record;
+}
+
+function editableRegionsControlLine(regions: readonly number[][]): string {
+  return `MCP_HANDOFF_CONTROL editable_regions=${regions.slice(0, 32).map((region) => region.slice(0, 4).join(",")).join(";")}\n`;
 }
 
 export function jpegFrameRecord(jpeg: Buffer, width: number, height: number): Buffer {
@@ -246,11 +260,16 @@ export class AnnexBAccessUnitParser {
 
 class LatestFrameWriter {
   private blocked = false;
-  private latest: Buffer | undefined;
+  private latestFrame: Buffer | undefined;
+  private latestControl: Buffer | undefined;
 
-  submit(record: Buffer): void {
+  submit(record: Buffer): void { this.submitRecord(record, false); }
+  submitControl(record: Buffer): void { this.submitRecord(record, true); }
+
+  private submitRecord(record: Buffer, control: boolean): void {
     if (this.blocked) {
-      this.latest = record;
+      if (control) this.latestControl = record;
+      else this.latestFrame = record;
       return;
     }
     if (!process.stdout.write(record)) {
@@ -261,14 +280,35 @@ class LatestFrameWriter {
 
   private drain(): void {
     this.blocked = false;
-    const latest = this.latest;
-    this.latest = undefined;
-    if (latest) this.submit(latest);
+    const control = this.latestControl;
+    if (control) {
+      this.latestControl = undefined;
+      this.submitRecord(control, true);
+      return;
+    }
+    const frame = this.latestFrame;
+    this.latestFrame = undefined;
+    if (frame) this.submitRecord(frame, false);
   }
 }
 
 function boundedEnvironment(display: string): NodeJS.ProcessEnv {
   return { DISPLAY: display, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
+}
+
+function boundedAccessibilityEnvironment(display: string): NodeJS.ProcessEnv {
+  const env = boundedEnvironment(display);
+  const bus = process.env.DBUS_SESSION_BUS_ADDRESS;
+  if (!bus || bus.length > 2_048 || /[\0\r\n]/.test(bus)) {
+    throw new Error("Linux accessibility session bus is unavailable");
+  }
+  env.DBUS_SESSION_BUS_ADDRESS = bus;
+  const runtimeDir = process.env.XDG_RUNTIME_DIR;
+  if (runtimeDir && runtimeDir.startsWith("/") && runtimeDir.length <= 512 && !/[\0\r\n]/.test(runtimeDir)) {
+    env.XDG_RUNTIME_DIR = runtimeDir;
+  }
+  env.NO_AT_BRIDGE = "0";
+  return env;
 }
 
 async function runCommand(executable: string, args: string[], display: string): Promise<string> {
@@ -441,6 +481,185 @@ class LinuxXTestPointerHelper {
     this.pending = undefined;
     pending.reject(new Error(message));
   }
+}
+
+export interface LinuxEditableSnapshot {
+  regions: number[][];
+  focusEditable: boolean;
+}
+
+export function parseLinuxAtSpiSnapshotLine(line: string): LinuxEditableSnapshot | undefined {
+  if (line === "NO") return undefined;
+  const match = /^OK focus=(0|1) regions=(.*)$/.exec(line);
+  if (!match) throw new Error("Linux AT-SPI editable helper response is invalid");
+  const payload = match[2] ?? "";
+  if (payload.length > 1_024) throw new Error("Linux AT-SPI editable helper response is too large");
+  const regions: number[][] = [];
+  if (payload) {
+    const encoded = payload.split(";");
+    if (encoded.length > 32) throw new Error("Linux AT-SPI editable helper returned too many regions");
+    for (const item of encoded) {
+      const regionMatch = /^(\d{1,5}),(\d{1,5}),(\d{1,5}),(\d{1,5})$/.exec(item);
+      if (!regionMatch) throw new Error("Linux AT-SPI editable helper region is invalid");
+      const region = regionMatch.slice(1).map(Number);
+      const [x, y, width, height] = region;
+      if (!region.every(Number.isSafeInteger) || x! < 0 || y! < 0 || width! < 1 || height! < 1 || x! + width! > 10_000 || y! + height! > 10_000) {
+        throw new Error("Linux AT-SPI editable helper region is out of bounds");
+      }
+      regions.push(region);
+    }
+  }
+  return { regions, focusEditable: match[1] === "1" };
+}
+
+class LinuxAtSpiEditableHelper {
+  private readonly child: ChildProcessByStdio<Writable, Readable, null>;
+  private output = "";
+  private readyState: "waiting" | "ready" | "failed" = "waiting";
+  private readonly readyPromise: Promise<void>;
+  private readyResolve!: () => void;
+  private readyReject!: (error: Error) => void;
+  private readyTimer: NodeJS.Timeout;
+  private pending: {
+    resolve: (snapshot: LinuxEditableSnapshot | undefined) => void;
+    reject: (error: Error) => void;
+    timer: NodeJS.Timeout;
+  } | undefined;
+  private closing: Promise<void> | undefined;
+
+  private constructor(executable: string, targetPid: number, geometry: LinuxWindowGeometry, display: string) {
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
+    this.readyTimer = setTimeout(() => {
+      if (this.readyState !== "waiting") return;
+      this.readyState = "failed";
+      this.readyReject(new Error("Linux AT-SPI editable helper readiness timed out"));
+      void this.close();
+    }, ATSPI_HELPER_ACK_TIMEOUT_MS);
+    this.child = spawn(executable, [
+      "--pid", String(targetPid),
+      "--x", String(geometry.x),
+      "--y", String(geometry.y),
+      "--width", String(geometry.width),
+      "--height", String(geometry.height)
+    ], {
+      env: boundedAccessibilityEnvironment(display),
+      stdio: ["pipe", "pipe", "ignore"]
+    });
+    this.child.stdout.on("data", (chunk: Buffer) => this.consume(chunk));
+    this.child.once("error", () => this.fail("Linux AT-SPI editable helper failed"));
+    this.child.once("close", () => this.fail("Linux AT-SPI editable helper closed"));
+  }
+
+  static async start(
+    executable: string,
+    targetPid: number,
+    geometry: LinuxWindowGeometry,
+    display: string
+  ): Promise<LinuxAtSpiEditableHelper> {
+    const helper = new LinuxAtSpiEditableHelper(executable, targetPid, geometry, display);
+    await helper.readyPromise;
+    return helper;
+  }
+
+  snapshot(): Promise<LinuxEditableSnapshot | undefined> {
+    if (this.readyState !== "ready" || this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
+      return Promise.reject(new Error("Linux AT-SPI editable helper is unavailable"));
+    }
+    if (this.pending) return Promise.reject(new Error("Linux AT-SPI editable helper is busy"));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this.pending) return;
+        this.pending = undefined;
+        reject(new Error("Linux AT-SPI editable helper snapshot timed out"));
+      }, ATSPI_HELPER_ACK_TIMEOUT_MS);
+      this.pending = { resolve, reject, timer };
+      this.child.stdin.write("snapshot\n", (error) => {
+        if (error) this.fail("Linux AT-SPI editable helper write failed");
+      });
+    });
+  }
+
+  async close(): Promise<void> {
+    if (this.closing) return this.closing;
+    this.closing = (async () => {
+      clearTimeout(this.readyTimer);
+      if (this.child.exitCode !== null || this.child.signalCode !== null) return;
+      this.child.stdin.end();
+      const ended = await Promise.race([
+        once(this.child, "close").then(() => true, () => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500))
+      ]);
+      if (ended || this.child.exitCode !== null || this.child.signalCode !== null) return;
+      this.child.kill("SIGTERM");
+      await Promise.race([
+        once(this.child, "close").catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 200))
+      ]);
+      if (this.child.exitCode === null && this.child.signalCode === null) this.child.kill("SIGKILL");
+    })();
+    return this.closing;
+  }
+
+  private consume(chunk: Buffer): void {
+    this.output += chunk.toString("utf8");
+    if (this.output.length > ATSPI_HELPER_MAX_OUTPUT_BYTES) {
+      this.fail("Linux AT-SPI editable helper output exceeded limit");
+      void this.close();
+      return;
+    }
+    while (true) {
+      const newline = this.output.indexOf("\n");
+      if (newline < 0) return;
+      const line = this.output.slice(0, newline).trim();
+      this.output = this.output.slice(newline + 1);
+      if (this.readyState === "waiting") {
+        if (line !== "READY 1") {
+          this.fail("Linux AT-SPI editable helper protocol mismatch");
+          void this.close();
+          return;
+        }
+        clearTimeout(this.readyTimer);
+        this.readyState = "ready";
+        this.readyResolve();
+        continue;
+      }
+      const pending = this.pending;
+      if (!pending) {
+        this.fail("Linux AT-SPI editable helper emitted an unexpected response");
+        void this.close();
+        return;
+      }
+      clearTimeout(pending.timer);
+      this.pending = undefined;
+      try {
+        pending.resolve(parseLinuxAtSpiSnapshotLine(line));
+      } catch (error) {
+        pending.reject(error instanceof Error ? error : new Error("Linux AT-SPI editable helper response failed"));
+        void this.close();
+        return;
+      }
+    }
+  }
+
+  private fail(message: string): void {
+    if (this.readyState === "waiting") {
+      clearTimeout(this.readyTimer);
+      this.readyState = "failed";
+      this.readyReject(new Error(message));
+    }
+    const pending = this.pending;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pending = undefined;
+    pending.reject(new Error(message));
+  }
+}
+
+function packagedLinuxAtSpiEditableHelper(moduleUrl: string): string {
+  return fileURLToPath(new URL("../native/mcp-handoff-linux-atspi-helper", moduleUrl));
 }
 
 function packagedLinuxXTestHelper(moduleUrl: string): string {
@@ -999,6 +1218,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   const xdotool = absoluteTool("xdotool", "TAKEOVER_LINUX_XDOTOOL");
   const ffmpeg = absoluteTool("ffmpeg", "TAKEOVER_LINUX_FFMPEG");
   const xtestHelperExecutable = packagedLinuxXTestHelper(import.meta.url);
+  const atspiHelperExecutable = packagedLinuxAtSpiEditableHelper(import.meta.url);
   let geometry: LinuxWindowGeometry;
   try {
     geometry = await resolveExactWindow(targetPid, targetWindowId, display, xdotool);
@@ -1017,12 +1237,60 @@ export async function linuxWebRtcHostMain(): Promise<void> {
     throw error;
   }
   const input = new LinuxWindowInput(geometry, targetPid, display, xdotool, pointer);
+  const writer = new LatestFrameWriter();
+  let editableHelper: LinuxAtSpiEditableHelper | undefined;
+  try {
+    editableHelper = await LinuxAtSpiEditableHelper.start(atspiHelperExecutable, targetPid, geometry, display);
+    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_ready\n");
+  } catch {
+    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_unavailable\n");
+  }
   let stopped = false;
   let stopHost!: () => Promise<void>;
-  const capture = new LinuxCapture(geometry, display, ffmpeg, frameFormat, new LatestFrameWriter(), () => {
+  const capture = new LinuxCapture(geometry, display, ffmpeg, frameFormat, writer, () => {
     process.exitCode = 1;
     void stopHost();
   });
+
+  let accessibilityChain: Promise<LinuxEditableSnapshot | undefined> = Promise.resolve(undefined);
+  const requestAccessibilitySnapshot = (): Promise<LinuxEditableSnapshot | undefined> => {
+    const helper = editableHelper;
+    if (!helper) return Promise.resolve(undefined);
+    const requested = accessibilityChain
+      .catch(() => undefined)
+      .then(() => helper.snapshot());
+    accessibilityChain = requested.catch(() => {
+      editableHelper = undefined;
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_unavailable\n");
+      void helper.close();
+      return undefined;
+    });
+    return accessibilityChain;
+  };
+  const publishEditableRegions = async (): Promise<void> => {
+    const snapshot = await requestAccessibilitySnapshot();
+    process.stderr.write(editableRegionsControlLine(snapshot?.regions ?? []));
+  };
+  const publishFocusedEditable = async (): Promise<void> => {
+    let editable = false;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const snapshot = await requestAccessibilitySnapshot();
+      if (snapshot) {
+        process.stderr.write(editableRegionsControlLine(snapshot.regions));
+        if (snapshot.focusEditable) { editable = true; break; }
+      }
+      if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    writer.submitControl(editableRecord(editable));
+  };
+  let accessibilityPollBusy = false;
+  const accessibilityPoll = setInterval(() => {
+    if (stopped || accessibilityPollBusy) return;
+    accessibilityPollBusy = true;
+    void publishEditableRegions().finally(() => { accessibilityPollBusy = false; });
+  }, 250);
+  accessibilityPoll.unref();
+  void publishEditableRegions();
 
   let pending = Buffer.alloc(0);
   let inputChain = Promise.resolve();
@@ -1033,10 +1301,13 @@ export async function linuxWebRtcHostMain(): Promise<void> {
     // Serialize lifecycle cleanup after every already-admitted Human mutation. If shutdown races
     // an in-flight primary-down command, releasing outside the chain can observe primaryPressed
     // before mousedown completes and leave the X11 button stuck after helper exit.
+    clearInterval(accessibilityPoll);
     inputChain = inputChain
       .then(() => input.shutdown())
       .catch(() => pointer.close());
-    stopPromise = inputChain.then(() => capture.stop());
+    stopPromise = inputChain.then(async () => {
+      await Promise.all([capture.stop(), editableHelper?.close() ?? Promise.resolve()]);
+    });
     return stopPromise;
   };
   capture.start();
@@ -1063,7 +1334,10 @@ export async function linuxWebRtcHostMain(): Promise<void> {
       if (command.kind === "requestIDR") { capture.requestIDR(); continue; }
       inputChain = inputChain
         .then(() => input.apply(command))
-        .then(() => {
+        .then(async () => {
+          if (command.kind === "tap" || (command.kind === "pointer_button" && command.state === "up")) {
+            await publishFocusedEditable();
+          }
           process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_applied\n");
         })
         .catch(() => {

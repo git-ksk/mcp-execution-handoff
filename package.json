@@ -33,6 +33,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:linux-xtest-helper": "sh scripts/build-linux-xtest-helper.sh",
+    "build:linux-atspi-helper": "sh scripts/build-linux-atspi-helper.sh",
     "build:linux-x11-pointer-query": "sh scripts/build-linux-x11-pointer-query.sh",
     "build:linux-xrecord-delivery-helper": "sh scripts/build-linux-xrecord-delivery-helper.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -12,6 +12,7 @@ import {
   frameRecord,
   jpegFrameRecord,
   isLinuxWebRtcHostCliEntryPoint,
+  parseLinuxAtSpiSnapshotLine,
   parseOptionalTargetWindowId,
   parseWindowGeometry,
   parseWindowIds,
@@ -37,6 +38,41 @@ test("Linux host accepts only a positive explicit target window id", () => {
   assert.throws(() => parseOptionalTargetWindowId("0"), /TARGET_WINDOW_ID/);
   assert.throws(() => parseOptionalTargetWindowId("-1"), /TARGET_WINDOW_ID/);
   assert.throws(() => parseOptionalTargetWindowId("not-a-window"), /TARGET_WINDOW_ID/);
+});
+
+test("Linux AT-SPI snapshot parser accepts only bounded geometry and focus booleans", () => {
+  assert.equal(parseLinuxAtSpiSnapshotLine("NO"), undefined);
+  assert.deepEqual(parseLinuxAtSpiSnapshotLine("OK focus=1 regions=100,200,300,400;9000,9000,1000,1000"), {
+    focusEditable: true,
+    regions: [[100, 200, 300, 400], [9000, 9000, 1000, 1000]]
+  });
+  assert.deepEqual(parseLinuxAtSpiSnapshotLine("OK focus=0 regions="), { focusEditable: false, regions: [] });
+  assert.throws(() => parseLinuxAtSpiSnapshotLine("OK focus=2 regions="), /response is invalid/);
+  assert.throws(() => parseLinuxAtSpiSnapshotLine("OK focus=1 regions=9999,9999,2,2"), /out of bounds/);
+  assert.throws(() => parseLinuxAtSpiSnapshotLine(`OK focus=0 regions=${Array.from({ length: 33 }, () => "0,0,1,1").join(";")}`), /too many regions/);
+  assert.throws(() => parseLinuxAtSpiSnapshotLine("OK focus=1 regions=0,0,1,1 name=secret"), /region is invalid/);
+});
+
+test("Linux AT-SPI helper is metadata-only and never reads browser text or identity labels", () => {
+  const helper = readFileSync("native/linux-atspi-editable-helper.c", "utf8");
+  assert.match(helper, /atspi_accessible_get_process_id/);
+  assert.match(helper, /\/proc\/%u\/stat/);
+  assert.match(helper, /process_is_target_or_descendant/);
+  assert.match(helper, /WINDOW_EDGE_TOLERANCE 8/);
+  assert.doesNotMatch(helper, /cmdline|comm\b|exe\b/);
+  assert.match(helper, /atspi_accessible_get_role/);
+  assert.match(helper, /atspi_accessible_get_state_set/);
+  assert.match(helper, /atspi_component_get_extents/);
+  assert.match(helper, /ATSPI_STATE_EDITABLE/);
+  assert.match(helper, /ATSPI_STATE_FOCUSED/);
+  assert.match(helper, /ATSPI_ROLE_DOCUMENT_WEB/);
+  assert.match(helper, /MAX_NODES 2048/);
+  assert.match(helper, /MAX_REGIONS 32/);
+  assert.match(helper, /find_exact_top_level/);
+  assert.match(helper, /close_to_target/);
+  assert.doesNotMatch(helper, /atspi_accessible_get_(?:name|description|attributes)/);
+  assert.doesNotMatch(helper, /atspi_accessible_get_text|atspi_text_|atspi_value_|get_value/);
+  assert.doesNotMatch(helper, /document title|url|credential|password|cookie/i);
 });
 
 test("Linux host H264 parser keeps access units bounded and converts Annex-B to AVCC", () => {
@@ -139,6 +175,14 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /Math\.round\(point\.x\)/);
   assert.match(host, /Math\.round\(point\.y\)/);
   assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
+  assert.match(host, /packagedLinuxAtSpiEditableHelper\(import\.meta\.url\)/);
+  assert.match(host, /MCP_HANDOFF_CONTROL editable_regions=/);
+  assert.match(host, /linux_stage=editable_helper_ready/);
+  assert.match(host, /linux_stage=editable_helper_unavailable/);
+  assert.match(host, /setInterval\(\(\) => \{/);
+  assert.match(host, /}, 250\)/);
+  assert.match(host, /private latestFrame: Buffer \| undefined/);
+  assert.match(host, /private latestControl: Buffer \| undefined/);
   assert.match(host, /new URL\("\.\.\/native\/mcp-handoff-linux-xtest-helper", moduleUrl\)/);
   assert.doesNotMatch(host, /TAKEOVER_LINUX_XTEST_HELPER/);
   assert.match(host, /await this\.pointer\.move\(x, y\)/);
@@ -173,7 +217,7 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /Never fall back to xdotool/);
   assert.match(host, /private primaryPressed = false/);
   assert.match(host, /async releaseAll\(\): Promise<void>/);
-  assert.match(host, /inputChain = inputChain[\s\S]*input\.shutdown\(\)[\s\S]*stopPromise = inputChain\.then\(\(\) => capture\.stop\(\)\)/);
+  assert.match(host, /inputChain = inputChain[\s\S]*input\.shutdown\(\)[\s\S]*stopPromise = inputChain\.then\(async \(\) =>/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
   assert.match(host, /getwindowfocus/);
   assert.match(host, /Linux WebRTC input focus is not owned by the target process/);
@@ -280,4 +324,18 @@ test("Node WebRTC runtime passes an explicit Linux display without widening the 
   assert.match(runtime, /displayName\?: string/);
   assert.match(runtime, /env\.TAKEOVER_WEBRTC_DISPLAY_NAME = this\.config\.displayName/);
   assert.doesNotMatch(runtime, /const env: NodeJS\.ProcessEnv = \{\s*\.\.\.process\.env/);
+});
+
+test("Linux editable-region acceptance enables only the native accessibility boundary", () => {
+  const acceptance = readFileSync("experiments/linux-webrtc-host/scripts/acceptance.mts", "utf8");
+  const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+  assert.match(acceptance, /ACCESSIBILITY_ENABLED:\s*"1"/);
+  assert.match(acceptance, /--force-renderer-accessibility=form-controls/);
+  assert.doesNotMatch(acceptance, /--no-sandbox/);
+  assert.match(acceptance, /assert\.equal\(chromeArgs\.some\(\(arg\) => \/remote-debugging\|enable-automation\|headless\/i\.test\(arg\)\), false\)/);
+  assert.match(ci, /libatspi2\.0-dev/);
+  assert.match(ci, /at-spi2-core/);
+  assert.match(ci, /dbus-x11/);
+  assert.match(ci, /npm run build:linux-atspi-helper/);
+  assert.match(ci, /dbus-run-session -- npm run accept:webrtc:linux/);
 });
