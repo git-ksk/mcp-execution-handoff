@@ -38,7 +38,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #56 | v0.2.x media quality | **Complete.** macOS Window-only `window_text` raises the bounded ceiling to ≤1920×1080 / 5 Mbps / 30 fps without source upscaling or backpressure changes; physical iPhone direct + TURN relay acceptance passed. |
 | #34 | v0.2.x cross-platform parity | **Complete.** Linux WebRTC now publishes bounded editable-region/focus hints through a read-only AT-SPI helper scoped by target process ancestry and exact-window geometry; no accessible text/name/value, DOM, CDP, or credential data is read, and unavailable/ambiguous accessibility fails closed to empty/non-editable hints. |
 | #127 | v0.3 durable recovery | **Complete.** `HandoffCheckpointStore` is synchronous/provider-neutral, loaded values are untrusted and strictly revalidated by Handoff, the signed-file store remains compatible, and recovery is still only `reissue_and_revalidate`. |
-| #128 | v0.3 audit | Stabilize versioned privacy-bounded generic audit events and define sink failure/backpressure behavior without creating an execution transcript. |
+| #128 | v0.3 audit | **Complete.** Stable v1 strict audit union keeps the existing checkpoint/recovery event names, bounds fields/cardinality, uses a 256-event memory reference sink, and makes sink failure observe-only without an unbounded core queue. |
 | #129 | v0.3 diagnostics | Define stable operator diagnostics across Browser/Window/Terminal while retaining target/transport-specific namespaces and process-memory default retention. |
 | #130 | v0.3 restart conformance | **v0.3 recovery gate.** Prove crashes/restarts across lifecycle phases cannot resurrect stale authority, locators/capabilities, generations, request state, media/input sessions, or PTY authority. |
 | #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
@@ -111,7 +111,7 @@ Milestone `v0.3 — Recovery & Observability` turns the existing signed checkpoi
 Tracked work:
 
 - #127 — **complete:** provider-neutral synchronous bounded checkpoint-store contract; the signed-file store remains the reference implementation and loaded values stay Handoff-validated;
-- #128 — stable privacy-bounded execution audit events, versioning, and sink failure/backpressure semantics;
+- #128 — **complete:** stable privacy-bounded v1 audit contract, strict field bounds, bounded memory sink, and observe-only sink-failure semantics;
 - #129 — stable operator diagnostics across Browser/Window/Terminal without flattening target/transport-specific mechanics;
 - #130 — deterministic crash/restart conformance and the release-level stale-authority gate.
 
