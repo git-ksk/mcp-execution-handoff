@@ -71,6 +71,15 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ diagnostics: handoff.diagnosticsSnapshot(), latency: handoff.latencySnapshot() }));
       return;
     }
+    if (url.pathname === "/__verified_complete") {
+      if (!localOnly(req) || req.method !== "POST") {
+        res.writeHead(404, { "cache-control": "no-store" }); res.end("Not Found"); return;
+      }
+      const completed = await handoff.completeAfterVerification({ id: interventionId, epoch: 1 });
+      res.writeHead(completed ? 200 : 409, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ completed }));
+      return;
+    }
     const chunks: Buffer[] = [];
     let total = 0;
     for await (const chunk of req) {
@@ -104,6 +113,7 @@ await new Promise<void>((resolve, reject) => {
 console.log(`LocalAuthentication Window Handoff acceptance ready: target_pid=${TARGET_PID}`);
 console.log(`Locator: ${locator}`);
 console.log(`Local diagnostics: http://127.0.0.1:${PORT}/__diag`);
+console.log(`Local verified-complete control: POST http://127.0.0.1:${PORT}/__verified_complete`);
 console.log("Expected action: inspect the exact Apple LocalAuthentication dialog. Human may use the iPhone keyboard for the focused secure field, Backspace if needed, then tap Cancel or OK. Secret text is transient input and must never be logged or copied into diagnostics.");
 
 async function shutdown() {

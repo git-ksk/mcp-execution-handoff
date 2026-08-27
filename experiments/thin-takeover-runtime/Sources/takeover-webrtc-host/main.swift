@@ -1286,15 +1286,13 @@ private func frameRecord(avcc: Data, timestamp: UInt32, keyframe: Bool, width: I
 
 @main
 struct WebRtcMacHost {
-    static func main() async throws {
+    static func main() async {
         do {
             try await run()
         } catch let error as WebRtcHostError {
             emitHostExitReason(error.exitReason)
-            throw error
         } catch {
             emitHostExitReason(.unexpected)
-            throw error
         }
     }
 

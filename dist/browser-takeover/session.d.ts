@@ -38,6 +38,8 @@ export declare class TakeoverSessionManager {
     beginUse(id: string, capability: string, principalBinding: string, clientBinding: string): Omit<TakeoverGrant, "capability" | "reconnectHandle">;
     endUse(id: string, principalBinding: string, clientBinding: string, clientGeneration: number): void;
     verify(id: string, capability: string, principalBinding: string, clientBinding: string): Omit<TakeoverGrant, "capability" | "reconnectHandle">;
+    completeAfterVerification(interventionId: string, epoch: number): TakeoverCompletionResult[];
+    isCompleted(id: string, principalBinding: string): boolean;
     revoke(id: string): void;
     revokeForIntervention(interventionId: string): void;
     private requireActive;

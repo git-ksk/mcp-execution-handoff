@@ -165,6 +165,10 @@ export class WindowHandoffCore {
     await this.#broker.revokeWebRtcForIntervention(interventionId);
   }
 
+  async completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean> {
+    return this.#broker.completeWebRtcAfterVerification(intervention);
+  }
+
   /**
    * Synchronously revoke an unclaimed locator/control-plane session.
    * Runtime cleanup remains best-effort inside TakeoverBroker; no Human generation has been claimed.

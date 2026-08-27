@@ -64,6 +64,7 @@ export declare class TakeoverBroker {
     revokeForIntervention(interventionId: string): void;
     revokeNativeForIntervention(interventionId: string): Promise<void>;
     revokeWebRtcForIntervention(interventionId: string): Promise<void>;
+    completeWebRtcAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     private createExperimentalWebSocketSession;
     private attachExperimentalWebSocketRevokeHandler;

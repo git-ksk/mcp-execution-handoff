@@ -293,3 +293,21 @@ test("in-flight Human operation blocks reconnect and idle time starts after the 
 test("minimum takeover ttl keeps a valid reconnect idle default", () => {
   assert.doesNotThrow(() => new TakeoverSessionManager(1_000));
 });
+
+test("verified consumer completion fences only the exact intervention epoch", () => {
+  const { sessions } = manager();
+  const first = sessions.ensure("intervention-verified", 1, PRINCIPAL_A);
+  const second = sessions.ensure("intervention-verified", 2, PRINCIPAL_A);
+
+  assert.deepEqual(sessions.completeAfterVerification("intervention-verified", 1), []);
+  const completed = sessions.completeAfterVerification("intervention-verified", 2);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0]!.id, second.id);
+  assert.equal(completed[0]!.alreadyCompleted, false);
+  assert.equal(sessions.isCompleted(second.id, PRINCIPAL_A), true);
+  assert.equal(sessions.completeAfterVerification("intervention-verified", 2)[0]!.alreadyCompleted, true);
+  assert.throws(
+    () => sessions.validateLocator(first.id, PRINCIPAL_A),
+    (error: unknown) => error instanceof TakeoverSessionError && error.code === "TAKEOVER_NOT_FOUND"
+  );
+});

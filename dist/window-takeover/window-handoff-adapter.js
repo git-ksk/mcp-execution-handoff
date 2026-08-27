@@ -41,6 +41,10 @@ export class WindowHandoffAdapter {
     }
     async revoke(interventionId) { await this.#core.revoke(interventionId); }
     async revokeForIntervention(interventionId) { await this.revoke(interventionId); }
+    /** Fence a session only after the consumer independently verifies the Human action succeeded. */
+    async completeAfterVerification(intervention) {
+        return this.#core.completeAfterVerification(intervention);
+    }
     /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
     revokeUnclaimed(interventionId) { this.#core.revokeUnclaimed(interventionId); }
     handle(request, boundPrincipal) { return this.#core.handle(request, boundPrincipal); }

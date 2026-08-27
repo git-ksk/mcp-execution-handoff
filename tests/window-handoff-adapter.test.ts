@@ -267,3 +267,37 @@ test("LocalAuthentication policy is closed-world and cannot combine with success
       && error.code === "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
   );
 });
+
+test("verified consumer completion leaves a terminal closed route without reviving media", async () => {
+  const adapter = fixture();
+  const intervention = { id: "window-int-verified-complete", epoch: 12 } as const;
+  const locator = adapter.start({
+    intervention,
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: POINTER_ONLY
+  });
+  const sessionId = new URL(locator).pathname.split("/").at(-1)!;
+
+  assert.equal(await adapter.completeAfterVerification({ id: intervention.id, epoch: 11 }), false);
+  assert.equal(await adapter.completeAfterVerification(intervention), true);
+  assert.equal(await adapter.completeAfterVerification(intervention), true);
+
+  const page = await adapter.handle(new Request(`http://localhost${new URL(locator).pathname}`), PRINCIPAL);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Remote control closed/);
+
+  const reconnect = await adapter.handle(new Request(
+    `http://localhost/takeover/api/webrtc-prepare-reconnect/${sessionId}`,
+    {
+      method: "POST",
+      headers: {
+        origin: ORIGIN,
+        "x-takeover-client": "window-client-verified-1234567890",
+        "x-mcp-takeover-reconnect": "x".repeat(43)
+      }
+    }
+  ), PRINCIPAL);
+  assert.equal(reconnect.status, 410);
+  assert.deepEqual(await reconnect.json(), { error: "takeover_completed", completed: true });
+});

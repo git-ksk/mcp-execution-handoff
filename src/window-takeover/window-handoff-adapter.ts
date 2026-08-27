@@ -88,6 +88,10 @@ export class WindowHandoffAdapter {
 
   async revoke(interventionId: string): Promise<void> { await this.#core.revoke(interventionId); }
   async revokeForIntervention(interventionId: string): Promise<void> { await this.revoke(interventionId); }
+  /** Fence a session only after the consumer independently verifies the Human action succeeded. */
+  async completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean> {
+    return this.#core.completeAfterVerification(intervention);
+  }
   /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
   revokeUnclaimed(interventionId: string): void { this.#core.revokeUnclaimed(interventionId); }
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> { return this.#core.handle(request, boundPrincipal); }

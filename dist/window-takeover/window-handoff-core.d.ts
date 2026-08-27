@@ -37,6 +37,7 @@ export declare class WindowHandoffCore {
     ownsPath(pathname: string): boolean;
     start(request: WindowHandoffCoreStartRequest): string;
     revoke(interventionId: string): Promise<void>;
+    completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
     /**
      * Synchronously revoke an unclaimed locator/control-plane session.
      * Runtime cleanup remains best-effort inside TakeoverBroker; no Human generation has been claimed.

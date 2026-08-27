@@ -80,6 +80,7 @@ const touchEventsAvailable=('ontouchstart' in window)||(Number(navigator.maxTouc
 const MAX_VIEW_SCALE=${MAX_BROWSER_HANDOFF_VIEW_SCALE};
 function status(text){if(completionState!=='idle')return;statusEl.textContent=text}
 function completionStatus(text){statusEl.textContent=text}
+function terminalCompleted(){if(completionState==='closed')return;completionState='closed';stopped=true;suspended=false;failureInProgress=false;completionCapability='';if(doneButton.dataset)doneButton.dataset.completion='';doneButton.disabled=true;doneButton.setAttribute('aria-disabled','true');doneButton.textContent='Closed';keyboard.blur();closePeer();cap='';reconnectHandle='';clientGeneration=0;completionStatus('Remote control closed. Return to the requesting workflow.')}
 function clamp(value,min,max){const result=Math.max(min,Math.min(max,value));return Object.is(result,-0)?0:result}
 function viewBounds(scale){const r=screen.getBoundingClientRect();return{x:Math.max(0,(scale-1)*r.width/2),y:Math.max(0,(scale-1)*r.height/2)}}
 function applyViewTransform(scale,panX,panY){const nextScale=clamp(Number(scale)||1,1,MAX_VIEW_SCALE);const bounds=viewBounds(nextScale);viewScale=nextScale;viewPanX=clamp(Number(panX)||0,-bounds.x,bounds.x);viewPanY=clamp(Number(panY)||0,-bounds.y,bounds.y);video.style.transform=viewScale===1?'none':'matrix('+viewScale+',0,0,'+viewScale+','+viewPanX+','+viewPanY+')';zoomButton.textContent=(Math.round(viewScale*10)/10)+'×';zoomButton.setAttribute('aria-pressed',viewScale>1?'true':'false')}
@@ -108,7 +109,7 @@ function inputAllowed(kind){return kind==='tap'||kind==='pointer_button'?inputPo
 function sendCritical(body){return send(critical,body,32768)}function sendRealtime(body){return send(realtime,body,4096)}
 function releasePrimaryButton(){if(primaryReleaseTimer){clearTimeout(primaryReleaseTimer);primaryReleaseTimer=0}if(!primaryButtonDown||!primaryButtonPoint)return;const p=primaryButtonPoint;sendCritical({kind:'pointer_button',button:'primary',state:'up',x:p.x,y:p.y});primaryButtonDown=false;primaryButtonPoint=null}
 function sendPrimaryTap(point){if(primaryButtonDown||!point)return false;if(!sendCritical({kind:'pointer_button',button:'primary',state:'down',x:point.x,y:point.y}))return false;primaryButtonDown=true;primaryButtonPoint={x:point.x,y:point.y};primaryReleaseTimer=setTimeout(function(){primaryReleaseTimer=0;releasePrimaryButton()},20);return true}
-async function prepare(mode){const headers={'x-takeover-client':clientBinding};if(mode==='reconnect')headers['x-mcp-takeover-reconnect']=reconnectHandle;const response=await fetch('/takeover/api/webrtc-prepare-'+mode+'/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers});if(!response.ok){const e=new Error('prepare unavailable');e.status=response.status;if(response.status===409){try{const body=await response.json();const retry=Number(body&&body.retryAfterMs);if(Number.isFinite(retry)&&retry>=100&&retry<=5000)e.retryAfterMs=retry}catch{}}throw e}const data=await response.json();if(!data.capability||!data.reconnectHandle||!Number.isFinite(data.clientGeneration)||!data.webrtcIce||!Array.isArray(data.webrtcIce.iceServers))throw new Error('invalid prepare response');if(!['disabled','available','unavailable'].includes(data.webrtcIce.relay))throw new Error('invalid relay state');const p=data.inputPolicy;if(!p||typeof p!=='object'||['tap','scroll','text','key'].some(function(k){return typeof p[k]!=='boolean'}))throw new Error('invalid input policy');inputPolicy={tap:p.tap,scroll:p.scroll,text:p.text,key:p.key};setKeyboardControlsVisible(false);setAimControlsVisible();cap=data.capability;reconnectHandle=data.reconnectHandle;clientGeneration=data.clientGeneration;relayState=data.webrtcIce.relay;return data.webrtcIce}
+async function prepare(mode){const headers={'x-takeover-client':clientBinding};if(mode==='reconnect')headers['x-mcp-takeover-reconnect']=reconnectHandle;const response=await fetch('/takeover/api/webrtc-prepare-'+mode+'/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers});if(!response.ok){const e=new Error('prepare unavailable');e.status=response.status;if(response.status===410){try{const body=await response.json();if(body&&body.completed===true){terminalCompleted();e.completed=true}}catch{}}if(response.status===409){try{const body=await response.json();const retry=Number(body&&body.retryAfterMs);if(Number.isFinite(retry)&&retry>=100&&retry<=5000)e.retryAfterMs=retry}catch{}}throw e}const data=await response.json();if(!data.capability||!data.reconnectHandle||!Number.isFinite(data.clientGeneration)||!data.webrtcIce||!Array.isArray(data.webrtcIce.iceServers))throw new Error('invalid prepare response');if(!['disabled','available','unavailable'].includes(data.webrtcIce.relay))throw new Error('invalid relay state');const p=data.inputPolicy;if(!p||typeof p!=='object'||['tap','scroll','text','key'].some(function(k){return typeof p[k]!=='boolean'}))throw new Error('invalid input policy');inputPolicy={tap:p.tap,scroll:p.scroll,text:p.text,key:p.key};setKeyboardControlsVisible(false);setAimControlsVisible();cap=data.capability;reconnectHandle=data.reconnectHandle;clientGeneration=data.clientGeneration;relayState=data.webrtcIce.relay;return data.webrtcIce}
 function boundedMs(value){const number=Number(value);return Number.isFinite(number)&&number>=0?Math.min(120000,number):undefined}
 function frameDelta(later,earlier){const a=Number(later),b=Number(earlier);return Number.isFinite(a)&&Number.isFinite(b)&&a>=b?boundedMs(a-b):undefined}
 function armMetrics(peer){clearMetricsTimer();metricsTimer=setInterval(function(){if(peer!==pc||stopped||metricsSamplesSent>=12){clearMetricsTimer();return}void reportMetrics(peer,false)},2000)}
@@ -121,7 +122,7 @@ async function reportMetrics(peer,includeFirstFrame){if(peer!==pc||!cap||metrics
 async function reportInputAck(peer,inputAckMs){if(peer!==pc||!cap||inputMetricsSamplesSent>=6)return;const selected=await selectedPath(peer);if(!selected||peer!==pc)return;inputMetricsSamplesSent+=1;await postMetrics({path:selected.path,inputAckMs:inputAckMs})}
 async function connected(next){clearRelayTimer();failureInProgress=false;if(!firstFrameTimer)firstFrameTimer=setTimeout(function(){firstFrameTimer=0;if(next===pc&&!stopped)void connectionFailed(next)},15000);status('Connected · waiting for video…');const selected=await selectedPath(next);if(next!==pc)return;if(selected){status('Connected · '+selected.path+' · waiting for video…')}else{status('Connected · waiting for video…')}}
 function releaseGeneration(label){if(stopped||!cap)return Promise.resolve();if(generationReleasePromise)return generationReleasePromise;suspended=true;const oldPc=pc;const releaseCap=cap;const releaseClientBinding=clientBinding;closePeer();status(label||'Suspended · stale session closed');const pending=(async()=>{try{await fetch('/takeover/api/webrtc-suspend/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',keepalive:true,headers:{'x-mcp-takeover-capability':releaseCap,'x-takeover-client':releaseClientBinding}})}catch{}finally{if(oldPc){try{oldPc.close()}catch{}}}})();generationReleasePromise=pending;suspendPromise=pending;pending.then(()=>{if(generationReleasePromise===pending)generationReleasePromise=null},()=>{if(generationReleasePromise===pending)generationReleasePromise=null});return pending}
-async function connectionFailed(next){if(next!==pc||stopped||failureInProgress)return;failureInProgress=true;const finalStatus=relayState==='unavailable'?'Secure relay unavailable':relayState==='disabled'?'Direct connection unavailable':'Connection unavailable';await releaseGeneration(finalStatus);if(document.visibilityState==='visible'&&!stopped&&!recoveryReconnectUsed&&reconnectHandle){recoveryReconnectUsed=true;await wait(250);try{await reconnect();return}catch{}}status(finalStatus);failureInProgress=false}
+async function connectionFailed(next){if(next!==pc||stopped||failureInProgress)return;failureInProgress=true;const finalStatus=relayState==='unavailable'?'Secure relay unavailable':relayState==='disabled'?'Direct connection unavailable':'Connection unavailable';await releaseGeneration(finalStatus);if(document.visibilityState==='visible'&&!stopped&&!recoveryReconnectUsed&&reconnectHandle){recoveryReconnectUsed=true;await wait(250);try{await reconnect();return}catch{if(stopped)return}}status(finalStatus);failureInProgress=false}
 async function makeOffer(ice){closePeer();connectionStartedAt=performance.now();firstFrameMs=null;metricsSamplesSent=0;inputMetricsSamplesSent=0;latestFrameMetrics={};const next=new RTCPeerConnection({iceServers:ice.iceServers,iceTransportPolicy:'all'});pc=next;iceCandidateCounts={host:0,srflx:0,prflx:0,relay:0};iceGatherStartedAt=performance.now();next.addEventListener('icecandidate',function(event){const type=event.candidate&&event.candidate.type;if(type&&Object.prototype.hasOwnProperty.call(iceCandidateCounts,type)&&iceCandidateCounts[type]<64)iceCandidateCounts[type]+=1});next.addTransceiver('video',{direction:'recvonly'});critical=next.createDataChannel('human-critical',{ordered:true});realtime=next.createDataChannel('human-realtime',{ordered:false,maxRetransmits:0});critical.onmessage=function(event){try{const m=JSON.parse(String(event.data));if(m.kind==='editableRegions'){applyEditableRegions(m.regions);return}if(m.kind==='focus'){if(lastTapSentAt>0){const ack=boundedMs(performance.now()-lastTapSentAt);lastTapSentAt=0;if(ack!==undefined)void reportInputAck(next,ack)}if(m.editable){if(document.activeElement===keyboard)resetKeyboard()}else if(!keyboardMode){keyboard.blur()}}}catch{}};next.ontrack=function(event){if(event.streams&&event.streams[0])video.srcObject=event.streams[0];else video.srcObject=new MediaStream([event.track]);armFirstFrame(next);void video.play().catch(()=>{})};next.onconnectionstatechange=function(){if(next!==pc)return;const state=next.connectionState;if(['new','connecting','connected','disconnected','failed','closed'].includes(state))void postDiagnostic({stage:'browser.peer.state',state:state});if(state==='connected')void connected(next);if(state==='failed'||state==='disconnected')void connectionFailed(next)};if(ice.relay==='available'){relayTimer=setTimeout(function(){if(next===pc&&next.connectionState!=='connected')status('Trying secure relay…')},1800)}else if(ice.relay==='unavailable'){relayTimer=setTimeout(function(){if(next===pc&&next.connectionState!=='connected')status('Connecting directly… · secure relay unavailable')},1800)}const offer=await next.createOffer();const iceReady=waitIce(next,ice.relay==='available');await next.setLocalDescription(offer);await iceReady;void postDiagnostic({stage:'browser.gather.complete',candidateCounts:iceCandidateCounts,durationMs:Math.max(0,Math.min(120000,performance.now()-iceGatherStartedAt))});if(!next.localDescription)throw new Error('missing offer');return{type:'offer',sdp:next.localDescription.sdp}}
 async function signal(offer){const response=await fetch('/takeover/api/webrtc-connect/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers:{'content-type':'application/json','x-mcp-takeover-capability':cap,'x-takeover-client':clientBinding},body:JSON.stringify(offer)});if(!response.ok){const e=new Error('signal unavailable');e.status=response.status;throw e}const data=await response.json();if(!data.webrtc||data.webrtc.type!=='answer')throw new Error('invalid signal response');if(!pc)throw new Error('peer closed');await pc.setRemoteDescription(data.webrtc);suspended=false}
 async function connect(mode){status(mode==='claim'?'Connecting directly…':'Reconnecting with fresh generation…');const ice=await prepare(mode);if(mode==='reconnect')status('Connecting directly…');const offer=await makeOffer(ice);try{await signal(offer)}catch(error){await releaseGeneration(ice.relay==='unavailable'?'Secure relay unavailable':'Connection unavailable');throw error}}
@@ -147,9 +148,12 @@ function consumeDoneGesture(event){event.preventDefault();event.stopPropagation(
 doneButton.addEventListener('touchstart',function(event){event.stopPropagation()},{passive:true});
 doneButton.addEventListener('touchend',consumeDoneGesture,{passive:false});
 doneButton.addEventListener('click',consumeDoneGesture);
-document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){void suspend()}else if(document.visibilityState==='visible'&&suspended&&!stopped){void reconnect().catch(()=>status('Connection unavailable'))}});window.addEventListener('pagehide',function(){void suspend()});window.addEventListener('pageshow',function(event){if(event.persisted&&suspended&&!stopped)void reconnect().catch(()=>status('Connection unavailable'))});window.addEventListener('orientationchange',scheduleOrientationReset);
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){void suspend()}else if(document.visibilityState==='visible'&&suspended&&!stopped){void reconnect().catch(()=>{if(!stopped)status('Connection unavailable')})}});window.addEventListener('pagehide',function(){void suspend()});window.addEventListener('pageshow',function(event){if(event.persisted&&suspended&&!stopped)void reconnect().catch(()=>{if(!stopped)status('Connection unavailable')})});window.addEventListener('orientationchange',scheduleOrientationReset);
 resetKeyboard();resetViewTransform();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});
 })();`;
+}
+function completedWebRtcPageHtml(nonce) {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Human takeover completed</title><style nonce="${nonce}">:root{font-family:system-ui,-apple-system,sans-serif;color-scheme:dark}html,body{margin:0;min-height:100%;background:#000;color:#fff}main{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}p{max-width:34rem;line-height:1.5}</style></head><body><main><p>Remote control closed. Return to the requesting workflow.</p></main></body></html>`;
 }
 function webRtcPageHtml(nonce, completionCapability) {
     return `<!doctype html>
@@ -330,6 +334,20 @@ export class TakeoverBroker {
         this.forgetWebRtcOnlyIntervention(interventionId);
         await this.webRtcRuntime?.revokeForIntervention(interventionId);
     }
+    async completeWebRtcAfterVerification(intervention) {
+        const completed = this.sessions.completeAfterVerification(intervention.id, intervention.epoch);
+        if (completed.length === 0)
+            return false;
+        for (const item of completed) {
+            if (this.webRtcOnlySessions.get(item.id) !== intervention.id)
+                continue;
+            this.webRtcTargetProcessIds.delete(item.id);
+            this.webRtcTargetWindowIds.delete(item.id);
+            this.webRtcInputPolicies.delete(item.id);
+            await this.webRtcRuntime?.revoke(item.id).catch(() => undefined);
+        }
+        return true;
+    }
     async handle(request, boundPrincipal) {
         if (!this.config.enabled || !boundPrincipal)
             return json(404, { error: "not_found" });
@@ -358,6 +376,16 @@ export class TakeoverBroker {
                 return json(405, { error: "method_not_allowed" });
             let completionCapability;
             try {
+                if (this.webRtcOnlySessions.has(pageMatch[1])
+                    && this.sessions.isCompleted(pageMatch[1], boundPrincipal)) {
+                    const nonce = randomBytes(18).toString("base64url");
+                    const headers = new Headers(privateHeaders("text/html; charset=utf-8"));
+                    headers.set("content-security-policy", `default-src 'none'; style-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+                    return new Response(request.method === "HEAD" ? null : completedWebRtcPageHtml(nonce), {
+                        status: 200,
+                        headers
+                    });
+                }
                 if (this.webRtcOnlySessions.has(pageMatch[1])) {
                     completionCapability = this.sessions.issueCompletionCapability(pageMatch[1], boundPrincipal);
                 }
@@ -440,6 +468,16 @@ export class TakeoverBroker {
         if (operation === "webrtc-prepare-claim" || operation === "webrtc-prepare-reconnect") {
             if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
                 return json(404, { error: "takeover_unavailable" });
+            try {
+                if (this.sessions.isCompleted(id, boundPrincipal)) {
+                    return json(410, { error: "takeover_completed", completed: true });
+                }
+            }
+            catch (error) {
+                if (error instanceof TakeoverSessionError)
+                    return json(404, { error: "takeover_unavailable" });
+                throw error;
+            }
             if (request.method !== "POST")
                 return json(405, { error: "method_not_allowed" });
             if (!this.sameOriginMutation(request))
