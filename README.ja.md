@@ -6,7 +6,7 @@
 
 MCPで動く処理の途中でHumanによる手動操作が必要になったとき、Agentの実行を安全に止めて一時的にHumanへ権限を移し、明示的な検証とpolicy確認を通過した場合だけ処理を再開するための、小さなTypeScript runtimeです。
 
-**Status:** 再利用可能なupstreamとして検証済みです。`v0.2.0` が現在のGitHub/source release baselineで、`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npmには公開していません。
+**Status:** 再利用可能なupstreamとして検証済みです。`v0.3.0` が現在のGitHub/source release baselineで、完了済みRecovery / Observability contractとv0.2.0後のbounded hardeningを含みます。`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npmには公開していません。
 
 ## このプロジェクトが必要な理由
 
@@ -278,7 +278,7 @@ npm audit --audit-level=moderate
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.2.0` が現在の **GitHub/source release only** baselineです。Browser、bounded OS Window、bounded Terminal/PTYをfirst-class source componentとして確立しつつ、Target Surface labelはdocumentation-firstのまま、Human Interaction Policyのcompatibility-safe aliasも維持します。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.3.0` が現在の **GitHub/source release only** baselineです。first-class Browser / bounded OS Window / bounded Terminal-PTYを維持しつつ、provider-neutral bounded checkpoint storage、privacy-bounded audit / operator diagnostics v1、deterministic crash/restart conformance、v0.2.0後のbounded Window / Linux / media hardeningを含みます。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
 
 ## License
 

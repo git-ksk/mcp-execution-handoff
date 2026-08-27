@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-**v0.2.0** is the current GitHub/source-release baseline, tracked through milestone `v0.2.0 — Source Release` and Issue #119. The #45 public terminology/API gate is complete. Window/media/Linux hardening (#94/#56/#34) and relay/hosted-topology maturity (#19/#12) remain follow-up work and are not v0.2.0 blockers.
+**v0.3.0** is the current GitHub/source-release baseline, tracked through milestone `v0.3.0 — Source Release` and Issue #145 after completion of `v0.3 — Recovery & Observability` (#127–#130). The non-blocking v0.3.x maintenance set (#141–#144) remains separate, as do later relay/hosted/desktop maturity issues (#19/#12/#125).
 
 ## Versioning policy
 
@@ -16,6 +16,8 @@ Use SemVer as a compatibility signal even before npm publication.
 - `0.1.x`: fixes or documentation changes that preserve the v0.1 public contract.
 - `0.2.0`: minor pre-1.0 boundary for the materially expanded public surface introduced after v0.1.0, including first-class Browser/Window/Terminal components and their package subpaths.
 - later `0.2.x`: compatible hardening and bounded host/transport improvements that do not require another public-contract milestone.
+- `0.3.0`: recovery/observability source boundary: provider-neutral bounded checkpoint storage, stable privacy-bounded audit/operator diagnostics, and crash/restart conformance without new Human-control authority.
+- later `0.3.x`: compatible maintenance/durability/documentation hardening that preserves the v0.3 contract.
 - later pre-1.0 minors: use when public contract/deployment semantics materially expand again.
 
 A roadmap family such as `v0.2` can contain work that lands after `v0.2.0`. An issue belongs to the v0.2 product direction without automatically blocking the first v0.2 source release.
@@ -44,7 +46,7 @@ The final release PR should contain only release bookkeeping unless a blocker re
 4. Keep `private: true` for source-only releases.
 5. Run the complete release validation below from a clean install.
 
-For v0.2.0, the authoritative checklist is Issue #119.
+For v0.3.0, the authoritative checklist is Issue #145. Historical v0.2.0 used Issue #119.
 
 ## Release validation
 

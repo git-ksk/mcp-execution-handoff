@@ -4,13 +4,13 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.2.0
+## Current baseline: v0.3.0
 
-`v0.2.0` is the current GitHub/source-release baseline. `v0.1.0` established the repository as the upstream source of truth after validation with Maps and Japan Cinema; v0.2.0 extends that baseline with first-class Browser, bounded OS Window, and bounded Terminal/PTY components, compatibility-safe Human Interaction Policy names, exact-surface hardening, and the accepted direct/TURN/WSS source-level transport work.
+`v0.3.0` is the current GitHub/source-release baseline. It retains the first-class Browser, bounded OS Window, and bounded Terminal/PTY source components from v0.2.0, includes the completed bounded Window/Linux/media hardening, and adds the Recovery & Observability boundary: provider-neutral bounded checkpoint storage, privacy-bounded audit/operator diagnostics v1, and deterministic crash/restart conformance with `reissue_and_revalidate` as the only recovery outcome.
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
-### Current working state — 2026-08-26
+### Current working state — 2026-08-27
 
 The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence. #46 documents the semantic-domain/Target Surface admission contract, and the v0.2 terminology convergence adds canonical Human Interaction Policy aliases without freezing a `TargetSurfaceKind` enum:
 
@@ -29,7 +29,7 @@ Documentation/design closeout is complete for #42 (positioning), #46 (semantic d
 
 Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. Desktop authority remains a separate future escalation in #125 and never a hidden fallback.
 
-### Post-v0.2.0 follow-up issue map — 9 open issues
+### Post-v0.2.0 roadmap issue map
 
 The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog now includes the explicit v0.3 Recovery & Observability milestone.
 
@@ -68,9 +68,17 @@ Focus:
 
 Exit condition: each patch must preserve the documented security invariants and remain green in both established real consumers.
 
+## v0.3.0 source release
+
+`v0.3.0` is the current **GitHub source release**. It promotes the completed v0.3 Recovery & Observability contract into the source baseline while also carrying the bounded hardening merged after v0.2.0: secure-system Window admission, same-process successor-window lineage, Window media quality, Linux editable-region parity, and the current Cloudflare TURN credential contract.
+
+The release is tracked by milestone `v0.3.0 — Source Release` and Issue #145. The v0.3.x maintenance issues #141–#144 are explicitly non-blocking and remain separate from this tag. npm publication is still a separate gate and `private: true` remains required.
+
+See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
+
 ## v0.2.0 source release
 
-`v0.2.0` is the current **GitHub source release**. It is a minor pre-1.0 boundary because the public surface materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are exported, and the Window/Terminal package subpaths are part of the source package shape.
+`v0.2.0` is the previous **GitHub source release**. It is a minor pre-1.0 boundary because the public surface materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are exported, and the Window/Terminal package subpaths are part of the source package shape.
 
 The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closed after the tag and GitHub Release were verified. #124, #56, and #34 complete the immediate v0.2.x bounded-hardening set. The dedicated `v0.3 — Recovery & Observability` milestone is #127–#130; #125, #19, and #12 remain later authority/transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
 
@@ -179,7 +187,7 @@ Minimum exit criteria:
 
 ## npm publication gate
 
-npm publication is a delivery decision, not a maturity signal. A source release may exist without an npm package; both `v0.1.0` and `v0.2.0` use that source-only model.
+npm publication is a delivery decision, not a maturity signal. A source release may exist without an npm package; `v0.1.0`, `v0.2.0`, and `v0.3.0` use that source-only model.
 
 Before setting `private: false` or publishing any package, verify all of the following:
 

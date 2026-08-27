@@ -6,9 +6,9 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.2.0
+## 現在のbaseline: v0.3.0
 
-`v0.2.0` が現在のGitHub/source-release baselineです。`v0.1.0` でMaps / Japan Cinemaの実consumer検証をもとにupstream source of truthを確立し、v0.2.0ではfirst-class Browser / bounded OS Window / bounded Terminal-PTY component、compatibility-safeなHuman Interaction Policy名、exact-surface hardening、accepted済みdirect/TURN/WSSのsource-level transport workまでbaselineを拡張しました。
+`v0.3.0` が現在のGitHub/source-release baselineです。v0.2.0のfirst-class Browser / bounded OS Window / bounded Terminal-PTY source componentを維持し、完了済みbounded Window / Linux / media hardeningに加えて、Recovery / Observability boundaryとしてprovider-neutral bounded checkpoint storage、privacy-bounded audit / operator diagnostics v1、`reissue_and_revalidate`だけを許すdeterministic crash/restart conformanceをbaselineへ含めます。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -31,7 +31,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 #94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
 
-### v0.2.0後のfollow-up Issue map — open 9件
+### v0.2.0後のroadmap Issue map
 
 #119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。#94も完了し、継続するdurable backlogには明示的なv0.3 Recovery & Observability milestoneも追加しました。
 
@@ -70,9 +70,17 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
 
+## v0.3.0 source release
+
+`v0.3.0` が現在の **GitHub source release** です。完了したv0.3 Recovery / Observability contractをsource baselineへ昇格し、v0.2.0後にmergeしたsecure-system Window admission、same-process successor-window lineage、Window media quality、Linux editable-region parity、現行Cloudflare TURN credential contractも含みます。
+
+releaseはmilestone `v0.3.0 — Source Release` とIssue #145で追跡します。v0.3.x maintenanceの #141〜#144 は明示的にnon-blockingで、このtagとは分離します。npm publicationも別gateのままで、`private: true` を維持します。
+
+repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
+
 ## v0.2.0 source release
 
-`v0.2.0` が現在の **GitHub source release** です。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張したため、pre-1.0 minor boundaryとして扱います。
+`v0.2.0` は以前の **GitHub source release** です。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張したため、pre-1.0 minor boundaryとして扱います。
 
 releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、tag / GitHub Release検証後にclose済みです。#124 / #56 / #34で直近のv0.2.x bounded-hardening setは完了です。専用milestone `v0.3 — Recovery & Observability` は #127〜#130、#125 / #19 / #12は後続のauthority / transport / deployment maturityです。npm publicationは明示的に別gateで、`private: true` を維持します。
 
@@ -181,7 +189,7 @@ Issue #40で初期WebSocket managed-runtime evaluationは完了しました。ph
 
 ## npm publication gate
 
-npm publishはdelivery decisionであり、maturity signalではありません。`v0.1.0` と `v0.2.0` のようにsource releaseだけを成立させることもできます。
+npm publishはdelivery decisionであり、maturity signalではありません。`v0.1.0` / `v0.2.0` / `v0.3.0` のようにsource releaseだけを成立させることもできます。
 
 `private: false` へ変更、またはnpm publishする前に最低限次を確認します。
 
