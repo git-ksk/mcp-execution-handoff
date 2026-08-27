@@ -244,3 +244,28 @@ test("spawned WebRTC host receives only bounded runtime env plus the Node execut
     await provider.revoke("host-ready-session").catch(() => undefined);
   }
 });
+
+test("macOS successor-window diagnostics expose only bounded lineage stages", async () => {
+  const child = new FakeHostProcess();
+  const provider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: "/fake/takeover-webrtc-host",
+    spawnProcess: (() => child) as never
+  });
+  const { client, offer } = await clientOffer();
+  try {
+    const started = provider.start(binding(), offer, hooks);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.stdout.write(encodedFrameRecord());
+    await started;
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC successor_stage=probe_started\n");
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC successor_stage=admitted\n");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const stages = provider.diagnosticsSnapshot().events.map((event) => event.stage);
+    assert.equal(stages.includes("host.window.successor.probe"), true);
+    assert.equal(stages.includes("host.window.successor.admitted"), true);
+    assert.doesNotMatch(JSON.stringify(provider.diagnosticsSnapshot()), /windowId|title|frame|coordinate|payload/i);
+  } finally {
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});

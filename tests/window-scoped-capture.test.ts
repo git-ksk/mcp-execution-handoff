@@ -65,8 +65,8 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
   assert.match(host, /private let targetProcessID: pid_t\?/);
   assert.match(host, /event\.postToPid\(targetProcessID\)/);
-  assert.match(host, /guard activateTargetWindowForInput\(\) else \{[\s\S]*submitInputTextRoute\(\.activationRejected\)[\s\S]*input_stage=activation_failed[\s\S]*return[\s\S]*\}/);
-  assert.match(host, /MacOSExactWindowInput\.activate\(processID: targetProcessID, inputBounds: inputBounds\)/);
+  assert.match(host, /guard activateTargetWindowForInput\(processID: activeProcessID, inputBounds: activeInputBounds\) else \{[\s\S]*submitInputTextRoute\(\.activationRejected\)[\s\S]*input_stage=activation_failed[\s\S]*return[\s\S]*\}/);
+  assert.match(host, /MacOSExactWindowInput\.activate\(processID: processID, inputBounds: inputBounds\)/);
   assert.match(host, /MacOSExactWindowTextInput\.commitFocusedText\(/);
   assert.match(host, /MCP_HANDOFF_DIAGNOSTIC input_text_route=/);
   assert.doesNotMatch(host, /MCP_HANDOFF_DIAGNOSTIC input_text_route=.*\\\(text\\\)/);
@@ -74,14 +74,14 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.match(host, /case \.rejected:\s*controlWriter\.submitInputTextRoute\(\.nativeBoundaryRejected\)\s*return/);
   assert.match(
     host,
-    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
+    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*targetAuthority: targetAuthority,\s*afterPrimaryRelease: \{ lineageController\?\.afterPrimaryRelease\(\) \},\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
   );
   assert.match(host, /private var primaryPressed = false/);
   assert.match(host, /case \"pointer_button\"/);
   assert.match(host, /private func postPrimaryButton\(state: String, at point: CGPoint\) -> Bool/);
   assert.match(host, /func releaseAll\(\)/);
   assert.match(host, /private func cancellationPoint\(\) -> CGPoint/);
-  assert.match(host, /CGGetDisplaysWithRect\(inputBounds, 1/);
+  assert.match(host, /CGGetDisplaysWithRect\(activeBounds, 1/);
   assert.match(host, /movePointerForCancellation\(to: cancelAt\)/);
   assert.match(host, /event\.setIntegerValueField\(\.mouseEventClickState, value: 0\)/);
   assert.match(host, /event\.post\(tap: \.cghidEventTap\)/);
@@ -170,9 +170,9 @@ test("macOS secure-system-UI pointer capability stays on the exact-window Human-
   const architecture = source("docs/architecture.md");
 
   assert.match(host, /CGEventSource\(stateID: \.combinedSessionState\)/);
-  assert.match(host, /guard activateTargetWindowForInput\(\) else/);
+  assert.match(host, /guard activateTargetWindowForInput\(processID: activeProcessID, inputBounds: activeInputBounds\) else/);
   assert.match(host, /event\.post\(tap: \.cghidEventTap\)/);
-  assert.match(host, /MacOSExactWindowInput\.activate\(processID: targetProcessID, inputBounds: inputBounds\)/);
+  assert.match(host, /MacOSExactWindowInput\.activate\(processID: processID, inputBounds: inputBounds\)/);
   assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
 
   assert.match(acceptance, /target: \{ processId: TARGET_PID \}/);
@@ -182,4 +182,35 @@ test("macOS secure-system-UI pointer capability stays on the exact-window Human-
 
   assert.match(architecture, /there is \*\*no hidden secure-UI fallback\*\*/i);
   assert.match(architecture, /separate, explicitly reviewed escalation/);
+});
+
+test("macOS successor-window lineage stays same-process, explicit, and desktop-free", () => {
+  const adapter = source("src/window-takeover/window-handoff-adapter.ts");
+  const core = source("src/window-takeover/window-handoff-core.ts");
+  const exact = source("experiments/thin-takeover-runtime/Sources/TakeoverMacOSWindow/ExactWindowSurface.swift");
+  const host = source("experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift");
+  const acceptance = source("experiments/thin-takeover-runtime/scripts/macos-window-lineage-acceptance.mts");
+  const linux = source("src/browser-takeover/linux-webrtc-host-cli.ts");
+
+  assert.match(adapter, /successorWindowPolicy\?: WindowHandoffSuccessorPolicy/);
+  assert.match(core, /TAKEOVER_WEBRTC_WINDOW_LINEAGE: "same_process_successor"/);
+  assert.match(core, /transitionWindowMs < 100 \|\| transitionWindowMs > 2_000/);
+  assert.match(exact, /candidate\.processID == targetProcessID/);
+  assert.match(exact, /!knownWindowIDs\.contains\(candidate\.windowID\)/);
+  assert.match(exact, /eligible\.count == 1/);
+  assert.match(exact, /candidate\.layer == 0/);
+  assert.match(exact, /candidate\.isFocused && \(candidate\.isModal \|\| candidate\.isDialog\)/);
+  assert.match(host, /selectedLineageCaptureSurface/);
+  assert.match(host, /MacOSWindowLineage\.isSupportedSurface\(candidate\)/);
+  assert.match(exact, /predecessorWindowID/);
+  assert.match(host, /onScreenWindowsOnly: false/);
+  assert.match(host, /visibility change must never make a pre-existing window/);
+  assert.match(host, /authority\.fenceForTransition\(\)/);
+  assert.match(host, /stream\.updateContentFilter\(surface\.filter\)/);
+  assert.match(host, /stream\.updateConfiguration\(configuration\)/);
+  assert.match(host, /successor_stage=/);
+  assert.doesNotMatch(host, /Screen Sharing|Remote Management|screensharing|kickstart/);
+  assert.match(acceptance, /successorWindowPolicy: \{ mode: "same_process", transitionWindowMs: 1_200 \}/);
+  assert.match(acceptance, /inputPolicy: \{ tap: true, scroll: false, text: false, key: false \}/);
+  assert.match(linux, /successor-window lineage is not supported by the Linux WebRTC host/);
 });

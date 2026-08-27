@@ -1071,6 +1071,20 @@ class HostMetricParser {
         this.onHostStage(stages[macPointer[1] as keyof typeof stages]);
         continue;
       }
+      const successor = /^MCP_HANDOFF_DIAGNOSTIC successor_stage=(probe_started|admitted|returned|none|ambiguous|unsupported|failure)$/.exec(line);
+      if (successor) {
+        const stages = {
+          probe_started: "host.window.successor.probe",
+          admitted: "host.window.successor.admitted",
+          returned: "host.window.successor.returned",
+          none: "host.window.successor.none",
+          ambiguous: "host.window.successor.ambiguous",
+          unsupported: "host.window.successor.unsupported",
+          failure: "host.window.successor.failure"
+        } as const;
+        this.onHostStage(stages[successor[1] as keyof typeof stages]);
+        continue;
+      }
       const textRoute = /^MCP_HANDOFF_DIAGNOSTIC input_text_route=(native_ax|pid_keyboard|event_creation_failure|activation_rejected|native_boundary_rejected)$/.exec(line);
       if (textRoute) {
         const stages = {

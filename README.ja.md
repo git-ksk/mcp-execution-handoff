@@ -161,6 +161,8 @@ Authenticatedな `/takeover/*` HTTP requestは `browserHandoff.handle(...)` へr
 
 macOSのpointer inputは、exact-window revalidation後にstateful `CGEvent` / `cghidEventTap` を使うbounded pathのままです。#94ではmacOS 26.5のSystem Settings Accessibility **追加** controlを現行pathでactivateできることを確認したため、Screen Sharing / Remote Managementをprivileged / desktop-wide fallbackとして追加しません。fail-closed boundaryの詳細はarchitectureのinput-backend contractを参照してください。
 
+#124では `WindowHandoffAdapter` に **optional / Human-onlyなsuccessor-window lineage policy** を追加しました。defaultは従来どおりexact-one-windowです。opt-in時だけ、Human操作後に新しく現れた同一exact processのsuccessorを厳密に1つ証明できた場合にcapture/input authorityをrotateします。admission中は旧target inputをfenceし、pre-existing siblingやunrelated/frontmost processは候補外、複数候補はfail closed、desktop/display fallbackもありません。macOS 26.5のphysical iPhone acceptanceでは `Accessibility -> 追加 (+) -> 開く` を通し、file chooserがsame-processのfocused `AXDialog` / modalかつnon-zero WindowServer layerであることを確認したうえで、同じHandoff sessionがそのexact chooserへrotateしました。file選択やTCC/permission変更は行っていません。
+
 ```ts
 import { WindowHandoffAdapter } from "mcp-execution-handoff/window-takeover";
 

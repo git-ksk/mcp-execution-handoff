@@ -155,6 +155,8 @@ For non-browser application windows, `WindowHandoffAdapter` is the first-class h
 
 On macOS, pointer input remains the bounded stateful `CGEvent` / `cghidEventTap` path after exact-window revalidation. #94 verified that this current path can activate the System Settings Accessibility **Add** control on macOS 26.5, so Handoff does not add Screen Sharing/Remote Management as a privileged or desktop-wide fallback. See the architecture input-backend contract for the fail-closed boundary.
 
+#124 adds an **optional Human-only successor-window lineage policy** to `WindowHandoffAdapter`; exact-one-window behavior remains the default. When enabled, the host may rotate capture/input only to one newly observed successor from the same exact process after a Human action. The old target is input-fenced during bounded successor admission, pre-existing siblings and unrelated/frontmost processes are ineligible, multiple plausible successors fail closed, and there is still no desktop/display fallback. Physical iPhone acceptance on macOS 26.5 proved `Accessibility -> Add (+) -> Open`: the file chooser was a same-process focused `AXDialog`/modal presented at a non-zero WindowServer layer, and the same Handoff session rotated to that exact chooser without selecting a file or changing TCC/permission state.
+
 ```ts
 import { WindowHandoffAdapter } from "mcp-execution-handoff/window-takeover";
 

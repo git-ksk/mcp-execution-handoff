@@ -113,6 +113,7 @@ public enum MacOSExactWindowGeometry {
 }
 
 public struct MacOSExactWindowCaptureSurface {
+    public let windowID: CGWindowID
     public let filter: SCContentFilter
     public let sourceRect: CGRect
     public let inputBounds: CGRect
@@ -120,12 +121,14 @@ public struct MacOSExactWindowCaptureSurface {
     public let pixelHeight: Double
 
     public init(
+        windowID: CGWindowID,
         filter: SCContentFilter,
         sourceRect: CGRect,
         inputBounds: CGRect,
         pixelWidth: Double,
         pixelHeight: Double
     ) {
+        self.windowID = windowID
         self.filter = filter
         self.sourceRect = sourceRect
         self.inputBounds = inputBounds
@@ -165,6 +168,7 @@ public enum MacOSExactWindowCapture {
         let filter = SCContentFilter(display: display, including: [window])
         let scale = max(1.0, Double(filter.pointPixelScale))
         return MacOSExactWindowCaptureSurface(
+            windowID: window.windowID,
             filter: filter,
             sourceRect: resolution.sourceRect,
             inputBounds: resolution.inputBounds,
@@ -267,6 +271,121 @@ public enum MacOSExactWindowInput {
         guard AXValueGetValue(positionValue, .cgPoint, &point),
               AXValueGetValue(sizeValue, .cgSize, &size) else { return nil }
         return CGRect(origin: point, size: size)
+    }
+}
+#endif
+
+#if os(macOS)
+/// Metadata-only candidate used to decide whether one newly appeared macOS window may replace the
+/// currently authorized exact Window target. No title, content, credential, or Human input is part
+/// of this contract.
+public struct MacOSWindowLineageCandidate: Sendable, Equatable {
+    public let processID: pid_t
+    public let windowID: CGWindowID
+    public let frame: CGRect
+    public let isOnScreen: Bool
+    public let layer: Int
+    public let isFocused: Bool
+    public let isModal: Bool
+    public let isDialog: Bool
+
+    public init(
+        processID: pid_t,
+        windowID: CGWindowID,
+        frame: CGRect,
+        isOnScreen: Bool,
+        layer: Int,
+        isFocused: Bool,
+        isModal: Bool,
+        isDialog: Bool
+    ) {
+        self.processID = processID
+        self.windowID = windowID
+        self.frame = frame
+        self.isOnScreen = isOnScreen
+        self.layer = layer
+        self.isFocused = isFocused
+        self.isModal = isModal
+        self.isDialog = isDialog
+    }
+}
+
+public struct MacOSWindowLineageResolution: Sendable, Equatable {
+    public let windowID: CGWindowID
+    public let frame: CGRect
+
+    public init(windowID: CGWindowID, frame: CGRect) {
+        self.windowID = windowID
+        self.frame = frame
+    }
+}
+
+public enum MacOSWindowLineageResolutionError: Error, Equatable {
+    case noSuccessor
+    case ambiguousSuccessor
+}
+
+/// Pure successor-admission policy for bounded Window Handoff.
+///
+/// A successor must be a newly observed window from the exact same process and must carry a
+/// bounded UI relationship signal (focused, modal, or dialog). Pre-existing sibling windows and
+/// arbitrary frontmost windows are never eligible. More than one eligible successor fails closed.
+public enum MacOSWindowLineage {
+    /// Layer zero remains the ordinary Window surface. A non-zero-layer window is eligible only
+    /// when AX independently proves that the same exact window is both focused and a modal/dialog.
+    /// This is intentionally narrower than accepting arbitrary floating/system-owned layers.
+    public static func isSupportedSurface(_ candidate: MacOSWindowLineageCandidate) -> Bool {
+        candidate.layer == 0
+            || (candidate.isFocused && (candidate.isModal || candidate.isDialog))
+    }
+
+    public static func resolveSuccessor(
+        candidates: [MacOSWindowLineageCandidate],
+        targetProcessID: pid_t,
+        currentWindowID: CGWindowID,
+        knownWindowIDs: Set<CGWindowID>,
+        minimumSize: CGSize = CGSize(width: 80, height: 60)
+    ) throws -> MacOSWindowLineageResolution {
+        let eligible = candidates.filter { candidate in
+            candidate.processID == targetProcessID
+                && candidate.windowID != currentWindowID
+                && !knownWindowIDs.contains(candidate.windowID)
+                && candidate.isOnScreen
+                && isSupportedSurface(candidate)
+                && candidate.frame.width >= minimumSize.width
+                && candidate.frame.height >= minimumSize.height
+                && (candidate.isFocused || candidate.isModal || candidate.isDialog)
+        }
+        guard !eligible.isEmpty else { throw MacOSWindowLineageResolutionError.noSuccessor }
+        guard eligible.count == 1, let successor = eligible.first else {
+            throw MacOSWindowLineageResolutionError.ambiguousSuccessor
+        }
+        return MacOSWindowLineageResolution(windowID: successor.windowID, frame: successor.frame)
+    }
+
+    /// A modal/successor may return only to its immediate exact predecessor after the current
+    /// window disappears. Arbitrary older/pre-existing siblings are never considered here.
+    public static func canReturnToPredecessor(
+        candidates: [MacOSWindowLineageCandidate],
+        targetProcessID: pid_t,
+        currentWindowID: CGWindowID,
+        predecessorWindowID: CGWindowID
+    ) -> Bool {
+        let currentStillPresent = candidates.contains { candidate in
+            candidate.processID == targetProcessID
+                && candidate.windowID == currentWindowID
+                && candidate.isOnScreen
+                && isSupportedSurface(candidate)
+        }
+        guard !currentStillPresent else { return false }
+        let predecessor = candidates.filter { candidate in
+            candidate.processID == targetProcessID
+                && candidate.windowID == predecessorWindowID
+                && candidate.isOnScreen
+                && candidate.layer == 0
+                && candidate.isFocused
+        }
+        return predecessor.count == 1
     }
 }
 #endif

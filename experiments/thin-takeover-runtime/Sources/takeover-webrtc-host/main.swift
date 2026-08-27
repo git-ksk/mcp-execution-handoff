@@ -88,7 +88,79 @@ private func loadTargetWindowID(targetProcessID: pid_t?) throws -> CGWindowID? {
     return CGWindowID(value)
 }
 
+private struct WindowLineageConfig {
+    let transitionWindowMs: Int
+}
+
+private func loadWindowLineageConfig(targetProcessID: pid_t?) throws -> WindowLineageConfig? {
+    let environment = ProcessInfo.processInfo.environment
+    guard let mode = environment["TAKEOVER_WEBRTC_WINDOW_LINEAGE"] else {
+        if environment["TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS"] != nil { throw WebRtcHostError.configuration }
+        return nil
+    }
+    guard mode == "same_process_successor", targetProcessID != nil else { throw WebRtcHostError.configuration }
+    let transitionWindowMs: Int
+    if let raw = environment["TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS"] {
+        guard let parsed = Int(raw), (100...2_000).contains(parsed) else { throw WebRtcHostError.configuration }
+        transitionWindowMs = parsed
+    } else {
+        transitionWindowMs = 800
+    }
+    return WindowLineageConfig(transitionWindowMs: transitionWindowMs)
+}
+
+private struct WindowTargetSnapshot: Sendable, Equatable {
+    let processID: pid_t
+    let windowID: CGWindowID
+    let inputBounds: CGRect
+}
+
+/// Mutable authority for exactly one Window target. During successor discovery no mutable input
+/// snapshot exists; the old target is fenced before a new target can be admitted.
+private final class WindowTargetAuthority: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: WindowTargetSnapshot
+    private var fenced = false
+    private var failed = false
+
+    init(_ initial: WindowTargetSnapshot) { current = initial }
+
+    func snapshotForInput() -> WindowTargetSnapshot? {
+        lock.lock(); defer { lock.unlock() }
+        return (!fenced && !failed) ? current : nil
+    }
+
+    func currentSnapshot() -> WindowTargetSnapshot {
+        lock.lock(); defer { lock.unlock() }; return current
+    }
+
+    func fenceForTransition() -> WindowTargetSnapshot? {
+        lock.lock(); defer { lock.unlock() }
+        guard !fenced, !failed else { return nil }
+        fenced = true
+        return current
+    }
+
+    func resume(_ expected: WindowTargetSnapshot) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !failed, fenced, current.windowID == expected.windowID else { return false }
+        fenced = false
+        return true
+    }
+
+    func rotate(from expected: WindowTargetSnapshot, to successor: WindowTargetSnapshot) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !failed, fenced, current.windowID == expected.windowID, successor.processID == current.processID else { return false }
+        current = successor
+        fenced = false
+        return true
+    }
+
+    func failClosed() { lock.lock(); failed = true; fenced = true; lock.unlock() }
+}
+
 private struct CaptureSurface {
+    let targetWindowID: CGWindowID?
     let filter: SCContentFilter
     let sourceRect: CGRect?
     let inputBounds: CGRect
@@ -110,6 +182,7 @@ private func selectedCaptureSurface(
                 targetWindowID: targetWindowID
             )
             return CaptureSurface(
+                targetWindowID: exact.windowID,
                 filter: exact.filter,
                 sourceRect: exact.sourceRect,
                 inputBounds: exact.inputBounds,
@@ -122,12 +195,160 @@ private func selectedCaptureSurface(
     }
     let display = try selectedDisplay(from: content.displays, requested: requestedDisplay)
     return CaptureSurface(
+        targetWindowID: nil,
         filter: SCContentFilter(display: display, excludingWindows: []),
         sourceRect: nil,
         inputBounds: CGDisplayBounds(display.displayID),
         pixelWidth: Double(display.width),
         pixelHeight: Double(display.height)
     )
+}
+
+/// Resolve one already-admitted lineage successor without weakening ordinary exact-window capture.
+/// Non-zero layers are accepted only after the current AX snapshot independently confirms the same
+/// PID/window/frame as a focused modal/dialog. There is no display/desktop fallback.
+private func selectedLineageCaptureSurface(
+    from content: SCShareableContent,
+    targetProcessID: pid_t,
+    resolution: MacOSWindowLineageResolution
+) throws -> CaptureSurface {
+    let candidates = windowLineageCandidates(from: content, targetProcessID: targetProcessID)
+    let eligible = candidates.filter { candidate in
+        candidate.processID == targetProcessID
+            && candidate.windowID == resolution.windowID
+            && candidate.isOnScreen
+            && MacOSExactWindowGeometry.framesMatch(candidate.frame, resolution.frame)
+            && MacOSWindowLineage.isSupportedSurface(candidate)
+    }
+    guard eligible.count == 1 else { throw WebRtcHostError.display }
+
+    let windows = content.windows.filter { window in
+        window.owningApplication?.processID == targetProcessID
+            && window.windowID == resolution.windowID
+            && window.isOnScreen
+            && MacOSExactWindowGeometry.framesMatch(window.frame, resolution.frame)
+    }
+    guard windows.count == 1, let window = windows.first else { throw WebRtcHostError.display }
+    let displays = content.displays.filter { $0.frame.contains(window.frame) }
+    guard displays.count == 1, let display = displays.first else { throw WebRtcHostError.display }
+
+    let sourceRect = CGRect(
+        x: window.frame.minX - display.frame.minX,
+        y: window.frame.minY - display.frame.minY,
+        width: window.frame.width,
+        height: window.frame.height
+    )
+    let displayLocalBounds = CGRect(origin: .zero, size: display.frame.size)
+    guard displayLocalBounds.contains(sourceRect) else { throw WebRtcHostError.display }
+    let filter = SCContentFilter(display: display, including: [window])
+    let scale = max(1.0, Double(filter.pointPixelScale))
+    return CaptureSurface(
+        targetWindowID: window.windowID,
+        filter: filter,
+        sourceRect: sourceRect,
+        inputBounds: window.frame,
+        pixelWidth: max(2.0, Double(sourceRect.width) * scale),
+        pixelHeight: max(2.0, Double(sourceRect.height) * scale)
+    )
+}
+
+private struct AXWindowLineageMetadata {
+    let frame: CGRect
+    let isFocused: Bool
+    let isModal: Bool
+    let isDialog: Bool
+}
+
+private func axWindowFrame(_ element: AXUIElement) -> CGRect? {
+    var positionRaw: CFTypeRef?
+    var sizeRaw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionRaw) == .success,
+          AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRaw) == .success,
+          let positionRaw, let sizeRaw,
+          CFGetTypeID(positionRaw) == AXValueGetTypeID(),
+          CFGetTypeID(sizeRaw) == AXValueGetTypeID() else { return nil }
+    var point = CGPoint.zero
+    var size = CGSize.zero
+    guard AXValueGetValue(unsafeDowncast(positionRaw, to: AXValue.self), .cgPoint, &point),
+          AXValueGetValue(unsafeDowncast(sizeRaw, to: AXValue.self), .cgSize, &size) else { return nil }
+    return CGRect(origin: point, size: size)
+}
+
+private func axWindowLineageMetadata(processID: pid_t) -> [AXWindowLineageMetadata] {
+    let app = AXUIElementCreateApplication(processID)
+    var windowsRaw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
+          let windows = windowsRaw as? [AXUIElement] else { return [] }
+    var focusedRaw: CFTypeRef?
+    let focused = AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focusedRaw) == .success
+        ? focusedRaw.map { unsafeDowncast($0, to: AXUIElement.self) }
+        : nil
+    let focusedFrame = focused.flatMap(axWindowFrame)
+    return windows.compactMap { window in
+        guard let frame = axWindowFrame(window) else { return nil }
+        var modalRaw: CFTypeRef?
+        let modal = AXUIElementCopyAttributeValue(window, kAXModalAttribute as CFString, &modalRaw) == .success
+            ? (modalRaw as? NSNumber)?.boolValue ?? false
+            : false
+        var subroleRaw: CFTypeRef?
+        let subrole = AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &subroleRaw) == .success
+            ? subroleRaw as? String
+            : nil
+        let isFocused = focusedFrame.map { MacOSExactWindowGeometry.framesMatch($0, frame) } ?? false
+        return AXWindowLineageMetadata(
+            frame: frame,
+            isFocused: isFocused,
+            isModal: modal,
+            isDialog: subrole == (kAXDialogSubrole as String)
+        )
+    }
+}
+
+private func windowLineageCandidates(from content: SCShareableContent, targetProcessID: pid_t) -> [MacOSWindowLineageCandidate] {
+    let metadata = axWindowLineageMetadata(processID: targetProcessID)
+    return content.windows.map { window in
+        let processID = window.owningApplication?.processID ?? 0
+        let matches = processID == targetProcessID
+            ? metadata.filter { MacOSExactWindowGeometry.framesMatch($0.frame, window.frame) }
+            : []
+        let relation = matches.count == 1 ? matches[0] : nil
+        return MacOSWindowLineageCandidate(
+            processID: processID,
+            windowID: window.windowID,
+            frame: window.frame,
+            isOnScreen: window.isOnScreen,
+            layer: window.windowLayer,
+            isFocused: relation?.isFocused ?? false,
+            isModal: relation?.isModal ?? false,
+            isDialog: relation?.isDialog ?? false
+        )
+    }
+}
+
+private func sameProcessWindowIDs(from content: SCShareableContent, targetProcessID: pid_t) -> Set<CGWindowID> {
+    Set(content.windows.compactMap { window in
+        window.owningApplication?.processID == targetProcessID ? window.windowID : nil
+    })
+}
+
+private func makeStreamConfiguration(
+    surface: CaptureSurface,
+    width: Int,
+    height: Int,
+    preserveAspectRatio: Bool
+) -> SCStreamConfiguration {
+    let configuration = SCStreamConfiguration()
+    if let sourceRect = surface.sourceRect { configuration.sourceRect = sourceRect }
+    configuration.width = width
+    configuration.height = height
+    configuration.scalesToFit = true
+    configuration.preservesAspectRatio = preserveAspectRatio
+    configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+    configuration.queueDepth = 2
+    configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+    configuration.capturesAudio = false
+    configuration.showsCursor = false
+    return configuration
 }
 
 private func makeLease() throws -> EphemeralSessionLease {
@@ -181,12 +402,16 @@ private final class HostControlWriter: @unchecked Sendable {
 
 private final class EditableRegionPublisher: @unchecked Sendable {
     private let targetProcessID: pid_t
-    private let inputBounds: CGRect
+    private let inputBoundsProvider: @Sendable () -> CGRect?
     private let writer: HostControlWriter
 
-    init(targetProcessID: pid_t, inputBounds: CGRect, writer: HostControlWriter) {
+    init(
+        targetProcessID: pid_t,
+        inputBoundsProvider: @escaping @Sendable () -> CGRect?,
+        writer: HostControlWriter
+    ) {
         self.targetProcessID = targetProcessID
-        self.inputBounds = inputBounds
+        self.inputBoundsProvider = inputBoundsProvider
         self.writer = writer
     }
 
@@ -200,7 +425,7 @@ private final class EditableRegionPublisher: @unchecked Sendable {
     }
 
     private func snapshot() -> [[Int]] {
-        guard inputBounds.width > 0, inputBounds.height > 0 else { return [] }
+        guard let inputBounds = inputBoundsProvider(), inputBounds.width > 0, inputBounds.height > 0 else { return [] }
         let app = AXUIElementCreateApplication(targetProcessID)
         guard let webArea = firstWebArea(in: app) else { return [] }
         var stack: [AXUIElement] = [webArea]
@@ -456,12 +681,176 @@ private final class CaptureOutput: NSObject, SCStreamOutput, @unchecked Sendable
     }
 }
 
+private final class WindowLineageController: @unchecked Sendable {
+    private let targetProcessID: pid_t
+    private let authority: WindowTargetAuthority
+    private let stream: SCStream
+    private let width: Int
+    private let height: Int
+    private let transitionWindowMs: Int
+    private let requestIDR: @Sendable () -> Void
+    private let stop: StopState
+    private let knownLock = NSLock()
+    private var knownWindowIDs: Set<CGWindowID>
+    private var predecessorStack: [WindowTargetSnapshot] = []
+
+    init(
+        targetProcessID: pid_t,
+        authority: WindowTargetAuthority,
+        stream: SCStream,
+        width: Int,
+        height: Int,
+        transitionWindowMs: Int,
+        initialKnownWindowIDs: Set<CGWindowID>,
+        requestIDR: @escaping @Sendable () -> Void,
+        stop: StopState
+    ) {
+        self.targetProcessID = targetProcessID
+        self.authority = authority
+        self.stream = stream
+        self.width = width
+        self.height = height
+        self.transitionWindowMs = transitionWindowMs
+        self.knownWindowIDs = initialKnownWindowIDs
+        self.requestIDR = requestIDR
+        self.stop = stop
+    }
+
+    func afterPrimaryRelease() {
+        guard let previous = authority.fenceForTransition(), !stop.isStopped else { return }
+        emit("probe_started")
+        Task { [weak self] in await self?.probe(from: previous) }
+    }
+
+    private func probe(from previous: WindowTargetSnapshot) async {
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(transitionWindowMs) * 1_000_000
+        var lastObservedSameProcessIDs = Set<CGWindowID>()
+        do {
+            while !stop.isStopped, DispatchTime.now().uptimeNanoseconds <= deadline {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                let observedIDs = sameProcessWindowIDs(from: content, targetProcessID: targetProcessID)
+                lastObservedSameProcessIDs = observedIDs
+                let known = knownSnapshot()
+                let candidates = windowLineageCandidates(from: content, targetProcessID: targetProcessID)
+                if let predecessor = predecessorSnapshot(),
+                   MacOSWindowLineage.canReturnToPredecessor(
+                       candidates: candidates,
+                       targetProcessID: targetProcessID,
+                       currentWindowID: previous.windowID,
+                       predecessorWindowID: predecessor.windowID
+                   ) {
+                    let predecessorSurface = try selectedCaptureSurface(
+                        from: content,
+                        requestedDisplay: nil,
+                        targetProcessID: targetProcessID,
+                        targetWindowID: predecessor.windowID
+                    )
+                    let configuration = makeStreamConfiguration(
+                        surface: predecessorSurface,
+                        width: width,
+                        height: height,
+                        preserveAspectRatio: false
+                    )
+                    try await stream.updateContentFilter(predecessorSurface.filter)
+                    try await stream.updateConfiguration(configuration)
+                    let restored = WindowTargetSnapshot(
+                        processID: targetProcessID,
+                        windowID: predecessor.windowID,
+                        inputBounds: predecessorSurface.inputBounds
+                    )
+                    guard authority.rotate(from: previous, to: restored) else { return failClosed("failure") }
+                    popPredecessor()
+                    remember(observedIDs)
+                    requestIDR()
+                    emit("returned")
+                    return
+                }
+                do {
+                    let resolution = try MacOSWindowLineage.resolveSuccessor(
+                        candidates: candidates,
+                        targetProcessID: targetProcessID,
+                        currentWindowID: previous.windowID,
+                        knownWindowIDs: known
+                    )
+                    let surface = try selectedLineageCaptureSurface(
+                        from: content,
+                        targetProcessID: targetProcessID,
+                        resolution: resolution
+                    )
+                    guard surface.targetWindowID == resolution.windowID else { return failClosed("failure") }
+                    let configuration = makeStreamConfiguration(
+                        surface: surface,
+                        width: width,
+                        height: height,
+                        preserveAspectRatio: false
+                    )
+                    try await stream.updateContentFilter(surface.filter)
+                    try await stream.updateConfiguration(configuration)
+                    let successor = WindowTargetSnapshot(
+                        processID: targetProcessID,
+                        windowID: resolution.windowID,
+                        inputBounds: surface.inputBounds
+                    )
+                    guard authority.rotate(from: previous, to: successor) else { return failClosed("failure") }
+                    pushPredecessor(previous)
+                    remember(observedIDs)
+                    requestIDR()
+                    emit("admitted")
+                    return
+                } catch MacOSWindowLineageResolutionError.noSuccessor {
+                    try await Task.sleep(for: .milliseconds(40))
+                } catch MacOSWindowLineageResolutionError.ambiguousSuccessor {
+                    return failClosed("ambiguous")
+                }
+            }
+            if !lastObservedSameProcessIDs.contains(previous.windowID) { return failClosed("unsupported") }
+            let unseen = lastObservedSameProcessIDs.subtracting(knownSnapshot())
+            if !unseen.isEmpty { return failClosed("unsupported") }
+            if authority.resume(previous) { emit("none") } else { failClosed("failure") }
+        } catch {
+            failClosed("failure")
+        }
+    }
+
+    private func knownSnapshot() -> Set<CGWindowID> {
+        knownLock.lock(); defer { knownLock.unlock() }; return knownWindowIDs
+    }
+
+    private func remember(_ ids: Set<CGWindowID>) {
+        knownLock.lock(); knownWindowIDs.formUnion(ids); knownLock.unlock()
+    }
+
+    private func predecessorSnapshot() -> WindowTargetSnapshot? {
+        knownLock.lock(); defer { knownLock.unlock() }; return predecessorStack.last
+    }
+
+    private func pushPredecessor(_ snapshot: WindowTargetSnapshot) {
+        knownLock.lock(); predecessorStack.append(snapshot); knownLock.unlock()
+    }
+
+    private func popPredecessor() {
+        knownLock.lock(); if !predecessorStack.isEmpty { predecessorStack.removeLast() }; knownLock.unlock()
+    }
+
+    private func failClosed(_ stage: String) {
+        authority.failClosed()
+        emit(stage)
+        stop.stop(.unexpected)
+    }
+
+    private func emit(_ stage: String) {
+        FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC successor_stage=\(stage)\n".utf8))
+    }
+}
+
 private final class HumanInputInjector: @unchecked Sendable {
     // This host posts synthetic events from within the logged-in user session. Apple documents
     // combinedSessionState for that case; hidSystemState is for HID-interpreting daemons/drivers.
     private let source = CGEventSource(stateID: .combinedSessionState)
     private let inputBounds: CGRect
     private let targetProcessID: pid_t?
+    private let targetAuthority: WindowTargetAuthority?
+    private let afterPrimaryRelease: @Sendable () -> Void
     private let writer: LatestOutputWriter
     private let controlWriter: HostControlWriter
     private let inputLock = NSLock()
@@ -471,19 +860,36 @@ private final class HumanInputInjector: @unchecked Sendable {
     init(
         inputBounds: CGRect,
         targetProcessID: pid_t?,
+        targetAuthority: WindowTargetAuthority? = nil,
+        afterPrimaryRelease: @escaping @Sendable () -> Void = {},
         writer: LatestOutputWriter,
         controlWriter: HostControlWriter
     ) {
         self.inputBounds = inputBounds
         self.targetProcessID = targetProcessID
+        self.targetAuthority = targetAuthority
+        self.afterPrimaryRelease = afterPrimaryRelease
         self.writer = writer
         self.controlWriter = controlWriter
     }
 
     func apply(_ object: [String: Any]) {
         guard let kind = object["kind"] as? String else { return }
-        guard activateTargetWindowForInput() else {
-            if kind == "text", targetProcessID != nil {
+        let activeTarget: WindowTargetSnapshot?
+        if let targetAuthority {
+            guard let snapshot = targetAuthority.snapshotForInput() else {
+                if kind == "text" { controlWriter.submitInputTextRoute(.activationRejected) }
+                FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=activation_failed\n".utf8))
+                return
+            }
+            activeTarget = snapshot
+        } else {
+            activeTarget = nil
+        }
+        let activeProcessID = activeTarget?.processID ?? targetProcessID
+        let activeInputBounds = activeTarget?.inputBounds ?? inputBounds
+        guard activateTargetWindowForInput(processID: activeProcessID, inputBounds: activeInputBounds) else {
+            if kind == "text", activeProcessID != nil {
                 controlWriter.submitInputTextRoute(.activationRejected)
             }
             FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=activation_failed\n".utf8))
@@ -492,35 +898,39 @@ private final class HumanInputInjector: @unchecked Sendable {
         switch kind {
         case "tap":
             guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return }
-            let point = screenPoint(x: x, y: y)
+            let point = screenPoint(x: x, y: y, inputBounds: activeInputBounds)
             let editableAtPoint = editableElement(at: point)
             guard postPrimaryButton(state: "down", at: point) else { return }
             usleep(20_000)
             guard postPrimaryButton(state: "up", at: point) else { releaseAll(); return }
+            afterPrimaryRelease()
             writer.submitEditable(editableAtPoint || editableAfterTap())
         case "pointer_button":
             guard object["button"] as? String == "primary",
                   let state = object["state"] as? String, state == "down" || state == "up",
                   let x = number(object["x"]), let y = number(object["y"]),
                   (0...1).contains(x), (0...1).contains(y) else { return }
-            let point = screenPoint(x: x, y: y)
+            let point = screenPoint(x: x, y: y, inputBounds: activeInputBounds)
             let editableAtPoint = state == "up" ? editableElement(at: point) : false
             guard postPrimaryButton(state: state, at: point) else {
                 FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_\(state)_rejected\n".utf8))
                 return
             }
             FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_\(state)_sent\n".utf8))
-            if state == "up" { writer.submitEditable(editableAtPoint || editableAfterTap()) }
+            if state == "up" {
+                afterPrimaryRelease()
+                writer.submitEditable(editableAtPoint || editableAfterTap())
+            }
         case "scroll":
             guard let dx = number(object["deltaX"]), let dy = number(object["deltaY"]), abs(dx) <= 2_000, abs(dy) <= 2_000 else { return }
             guard let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0) else { return }
             event.post(tap: .cghidEventTap)
         case "text":
             guard let text = object["text"] as? String, !text.isEmpty, text.utf8.count <= 4_096 else { return }
-            if let targetProcessID {
+            if let activeProcessID {
                 switch MacOSExactWindowTextInput.commitFocusedText(
-                    processID: targetProcessID,
-                    inputBounds: inputBounds,
+                    processID: activeProcessID,
+                    inputBounds: activeInputBounds,
                     text: text
                 ) {
                 case .committed:
@@ -537,22 +947,22 @@ private final class HumanInputInjector: @unchecked Sendable {
             guard utf16.count <= 1_024,
                   let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
-                if targetProcessID != nil { controlWriter.submitInputTextRoute(.eventCreationFailure) }
+                if activeProcessID != nil { controlWriter.submitInputTextRoute(.eventCreationFailure) }
                 return
             }
             utf16.withUnsafeBufferPointer { buffer in
                 down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
                 up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
             }
-            postKeyboard(down); postKeyboard(up)
-            if targetProcessID != nil { controlWriter.submitInputTextRoute(.pidKeyboard) }
+            postKeyboard(down, targetProcessID: activeProcessID); postKeyboard(up, targetProcessID: activeProcessID)
+            if activeProcessID != nil { controlWriter.submitInputTextRoute(.pidKeyboard) }
         case "key":
             guard let key = object["key"] as? String else { return }
             let code: CGKeyCode
             switch key { case "Backspace": code = 51; case "Enter": code = 36; default: return }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) else { return }
-            postKeyboard(down); postKeyboard(up)
+            postKeyboard(down, targetProcessID: activeProcessID); postKeyboard(up, targetProcessID: activeProcessID)
         default: return
         }
     }
@@ -611,17 +1021,18 @@ private final class HumanInputInjector: @unchecked Sendable {
     }
 
     private func cancellationPoint() -> CGPoint {
+        let activeBounds = targetAuthority?.currentSnapshot().inputBounds ?? inputBounds
         var display = CGDirectDisplayID()
         var count: UInt32 = 0
-        let resolved = CGGetDisplaysWithRect(inputBounds, 1, &display, &count) == .success && count == 1
+        let resolved = CGGetDisplaysWithRect(activeBounds, 1, &display, &count) == .success && count == 1
         let displayBounds = resolved ? CGDisplayBounds(display) : CGDisplayBounds(CGMainDisplayID())
         let margin: CGFloat = 8
         let safeY = min(max(primaryPoint.y, displayBounds.minY + 1), displayBounds.maxY - 1)
         let safeX = min(max(primaryPoint.x, displayBounds.minX + 1), displayBounds.maxX - 1)
-        if inputBounds.minX - margin >= displayBounds.minX { return CGPoint(x: inputBounds.minX - margin, y: safeY) }
-        if inputBounds.maxX + margin <= displayBounds.maxX { return CGPoint(x: inputBounds.maxX + margin, y: safeY) }
-        if inputBounds.minY - margin >= displayBounds.minY { return CGPoint(x: safeX, y: inputBounds.minY - margin) }
-        if inputBounds.maxY + margin <= displayBounds.maxY { return CGPoint(x: safeX, y: inputBounds.maxY + margin) }
+        if activeBounds.minX - margin >= displayBounds.minX { return CGPoint(x: activeBounds.minX - margin, y: safeY) }
+        if activeBounds.maxX + margin <= displayBounds.maxX { return CGPoint(x: activeBounds.maxX + margin, y: safeY) }
+        if activeBounds.minY - margin >= displayBounds.minY { return CGPoint(x: safeX, y: activeBounds.minY - margin) }
+        if activeBounds.maxY + margin <= displayBounds.maxY { return CGPoint(x: safeX, y: activeBounds.maxY + margin) }
         let corners = [
             CGPoint(x: displayBounds.minX + 2, y: displayBounds.minY + 2),
             CGPoint(x: displayBounds.maxX - 2, y: displayBounds.minY + 2),
@@ -671,7 +1082,7 @@ private final class HumanInputInjector: @unchecked Sendable {
         if let restore { restorePointerAfterCancellation(to: restore) }
     }
 
-    private func postKeyboard(_ event: CGEvent) {
+    private func postKeyboard(_ event: CGEvent, targetProcessID: pid_t?) {
         if let targetProcessID {
             event.postToPid(targetProcessID)
         } else {
@@ -679,13 +1090,13 @@ private final class HumanInputInjector: @unchecked Sendable {
         }
     }
 
-    private func activateTargetWindowForInput() -> Bool {
-        guard let targetProcessID else { return true }
-        return MacOSExactWindowInput.activate(processID: targetProcessID, inputBounds: inputBounds)
+    private func activateTargetWindowForInput(processID: pid_t?, inputBounds: CGRect) -> Bool {
+        guard let processID else { return true }
+        return MacOSExactWindowInput.activate(processID: processID, inputBounds: inputBounds)
     }
 
     private func number(_ value: Any?) -> Double? { (value as? NSNumber)?.doubleValue }
-    private func screenPoint(x: Double, y: Double) -> CGPoint {
+    private func screenPoint(x: Double, y: Double, inputBounds: CGRect) -> CGPoint {
         return CGPoint(x: inputBounds.minX + inputBounds.width * x, y: inputBounds.minY + inputBounds.height * y)
     }
     private func editableElement(at point: CGPoint) -> Bool {
@@ -823,9 +1234,60 @@ struct WebRtcMacHost {
                 writer.submitFrame(record)
             }
         }
+        let lineageConfig = try loadWindowLineageConfig(targetProcessID: targetProcessID)
+        let targetAuthority: WindowTargetAuthority?
+        if lineageConfig != nil {
+            guard let targetProcessID, let resolvedWindowID = surface.targetWindowID else { throw WebRtcHostError.configuration }
+            targetAuthority = WindowTargetAuthority(WindowTargetSnapshot(
+                processID: targetProcessID,
+                windowID: resolvedWindowID,
+                inputBounds: surface.inputBounds
+            ))
+        } else {
+            targetAuthority = nil
+        }
+
+        let configuration = makeStreamConfiguration(
+            surface: surface,
+            width: width,
+            height: height,
+            preserveAspectRatio: lineageConfig == nil
+        )
+        let output = CaptureOutput(encoder: encoder, lease: lease)
+        let stream = SCStream(filter: surface.filter, configuration: configuration, delegate: nil)
+        do {
+            try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "takeover.webrtc.capture", qos: .userInteractive))
+            try await stream.startCapture()
+        } catch {
+            throw WebRtcHostError.captureStart
+        }
+
+        let initialInputBounds = surface.inputBounds
+        let lineageController: WindowLineageController?
+        if let lineageConfig, let targetProcessID, let targetAuthority {
+            // Inventory all existing windows, including currently hidden/off-screen siblings. A later
+            // visibility change must never make a pre-existing window look like a newly created successor.
+            let lineageInventory = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            lineageController = WindowLineageController(
+                targetProcessID: targetProcessID,
+                authority: targetAuthority,
+                stream: stream,
+                width: width,
+                height: height,
+                transitionWindowMs: lineageConfig.transitionWindowMs,
+                initialKnownWindowIDs: sameProcessWindowIDs(from: lineageInventory, targetProcessID: targetProcessID),
+                requestIDR: { encoder.requestIDR() },
+                stop: stop
+            )
+        } else {
+            lineageController = nil
+        }
+
         let injector = HumanInputInjector(
             inputBounds: surface.inputBounds,
             targetProcessID: targetProcessID,
+            targetAuthority: targetAuthority,
+            afterPrimaryRelease: { lineageController?.afterPrimaryRelease() },
             writer: writer,
             controlWriter: controlWriter
         )
@@ -846,28 +1308,16 @@ struct WebRtcMacHost {
         }
         InputReader(stop: stop, injector: injector, requestIDR: { encoder.requestIDR() }).start()
         if let targetProcessID {
-            EditableRegionPublisher(targetProcessID: targetProcessID, inputBounds: surface.inputBounds, writer: controlWriter).start(stop: stop)
+            EditableRegionPublisher(
+                targetProcessID: targetProcessID,
+                inputBoundsProvider: {
+                    if let targetAuthority { return targetAuthority.snapshotForInput()?.inputBounds }
+                    return initialInputBounds
+                },
+                writer: controlWriter
+            ).start(stop: stop)
         }
 
-        let filter = surface.filter
-        let configuration = SCStreamConfiguration()
-        if let sourceRect = surface.sourceRect { configuration.sourceRect = sourceRect }
-        configuration.width = width; configuration.height = height
-        configuration.scalesToFit = true
-        configuration.preservesAspectRatio = true
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-        configuration.queueDepth = 2
-        configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        configuration.capturesAudio = false; configuration.showsCursor = false
-
-        let output = CaptureOutput(encoder: encoder, lease: lease)
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-        do {
-            try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "takeover.webrtc.capture", qos: .userInteractive))
-            try await stream.startCapture()
-        } catch {
-            throw WebRtcHostError.captureStart
-        }
         while lease.isActive(), !stop.isStopped { try await Task.sleep(for: .milliseconds(40)) }
         emitHostExitReason(stop.exitReason ?? (lease.isActive() ? .unexpected : .leaseExpiry))
         lease.revoke(); try? await stream.stopCapture()

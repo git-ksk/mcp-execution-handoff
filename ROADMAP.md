@@ -25,18 +25,17 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34), v0.3 recovery/observability (#127–#130), and later explicit authority/transport/hosted work (#125/#19/#12). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#56/#34, with #124 completed), v0.3 recovery/observability (#127–#130), and later explicit authority/transport/hosted work (#125/#19/#12). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
-Issue #94 is complete: post-#99/#101 evidence shows the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. That acceptance also exposed the narrower successor-window problem: an authorized Human action can legitimately create a modal, sheet, file chooser, or secondary window that the original exact-window binding must not silently follow. Issue #124 is therefore the next bounded Window-authority follow-up. Desktop authority remains a separate future escalation in #125 and must not become a hidden fallback.
+Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. Desktop authority remains a separate future escalation in #125 and never a hidden fallback.
 
-### Post-v0.2.0 follow-up issue map — 10 issues
+### Post-v0.2.0 follow-up issue map — 9 open issues
 
 The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog now includes the explicit v0.3 Recovery & Observability milestone.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
-| #124 | v0.2.x Window authority | **Next bounded Window follow-up.** Admit only a uniquely proven successor modal/sheet/file-chooser/secondary window, fence the old target first, and fail closed on ambiguity; never follow arbitrary frontmost state or widen to a desktop. |
-| #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
+| #56 | v0.2.x media quality | **Next v0.2.x hardening item.** Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
 | #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
 | #127 | v0.3 durable recovery | Replace the concrete file-store dependency with the smallest provider-neutral checkpoint-store contract while keeping the durable schema bounded and recovery `reissue_and_revalidate` only. |
 | #128 | v0.3 audit | Stabilize versioned privacy-bounded generic audit events and define sink failure/backpressure behavior without creating an execution transcript. |
@@ -73,7 +72,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 `v0.2.0` is the current **GitHub source release**. It is a minor pre-1.0 boundary because the public surface materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are exported, and the Window/Terminal package subpaths are part of the source package shape.
 
-The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closed after the tag and GitHub Release were verified. #124, #56, and #34 are the immediate v0.2.x hardening follow-ups. The dedicated `v0.3 — Recovery & Observability` milestone is #127–#130; #125, #19, and #12 remain later authority/transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
+The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closed after the tag and GitHub Release were verified. #124 is complete; #56 and #34 are the remaining immediate v0.2.x hardening follow-ups. The dedicated `v0.3 — Recovery & Observability` milestone is #127–#130; #125, #19, and #12 remain later authority/transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -84,7 +83,7 @@ Current scope and closeout:
 - keep Browser, Window, and Terminal as first-class consumer-facing components without forcing their distinct media/stream mechanics behind one premature generic surface interface;
 - retain #85's completed physical Window evidence across both same-LAN direct and public Tunnel/TURN relay paths, including stale-locator rejection;
 - retain #94 as completed evidence: exact-window Human-only macOS input passes the tested secure System Settings control without privileged/desktop fallback;
-- use #124 to prove bounded successor-window rotation for modal/sheet/file-chooser flows, fencing the old target first and rejecting arbitrary-frontmost or ambiguous transitions;
+- retain #124 as completed bounded successor-window evidence: exact-one remains default, opt-in same-process lineage fences the old target and rotates only to a uniquely proven successor; physical iPhone `Accessibility -> Add (+) -> Open` passed without desktop/display fallback;
 - keep #125 as a separate explicit Human-only Desktop authority investigation, sequenced after #124 unless physical evidence proves a workflow cannot be represented by bounded window lineage;
 - improve bounded Window media legibility in #56 without regressing latency/backpressure, and close Linux editable-region parity in #34 without CDP/DOM/credential exposure;
 - keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;

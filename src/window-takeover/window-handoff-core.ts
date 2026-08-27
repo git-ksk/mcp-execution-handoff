@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import {
@@ -14,9 +15,15 @@ import {
   type WebRtcHumanInputPolicy
 } from "../browser-takeover/webrtc-runtime-diagnostics.js";
 
+export interface WindowHandoffCoreSuccessorPolicy {
+  mode: "same_process";
+  transitionWindowMs?: number;
+}
+
 export interface WindowHandoffCoreConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
+  successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
 
@@ -29,7 +36,7 @@ export interface WindowHandoffCoreStartRequest {
 
 export class WindowHandoffCoreError extends Error {
   constructor(
-    public readonly code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID",
+    public readonly code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID" | "SUCCESSOR_POLICY_INVALID",
     message: string
   ) {
     super(message);
@@ -47,9 +54,16 @@ export class WindowHandoffCore {
   readonly #expiryTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(config: WindowHandoffCoreConfig) {
+    const successorPolicy = normalizeSuccessorPolicy(config.successorWindowPolicy);
+    if (config.successorWindowPolicy && !successorPolicy) {
+      throw new WindowHandoffCoreError(
+        "SUCCESSOR_POLICY_INVALID",
+        "Window successor policy must use same_process with a transition window between 100 and 2000 ms"
+      );
+    }
     const completionGraceMs = config.takeover.completionGraceMs ?? config.takeover.ttlMs;
     this.#routeTtlMs = config.takeover.ttlMs + completionGraceMs;
-    this.#runtime = new SpawnedWebRtcRuntimeProvider(config.runtime);
+    this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigWithSuccessorPolicy(config.runtime, successorPolicy));
     this.#broker = new TakeoverBroker(
       webRtcOnlySurfaceAdapter(),
       config.takeover,
@@ -197,4 +211,38 @@ function webRtcOnlySurfaceAdapter(): TakeoverBrowserAdapter {
     insertHumanTakeoverText: unavailable,
     pressHumanTakeoverKey: unavailable
   };
+}
+
+
+interface NormalizedSuccessorPolicy {
+  mode: "same_process";
+  transitionWindowMs: number;
+}
+
+function normalizeSuccessorPolicy(policy: WindowHandoffCoreSuccessorPolicy | undefined): NormalizedSuccessorPolicy | undefined {
+  if (!policy) return undefined;
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) return undefined;
+  const record = policy as unknown as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "mode" && key !== "transitionWindowMs")) return undefined;
+  if (record.mode !== "same_process") return undefined;
+  const transitionWindowMs = record.transitionWindowMs === undefined ? 800 : Number(record.transitionWindowMs);
+  if (!Number.isSafeInteger(transitionWindowMs) || transitionWindowMs < 100 || transitionWindowMs > 2_000) return undefined;
+  return { mode: "same_process", transitionWindowMs };
+}
+
+function runtimeConfigWithSuccessorPolicy(
+  runtime: SpawnedWebRtcRuntimeProviderConfig,
+  policy: NormalizedSuccessorPolicy | undefined
+): SpawnedWebRtcRuntimeProviderConfig {
+  if (!policy) return runtime;
+  const baseSpawn = runtime.spawnProcess ?? spawn;
+  const spawnProcess = ((command: string, args: readonly string[], options: Parameters<typeof spawn>[2]) => {
+    const env = {
+      ...(options?.env ?? {}),
+      TAKEOVER_WEBRTC_WINDOW_LINEAGE: "same_process_successor",
+      TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS: String(policy.transitionWindowMs)
+    };
+    return baseSpawn(command, args as string[], { ...options, env });
+  }) as typeof spawn;
+  return { ...runtime, spawnProcess };
 }

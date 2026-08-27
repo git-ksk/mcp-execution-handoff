@@ -12,7 +12,7 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-08-26
+### 現在の作業状態 — 2026-08-27
 
 v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みで、v0.2 terminology convergenceでは `TargetSurfaceKind` enumをfreezeせずHuman Interaction Policyへcanonical aliasを追加します。
 
@@ -27,18 +27,17 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34）、v0.3 recovery / observability（#127〜#130）、後続の明示authority / transport / hosted work（#125 / #19 / #12）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124完了、残り #56 / #34）、v0.3 recovery / observability（#127〜#130）、後続の明示authority / transport / hosted work（#125 / #19 / #12）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
-#94は完了です。#99/#101後のevidenceでは、既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackは不要です。一方で、そのacceptanceから「Human操作で正当に生成されたmodal / sheet / file chooser / secondary windowを、元のexact-window bindingが黙って追従してはいけない」という、より狭いsuccessor-window問題が明確になりました。したがって次のbounded Window authority follow-upは #124です。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
+#94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
 
-### v0.2.0後のfollow-up Issue map — 10件
+### v0.2.0後のfollow-up Issue map — open 9件
 
 #119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。#94も完了し、継続するdurable backlogには明示的なv0.3 Recovery & Observability milestoneも追加しました。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
-| #124 | v0.2.x Window authority | **次のbounded Window follow-up。** uniquely provenなsuccessor modal / sheet / file chooser / secondary windowだけをadmitし、旧targetを先にfenceする。ambiguityはfail closed、arbitrary frontmost追従やdesktop wideningは禁止。 |
-| #56 | v0.2.x media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
+| #56 | v0.2.x media quality | **次のv0.2.x hardening。** native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
 | #34 | v0.2.x cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
 | #127 | v0.3 durable recovery | concrete file-store依存を最小provider-neutral checkpoint-store contractへ置き換えつつ、durable schemaはboundedのまま、recoveryは `reissue_and_revalidate` のみに維持。 |
 | #128 | v0.3 audit | versioned / privacy-boundedなgeneric audit eventをstable化し、execution transcriptを作らずsink failure/backpressure semanticsを定義。 |
@@ -75,7 +74,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 `v0.2.0` が現在の **GitHub source release** です。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張したため、pre-1.0 minor boundaryとして扱います。
 
-releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、tag / GitHub Release検証後にclose済みです。#124 / #56 / #34が直近のv0.2.x hardening follow-upです。専用milestone `v0.3 — Recovery & Observability` は #127〜#130、#125 / #19 / #12は後続のauthority / transport / deployment maturityです。npm publicationは明示的に別gateで、`private: true` を維持します。
+releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、tag / GitHub Release検証後にclose済みです。#124は完了し、#56 / #34が残る直近のv0.2.x hardening follow-upです。専用milestone `v0.3 — Recovery & Observability` は #127〜#130、#125 / #19 / #12は後続のauthority / transport / deployment maturityです。npm publicationは明示的に別gateで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -86,7 +85,7 @@ repeatableなsource-release checklistとnpm publicationとの分離は [リリ�
 - Browser / Window / Terminalをfirst-class consumer-facing componentとして維持し、異なるmedia/stream mechanicsをprematureなgeneric surface interfaceへ無理に押し込めない
 - #85で完了したsame-LAN directとpublic Tunnel/TURN relayの両physical Window evidence、およびstale locator拒否を維持する
 - #94の完了evidenceを維持する。exact-window Human-only macOS inputでテスト対象secure System Settings controlが通り、privileged / desktop fallbackは不要
-- #124でmodal / sheet / file chooser向けbounded successor-window rotationを証明し、旧targetを先にfenceしてarbitrary frontmost / ambiguityをfail closedにする
+- #124の完了evidenceを維持する。exact-oneをdefaultのまま、opt-in same-process lineageは旧targetをfenceしてuniqueに証明したsuccessorだけへrotateする。physical iPhoneの `Accessibility -> 追加 (+) -> 開く` はdesktop/display fallbackなしで通過済み
 - #125は#124で安全に表現できないworkflowのevidenceが出た場合に備えた、別の明示的Human-only Desktop authority investigationとして維持する
 - #56でlatency/backpressureを悪化させずWindow media可読性を改善し、#34でCDP / DOM / credential露出なしにLinux editable-region parityを閉じる
 - CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す

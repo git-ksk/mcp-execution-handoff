@@ -20,7 +20,12 @@ export class WindowHandoffAdapterError extends Error {
 export class WindowHandoffAdapter {
     #core;
     constructor(config) {
-        this.#core = new WindowHandoffCore(config);
+        try {
+            this.#core = new WindowHandoffCore(config);
+        }
+        catch (error) {
+            throw translateError(error);
+        }
     }
     isEnabled() { return this.#core.isEnabled(); }
     isPath(pathname) { return this.#core.isPath(pathname); }
@@ -48,7 +53,9 @@ function translateError(error) {
         ? "WINDOW_HANDOFF_TARGET_INVALID"
         : error.code === "INPUT_POLICY_INVALID"
             ? "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
-            : "WINDOW_HANDOFF_UNAVAILABLE";
+            : error.code === "SUCCESSOR_POLICY_INVALID"
+                ? "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
+                : "WINDOW_HANDOFF_UNAVAILABLE";
     return new WindowHandoffAdapterError(code, error.message);
 }
 //# sourceMappingURL=window-handoff-adapter.js.map

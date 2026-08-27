@@ -5,9 +5,18 @@ import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from 
 import type { TakeoverBrokerConfig } from "../browser-takeover/broker.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "./window-handoff-core.js";
 
+export interface WindowHandoffSuccessorPolicy {
+  /** Admit only one newly observed successor owned by the exact same process. */
+  mode: "same_process";
+  /** Bounded post-Human-action probe window. Defaults to 800 ms. */
+  transitionWindowMs?: number;
+}
+
 export interface WindowHandoffAdapterConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
+  /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
+  successorWindowPolicy?: WindowHandoffSuccessorPolicy;
   /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -26,7 +35,8 @@ export class WindowHandoffAdapterError extends Error {
     public readonly code:
       | "WINDOW_HANDOFF_UNAVAILABLE"
       | "WINDOW_HANDOFF_TARGET_INVALID"
-      | "WINDOW_HANDOFF_INPUT_POLICY_INVALID",
+      | "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
+      | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID",
     message: string
   ) {
     super(message);
@@ -48,7 +58,11 @@ export class WindowHandoffAdapter {
   readonly #core: WindowHandoffCore;
 
   constructor(config: WindowHandoffAdapterConfig) {
-    this.#core = new WindowHandoffCore(config);
+    try {
+      this.#core = new WindowHandoffCore(config);
+    } catch (error) {
+      throw translateError(error);
+    }
   }
 
   isEnabled(): boolean { return this.#core.isEnabled(); }
@@ -78,6 +92,8 @@ function translateError(error: unknown): Error {
     ? "WINDOW_HANDOFF_TARGET_INVALID"
     : error.code === "INPUT_POLICY_INVALID"
       ? "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
-      : "WINDOW_HANDOFF_UNAVAILABLE";
+      : error.code === "SUCCESSOR_POLICY_INVALID"
+        ? "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
+        : "WINDOW_HANDOFF_UNAVAILABLE";
   return new WindowHandoffAdapterError(code, error.message);
 }

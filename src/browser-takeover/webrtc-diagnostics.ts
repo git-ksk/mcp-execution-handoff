@@ -28,6 +28,13 @@ export type WebRtcDiagnosticStage =
   | "host.window.ready"
   | "host.window.failure.none"
   | "host.window.failure.multiple"
+  | "host.window.successor.probe"
+  | "host.window.successor.admitted"
+  | "host.window.successor.returned"
+  | "host.window.successor.none"
+  | "host.window.successor.ambiguous"
+  | "host.window.successor.unsupported"
+  | "host.window.successor.failure"
   | "host.capture.started"
   | "host.frame.ready"
   | "host.input.focus.ready"
@@ -119,6 +126,13 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.window.ready",
   "host.window.failure.none",
   "host.window.failure.multiple",
+  "host.window.successor.probe",
+  "host.window.successor.admitted",
+  "host.window.successor.returned",
+  "host.window.successor.none",
+  "host.window.successor.ambiguous",
+  "host.window.successor.unsupported",
+  "host.window.successor.failure",
   "host.capture.started",
   "host.frame.ready",
   "host.input.focus.ready",
@@ -235,6 +249,13 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.window.ready": ["stage"],
     "host.window.failure.none": ["stage"],
     "host.window.failure.multiple": ["stage"],
+    "host.window.successor.probe": ["stage"],
+    "host.window.successor.admitted": ["stage"],
+    "host.window.successor.returned": ["stage"],
+    "host.window.successor.none": ["stage"],
+    "host.window.successor.ambiguous": ["stage"],
+    "host.window.successor.unsupported": ["stage"],
+    "host.window.successor.failure": ["stage"],
     "host.capture.started": ["stage"],
     "host.frame.ready": ["stage"],
     "host.input.focus.ready": ["stage"],
