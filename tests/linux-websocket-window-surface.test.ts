@@ -23,7 +23,7 @@ test("Linux WSS surface parser accepts only bounded JPEG helper records", () => 
 });
 
 test("Linux WSS physical surface reuses exact helper without transport or target leakage", () => {
-  const surface = readFileSync("src/experimental/linux-websocket-window-surface.ts", "utf8");
+  const surface = readFileSync("src/browser-takeover/linux-websocket-window-surface.ts", "utf8");
   assert.match(surface, /TAKEOVER_WEBRTC_FRAME_FORMAT: "jpeg"/);
   assert.match(surface, /TAKEOVER_WEBRTC_TARGET_PID: String\(target\.processId\)/);
   assert.match(surface, /TAKEOVER_WEBRTC_TARGET_WINDOW_ID: String\(target\.windowId\)/);
