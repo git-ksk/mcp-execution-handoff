@@ -1,3 +1,4 @@
+import { type OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
 export type WebRtcDiagnosticCandidateType = "host" | "srflx" | "prflx" | "relay";
 export type WebRtcDiagnosticPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
 export interface WebRtcDiagnosticMedia {
@@ -42,4 +43,5 @@ export declare function parseBrowserWebRtcDiagnosticEvent(value: unknown): WebRt
 export declare function emptyWebRtcCandidateCounts(): WebRtcDiagnosticCandidateCounts;
 /** Count only candidate *types* from local SDP; candidate/address strings never leave this function. */
 export declare function webRtcCandidateCountsFromSdp(sdp: string): WebRtcDiagnosticCandidateCounts;
+export declare function webRtcOperatorDiagnosticsSnapshot(source: "browser_handoff" | "window_handoff", snapshot: WebRtcDiagnosticsSnapshot): OperatorDiagnosticsSnapshot;
 //# sourceMappingURL=webrtc-diagnostics.d.ts.map

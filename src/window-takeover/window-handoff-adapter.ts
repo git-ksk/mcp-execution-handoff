@@ -1,4 +1,5 @@
-import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
+import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
+import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
@@ -83,6 +84,7 @@ export class WindowHandoffAdapter {
   revokeUnclaimed(interventionId: string): void { this.#core.revokeUnclaimed(interventionId); }
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> { return this.#core.handle(request, boundPrincipal); }
   diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot { return this.#core.diagnosticsSnapshot(); }
+  operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot { return webRtcOperatorDiagnosticsSnapshot("window_handoff", this.#core.diagnosticsSnapshot()); }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }
 

@@ -1,3 +1,11 @@
+import {
+  OPERATOR_DIAGNOSTICS_SCHEMA_VERSION,
+  parseOperatorDiagnosticsSnapshot,
+  type OperatorDiagnosticsFailureCategory,
+  type OperatorDiagnosticsHealth,
+  type OperatorDiagnosticsSnapshot
+} from "../core/operator-diagnostics.js";
+
 export type WebRtcDiagnosticCandidateType = "host" | "srflx" | "prflx" | "relay";
 export type WebRtcDiagnosticPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
 export interface WebRtcDiagnosticMedia {
@@ -375,4 +383,149 @@ function normalizeCandidateCounts(value: WebRtcDiagnosticCandidateCounts): WebRt
     result[key] = count as number;
   }
   return result;
+}
+
+
+export function webRtcOperatorDiagnosticsSnapshot(
+  source: "browser_handoff" | "window_handoff",
+  snapshot: WebRtcDiagnosticsSnapshot
+): OperatorDiagnosticsSnapshot {
+  const validEvents = snapshot.events
+    .map((event) => normalizeWebRtcDiagnosticEvent(event))
+    .filter((event): event is WebRtcDiagnosticEvent => event !== undefined)
+    .slice(-MAX_EVENTS);
+  let activity: "idle" | "starting" | "available" = "idle";
+  let peerState: WebRtcDiagnosticPeerState | undefined;
+  let candidateCounts: WebRtcDiagnosticCandidateCounts | undefined;
+  let fatalFailure: OperatorDiagnosticsFailureCategory | undefined;
+  let degradedFailure: OperatorDiagnosticsFailureCategory | undefined;
+  let relayUnavailable = false;
+  let editableUnavailable = false;
+  let recoveryConflict = false;
+  let peerLoss = false;
+
+  for (const event of validEvents) {
+    if (event.candidateCounts) candidateCounts = { ...event.candidateCounts };
+    if ((event.stage === "browser.peer.state" || event.stage === "server.peer.state") && event.state) {
+      peerState = event.state;
+      if (event.state === "new" || event.state === "connecting") activity = "starting";
+      if (event.state === "connected") {
+        activity = "available";
+        peerLoss = false;
+        recoveryConflict = false;
+      }
+      if (event.state === "disconnected") peerLoss = true;
+      if (event.state === "failed") fatalFailure = "transport";
+      if (event.state === "closed") activity = "idle";
+      continue;
+    }
+
+    if (event.stage === "broker.prepare.request") {
+      activity = "starting";
+      peerState = undefined;
+      candidateCounts = undefined;
+      fatalFailure = undefined;
+      degradedFailure = undefined;
+      relayUnavailable = false;
+      editableUnavailable = false;
+      recoveryConflict = false;
+      peerLoss = false;
+      continue;
+    }
+    if (event.stage === "broker.prepare.success"
+      || event.stage === "broker.connect.request"
+      || event.stage === "broker.connect.success"
+      || event.stage === "server.answer.ready"
+      || event.stage === "host.target.alive"
+      || event.stage === "host.window.ready"
+      || event.stage === "host.capture.started") {
+      activity = "starting";
+      continue;
+    }
+    if (event.stage === "host.frame.ready") {
+      if (peerState === "connected") activity = "available";
+      else if (activity === "idle") activity = "starting";
+      continue;
+    }
+    if (event.stage === "broker.generation.release.suspend") {
+      activity = "idle";
+      peerLoss = false;
+      recoveryConflict = false;
+      continue;
+    }
+    if (event.stage === "broker.generation.release.peer_loss") {
+      peerLoss = true;
+      continue;
+    }
+    if (event.stage === "broker.reconnect.conflict.active_lease") {
+      recoveryConflict = true;
+      continue;
+    }
+    if (event.stage === "relay.credential.unavailable") {
+      relayUnavailable = true;
+      continue;
+    }
+    if (event.stage === "host.input.editable_helper_unavailable") {
+      editableUnavailable = true;
+      continue;
+    }
+    if (event.stage === "host.input.editable_helper_ready") {
+      editableUnavailable = false;
+      continue;
+    }
+    if (event.stage === "host.target.missing"
+      || event.stage === "host.window.failure.none"
+      || event.stage === "host.window.failure.multiple"
+      || event.stage === "host.window.successor.ambiguous"
+      || event.stage === "host.window.successor.unsupported"
+      || event.stage === "host.window.successor.failure") {
+      fatalFailure = "target";
+      continue;
+    }
+    if (event.stage === "host.input.failure"
+      || event.stage === "host.input.pointer.helper_failure"
+      || event.stage === "host.input.pointer.delivery_helper_failure"
+      || event.stage === "host.input.pointer.delivery_arm_failure"
+      || event.stage === "host.input.pointer.delivery_wait_failure"
+      || event.stage === "host.input.text.event_creation_failure"
+      || event.stage === "host.input.text.activation_rejected"
+      || event.stage === "host.input.text.native_boundary_rejected") {
+      fatalFailure = "input";
+      continue;
+    }
+    if (event.stage === "broker.prepare.failure"
+      || event.stage === "broker.connect.failure"
+      || event.stage === "host.capture.failure"
+      || event.stage === "host.capture.failure.x11"
+      || event.stage === "host.capture.failure.encoder"
+      || event.stage === "host.capture.failure.option"
+      || event.stage === "host.capture.failure.other") {
+      fatalFailure = "transport";
+    }
+  }
+
+  if (!fatalFailure) {
+    if (editableUnavailable) degradedFailure = "input";
+    else if (relayUnavailable || peerLoss || peerState === "disconnected") degradedFailure = "transport";
+    else if (recoveryConflict) degradedFailure = "recovery";
+  }
+  const health: OperatorDiagnosticsHealth = fatalFailure
+    ? "failed"
+    : degradedFailure
+      ? "degraded"
+      : activity;
+  const failureCategory = fatalFailure ?? degradedFailure;
+
+  return parseOperatorDiagnosticsSnapshot({
+    version: OPERATOR_DIAGNOSTICS_SCHEMA_VERSION,
+    source,
+    health,
+    ...(failureCategory ? { failureCategory } : {}),
+    transport: {
+      namespace: "webrtc",
+      eventCount: validEvents.length,
+      ...(peerState ? { peerState } : {}),
+      ...(candidateCounts ? { candidateCounts } : {})
+    }
+  });
 }

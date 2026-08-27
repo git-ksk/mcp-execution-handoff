@@ -1,4 +1,5 @@
-import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
+import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
+import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type {
   TakeoverBrokerConfig,
@@ -71,6 +72,7 @@ export class BrowserHandoffAdapter {
   async revokeForIntervention(interventionId: string): Promise<void> { await this.revoke(interventionId); }
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> { return this.#core.handle(request, boundPrincipal); }
   diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot { return this.#core.diagnosticsSnapshot(); }
+  operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot { return webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot()); }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }
 

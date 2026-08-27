@@ -143,6 +143,10 @@ test("Browser and Window facades share the same bounded route/session core contr
   assert.equal(adapter.isPath("/takeover/example"), true);
   assert.equal(adapter.isPath("/other"), false);
   assert.deepEqual(adapter.diagnosticsSnapshot(), { events: [] });
+  assert.deepEqual(adapter.operatorDiagnosticsSnapshot(), {
+    version: 1, source: "window_handoff", health: "idle",
+    transport: { namespace: "webrtc", eventCount: 0 }
+  });
   assert.equal(adapter.latencySnapshot().direct.samples, 0);
   const locator = adapter.start({
     intervention: { id: "window-int-owned", epoch: 1 },

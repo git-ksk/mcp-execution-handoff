@@ -142,63 +142,38 @@ The v1 parser structurally rejects extra fields that could become a path for raw
 
 ## Operator diagnostics boundary
 
-Diagnostics are optimized for troubleshooting and acceptance, not durable reconstruction. Existing WebRTC diagnostics already demonstrate the preferred style:
+Diagnostics are optimized for troubleshooting and acceptance, not durable reconstruction. v0.3 stabilizes a **version 1 operator summary** through `OperatorDiagnosticsSnapshot` and `operatorDiagnosticsSnapshot()` on the first-class Browser, Window, and Terminal adapters.
 
-- finite categorical stage/state values;
-- bounded candidate-type counts rather than candidate/address strings;
-- bounded durations/latency distributions;
-- bounded event buffers;
-- no target/session/principal/network/content payloads.
+The stable v1 envelope is deliberately identifier-free:
 
-#129 should expose genuinely shared lifecycle/authority/failure categories across Browser, Window, and Terminal while leaving target- or transport-specific detail in its own namespace. v0.3 must not manufacture false parity merely to create one giant generic diagnostics object.
+- `version: 1`;
+- diagnostic source only: `browser_handoff`, `window_handoff`, or `terminal_handoff`. These values identify the diagnostics producer and **do not freeze a public Target Surface semantic enum**;
+- generic health only: `idle`, `starting`, `available`, `degraded`, or `failed`;
+- optional bounded failure category: `target`, `transport`, `input`, or `recovery`;
+- Terminal only, because it genuinely owns this state: bounded execution authority and intervention phase;
+- target/transport-specific detail stays in explicit namespaces instead of being flattened into false parity.
 
-Process-memory remains the default retention model for diagnostics. If an operator persists a projection, only fields explicitly admitted by the stable operator contract should be exported.
+### Namespaced projections
 
-## Crash/restart conformance gate
+Browser and Window use a `webrtc` transport projection containing only:
 
-#130 is the v0.3 release gate for the recovery model. At minimum, deterministic tests must cover crashes while:
+- validated event count, capped at 128;
+- the latest bounded peer state when present;
+- aggregate ICE candidate **type counts** only, each capped at 64.
 
-1. `awaiting_human`;
-2. `human_active`;
-3. `verifying`;
-4. `ready_to_resume` before consumer reissue;
-5. a Browser/Window locator or capability exists;
-6. a reconnect generation/handle exists;
-7. Terminal Human authority exists or its PTY/process exits;
-8. a checkpoint is interrupted, expired, tampered, or principal/adapter mismatched.
+No detailed WebRTC stage string, duration series, media profile, latency sample, provider name, candidate/address, or target identity is copied into the stable operator summary. The existing `diagnosticsSnapshot()` and `latencySnapshot()` APIs remain unchanged for transport-specific troubleshooting and physical acceptance; #129 adds a stable projection rather than replacing those detailed APIs.
 
-For every case, stale mutation authority must remain unavailable after restart. Browser, Window, and Terminal should require fresh consumer-owned target/session reconstruction where applicable.
+Terminal uses two target-specific namespaces:
 
-## v0.3 sequencing
+- `terminal_session`: session alive, Human disconnected, and Agent-state synchronization-required booleans;
+- `terminal_webrtc`: ready/disconnected/completed/faulted booleans plus queued-event count, bounded to the existing 64-item transport limit.
 
-Recommended implementation order:
+Terminal `sessionId`, session generation, intervention epoch/id, principal binding, PTY bytes, and client generation are not exported. Browser/Window operator summaries intentionally do not invent execution-authority or lifecycle fields because those facades do not own the generic execution state machine.
 
-1. **#127 checkpoint-store contract** — establish the durable interface and failure semantics first;
-2. **#128 audit contract** and **#129 diagnostics contract** — may proceed in parallel once their boundaries reference the same data-classification rules;
-3. **#130 crash/restart conformance** — closes only after the other contracts are concrete enough to test as a release-level invariant.
+### Privacy, boundedness, and compatibility
 
-## v0.3 exit criteria
+`parseOperatorDiagnosticsSnapshot()` is the strict v1 validator. It rejects extra fields, false-parity fields, oversized counts, and any attempted path for session/intervention/principal ids, PID/window identity, credentials/tokens, SDP/candidates/IPs, framebuffer/media, Human input, PTY/browser/page content, account identity, capability, timestamp, or free-form message payloads.
 
-v0.3 is ready when:
+The stable v1 parser is intentionally closed-world. Renaming/removing a field, adding a new root/namespace field, or changing an enum meaning requires a new schema version rather than silently widening v1. Existing transport-local diagnostics may continue to evolve inside their own typed APIs, but only the explicit v1 projection is the stable cross-surface operator contract.
 
-- a provider-neutral checkpoint-store interface exists without widening the durable schema;
-- the signed-file store remains a supported reference implementation;
-- audit events have a versioned, bounded, privacy-reviewed contract;
-- operator diagnostics have stable shared categories while target/transport-specific detail remains scoped;
-- crash/restart conformance proves stale authority, capabilities, request state, media/input sessions, and PTY authority are not restored;
-- recovery remains `reissue_and_revalidate` and consumer semantic verification remains mandatory;
-- Browser, Window, and Terminal established integrations remain green.
-
-## Explicit non-goals for v0.3
-
-- Desktop Handoff (#125);
-- provider-neutral TURN/connectivity productization (#19);
-- hosted control plane / execution workers (#12);
-- distributed database or queue selection;
-- transparent live migration of a Human session;
-- browser/profile/PTY/media restoration;
-- automatic action replay;
-- credential vaulting;
-- mandatory OpenTelemetry/SIEM/vendor integration.
-
-Those capabilities may use the v0.3 contracts later, but they do not belong inside the v0.3 authority or persistence boundary.
+Operator summaries are process-memory snapshots by default. Persisting one does not make it recovery state: it must never be replayed to recreate authority, locators/capabilities, client generations, media/input sessions, PTY authority, or semantic verification. If an operator system persists diagnostics, it should persist only a value that passes the stable parser (or another separately reviewed allowed projection). #128 audit remains a distinct event contract and is not an execution transcript or a generic diagnostics store.
