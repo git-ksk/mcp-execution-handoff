@@ -121,25 +121,24 @@ The checkpoint can tell an operator or consumer that an intervention existed and
 
 ## Audit boundary
 
-Audit is a durable-friendly **generic control-plane event stream**, not an execution transcript.
+Audit is a durable-friendly **generic control-plane event stream**, not an execution transcript. v0.3 stabilizes schema **version 1** with the existing event names `checkpoint_written`, `checkpoint_cleared`, and `recovery_requested`. Every emitted event now carries `version: 1`; the event-name strings remain source-compatible with the pre-v0.3 baseline, while consumers that construct audit records directly must migrate to the versioned shape.
 
-Candidate stable event families include:
+The v1 union is intentionally narrow:
 
-- intervention lifecycle transitions;
-- authority claim/revoke/expiry outcomes;
-- checkpoint written/cleared/recovery requested;
-- generic verification/resume-policy outcomes;
-- bounded failure categories.
+- common fields: schema version, enumerated event type, bounded adapter kind, non-negative integer timestamp;
+- checkpoint/recovery events may additionally carry bounded intervention id, epoch, stable non-secret principal binding, and optional action digest where that field already exists in the checkpoint contract;
+- no free-form message, reason, payload, target identity, transport identity, or consumer-domain object is admitted;
+- strict parsing rejects extra fields and oversized/newline-bearing identifiers rather than silently serializing them.
 
-Before v0.3 freezes names or shapes, #128 must define:
+`ExecutionAuditSink.record()` remains synchronous. Audit is **observe-only**: sink success is not proof of semantic verification, approval, or authority state, and sink failure must not grant/revoke/restore authority or change checkpoint/recovery success. `ExecutionHandoffRuntime` catches sink exceptions for all v1 event classes and may report only `{ version, eventType }` through the optional bounded `onAuditSinkFailure` callback. Failure reporting errors are also contained. The core does not create an unbounded retry/backpressure queue. A production sink that exports asynchronously must place that behavior behind its own bounded queue/durability contract and return or throw promptly from `record()`.
 
-- event schema/versioning and compatibility rules;
-- bounded field sizes/cardinality;
-- which identifiers/digests are acceptable durable metadata;
-- sink failure/backpressure behavior;
-- privacy tests proving sensitive execution content is structurally excluded.
+`MemoryExecutionAuditSink` remains the simple test/reference sink and retains only the newest 256 strictly validated events. `NOOP_EXECUTION_AUDIT` remains supported.
 
-Consumer business events, authentication facts, payment approval records, and target-service audit requirements remain outside the generic library contract.
+Human completion is deliberately **not** represented as approval of a consequential action. Consumer business events, authentication facts, payment approval records, and target-service audit requirements remain outside the generic library contract. Browser, Window, and Terminal can all use the same v1 audit sink without exposing media, input, PTY bytes, process/window identity, or target-service content.
+
+### Forbidden audit content
+
+The v1 parser structurally rejects extra fields that could become a path for raw action arguments, Human input, PTY/browser/page content, framebuffer/media, credentials/cookies/tokens, OTP/MFA/challenge answers, payment data, approval receipts, takeover capabilities/requestState/reconnect state, SDP/candidates/IP addresses, or free-form execution messages.
 
 ## Operator diagnostics boundary
 

@@ -160,3 +160,68 @@ test("provider-neutral store read and clear failures propagate instead of restor
   // state is left unchanged rather than silently pretending durable state was removed.
   assert.equal(activeAdapter.getActiveIntervention()?.status, "human_active");
 });
+
+test("versioned audit events describe checkpoint flows without changing authority semantics on sink failure", async () => {
+  const { MemoryExecutionAuditSink } = await import("../src/core/index.js");
+  const store = new MemoryCheckpointStore();
+  const sink = new MemoryExecutionAuditSink();
+  const adapter = new Adapter();
+  const runtime = new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test", adapter), {
+    checkpointStore: store,
+    checkpointTtlMs: 60_000,
+    now: () => 13_000,
+    auditSink: sink
+  });
+  const principal = "principal-binding-audit-1234567";
+  runtime.checkpoint(principal, "digest-audit-1234567890");
+  assert.equal(sink.snapshot()[0]?.version, 1);
+  assert.equal(sink.snapshot()[0]?.type, "checkpoint_written");
+
+  const restartedAdapter = new Adapter();
+  restartedAdapter.active = undefined;
+  const restarted = new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test", restartedAdapter), {
+    checkpointStore: store,
+    now: () => 13_001,
+    auditSink: sink
+  });
+  assert.equal(restarted.recover(principal)?.recovery, "reissue_and_revalidate");
+  assert.equal(sink.snapshot()[1]?.type, "recovery_requested");
+  restarted.clearCheckpoint(principal);
+  assert.equal(sink.snapshot()[2]?.type, "checkpoint_cleared");
+});
+
+test("audit sink failure is observe-only for checkpoint write clear and recovery", () => {
+  const failures: string[] = [];
+  const throwingSink = { record() { throw new Error("audit sink unavailable"); } };
+  const store = new MemoryCheckpointStore();
+  const adapter = new Adapter();
+  const runtime = new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test", adapter), {
+    checkpointStore: store,
+    checkpointTtlMs: 60_000,
+    now: () => 13_000,
+    auditSink: throwingSink,
+    onAuditSinkFailure: (failure) => failures.push(`${failure.version}:${failure.eventType}`)
+  });
+  const principal = "principal-binding-audit-fail-1234";
+  assert.doesNotThrow(() => runtime.checkpoint(principal, "digest-audit-fail-123456"));
+  assert.equal(adapter.getActiveIntervention()?.status, "human_active");
+  assert.equal(store.writes, 1);
+
+  const restartedAdapter = new Adapter();
+  restartedAdapter.active = undefined;
+  const restarted = new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test", restartedAdapter), {
+    checkpointStore: store,
+    now: () => 13_001,
+    auditSink: throwingSink,
+    onAuditSinkFailure: (failure) => failures.push(`${failure.version}:${failure.eventType}`)
+  });
+  assert.equal(restarted.recover(principal)?.recovery, "reissue_and_revalidate");
+  assert.equal(restartedAdapter.getActiveIntervention(), undefined);
+  assert.doesNotThrow(() => restarted.clearCheckpoint(principal));
+  assert.equal(store.value, undefined);
+  assert.deepEqual(failures, [
+    "1:checkpoint_written",
+    "1:recovery_requested",
+    "1:checkpoint_cleared"
+  ]);
+});

@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { NOOP_EXECUTION_AUDIT } from "./audit.js";
+import { EXECUTION_AUDIT_SCHEMA_VERSION, NOOP_EXECUTION_AUDIT } from "./audit.js";
 import { recoverHandoffCheckpoint } from "./checkpoint.js";
 export class ExecutionHandoffRuntime {
     adapter;
@@ -23,7 +23,7 @@ export class ExecutionHandoffRuntime {
         const active = this.adapter.control.getActiveIntervention();
         if (!active) {
             store.clear();
-            this.audit.record({ type: "checkpoint_cleared", adapterKind: this.adapter.kind, timestamp: this.now(), principalBinding });
+            this.recordAudit({ version: EXECUTION_AUDIT_SCHEMA_VERSION, type: "checkpoint_cleared", adapterKind: this.adapter.kind, timestamp: this.now(), principalBinding });
             return;
         }
         const now = this.now();
@@ -34,9 +34,9 @@ export class ExecutionHandoffRuntime {
             this.adapter.control.cancelHumanIntervention(active.id);
             throw error;
         }
-        this.audit.record({ type: "checkpoint_written", adapterKind: this.adapter.kind, timestamp: now, interventionId: active.id, epoch: active.epoch, principalBinding, ...(actionDigest ? { actionDigest } : {}) });
+        this.recordAudit({ version: EXECUTION_AUDIT_SCHEMA_VERSION, type: "checkpoint_written", adapterKind: this.adapter.kind, timestamp: now, interventionId: active.id, epoch: active.epoch, principalBinding, ...(actionDigest ? { actionDigest } : {}) });
     }
-    clearCheckpoint(principalBinding) { this.options.checkpointStore?.clear(); this.audit.record({ type: "checkpoint_cleared", adapterKind: this.adapter.kind, timestamp: this.now(), ...(principalBinding ? { principalBinding } : {}) }); }
+    clearCheckpoint(principalBinding) { this.options.checkpointStore?.clear(); this.recordAudit({ version: EXECUTION_AUDIT_SCHEMA_VERSION, type: "checkpoint_cleared", adapterKind: this.adapter.kind, timestamp: this.now(), ...(principalBinding ? { principalBinding } : {}) }); }
     recover(principalBinding) {
         const raw = this.options.checkpointStore?.read();
         if (raw === undefined)
@@ -44,8 +44,19 @@ export class ExecutionHandoffRuntime {
         const record = recoverHandoffCheckpoint(raw, this.now());
         if (record.adapterKind !== this.adapter.kind || !this.same(record.principalBinding, principalBinding))
             return undefined;
-        this.audit.record({ type: "recovery_requested", adapterKind: this.adapter.kind, timestamp: this.now(), interventionId: record.interventionId, epoch: record.epoch, principalBinding, ...(record.actionDigest ? { actionDigest: record.actionDigest } : {}) });
+        this.recordAudit({ version: EXECUTION_AUDIT_SCHEMA_VERSION, type: "recovery_requested", adapterKind: this.adapter.kind, timestamp: this.now(), interventionId: record.interventionId, epoch: record.epoch, principalBinding, ...(record.actionDigest ? { actionDigest: record.actionDigest } : {}) });
         return record;
+    }
+    recordAudit(event) {
+        try {
+            this.audit.record(event);
+        }
+        catch {
+            try {
+                this.options.onAuditSinkFailure?.({ version: EXECUTION_AUDIT_SCHEMA_VERSION, eventType: event.type });
+            }
+            catch { /* Audit failure reporting is observe-only and cannot change authority semantics. */ }
+        }
     }
     same(left, right) { const a = Buffer.from(left, "utf8"); const b = Buffer.from(right, "utf8"); return a.length === b.length && timingSafeEqual(a, b); }
 }

@@ -121,25 +121,24 @@ checkpointは「interventionが存在した」「どのbounded resume policyだ�
 
 ## Audit boundary
 
-Auditはdurable保存に適した **generic control-plane event stream** であり、execution transcriptではありません。
+Auditはdurable-friendlyな **generic control-plane event stream** であり、execution transcriptではありません。v0.3では既存event名 `checkpoint_written` / `checkpoint_cleared` / `recovery_requested` を維持したままschema **version 1** をstable化します。runtimeがemitするeventはすべて `version: 1` を持ちます。event-name stringはpre-v0.3 baselineと互換ですが、audit recordを直接constructしていたconsumerはversioned shapeへ移行する必要があります。
 
-候補event family:
+v1 unionは意図的に狭くします。
 
-- intervention lifecycle transition
-- authority claim/revoke/expiry outcome
-- checkpoint written/cleared/recovery requested
-- generic verification/resume-policy outcome
-- bounded failure category
+- common fieldはschema version、enumerated event type、bounded adapter kind、non-negative integer timestampだけ
+- checkpoint/recovery eventは既存checkpoint contractにあるbounded intervention id、epoch、stable non-secret principal binding、optional action digestだけを必要に応じて追加可能
+- free-form message / reason / payload、target identity、transport identity、consumer-domain objectは持たない
+- strict parserはextra fieldやoversized/newline-bearing identifierを黙ってserializeせず拒否する
 
-v0.3でname/shapeをfreezeする前に、#128で次を定義します。
+`ExecutionAuditSink.record()` は同期型のままです。Auditは **observe-only** であり、sink成功はsemantic verification / approval / authority stateの証明ではありません。sink failureもauthorityのgrant / revoke / restoreやcheckpoint/recovery本体の成否を変更してはいけません。`ExecutionHandoffRuntime` は全v1 event classでsink exceptionをcontainし、optionalな `onAuditSinkFailure` へも `{ version, eventType }` だけを通知できます。このfailure callback自体のerrorもcontainします。core内部にはunbounded retry/backpressure queueを作りません。production sinkがasync exportする場合は、自身のbounded queue / durability contractの背後で実装し、`record()` はboundedにreturnまたはthrowする必要があります。
 
-- event schema/versioningとcompatibility rule
-- field size/cardinality上限
-- durable metadataとして許可するidentifier/digest
-- sink failure/backpressure behavior
-- sensitive execution contentを構造的に除外するprivacy test
+`MemoryExecutionAuditSink` はsimple test/reference sinkとして維持し、strict validation済みeventの最新256件だけを保持します。`NOOP_EXECUTION_AUDIT` も維持します。
 
-consumer business event、authentication fact、payment approval record、target-service固有audit requirementはgeneric library contractの外です。
+Human completionは重大操作のapproval eventとしては記録しません。consumer business event、authentication fact、payment approval record、target-service audit requirementはgeneric library contractの外です。Browser / Window / Terminalはいずれもmedia、input、PTY byte、process/window identity、target-service contentをaudit sinkへ露出せず同じv1 contractを利用できます。
+
+### Auditへ入れてはいけないcontent
+
+v1 parserはextra fieldをstrictに拒否し、raw action argument、Human input、PTY/browser/page content、framebuffer/media、credential/cookie/token、OTP/MFA/challenge answer、payment data、approval receipt、takeover capability/requestState/reconnect state、SDP/candidate/IP address、free-form execution messageの保存経路にしません。
 
 ## Operator diagnostics boundary
 

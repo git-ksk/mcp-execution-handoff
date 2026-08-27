@@ -55,7 +55,7 @@ src/browser-takeover/
 - MCP principalとtarget service/browser内でactiveなidentityは別security domainとして扱う。Human completionはtarget-service accountのattestationではなく、必要なidentity確認はconsumer固有のfresh verificationで行い、credential/token passthroughを使わない。
 - `awaiting_human` の初期状態を過ぎた後に、owner未設定のinterventionを別ownerへ付け替えない。
 - durable checkpointへ保存するのは限定されたcontrol-plane metadataだけ。`ExecutionHandoffRuntime` は同期型provider-neutral `HandoffCheckpointStore`（`write` / untrusted `read` / `clear`）へ依存し、load値はHandoff-ownedなstrict schema / expiry checkで再検証する。`SignedFileHandoffCheckpointStore` はlocal reference implementationとして維持する。raw action arguments、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptは保存しない。
-- restart後のrecoveryは常に `reissue_and_revalidate`。古い実行権限を復元せず、actionを黙って再実行しない。
+- restart後のrecoveryは常に `reissue_and_revalidate`。古い実行権限を復元せず、actionを黙って再実行しない。generic auditはprivacy-boundedなstable v1 `ExecutionAuditEvent` unionを使い、audit sink failureはobserve-onlyでauthority / checkpoint / recovery semanticsを変更しない。
 - Browser Handoff locator（compatibility takeover URL API）はlocatorだけを含み、capabilityはauthenticated same-origin bootstrapの後にだけ返す。
 - capabilityはsession、intervention、resource epoch、principal、remote client binding、有効期限へscopeする。
 - takeover leaseを所有できるのは1つのremote client generationだけ。reload/new tab/new deviceによる新しいbindingが、既存leaseを暗黙に奪うことはできない。native reconnectは旧leaseがidleになった後だけ、WebRTC browserはsuspend/disconnect時に現在generationを明示releaseしてからreconnectする。どちらも同じauthenticated principalとgeneration-bound reconnect handleを要求し、新しいclient generationへrotateすると同時に古いcapability/handleを即時無効化する。
