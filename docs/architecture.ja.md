@@ -149,6 +149,8 @@ file checkpointはHMACで保護し、private permissionで保存します。永�
 
 raw argumentsや実行内容は保存しません。restart後の復旧は常に `reissue_and_revalidate` で行い、古いAgent/Human authority、`requestState`、browser state、takeover capabilityは復元しません。
 
+v0.3のrecovery / observability contractでもこのauthority ruleを維持しつつ、operator向けdata pathをdurable checkpoint、durable-friendly audit metadata、process-memory diagnosticsの3つに分離します。provider-neutral storageへ変更しても、許可するdurable schemaを広げたりephemeral authorityを復元したりしてはいけません。詳細は [Recovery / Observability boundary](recovery-observability.ja.md) と #127〜#130 を参照してください。
+
 ## MCP bridge
 
 MRTRの `requestState` は、次の情報へbindingします。

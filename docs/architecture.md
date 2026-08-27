@@ -138,6 +138,8 @@ The file checkpoint is HMAC-protected and private-permission. It persists only b
 
 It deliberately excludes raw arguments and execution content. Recovery returns `reissue_and_revalidate`; old Agent/Human authority, requestState, browser state, or takeover capability are not restored.
 
+The v0.3 recovery/observability contract keeps this authority rule while separating three operator data paths: durable checkpoint, durable-friendly audit metadata, and process-memory diagnostics. Provider-neutral storage may replace the file mechanism, but not widen the admitted durable schema or restore ephemeral authority. See [Recovery and observability boundary](recovery-observability.md) and Issues #127–#130.
+
 ## MCP bridge
 
 MRTR requestState binds:
