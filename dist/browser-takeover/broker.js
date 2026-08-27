@@ -191,6 +191,8 @@ export class TakeoverBroker {
     publicOrigin;
     nativeOnlySessions = new Map();
     webRtcOnlySessions = new Map();
+    webRtcSessionInterventions = new Map();
+    verifiedCompletedWebRtcSessions = new Set();
     webSocketOnlySessions = new Map();
     webSocketRevokeHandlers = new Map();
     nativeTargetProcessIds = new Map();
@@ -289,6 +291,7 @@ export class TakeoverBroker {
         if (existingPolicy && !sameWebRtcInputPolicy(existingPolicy, normalizedInputPolicy))
             return undefined;
         this.webRtcOnlySessions.set(locator.id, intervention.id);
+        this.webRtcSessionInterventions.set(locator.id, intervention.id);
         this.webRtcInputPolicies.set(locator.id, normalizedInputPolicy);
         if (target) {
             this.webRtcTargetProcessIds.set(locator.id, target.processId);
@@ -309,6 +312,8 @@ export class TakeoverBroker {
             this.webRtcTargetProcessIds.delete(locator.id);
             this.webRtcTargetWindowIds.delete(locator.id);
             this.webRtcInputPolicies.delete(locator.id);
+            this.webRtcSessionInterventions.delete(locator.id);
+            this.verifiedCompletedWebRtcSessions.delete(locator.id);
             this.completionDelivered.delete(locator.id);
         }, this.config.ttlMs + this.completionGraceMs + 1_000);
         completionExpiryCleanup.unref();
@@ -317,6 +322,7 @@ export class TakeoverBroker {
     revokeForIntervention(interventionId) {
         this.sessions.revokeForIntervention(interventionId);
         this.forgetNativeOnlyIntervention(interventionId);
+        this.forgetVerifiedCompletedWebRtcIntervention(interventionId);
         this.forgetWebRtcOnlyIntervention(interventionId);
         this.forgetWebSocketOnlyIntervention(interventionId, true);
         if (this.nativeRuntime)
@@ -331,6 +337,7 @@ export class TakeoverBroker {
     }
     async revokeWebRtcForIntervention(interventionId) {
         this.sessions.revokeForIntervention(interventionId);
+        this.forgetVerifiedCompletedWebRtcIntervention(interventionId);
         this.forgetWebRtcOnlyIntervention(interventionId);
         await this.webRtcRuntime?.revokeForIntervention(interventionId);
     }
@@ -339,8 +346,9 @@ export class TakeoverBroker {
         if (completed.length === 0)
             return false;
         for (const item of completed) {
-            if (this.webRtcOnlySessions.get(item.id) !== intervention.id)
+            if (this.webRtcSessionInterventions.get(item.id) !== intervention.id)
                 continue;
+            this.verifiedCompletedWebRtcSessions.add(item.id);
             this.webRtcTargetProcessIds.delete(item.id);
             this.webRtcTargetWindowIds.delete(item.id);
             this.webRtcInputPolicies.delete(item.id);
@@ -376,7 +384,7 @@ export class TakeoverBroker {
                 return json(405, { error: "method_not_allowed" });
             let completionCapability;
             try {
-                if (this.webRtcOnlySessions.has(pageMatch[1])
+                if (this.verifiedCompletedWebRtcSessions.has(pageMatch[1])
                     && this.sessions.isCompleted(pageMatch[1], boundPrincipal)) {
                     const nonce = randomBytes(18).toString("base64url");
                     const headers = new Headers(privateHeaders("text/html; charset=utf-8"));
@@ -466,10 +474,9 @@ export class TakeoverBroker {
         if (!clientBinding)
             return json(404, { error: "takeover_unavailable" });
         if (operation === "webrtc-prepare-claim" || operation === "webrtc-prepare-reconnect") {
-            if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
-                return json(404, { error: "takeover_unavailable" });
             try {
-                if (this.sessions.isCompleted(id, boundPrincipal)) {
+                if (this.verifiedCompletedWebRtcSessions.has(id)
+                    && this.sessions.isCompleted(id, boundPrincipal)) {
                     return json(410, { error: "takeover_completed", completed: true });
                 }
             }
@@ -478,6 +485,8 @@ export class TakeoverBroker {
                     return json(404, { error: "takeover_unavailable" });
                 throw error;
             }
+            if (!this.webRtcRuntime || !this.webRtcOnlySessions.has(id))
+                return json(404, { error: "takeover_unavailable" });
             if (request.method !== "POST")
                 return json(405, { error: "method_not_allowed" });
             if (!this.sameOriginMutation(request))
@@ -970,6 +979,14 @@ export class TakeoverBroker {
                 this.nativeTargetProcessIds.delete(sessionId);
                 this.nativeTargetWindowIds.delete(sessionId);
             }
+        }
+    }
+    forgetVerifiedCompletedWebRtcIntervention(interventionId) {
+        for (const [sessionId, currentIntervention] of this.webRtcSessionInterventions) {
+            if (currentIntervention !== interventionId)
+                continue;
+            this.webRtcSessionInterventions.delete(sessionId);
+            this.verifiedCompletedWebRtcSessions.delete(sessionId);
         }
     }
     forgetWebRtcOnlyIntervention(interventionId) {

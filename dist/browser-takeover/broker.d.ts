@@ -45,6 +45,8 @@ export declare class TakeoverBroker {
     private readonly publicOrigin;
     private readonly nativeOnlySessions;
     private readonly webRtcOnlySessions;
+    private readonly webRtcSessionInterventions;
+    private readonly verifiedCompletedWebRtcSessions;
     private readonly webSocketOnlySessions;
     private readonly webSocketRevokeHandlers;
     private readonly nativeTargetProcessIds;
@@ -74,6 +76,7 @@ export declare class TakeoverBroker {
     private forgetWebSocketOnlyIntervention;
     private webRtcHooks;
     private forgetNativeOnlyIntervention;
+    private forgetVerifiedCompletedWebRtcIntervention;
     private forgetWebRtcOnlyIntervention;
     private webRtcInputPolicy;
     private publicGrant;
