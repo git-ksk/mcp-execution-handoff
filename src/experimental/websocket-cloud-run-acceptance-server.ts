@@ -20,6 +20,7 @@ const TARGET_WINDOW_TITLE = `${TARGET_TITLE} - Chromium`;
 interface TargetState {
   ready: boolean;
   formOpened: boolean;
+  inputFocused: boolean;
   textObserved: boolean;
   scrolled: boolean;
   submitted: boolean;
@@ -33,6 +34,7 @@ interface BrowserTarget {
 const targetState: TargetState = {
   ready: false,
   formOpened: false,
+  inputFocused: false,
   textObserved: false,
   scrolled: false,
   submitted: false
@@ -88,6 +90,16 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     targetState.ready = true;
     return sendJson(res, 204, undefined);
   }
+  if (url.pathname === "/target-focused" && req.method === "POST") {
+    if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
+    targetState.inputFocused = true;
+    return sendJson(res, 204, undefined);
+  }
+  if (url.pathname === "/target-blurred" && req.method === "POST") {
+    if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
+    targetState.inputFocused = false;
+    return sendJson(res, 204, undefined);
+  }
   if (url.pathname === "/target-typed" && req.method === "POST") {
     if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
     targetState.textObserved = true;
@@ -107,6 +119,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     sendJson(res, 200, {
       targetReady: browserTarget !== undefined,
       tapObserved: targetState.formOpened,
+      inputFocused: targetState.inputFocused,
       textObserved: targetState.textObserved,
       scrollObserved: targetState.scrolled,
       submitObserved: targetState.submitted,
@@ -121,6 +134,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       targetReady: browserTarget !== undefined,
       sessionActive: activeLocator !== undefined && !doneObserved,
       tapObserved: targetState.formOpened,
+      inputFocused: targetState.inputFocused,
       textObserved: targetState.textObserved,
       scrollObserved: targetState.scrolled,
       submitObserved: targetState.submitted,
@@ -179,6 +193,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     activeEpoch += 1;
     doneObserved = false;
     targetState.formOpened = false;
+    targetState.inputFocused = false;
     targetState.textObserved = false;
     targetState.scrolled = false;
     targetState.submitted = false;
@@ -276,7 +291,7 @@ function targetLandingPage(): string {
 }
 
 function targetFormPage(): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui;min-height:2200px;background:linear-gradient(#fff,#ddd)"><form id="f" style="padding:60px"><label style="font-size:30px">Type any harmless text, scroll, then press Enter<br><input id="i" autocomplete="off" style="margin-top:24px;width:80%;font-size:34px;padding:16px"></label></form><div style="margin-top:1400px;font-size:36px;padding:60px">Scroll marker</div><script>const i=document.getElementById('i');const f=document.getElementById('f');let typed=false,scrolled=false;i.addEventListener('input',()=>{if(!typed){typed=true;fetch('/target-typed',{method:'POST',cache:'no-store'}).catch(()=>{})}});addEventListener('scroll',()=>{if(!scrolled&&scrollY>80){scrolled=true;fetch('/target-scrolled',{method:'POST',cache:'no-store'}).catch(()=>{})}},{passive:true});f.addEventListener('submit',e=>{e.preventDefault();fetch('/target-submitted',{method:'POST',cache:'no-store'}).then(()=>{document.body.innerHTML='<div style="padding:80px;font-size:42px">Submitted — press Done on the takeover UI.</div>'}).catch(()=>{})});setTimeout(()=>i.focus(),50);</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui;min-height:2200px;background:linear-gradient(#fff,#ddd)"><form id="f" style="padding:60px"><label style="font-size:30px">Type any harmless text, scroll, then press Enter<br><input id="i" autocomplete="off" style="margin-top:24px;width:80%;font-size:34px;padding:16px"></label></form><div style="margin-top:1400px;font-size:36px;padding:60px">Scroll marker</div><script>const i=document.getElementById('i');const f=document.getElementById('f');let typed=false,scrolled=false;i.addEventListener('focus',()=>{fetch('/target-focused',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('blur',()=>{fetch('/target-blurred',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('input',()=>{if(!typed){typed=true;fetch('/target-typed',{method:'POST',cache:'no-store'}).catch(()=>{})}});addEventListener('scroll',()=>{if(!scrolled&&scrollY>80){scrolled=true;fetch('/target-scrolled',{method:'POST',cache:'no-store'}).catch(()=>{})}},{passive:true});f.addEventListener('submit',e=>{e.preventDefault();fetch('/target-submitted',{method:'POST',cache:'no-store'}).then(()=>{document.body.innerHTML='<div style="padding:80px;font-size:42px">Submitted — press Done on the takeover UI.</div>'}).catch(()=>{})});</script></body></html>`;
 }
 
 function requestHeaders(req: IncomingMessage): Headers {
