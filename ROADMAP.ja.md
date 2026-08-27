@@ -39,7 +39,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | --- | --- | --- |
 | #56 | v0.2.x media quality | **完了。** macOS Window専用 `window_text` でsourceをupscaleせず、bounded ceilingのみ≤1920×1080 / 5 Mbps / 30 fpsへ引き上げ、backpressure不変のままphysical iPhone direct + TURN relay acceptanceを通過。 |
 | #34 | v0.2.x cross-platform parity | **完了。** Linux WebRTCでread-only AT-SPI helperをtarget process ancestry + exact-window geometryへbindし、boundedなeditable-region / focus hintだけを配信。accessible text / name / value、DOM / CDP / credentialは取得せず、accessibility unavailable / ambiguous時はempty / non-editableへfail closed。 |
-| #127 | v0.3 durable recovery | concrete file-store依存を最小provider-neutral checkpoint-store contractへ置き換えつつ、durable schemaはboundedのまま、recoveryは `reissue_and_revalidate` のみに維持。 |
+| #127 | v0.3 durable recovery | **完了。** `HandoffCheckpointStore` を同期型provider-neutral contractとして導入し、load値はuntrustedのままHandoffがstrict再検証。signed-file store互換を維持し、recoveryは `reissue_and_revalidate` のみ。 |
 | #128 | v0.3 audit | versioned / privacy-boundedなgeneric audit eventをstable化し、execution transcriptを作らずsink failure/backpressure semanticsを定義。 |
 | #129 | v0.3 diagnostics | Browser / Window / Terminal横断のstable operator diagnosticsを定義し、target/transport固有namespaceとprocess-memory default retentionを維持。 |
 | #130 | v0.3 restart conformance | **v0.3 recovery gate。** lifecycle各phaseのcrash/restartでstale authority、locator/capability、generation、request state、media/input session、PTY authorityが復活しないことを証明。 |
@@ -112,7 +112,7 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 
 追跡Issue:
 
-- #127 — provider-neutral / bounded checkpoint-store contract。現行signed-file storeはreference implementationとして維持
+- #127 — **完了:** provider-neutral / synchronous / bounded checkpoint-store contract。signed-file storeをreference implementationとして維持し、load値はHandoff側で再検証
 - #128 — stable / privacy-bounded execution audit event、versioning、sink failure/backpressure semantics
 - #129 — target/transport固有mechanicsを無理にgeneric化しないBrowser / Window / Terminal横断operator diagnostics
 - #130 — deterministic crash/restart conformanceとrelease-level stale-authority gate

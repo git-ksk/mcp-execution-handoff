@@ -2,9 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 import type { RegisteredExecutionAdapter } from "./adapter.js";
 import { NOOP_EXECUTION_AUDIT, type ExecutionAuditSink } from "./audit.js";
 import type { InterventionStatus, ResumePolicy } from "./lifecycle.js";
-import type { HandoffRecoveryRecord, SignedFileHandoffCheckpointStore } from "./checkpoint.js";
+import { recoverHandoffCheckpoint, type HandoffCheckpointStore, type HandoffRecoveryRecord } from "./checkpoint.js";
 export interface CheckpointableIntervention { id: string; status: InterventionStatus; epoch: number; resumePolicy: ResumePolicy; updatedAt: number; }
-export interface ExecutionHandoffRuntimeOptions { checkpointStore?: SignedFileHandoffCheckpointStore; auditSink?: ExecutionAuditSink; checkpointTtlMs?: number; now?: () => number; }
+export interface ExecutionHandoffRuntimeOptions { checkpointStore?: HandoffCheckpointStore; auditSink?: ExecutionAuditSink; checkpointTtlMs?: number; now?: () => number; }
 export class ExecutionHandoffRuntime<TIntervention extends CheckpointableIntervention, TResumeDecision> {
   private readonly audit: ExecutionAuditSink; private readonly checkpointTtlMs: number; private readonly now: () => number;
   constructor(readonly adapter: RegisteredExecutionAdapter<TIntervention, TResumeDecision>, private readonly options: ExecutionHandoffRuntimeOptions = {}) {
@@ -22,7 +22,8 @@ export class ExecutionHandoffRuntime<TIntervention extends CheckpointableInterve
   }
   clearCheckpoint(principalBinding?: string): void { this.options.checkpointStore?.clear(); this.audit.record({ type: "checkpoint_cleared", adapterKind: this.adapter.kind, timestamp: this.now(), ...(principalBinding ? { principalBinding } : {}) }); }
   recover(principalBinding: string): HandoffRecoveryRecord | undefined {
-    const record = this.options.checkpointStore?.recover(); if (!record) return undefined;
+    const raw = this.options.checkpointStore?.read(); if (raw === undefined) return undefined;
+    const record = recoverHandoffCheckpoint(raw, this.now());
     if (record.adapterKind !== this.adapter.kind || !this.same(record.principalBinding, principalBinding)) return undefined;
     this.audit.record({ type: "recovery_requested", adapterKind: this.adapter.kind, timestamp: this.now(), interventionId: record.interventionId, epoch: record.epoch, principalBinding, ...(record.actionDigest ? { actionDigest: record.actionDigest } : {}) });
     return record;

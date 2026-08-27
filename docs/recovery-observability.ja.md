@@ -51,7 +51,18 @@ consumerが許可済みdiagnostics projectionを独自operator systemへ保存�
 - update timestamp
 - expiry
 
-将来provider-neutral storeへしてもstorage mechanismが変わるだけで、このtrust boundaryは広げません。schema validationはHandoff-ownedのままです。storage backendが任意consumer contentを返し、それをruntimeがtrusted recovery stateとして扱う設計にはしません。
+`HandoffCheckpointStore` をprovider-neutralなpersistence boundaryとします。contractは意図的に同期型の `write(checkpoint)` / `read()` / `clear()` の3つだけです。`read()` は `unknown` を返します。backendはpersistence mechanismであって、schema validatorやrecovery authority providerではありません。`ExecutionHandoffRuntime` が返却値を毎回strictに再parseし、extra fieldを拒否し、runtime自身のclockでexpiryを検証したうえでadapter / principal bindingを確認し、最終的にも `reissue_and_revalidate` だけを返します。
+
+`SignedFileHandoffCheckpointStore` はこのinterfaceを実装するlocal reference implementationとして維持します。既存の `load()` / `recover()` / operator-revalidation helperもsource compatibilityのため残しますが、runtime本体はprovider-neutral interfaceだけに依存します。
+
+### Storage failure semantics
+
+checkpoint-store contractを同期型にするのは意図的です。methodが正常returnした時点でprovider自身のdurability contract上そのstorage operationが完了しており、throwした場合は未完了として扱います。v0.3ではasync / best-effort writeをdurable fencingとして暗黙に扱いません。
+
+- active intervention中の `write()` failureは呼び出し元へ伝播し、同時にruntimeがそのHuman interventionをcancel / fenceして既存のfail-closed behaviorを維持する
+- `read()` failure、malformed record、expired recordはfail closedで伝播し、authorityは一切復元しない
+- `clear()` failureも成功扱いせず伝播する。explicit clear自体はauthority transitionではないため、adapterの現在authorityは変更せず、callerがdurable-state cleanup failureを処理する
+- 将来async storeを許可する場合は、awaited write/clear completion、crash point、cancellation、sink failure semanticsを別contractとして先に定義する必要がある
 
 ### Generic durable stateへ入れてはいけないもの
 

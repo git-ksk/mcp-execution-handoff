@@ -51,7 +51,18 @@ The current checkpoint schema is the baseline allowed durable shape:
 - update timestamp;
 - expiry.
 
-A future provider-neutral store may change the storage mechanism, but not this trust boundary. Schema validation stays Handoff-owned. A storage backend is not allowed to return arbitrary consumer content and have the runtime treat it as trusted recovery state.
+`HandoffCheckpointStore` is the provider-neutral persistence boundary. It is deliberately synchronous and contains only `write(checkpoint)`, `read()`, and `clear()`. `read()` returns `unknown`: a backend is a persistence mechanism, not a schema or recovery-authority provider. `ExecutionHandoffRuntime` strictly reparses every returned value, rejects extra fields, enforces expiry with its own clock, and then applies adapter/principal binding before returning only `reissue_and_revalidate`.
+
+`SignedFileHandoffCheckpointStore` implements this interface and remains the local reference implementation. Its existing `load()`, `recover()`, and operator-revalidation helpers remain available for source compatibility; the runtime itself depends only on the provider-neutral interface.
+
+### Storage failure semantics
+
+The checkpoint-store contract is synchronous on purpose. A successful method return means that storage operation completed according to the provider's own durability contract; a thrown error means it did not. v0.3 does not silently reinterpret an asynchronous or best-effort write as durable fencing.
+
+- active-intervention `write()` failure is propagated **and** the runtime cancels/fences that Human intervention, preserving the existing fail-closed behavior;
+- `read()` failure or malformed/expired data is propagated/fails closed and never restores any authority;
+- `clear()` failure is propagated rather than reported as success. Explicit clear is not itself an authority transition, so the adapter's current authority state is left unchanged while the caller handles the durable-state cleanup failure;
+- a future async store would require a distinct lifecycle contract defining awaited write/clear completion, crash points, cancellation, and sink failure semantics before it could be accepted here.
 
 ### Forbidden generic durable content
 
