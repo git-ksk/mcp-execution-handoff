@@ -21,7 +21,7 @@ export class WindowHandoffAdapter {
     #core;
     constructor(config) {
         try {
-            this.#core = new WindowHandoffCore(config);
+            this.#core = new WindowHandoffCore({ ...config, mediaProfile: "window_text" });
         }
         catch (error) {
             throw translateError(error);

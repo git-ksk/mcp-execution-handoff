@@ -269,3 +269,30 @@ test("macOS successor-window diagnostics expose only bounded lineage stages", as
     await provider.revoke("host-ready-session").catch(() => undefined);
   }
 });
+
+test("macOS Window media diagnostics expose only bounded quality metadata", async () => {
+  const child = new FakeHostProcess();
+  const provider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: "/fake/takeover-webrtc-host",
+    spawnProcess: (() => child) as never
+  });
+  const { client, offer } = await clientOffer();
+  try {
+    const started = provider.start(binding(), offer, hooks);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC media_profile=window_text width=1440 height=1080 bitrate_kbps=5000 speed_priority=0\n");
+    child.stderr.write("MCP_HANDOFF_DIAGNOSTIC media_profile=window_text width=99999 height=1080 bitrate_kbps=5000 speed_priority=0 payload=secret\n");
+    child.stdout.write(encodedFrameRecord());
+    await started;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const mediaEvents = provider.diagnosticsSnapshot().events.filter((event) => event.stage === "host.media.window_text");
+    assert.deepEqual(mediaEvents, [{
+      stage: "host.media.window_text",
+      media: { width: 1440, height: 1080, bitrateKbps: 5000, speedPriority: false }
+    }]);
+    assert.doesNotMatch(JSON.stringify(mediaEvents), /payload|credential|title|windowId|coordinate/i);
+  } finally {
+    await client.close().catch(() => undefined);
+    await provider.revoke("host-ready-session").catch(() => undefined);
+  }
+});

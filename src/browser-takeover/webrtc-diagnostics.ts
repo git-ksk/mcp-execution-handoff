@@ -1,5 +1,11 @@
 export type WebRtcDiagnosticCandidateType = "host" | "srflx" | "prflx" | "relay";
 export type WebRtcDiagnosticPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
+export interface WebRtcDiagnosticMedia {
+  width: number;
+  height: number;
+  bitrateKbps: number;
+  speedPriority: boolean;
+}
 export type WebRtcRelayDiagnosticFailureReason =
   | "generation_expired"
   | "provider_auth"
@@ -35,6 +41,7 @@ export type WebRtcDiagnosticStage =
   | "host.window.successor.ambiguous"
   | "host.window.successor.unsupported"
   | "host.window.successor.failure"
+  | "host.media.window_text"
   | "host.capture.started"
   | "host.frame.ready"
   | "host.input.focus.ready"
@@ -86,6 +93,7 @@ export interface WebRtcDiagnosticEvent {
   state?: WebRtcDiagnosticPeerState;
   durationMs?: number;
   reason?: WebRtcRelayDiagnosticFailureReason;
+  media?: WebRtcDiagnosticMedia;
 }
 
 export interface WebRtcDiagnosticsSnapshot {
@@ -133,6 +141,7 @@ const ALL_STAGES = new Set<WebRtcDiagnosticStage>([
   "host.window.successor.ambiguous",
   "host.window.successor.unsupported",
   "host.window.successor.failure",
+  "host.media.window_text",
   "host.capture.started",
   "host.frame.ready",
   "host.input.focus.ready",
@@ -193,7 +202,8 @@ export class WebRtcDiagnosticsTracker {
     return {
       events: this.events.map((event) => ({
         ...event,
-        ...(event.candidateCounts ? { candidateCounts: { ...event.candidateCounts } } : {})
+        ...(event.candidateCounts ? { candidateCounts: { ...event.candidateCounts } } : {}),
+        ...(event.media ? { media: { ...event.media } } : {})
       }))
     };
   }
@@ -256,6 +266,7 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     "host.window.successor.ambiguous": ["stage"],
     "host.window.successor.unsupported": ["stage"],
     "host.window.successor.failure": ["stage"],
+    "host.media.window_text": ["stage", "media"],
     "host.capture.started": ["stage"],
     "host.frame.ready": ["stage"],
     "host.input.focus.ready": ["stage"],
@@ -317,7 +328,31 @@ function normalizeWebRtcDiagnosticEvent(event: WebRtcDiagnosticEvent): WebRtcDia
     }
     normalized.durationMs = Math.round(event.durationMs * 10) / 10;
   }
+  if (event.media !== undefined) {
+    const media = normalizeMedia(event.media);
+    if (!media) return undefined;
+    normalized.media = media;
+  }
   return normalized;
+}
+
+function normalizeMedia(value: WebRtcDiagnosticMedia): WebRtcDiagnosticMedia | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as unknown as Record<string, unknown>;
+  const keys = ["width", "height", "bitrateKbps", "speedPriority"] as const;
+  if (Object.keys(record).length !== keys.length || Object.keys(record).some((key) => !keys.includes(key as typeof keys[number]))) {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(record.width) || (record.width as number) < 2 || (record.width as number) > 3_840) return undefined;
+  if (!Number.isSafeInteger(record.height) || (record.height as number) < 2 || (record.height as number) > 2_160) return undefined;
+  if (!Number.isSafeInteger(record.bitrateKbps) || (record.bitrateKbps as number) < 100 || (record.bitrateKbps as number) > 20_000) return undefined;
+  if (typeof record.speedPriority !== "boolean") return undefined;
+  return {
+    width: record.width as number,
+    height: record.height as number,
+    bitrateKbps: record.bitrateKbps as number,
+    speedPriority: record.speedPriority
+  };
 }
 
 function normalizeCandidateCounts(value: WebRtcDiagnosticCandidateCounts): WebRtcDiagnosticCandidateCounts | undefined {

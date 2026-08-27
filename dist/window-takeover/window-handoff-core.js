@@ -24,7 +24,7 @@ export class WindowHandoffCore {
         }
         const completionGraceMs = config.takeover.completionGraceMs ?? config.takeover.ttlMs;
         this.#routeTtlMs = config.takeover.ttlMs + completionGraceMs;
-        this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigWithSuccessorPolicy(config.runtime, successorPolicy));
+        this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigForHandoff(config.runtime, config.mediaProfile, successorPolicy));
         this.#broker = new TakeoverBroker(webRtcOnlySurfaceAdapter(), config.takeover, undefined, this.#runtime, config.onComplete ? { completed: config.onComplete } : {});
     }
     isEnabled() {
@@ -164,16 +164,18 @@ function normalizeSuccessorPolicy(policy) {
         return undefined;
     return { mode: "same_process", transitionWindowMs };
 }
-function runtimeConfigWithSuccessorPolicy(runtime, policy) {
-    if (!policy)
+function runtimeConfigForHandoff(runtime, mediaProfile, policy) {
+    if (!mediaProfile && !policy)
         return runtime;
     const baseSpawn = runtime.spawnProcess ?? spawn;
     const spawnProcess = ((command, args, options) => {
-        const env = {
-            ...(options?.env ?? {}),
-            TAKEOVER_WEBRTC_WINDOW_LINEAGE: "same_process_successor",
-            TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS: String(policy.transitionWindowMs)
-        };
+        const env = { ...(options?.env ?? {}) };
+        if (mediaProfile)
+            env.TAKEOVER_WEBRTC_MEDIA_PROFILE = mediaProfile;
+        if (policy) {
+            env.TAKEOVER_WEBRTC_WINDOW_LINEAGE = "same_process_successor";
+            env.TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS = String(policy.transitionWindowMs);
+        }
         return baseSpawn(command, args, { ...options, env });
     });
     return { ...runtime, spawnProcess };

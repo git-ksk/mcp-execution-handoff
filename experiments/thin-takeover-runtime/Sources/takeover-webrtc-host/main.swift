@@ -55,11 +55,6 @@ private final class StopState: @unchecked Sendable {
     var exitReason: WebRtcHostExitReason? { lock.lock(); defer { lock.unlock() }; return reason }
 }
 
-private func evenDimension(_ value: Double) -> Int {
-    let rounded = max(2, Int(value.rounded(.down)))
-    return rounded.isMultiple(of: 2) ? rounded : rounded - 1
-}
-
 private func selectedDisplay(from displays: [SCDisplay], requested: CGDirectDisplayID?) throws -> SCDisplay {
     guard !displays.isEmpty else { throw WebRtcHostError.display }
     if let requested {
@@ -86,6 +81,22 @@ private func loadTargetWindowID(targetProcessID: pid_t?) throws -> CGWindowID? {
     guard let text = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_TARGET_WINDOW_ID"] else { return nil }
     guard targetProcessID != nil, let value = UInt32(text), value > 0 else { throw WebRtcHostError.configuration }
     return CGWindowID(value)
+}
+
+private func loadMediaProfile() throws -> MacOSWindowMediaProfile {
+    guard let value = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_MEDIA_PROFILE"] else {
+        return .standard
+    }
+    guard value == MacOSWindowMediaProfile.windowText.rawValue else { throw WebRtcHostError.configuration }
+    return .windowText
+}
+
+private func emitMediaProfile(_ profile: MacOSWindowMediaProfile, policy: MacOSWindowMediaPolicy) {
+    guard profile == .windowText else { return }
+    let speedPriority = policy.prioritizeEncodingSpeedOverQuality ? 1 : 0
+    FileHandle.standardError.write(Data(
+        "MCP_HANDOFF_DIAGNOSTIC media_profile=window_text width=\(policy.width) height=\(policy.height) bitrate_kbps=\(policy.averageBitrate / 1_000) speed_priority=\(speedPriority)\n".utf8
+    ))
 }
 
 private struct WindowLineageConfig {
@@ -541,7 +552,13 @@ private final class H264PipeEncoder: @unchecked Sendable {
     private let keyframeLock = NSLock()
     private var forceNextKeyframe = false
 
-    init(width: Int32, height: Int32, output: @escaping Output) throws {
+    init(
+        width: Int32,
+        height: Int32,
+        averageBitrate: Int,
+        prioritizeEncodingSpeedOverQuality: Bool,
+        output: @escaping Output
+    ) throws {
         self.output = output
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         let status = VTCompressionSessionCreate(
@@ -564,9 +581,13 @@ private final class H264PipeEncoder: @unchecked Sendable {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: NSNumber(value: 0))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: NSNumber(value: 30))
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, value: kCFBooleanTrue)
+        VTSessionSetProperty(
+            session,
+            key: kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
+            value: prioritizeEncodingSpeedOverQuality ? kCFBooleanTrue : kCFBooleanFalse
+        )
         if #available(macOS 15.0, *) { VTSessionSetProperty(session, key: kVTCompressionPropertyKey_SuggestedLookAheadFrameCount, value: NSNumber(value: 0)) }
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: 3_000_000))
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: averageBitrate))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: NSNumber(value: 30))
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel)
         VTCompressionSessionPrepareToEncodeFrames(session)
@@ -1221,13 +1242,29 @@ struct WebRtcMacHost {
         )
         let nativeWidth = surface.pixelWidth, nativeHeight = surface.pixelHeight
         guard nativeWidth > 0, nativeHeight > 0 else { throw WebRtcHostError.display }
-        let scale = min(1.0, min(1280.0 / nativeWidth, 720.0 / nativeHeight))
-        let width = evenDimension(nativeWidth * scale), height = evenDimension(nativeHeight * scale)
+        let mediaProfile = try loadMediaProfile()
+        let mediaPolicy: MacOSWindowMediaPolicy
+        do {
+            mediaPolicy = try MacOSWindowMediaPolicyResolver.resolve(
+                nativeWidth: nativeWidth,
+                nativeHeight: nativeHeight,
+                profile: mediaProfile
+            )
+        } catch {
+            throw WebRtcHostError.configuration
+        }
+        let width = mediaPolicy.width, height = mediaPolicy.height
+        emitMediaProfile(mediaProfile, policy: mediaPolicy)
 
         let writer = LatestOutputWriter()
         let metricWriter = HostMetricWriter()
         let controlWriter = HostControlWriter()
-        let encoder = try H264PipeEncoder(width: Int32(width), height: Int32(height)) { avcc, timestamp, keyframe, encodeMs in
+        let encoder = try H264PipeEncoder(
+            width: Int32(width),
+            height: Int32(height),
+            averageBitrate: mediaPolicy.averageBitrate,
+            prioritizeEncodingSpeedOverQuality: mediaPolicy.prioritizeEncodingSpeedOverQuality
+        ) { avcc, timestamp, keyframe, encodeMs in
             metricWriter.submitEncodeMs(encodeMs)
             if lease.isActive(), !stop.isStopped,
                let record = frameRecord(avcc: avcc, timestamp: timestamp, keyframe: keyframe, width: width, height: height) {

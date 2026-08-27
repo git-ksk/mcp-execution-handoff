@@ -9,6 +9,8 @@ export interface WindowHandoffCoreSuccessorPolicy {
 export interface WindowHandoffCoreConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
+    /** Internal facade-selected media profile. Browser leaves this unset. */
+    mediaProfile?: "window_text";
     successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
