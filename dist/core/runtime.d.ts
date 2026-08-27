@@ -1,7 +1,7 @@
 import type { RegisteredExecutionAdapter } from "./adapter.js";
 import { type ExecutionAuditSink } from "./audit.js";
 import type { InterventionStatus, ResumePolicy } from "./lifecycle.js";
-import type { HandoffRecoveryRecord, SignedFileHandoffCheckpointStore } from "./checkpoint.js";
+import { type HandoffCheckpointStore, type HandoffRecoveryRecord } from "./checkpoint.js";
 export interface CheckpointableIntervention {
     id: string;
     status: InterventionStatus;
@@ -10,7 +10,7 @@ export interface CheckpointableIntervention {
     updatedAt: number;
 }
 export interface ExecutionHandoffRuntimeOptions {
-    checkpointStore?: SignedFileHandoffCheckpointStore;
+    checkpointStore?: HandoffCheckpointStore;
     auditSink?: ExecutionAuditSink;
     checkpointTtlMs?: number;
     now?: () => number;

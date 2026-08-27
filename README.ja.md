@@ -54,7 +54,7 @@ src/browser-takeover/
 - handoff ownershipは、認証済みlogical principalと正確なinvocation argumentsへbindingする。
 - MCP principalとtarget service/browser内でactiveなidentityは別security domainとして扱う。Human completionはtarget-service accountのattestationではなく、必要なidentity確認はconsumer固有のfresh verificationで行い、credential/token passthroughを使わない。
 - `awaiting_human` の初期状態を過ぎた後に、owner未設定のinterventionを別ownerへ付け替えない。
-- durable checkpointへ保存するのは限定されたcontrol-plane metadataだけ。raw action arguments、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptは保存しない。
+- durable checkpointへ保存するのは限定されたcontrol-plane metadataだけ。`ExecutionHandoffRuntime` は同期型provider-neutral `HandoffCheckpointStore`（`write` / untrusted `read` / `clear`）へ依存し、load値はHandoff-ownedなstrict schema / expiry checkで再検証する。`SignedFileHandoffCheckpointStore` はlocal reference implementationとして維持する。raw action arguments、browser text、credential、cookie、CAPTCHA/OTP/MFA answer、payment data、approval receiptは保存しない。
 - restart後のrecoveryは常に `reissue_and_revalidate`。古い実行権限を復元せず、actionを黙って再実行しない。
 - Browser Handoff locator（compatibility takeover URL API）はlocatorだけを含み、capabilityはauthenticated same-origin bootstrapの後にだけ返す。
 - capabilityはsession、intervention、resource epoch、principal、remote client binding、有効期限へscopeする。

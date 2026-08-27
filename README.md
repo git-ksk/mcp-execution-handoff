@@ -52,7 +52,7 @@ src/browser-takeover/
 - Handoff ownership is bound to the authenticated logical principal and exact invocation arguments.
 - The MCP principal and the identity active inside a target service/browser are separate security domains. Human completion never attests a target-service account; any such identity check is consumer-specific and must be freshly verified without credential/token passthrough.
 - Missing ownership cannot be rebound after the initial `awaiting_human` state.
-- Durable checkpoints contain bounded control-plane metadata only. Raw action arguments, browser text, credentials, cookies, CAPTCHA/OTP/MFA answers, payment data, and approval receipts are excluded.
+- Durable checkpoints contain bounded control-plane metadata only. `ExecutionHandoffRuntime` accepts the synchronous provider-neutral `HandoffCheckpointStore` (`write` / untrusted `read` / `clear`), reparses loaded values with Handoff-owned strict schema/expiry checks, and keeps `SignedFileHandoffCheckpointStore` as the reference local implementation. Raw action arguments, browser text, credentials, cookies, CAPTCHA/OTP/MFA answers, payment data, and approval receipts are excluded.
 - Restart recovery is always `reissue_and_revalidate`; it never restores stale execution authority or silently replays an action.
 - Browser Handoff locators (the compatibility takeover URL API) contain locators only; capabilities are returned only after authenticated same-origin bootstrap.
 - A capability is scoped to session + intervention + resource epoch + principal + remote-client binding + expiry.

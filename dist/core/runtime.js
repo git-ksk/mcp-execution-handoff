@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NOOP_EXECUTION_AUDIT } from "./audit.js";
+import { recoverHandoffCheckpoint } from "./checkpoint.js";
 export class ExecutionHandoffRuntime {
     adapter;
     options;
@@ -37,9 +38,10 @@ export class ExecutionHandoffRuntime {
     }
     clearCheckpoint(principalBinding) { this.options.checkpointStore?.clear(); this.audit.record({ type: "checkpoint_cleared", adapterKind: this.adapter.kind, timestamp: this.now(), ...(principalBinding ? { principalBinding } : {}) }); }
     recover(principalBinding) {
-        const record = this.options.checkpointStore?.recover();
-        if (!record)
+        const raw = this.options.checkpointStore?.read();
+        if (raw === undefined)
             return undefined;
+        const record = recoverHandoffCheckpoint(raw, this.now());
         if (record.adapterKind !== this.adapter.kind || !this.same(record.principalBinding, principalBinding))
             return undefined;
         this.audit.record({ type: "recovery_requested", adapterKind: this.adapter.kind, timestamp: this.now(), interventionId: record.interventionId, epoch: record.epoch, principalBinding, ...(record.actionDigest ? { actionDigest: record.actionDigest } : {}) });

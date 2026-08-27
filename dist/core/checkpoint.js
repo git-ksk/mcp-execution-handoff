@@ -9,17 +9,42 @@ export class HandoffCheckpointError extends Error {
         this.name = "HandoffCheckpointError";
     }
 }
-function isCheckpoint(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value))
-        return false;
-    const v = value;
-    return v.version === 1 && typeof v.adapterKind === "string" && v.adapterKind.length > 0 && v.adapterKind.length <= 80 &&
-        typeof v.interventionId === "string" && v.interventionId.length > 0 && v.interventionId.length <= 160 &&
-        ["awaiting_human", "human_active", "verifying", "ready_to_resume"].includes(v.status ?? "") && Number.isSafeInteger(v.epoch) && Number(v.epoch) >= 0 &&
-        ["replay_safe", "revalidate", "confirm_before_execute", "never_replay"].includes(v.resumePolicy ?? "") &&
-        typeof v.principalBinding === "string" && v.principalBinding.length >= 16 && v.principalBinding.length <= 160 &&
-        (v.actionDigest === undefined || (typeof v.actionDigest === "string" && v.actionDigest.length >= 16 && v.actionDigest.length <= 160)) &&
-        Number.isSafeInteger(v.updatedAt) && Number.isSafeInteger(v.expiresAt);
+const CHECKPOINT_KEYS = new Set([
+    "version", "adapterKind", "interventionId", "status", "epoch", "resumePolicy",
+    "principalBinding", "actionDigest", "updatedAt", "expiresAt"
+]);
+/** Handoff-owned strict schema validation. Extra fields fail closed. */
+export function parseHandoffCheckpoint(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Invalid handoff checkpoint");
+    }
+    const record = value;
+    if (Object.keys(record).some((key) => !CHECKPOINT_KEYS.has(key))) {
+        throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Invalid handoff checkpoint");
+    }
+    const v = record;
+    if (!(v.version === 1
+        && typeof v.adapterKind === "string" && v.adapterKind.length > 0 && v.adapterKind.length <= 80
+        && typeof v.interventionId === "string" && v.interventionId.length > 0 && v.interventionId.length <= 160
+        && ["awaiting_human", "human_active", "verifying", "ready_to_resume"].includes(v.status ?? "")
+        && Number.isSafeInteger(v.epoch) && Number(v.epoch) >= 0
+        && ["replay_safe", "revalidate", "confirm_before_execute", "never_replay"].includes(v.resumePolicy ?? "")
+        && typeof v.principalBinding === "string" && v.principalBinding.length >= 16 && v.principalBinding.length <= 160
+        && (v.actionDigest === undefined || (typeof v.actionDigest === "string" && v.actionDigest.length >= 16 && v.actionDigest.length <= 160))
+        && Number.isSafeInteger(v.updatedAt) && Number.isSafeInteger(v.expiresAt))) {
+        throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Invalid handoff checkpoint");
+    }
+    return { ...v };
+}
+export function recoverHandoffCheckpoint(value, now) {
+    const checkpoint = parseHandoffCheckpoint(value);
+    if (!Number.isSafeInteger(now)) {
+        throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Invalid checkpoint recovery time");
+    }
+    if (checkpoint.expiresAt <= now) {
+        throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
+    }
+    return { ...checkpoint, recovery: "reissue_and_revalidate" };
 }
 export class SignedFileHandoffCheckpointStore {
     filePath;
@@ -35,11 +60,10 @@ export class SignedFileHandoffCheckpointStore {
             throw new Error("handoff checkpoint signing key must contain at least 32 bytes");
     }
     write(checkpoint) {
-        if (!isCheckpoint(checkpoint))
-            throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Invalid handoff checkpoint");
+        const validated = parseHandoffCheckpoint(checkpoint);
         const directory = path.dirname(this.filePath);
         fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-        const envelope = { checkpoint: { ...checkpoint }, mac: this.mac(checkpoint) };
+        const envelope = { checkpoint: validated, mac: this.mac(validated) };
         const temp = path.join(directory, `.${path.basename(this.filePath)}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`);
         try {
             fs.writeFileSync(temp, `${JSON.stringify(envelope)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
@@ -63,24 +87,38 @@ export class SignedFileHandoffCheckpointStore {
         catch {
             throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint is unreadable");
         }
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
             throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint envelope is invalid");
+        }
         const envelope = parsed;
-        if (!isCheckpoint(envelope.checkpoint) || typeof envelope.mac !== "string")
+        if (typeof envelope.mac !== "string") {
             throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint envelope is invalid");
-        const expected = Buffer.from(this.mac(envelope.checkpoint), "utf8");
+        }
+        const checkpoint = parseHandoffCheckpoint(envelope.checkpoint);
+        const expected = Buffer.from(this.mac(checkpoint), "utf8");
         const supplied = Buffer.from(envelope.mac, "utf8");
-        if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied))
+        if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
             throw new HandoffCheckpointError("CHECKPOINT_INVALID", "Handoff checkpoint integrity check failed");
-        return { ...envelope.checkpoint };
-    }
-    load() {
-        const checkpoint = this.loadVerified();
-        if (checkpoint && checkpoint.expiresAt <= this.now())
-            throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
+        }
         return checkpoint;
     }
-    recover() { const checkpoint = this.load(); return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined; }
+    /** Provider-neutral store method: integrity-verified value, with expiry enforced by the runtime. */
+    read() { return this.loadVerified(); }
+    /** Existing local-file compatibility API. */
+    load() {
+        const checkpoint = this.loadVerified();
+        if (!checkpoint)
+            return undefined;
+        if (checkpoint.expiresAt <= this.now()) {
+            throw new HandoffCheckpointError("CHECKPOINT_EXPIRED", "Handoff checkpoint expired");
+        }
+        return checkpoint;
+    }
+    /** Existing local-file compatibility API. */
+    recover() {
+        const checkpoint = this.loadVerified();
+        return checkpoint ? recoverHandoffCheckpoint(checkpoint, this.now()) : undefined;
+    }
     /**
      * Read a MAC-verified checkpoint for an explicit local operator revalidation flow even after its
      * normal recovery TTL elapsed. This never restores Agent or Human authority; consumers must
@@ -90,13 +128,20 @@ export class SignedFileHandoffCheckpointStore {
         const checkpoint = this.loadVerified();
         return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined;
     }
-    clear() { try {
-        fs.unlinkSync(this.filePath);
+    clear() {
+        try {
+            fs.unlinkSync(this.filePath);
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw error;
+        }
     }
-    catch (error) {
-        if (error.code !== "ENOENT")
-            throw error;
-    } }
-    mac(checkpoint) { return createHmac("sha256", this.signingKey).update("mcp-execution-handoff/checkpoint/v1\0").update(JSON.stringify(checkpoint)).digest("base64url"); }
+    mac(checkpoint) {
+        return createHmac("sha256", this.signingKey)
+            .update("mcp-execution-handoff/checkpoint/v1\0")
+            .update(JSON.stringify(checkpoint))
+            .digest("base64url");
+    }
 }
 //# sourceMappingURL=checkpoint.js.map
