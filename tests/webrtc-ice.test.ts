@@ -36,18 +36,20 @@ test("Cloudflare TURN adapter issues separate short-lived peer credentials and r
   const fakeFetch: typeof fetch = async (input, init) => {
     const url = String(input);
     requests.push({ url, init });
-    if (url.includes("generate-ice-servers")) {
+    if (url.endsWith("/credentials/generate")) {
       generation += 1;
       return new Response(JSON.stringify({
-        iceServers: [
-          { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
-          {
-            urls: ["turn:turn.cloudflare.com:3478?transport=udp", "turns:turn.cloudflare.com:5349?transport=tcp"],
-            username: randomBytes(18).toString("base64url"),
-            credential: randomBytes(24).toString("base64url")
-          }
-        ]
-      }), { status: 200, headers: { "content-type": "application/json" } });
+        iceServers: {
+          urls: [
+            "stun:stun.cloudflare.com:3478",
+            "stun:stun.cloudflare.com:53",
+            "turn:turn.cloudflare.com:3478?transport=udp",
+            "turns:turn.cloudflare.com:5349?transport=tcp"
+          ],
+          username: randomBytes(18).toString("base64url"),
+          credential: randomBytes(24).toString("base64url")
+        }
+      }), { status: 201, headers: { "content-type": "application/json" } });
     }
     if (url.endsWith("/revoke")) return new Response(null, { status: 204 });
     return new Response(null, { status: 404 });
@@ -74,8 +76,9 @@ test("Cloudflare TURN adapter issues separate short-lived peer credentials and r
   assert.equal(browserUrls.includes("stun:stun.cloudflare.com:53"), false);
   assert.equal(serverUrls.includes("stun:stun.cloudflare.com:53"), true);
 
-  const generateRequests = requests.filter(({ url }) => url.includes("generate-ice-servers"));
+  const generateRequests = requests.filter(({ url }) => url.endsWith("/credentials/generate"));
   assert.equal(generateRequests.length, 2);
+  assert.equal(requests.some(({ url }) => url.includes("generate-ice-servers")), false);
   for (const request of generateRequests) {
     const body = JSON.parse(String(request.init?.body)) as Record<string, unknown>;
     assert.deepEqual(body, { ttl: 60 });
@@ -96,16 +99,16 @@ test("Cloudflare TURN adapter fails generically and revokes partial issuance", a
   const fakeFetch: typeof fetch = async (input) => {
     const url = String(input);
     requests.push(url);
-    if (url.includes("generate-ice-servers")) {
+    if (url.endsWith("/credentials/generate")) {
       generate += 1;
       if (generate === 1) {
         return new Response(JSON.stringify({
-          iceServers: [{
+          iceServers: {
             urls: "turn:turn.cloudflare.com:3478?transport=udp",
             username: randomBytes(18).toString("base64url"),
             credential: randomBytes(24).toString("base64url")
-          }]
-        }), { status: 200 });
+          }
+        }), { status: 201 });
       }
       return new Response(null, { status: 503 });
     }

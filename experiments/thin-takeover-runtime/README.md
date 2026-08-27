@@ -156,6 +156,8 @@ MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID
 MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN
 ```
 
+The Cloudflare adapter uses the current Realtime TURN credential endpoint (`/credentials/generate`). Keep this pair in one deployment-owned Handoff secret source; do not copy TURN environment from an unrelated consumer process, because a stale/deleted key must fail as `relay unavailable` rather than being treated as a transport fallback.
+
 Self-hosted coturn TURN REST mode uses:
 
 ```text
