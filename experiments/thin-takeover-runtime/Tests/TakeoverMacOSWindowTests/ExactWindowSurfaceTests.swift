@@ -290,6 +290,7 @@ private let display = MacOSDisplayCandidate(
 private func localAuthCandidate(
     processID: pid_t = 6050,
     windowID: CGWindowID = 99,
+    frame: CGRect = CGRect(x: 830, y: 212, width: 260, height: 328),
     layer: Int = 1000,
     bundleIdentifier: String? = MacOSLocalAuthenticationWindowGeometry.bundleIdentifier,
     axIdentifier: String? = MacOSLocalAuthenticationWindowGeometry.axIdentifier,
@@ -301,7 +302,7 @@ private func localAuthCandidate(
     MacOSLocalAuthenticationWindowCandidate(
         processID: processID,
         windowID: windowID,
-        frame: CGRect(x: 830, y: 212, width: 260, height: 328),
+        frame: frame,
         isOnScreen: true,
         layer: layer,
         bundleIdentifier: bundleIdentifier,
@@ -311,6 +312,30 @@ private func localAuthCandidate(
         isMain: isMain,
         isFocused: isFocused
     )
+}
+
+@Test func localAuthenticationCanonicalAXMetadataSelectsOnlyMainFocusedPasscodeDialog() {
+    let frame = CGRect(x: 830, y: 212, width: 260, height: 328)
+    let main = MacOSLocalAuthenticationAXMetadata(
+        frame: frame,
+        identifier: MacOSLocalAuthenticationWindowGeometry.axIdentifier,
+        role: "AXWindow",
+        subrole: "AXStandardWindow",
+        isMain: true,
+        isFocused: true
+    )
+    let duplicatePresentation = MacOSLocalAuthenticationAXMetadata(
+        frame: frame,
+        identifier: MacOSLocalAuthenticationWindowGeometry.axIdentifier,
+        role: "AXWindow",
+        subrole: "AXStandardWindow",
+        isMain: false,
+        isFocused: true
+    )
+    #expect(MacOSLocalAuthenticationWindowGeometry.canonicalAXMetadata(
+        from: [main, duplicatePresentation]
+    ) == main)
+    #expect(MacOSLocalAuthenticationWindowGeometry.canonicalAXMetadata(from: [main, main]) == nil)
 }
 
 @Test func localAuthenticationInitialWindowAdmitsOnlyExactAppleFocusedPasscodeDialog() throws {
@@ -362,12 +387,36 @@ private func localAuthCandidate(
     #expect(!MacOSLocalAuthenticationWindowInput.isSecureTextField(role: nil, subrole: nil))
 }
 
-@Test func localAuthenticationInitialWindowFailsClosedOnAmbiguity() {
-    let second = localAuthCandidate(windowID: 100)
+@Test func localAuthenticationInitialWindowAdmitsOnlyBoundedEquivalentDuplicatePresentations() throws {
+    let display = MacOSDisplayCandidate(displayID: 18, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
+    let duplicate = try MacOSLocalAuthenticationWindowGeometry.resolve(
+        windows: [localAuthCandidate(windowID: 99), localAuthCandidate(windowID: 100)],
+        displays: [display],
+        targetProcessID: 6050
+    )
+    #expect(duplicate.windowIndices == [0, 1])
+
+    let nonEquivalent = [
+        localAuthCandidate(windowID: 100, layer: 999),
+        localAuthCandidate(windowID: 100, frame: CGRect(x: 832.5, y: 212, width: 260, height: 328))
+    ]
+    for second in nonEquivalent {
+        #expect(throws: MacOSLocalAuthenticationWindowResolutionError.windowUnavailable) {
+            try MacOSLocalAuthenticationWindowGeometry.resolve(
+                windows: [localAuthCandidate(windowID: 99), second],
+                displays: [display],
+                targetProcessID: 6050
+            )
+        }
+    }
     #expect(throws: MacOSLocalAuthenticationWindowResolutionError.windowUnavailable) {
         try MacOSLocalAuthenticationWindowGeometry.resolve(
-            windows: [localAuthCandidate(), second],
-            displays: [MacOSDisplayCandidate(displayID: 18, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))],
+            windows: [
+                localAuthCandidate(windowID: 99),
+                localAuthCandidate(windowID: 100),
+                localAuthCandidate(windowID: 101)
+            ],
+            displays: [display],
             targetProcessID: 6050
         )
     }
