@@ -3,9 +3,17 @@ import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
 import type { TakeoverBrokerConfig } from "../browser-takeover/broker.js";
+export interface WindowHandoffSuccessorPolicy {
+    /** Admit only one newly observed successor owned by the exact same process. */
+    mode: "same_process";
+    /** Bounded post-Human-action probe window. Defaults to 800 ms. */
+    transitionWindowMs?: number;
+}
 export interface WindowHandoffAdapterConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
+    /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
+    successorWindowPolicy?: WindowHandoffSuccessorPolicy;
     /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -17,8 +25,8 @@ export interface WindowHandoffStartRequest {
     inputPolicy: WindowHandoffInputPolicy;
 }
 export declare class WindowHandoffAdapterError extends Error {
-    readonly code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID";
-    constructor(code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID", message: string);
+    readonly code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID";
+    constructor(code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID", message: string);
 }
 /**
  * First-class bounded OS-window WebRTC Handoff composition for MCP consumers.

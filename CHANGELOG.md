@@ -4,6 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Add optional bounded successor-window lineage for Human-only macOS Window Handoff (#124): exact-one-window remains the default; opt-in sessions can rotate only to one newly observed same-PID successor with strict focus/modal/dialog evidence, fence the old mutable target during admission, fail closed on ambiguity/unsupported relationships, and never fall back to arbitrary frontmost, display, or desktop authority. Physical iPhone acceptance rotated the same WebRTC session from System Settings Accessibility to its layer-8 focused `AXDialog` file chooser after Add (+), without selecting a file or changing TCC/permission state.
 - Fix bounded macOS Window Human pointer admission for first-party system windows that are already the exact focused target but reject `AXRaise`: raising is now best-effort while exact PID/window geometry plus focused-window verification remains the authority proof. Physical iPhone acceptance opened the System Settings Accessibility Add file chooser without changing TCC state, credentials, or permission values; no Screen Sharing/Remote Management or desktop-wide fallback was added (#94).
 
 ## [0.2.0] - 2026-08-26

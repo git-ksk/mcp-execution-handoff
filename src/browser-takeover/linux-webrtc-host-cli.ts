@@ -967,6 +967,10 @@ function absoluteTool(name: string, envName: string): string {
 }
 
 export async function linuxWebRtcHostMain(): Promise<void> {
+  if (process.env.TAKEOVER_WEBRTC_WINDOW_LINEAGE !== undefined
+    || process.env.TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS !== undefined) {
+    throw new Error("successor-window lineage is not supported by the Linux WebRTC host");
+  }
   if (process.platform !== "linux") throw new Error("Linux WebRTC host is available only on Linux");
   const targetPid = Number(process.env.TAKEOVER_WEBRTC_TARGET_PID);
   const targetWindowId = parseOptionalTargetWindowId(process.env.TAKEOVER_WEBRTC_TARGET_WINDOW_ID);

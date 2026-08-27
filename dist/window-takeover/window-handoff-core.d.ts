@@ -2,9 +2,14 @@ import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagn
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import { type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { type SpawnedWebRtcRuntimeProviderConfig, type WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
+export interface WindowHandoffCoreSuccessorPolicy {
+    mode: "same_process";
+    transitionWindowMs?: number;
+}
 export interface WindowHandoffCoreConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
+    successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
 export interface WindowHandoffCoreStartRequest {
@@ -14,8 +19,8 @@ export interface WindowHandoffCoreStartRequest {
     inputPolicy: WebRtcHumanInputPolicy;
 }
 export declare class WindowHandoffCoreError extends Error {
-    readonly code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID";
-    constructor(code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID", message: string);
+    readonly code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID" | "SUCCESSOR_POLICY_INVALID";
+    constructor(code: "UNAVAILABLE" | "TARGET_INVALID" | "INPUT_POLICY_INVALID" | "SUCCESSOR_POLICY_INVALID", message: string);
 }
 /** Shared bounded-window WebRTC/session composition used by Browser and Window facades. */
 export declare class WindowHandoffCore {

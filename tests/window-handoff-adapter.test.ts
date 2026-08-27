@@ -165,3 +165,35 @@ test("Browser and Window facades share the same bounded route/session core contr
   adapter.revokeUnclaimed("window-int-unclaimed");
   assert.equal(adapter.ownsPath(new URL(unclaimed).pathname), false);
 });
+
+test("Window Handoff successor lineage is explicit and bounded while exact-one remains the default", () => {
+  const exactOnly = fixture();
+  assert.ok(exactOnly.start({
+    intervention: { id: "window-int-exact-default", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: POINTER_ONLY
+  }));
+
+  const lineage = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "process.exit(0)"] },
+    successorWindowPolicy: { mode: "same_process", transitionWindowMs: 650 }
+  });
+  assert.ok(lineage.start({
+    intervention: { id: "window-int-lineage", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: POINTER_ONLY
+  }));
+
+  assert.throws(
+    () => new WindowHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      successorWindowPolicy: { mode: "same_process", transitionWindowMs: 5 }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
+  );
+});
