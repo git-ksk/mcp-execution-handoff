@@ -54,26 +54,20 @@ async function readAcceptanceStatus(cookie) {
   return await (await get("/acceptance-status", { cookie })).json();
 }
 
-async function focusAndType(ws, cookie) {
-  const deadline = Date.now() + 8_000;
-  const inputPoints = [
-    { x: 0.42, y: 0.32 },
-    { x: 0.42, y: 0.36 },
-    { x: 0.42, y: 0.40 },
-    { x: 0.42, y: 0.44 },
-    { x: 0.42, y: 0.48 }
-  ];
-  let attempt = 0;
-  while (Date.now() < deadline) {
-    if ((await readAcceptanceStatus(cookie)).textObserved === true) return;
-    const point = inputPoints[attempt % inputPoints.length];
-    ws.send(JSON.stringify({ kind: "tap", x: point.x, y: point.y }));
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    attempt += 1;
-  }
-  throw new Error("WSS container acceptance timed out at text");
+async function diagnosticFocusAndType(ws, cookie) {
+  // This is a temporary CI diagnostic, not the final acceptance contract. First click blank page
+  // content through WSS so browser chrome cannot own keyboard focus, then use one out-of-band Tab
+  // to place DOM focus on the form's only focusable control. The text mutation itself still travels
+  // through WSS. This cleanly distinguishes a WSS text-injection failure from a tap/focus miss.
+  ws.send(JSON.stringify({ kind: "tap", x: 0.9, y: 0.7 }));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await dockerOk([
+    "exec", container, "sh", "-c",
+    "DISPLAY=:99 xdotool key --clearmodifiers Tab"
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
+  await waitFor("text", async () => (await readAcceptanceStatus(cookie)).textObserved === true, 8_000);
 }
 
 async function printBoundedDiagnostics() {
@@ -168,11 +162,8 @@ try {
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
   await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
 
-  // The form's input sits below Chromium's browser chrome. Exercise the real Human path instead
-  // of assuming autofocus: retry a bounded vertical band that covers the rendered input, then type
-  // after each explicit focus attempt. No typed text is ever reflected in diagnostics or state.
   stage = "text";
-  await focusAndType(ws, cookie);
+  await diagnosticFocusAndType(ws, cookie);
 
   stage = "scroll";
   ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
