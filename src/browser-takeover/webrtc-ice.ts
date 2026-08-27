@@ -162,7 +162,7 @@ export class CloudflareRealtimeTurnCredentialProvider implements WebRtcIceCreden
     let response: Response;
     try {
       response = await this.fetchImpl(
-        `${CLOUDFLARE_TURN_ORIGIN}/v1/turn/keys/${encodeURIComponent(this.config.turnKeyId)}/credentials/generate-ice-servers`,
+        `${CLOUDFLARE_TURN_ORIGIN}/v1/turn/keys/${encodeURIComponent(this.config.turnKeyId)}/credentials/generate`,
         {
           method: "POST",
           headers: this.headers(),
@@ -346,8 +346,11 @@ function parseCloudflareIceServers(value: unknown): IssuedCloudflareIceServers {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("TURN credential response is invalid");
   }
-  const raw = (value as Record<string, unknown>).iceServers;
-  if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_ICE_SERVERS) {
+  const rawValue = (value as Record<string, unknown>).iceServers;
+  const raw = Array.isArray(rawValue)
+    ? rawValue
+    : (rawValue && typeof rawValue === "object" ? [rawValue] : []);
+  if (raw.length < 1 || raw.length > MAX_ICE_SERVERS) {
     throw new Error("TURN credential response is invalid");
   }
 
@@ -360,10 +363,19 @@ function parseCloudflareIceServers(value: unknown): IssuedCloudflareIceServers {
     }
     const record = entry as Record<string, unknown>;
     const urls = parseIceUrls(record.urls);
-    const includesTurn = urls.some((url) => /^turns?:/i.test(url));
+    const stunUrls = urls.filter((url) => /^stuns?:/i.test(url));
+    const turnUrls = urls.filter((url) => /^turns?:/i.test(url));
     const username = record.username;
     const credential = record.credential;
-    if (includesTurn) {
+
+    // The current Cloudflare `/credentials/generate` response returns one ICE-server object whose
+    // URL list can mix STUN and TURN. Normalize it to the historical Handoff shape so STUN remains
+    // credential-free while TURN carries the short-lived username/credential. The older array
+    // response remains accepted for in-flight compatibility, but generation uses only the current endpoint.
+    if (stunUrls.length > 0) {
+      iceServers.push({ urls: stunUrls.length === 1 ? stunUrls[0]! : stunUrls });
+    }
+    if (turnUrls.length > 0) {
       if (
         typeof username !== "string" || username.length < 1 || Buffer.byteLength(username, "utf8") > MAX_ICE_CREDENTIAL_BYTES ||
         typeof credential !== "string" || credential.length < 1 || Buffer.byteLength(credential, "utf8") > MAX_ICE_CREDENTIAL_BYTES
@@ -372,9 +384,14 @@ function parseCloudflareIceServers(value: unknown): IssuedCloudflareIceServers {
       }
       turnUsernames.add(username);
       hasTurn = true;
-      iceServers.push({ urls: urls.length === 1 ? urls[0]! : urls, username, credential });
-    } else {
-      iceServers.push({ urls: urls.length === 1 ? urls[0]! : urls });
+      iceServers.push({
+        urls: turnUrls.length === 1 ? turnUrls[0]! : turnUrls,
+        username,
+        credential
+      });
+    }
+    if (iceServers.length > MAX_ICE_SERVERS) {
+      throw new Error("TURN credential response is invalid");
     }
   }
   if (!hasTurn || turnUsernames.size === 0) throw new Error("TURN credential response is invalid");
