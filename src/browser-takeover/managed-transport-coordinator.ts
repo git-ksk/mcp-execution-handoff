@@ -89,10 +89,12 @@ export class ManagedBrowserHandoffTransportCoordinator {
       const active = this.#assertActive(lease);
       await active.driver.revoke();
       this.#active = undefined;
-      this.#generation += 1;
 
       const nextIndex = active.index + 1;
-      if (nextIndex >= this.#drivers.length) return undefined;
+      if (nextIndex >= this.#drivers.length) {
+        this.#generation += 1;
+        return undefined;
+      }
       return this.#startDriver(nextIndex);
     });
   }
