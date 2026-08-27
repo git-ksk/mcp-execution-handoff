@@ -57,10 +57,11 @@ async function readAcceptanceStatus(cookie) {
 async function focusAndType(ws, cookie) {
   const deadline = Date.now() + 8_000;
   const inputPoints = [
-    { x: 0.42, y: 0.20 },
-    { x: 0.42, y: 0.24 },
-    { x: 0.42, y: 0.28 },
-    { x: 0.42, y: 0.32 }
+    { x: 0.42, y: 0.32 },
+    { x: 0.42, y: 0.36 },
+    { x: 0.42, y: 0.40 },
+    { x: 0.42, y: 0.44 },
+    { x: 0.42, y: 0.48 }
   ];
   let attempt = 0;
   while (Date.now() < deadline) {
@@ -167,9 +168,9 @@ try {
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
   await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
 
-  // Navigation arrival proves only that the form request reached the server. Exercise the real
-  // Human path instead of assuming autofocus or a continued media cadence: retry a bounded set of
-  // coordinates covering the visible input, then type only after each explicit focus attempt.
+  // The form's input sits below Chromium's browser chrome. Exercise the real Human path instead
+  // of assuming autofocus: retry a bounded vertical band that covers the rendered input, then type
+  // after each explicit focus attempt. No typed text is ever reflected in diagnostics or state.
   stage = "text";
   await focusAndType(ws, cookie);
 
