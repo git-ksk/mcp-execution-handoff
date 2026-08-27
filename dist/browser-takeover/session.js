@@ -203,6 +203,37 @@ export class TakeoverSessionManager {
             clientGeneration: record.clientGeneration
         };
     }
+    completeAfterVerification(interventionId, epoch) {
+        this.pruneExpired();
+        const now = this.now();
+        const completed = [];
+        for (const record of this.records.values()) {
+            if (record.interventionId !== interventionId || record.epoch !== epoch)
+                continue;
+            if (record.completed) {
+                completed.push({ ...this.locator(record), alreadyCompleted: true });
+                continue;
+            }
+            if (record.revoked || record.completionExpiresAt <= now)
+                continue;
+            record.completed = true;
+            record.revoked = true;
+            record.released = true;
+            // Verified completion may arrive near the end of the original completion-only grace.
+            // Retain only the terminal completed marker for one fresh bounded grace window; mutable
+            // media/input authority remains revoked and duplicate verification cannot extend it again.
+            record.completionExpiresAt = now + this.completionGraceMs;
+            completed.push({ ...this.locator(record), alreadyCompleted: false });
+        }
+        return completed;
+    }
+    isCompleted(id, principalBinding) {
+        const record = this.records.get(id);
+        if (!record || !record.completed || record.completionExpiresAt <= this.now())
+            return false;
+        this.assertPrincipal(record, principalBinding);
+        return true;
+    }
     revoke(id) {
         const record = this.records.get(id);
         if (record)

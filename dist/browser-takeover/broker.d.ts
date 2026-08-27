@@ -45,6 +45,8 @@ export declare class TakeoverBroker {
     private readonly publicOrigin;
     private readonly nativeOnlySessions;
     private readonly webRtcOnlySessions;
+    private readonly webRtcSessionInterventions;
+    private readonly verifiedCompletedWebRtcSessions;
     private readonly webSocketOnlySessions;
     private readonly webSocketRevokeHandlers;
     private readonly nativeTargetProcessIds;
@@ -64,6 +66,7 @@ export declare class TakeoverBroker {
     revokeForIntervention(interventionId: string): void;
     revokeNativeForIntervention(interventionId: string): Promise<void>;
     revokeWebRtcForIntervention(interventionId: string): Promise<void>;
+    completeWebRtcAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     private createExperimentalWebSocketSession;
     private attachExperimentalWebSocketRevokeHandler;
@@ -73,6 +76,7 @@ export declare class TakeoverBroker {
     private forgetWebSocketOnlyIntervention;
     private webRtcHooks;
     private forgetNativeOnlyIntervention;
+    private forgetVerifiedCompletedWebRtcIntervention;
     private forgetWebRtcOnlyIntervention;
     private webRtcInputPolicy;
     private publicGrant;

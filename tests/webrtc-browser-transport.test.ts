@@ -1250,3 +1250,57 @@ test("Done revokes broker generation and WebRTC runtime without treating relay a
   const stale = await prepare(broker, sessionId, "claim", CLIENT_A);
   assert.equal(stale.status, 404);
 });
+
+test("verified consumer completion returns terminal reconnect without spawning another host", async () => {
+  const { broker, runtime, sessionId, link } = fixture();
+  const first = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(runtime.starts.length, 1);
+
+  assert.equal(await broker.completeWebRtcAfterVerification({ id: "webrtc-intervention", epoch: 11 }), true);
+  assert.ok(runtime.revokes.includes(sessionId));
+
+  const reconnect = await prepare(broker, sessionId, "reconnect", CLIENT_B, first.reconnectHandle);
+  assert.equal(reconnect.status, 410);
+  assert.deepEqual(await reconnect.json(), { error: "takeover_completed", completed: true });
+
+  const wrongPrincipal = await broker.handle(new Request(
+    `http://localhost/takeover/api/webrtc-prepare-reconnect/${sessionId}`,
+    { method: "POST", headers: {
+      origin: ORIGIN,
+      "x-takeover-client": CLIENT_B,
+      "x-mcp-takeover-reconnect": first.reconnectHandle
+    } }
+  ), "principal-other");
+  assert.equal(wrongPrincipal.status, 404);
+  assert.equal(runtime.prepares.length, 1, "completed reconnect must not prepare new ICE/runtime state");
+  assert.equal(runtime.starts.length, 1, "completed reconnect must not spawn/start another host");
+
+  const page = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Remote control closed/);
+  assert.doesNotMatch(await (await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL)).text(), /webrtc-client\.js/);
+});
+
+test("verified consumer completion survives prior WebRTC route cleanup without reviving media", async () => {
+  const { broker, runtime, sessionId, link } = fixture();
+  const page = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
+  const completion = /data-completion="([A-Za-z0-9_-]{32,128})"/.exec(await page.text())?.[1];
+  assert.ok(completion);
+
+  const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  const humanDone = await broker.handle(new Request(`http://localhost/takeover/api/complete/${sessionId}`, {
+    method: "POST",
+    headers: { origin: ORIGIN, "x-mcp-takeover-completion": completion }
+  }), PRINCIPAL);
+  assert.equal(humanDone.status, 200);
+  assert.equal((await prepare(broker, sessionId, "reconnect", CLIENT_B, grant.reconnectHandle)).status, 404);
+
+  assert.equal(await broker.completeWebRtcAfterVerification({ id: "webrtc-intervention", epoch: 11 }), true);
+  const terminalPage = await broker.handle(new Request(`http://localhost${new URL(link).pathname}`), PRINCIPAL);
+  assert.equal(terminalPage.status, 200);
+  assert.match(await terminalPage.text(), /Remote control closed/);
+  const terminalReconnect = await prepare(broker, sessionId, "reconnect", CLIENT_B, grant.reconnectHandle);
+  assert.equal(terminalReconnect.status, 410);
+  assert.deepEqual(await terminalReconnect.json(), { error: "takeover_completed", completed: true });
+  assert.equal(runtime.starts.length, 1, "verified terminal recovery must not spawn another host");
+});

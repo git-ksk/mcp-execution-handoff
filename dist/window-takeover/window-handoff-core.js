@@ -14,6 +14,7 @@ export class WindowHandoffCore {
     #runtime;
     #broker;
     #routeTtlMs;
+    #initialSecureWindowPolicy;
     #sessionIds = new Set();
     #sessionsByIntervention = new Map();
     #expiryTimers = new Map();
@@ -22,9 +23,20 @@ export class WindowHandoffCore {
         if (config.successorWindowPolicy && !successorPolicy) {
             throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "Window successor policy must use same_process with a transition window between 100 and 2000 ms");
         }
+        const initialSecureWindowPolicy = normalizeInitialSecureWindowPolicy(config.initialSecureWindowPolicy);
+        if (config.initialSecureWindowPolicy && !initialSecureWindowPolicy) {
+            throw new WindowHandoffCoreError("INITIAL_SECURE_WINDOW_POLICY_INVALID", "initial secure Window policy must use macos_local_authentication");
+        }
+        if (successorPolicy && initialSecureWindowPolicy) {
+            throw new WindowHandoffCoreError("INITIAL_SECURE_WINDOW_POLICY_INVALID", "initial secure Window policy cannot be combined with successor-window lineage");
+        }
+        this.#initialSecureWindowPolicy = initialSecureWindowPolicy;
         const completionGraceMs = config.takeover.completionGraceMs ?? config.takeover.ttlMs;
-        this.#routeTtlMs = config.takeover.ttlMs + completionGraceMs;
-        this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigForHandoff(config.runtime, config.mediaProfile, successorPolicy));
+        // A consumer-verified completion can occur near the end of the original completion grace and
+        // then retains only a terminal closed page for one fresh grace window. Keep route ownership for
+        // that bounded maximum lifetime; broker/session state remains authoritative for actual access.
+        this.#routeTtlMs = config.takeover.ttlMs + (2 * completionGraceMs);
+        this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigForHandoff(config.runtime, config.mediaProfile, successorPolicy, initialSecureWindowPolicy));
         this.#broker = new TakeoverBroker(webRtcOnlySurfaceAdapter(), config.takeover, undefined, this.#runtime, config.onComplete ? { completed: config.onComplete } : {});
     }
     isEnabled() {
@@ -48,6 +60,14 @@ export class WindowHandoffCore {
         if (!validInputPolicy(request.inputPolicy)) {
             throw new WindowHandoffCoreError("INPUT_POLICY_INVALID", "bounded Window Handoff requires an explicit Human input policy");
         }
+        if (this.#initialSecureWindowPolicy) {
+            if (request.target.windowId !== undefined) {
+                throw new WindowHandoffCoreError("TARGET_INVALID", "LocalAuthentication Window Handoff resolves the current exact system window from PID only");
+            }
+            if (!localAuthenticationInputPolicy(request.inputPolicy)) {
+                throw new WindowHandoffCoreError("INPUT_POLICY_INVALID", "LocalAuthentication Window Handoff permits Human tap plus secure text/backspace only");
+            }
+        }
         const locator = this.#broker.createWebRtcLink(request.intervention, request.principalBinding, request.target, request.inputPolicy);
         if (!locator)
             throw new WindowHandoffCoreError("UNAVAILABLE", "bounded Window WebRTC Handoff is unavailable");
@@ -60,6 +80,9 @@ export class WindowHandoffCore {
     async revoke(interventionId) {
         this.#forgetIntervention(interventionId);
         await this.#broker.revokeWebRtcForIntervention(interventionId);
+    }
+    async completeAfterVerification(intervention) {
+        return this.#broker.completeWebRtcAfterVerification(intervention);
     }
     /**
      * Synchronously revoke an unclaimed locator/control-plane session.
@@ -130,6 +153,9 @@ function validTarget(target) {
 function validInputPolicy(policy) {
     return validWindowHandoffInputPolicy(policy);
 }
+function localAuthenticationInputPolicy(policy) {
+    return policy.tap === true && policy.scroll === false && policy.text === true && policy.key === true;
+}
 function takeoverSessionIdFromPath(pathname) {
     const page = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
     if (page)
@@ -149,6 +175,14 @@ function webRtcOnlySurfaceAdapter() {
         pressHumanTakeoverKey: unavailable
     };
 }
+function normalizeInitialSecureWindowPolicy(policy) {
+    if (!policy || typeof policy !== "object" || Array.isArray(policy))
+        return undefined;
+    const record = policy;
+    if (Object.keys(record).length !== 1 || record.mode !== "macos_local_authentication")
+        return undefined;
+    return { mode: "macos_local_authentication" };
+}
 function normalizeSuccessorPolicy(policy) {
     if (!policy)
         return undefined;
@@ -164,8 +198,8 @@ function normalizeSuccessorPolicy(policy) {
         return undefined;
     return { mode: "same_process", transitionWindowMs };
 }
-function runtimeConfigForHandoff(runtime, mediaProfile, policy) {
-    if (!mediaProfile && !policy)
+function runtimeConfigForHandoff(runtime, mediaProfile, policy, initialSecureWindowPolicy) {
+    if (!mediaProfile && !policy && !initialSecureWindowPolicy)
         return runtime;
     const baseSpawn = runtime.spawnProcess ?? spawn;
     const spawnProcess = ((command, args, options) => {
@@ -175,6 +209,9 @@ function runtimeConfigForHandoff(runtime, mediaProfile, policy) {
         if (policy) {
             env.TAKEOVER_WEBRTC_WINDOW_LINEAGE = "same_process_successor";
             env.TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS = String(policy.transitionWindowMs);
+        }
+        if (initialSecureWindowPolicy) {
+            env.TAKEOVER_WEBRTC_INITIAL_SECURE_WINDOW = initialSecureWindowPolicy.mode;
         }
         return baseSpawn(command, args, { ...options, env });
     });

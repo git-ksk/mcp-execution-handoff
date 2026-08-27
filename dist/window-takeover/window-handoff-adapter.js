@@ -41,6 +41,10 @@ export class WindowHandoffAdapter {
     }
     async revoke(interventionId) { await this.#core.revoke(interventionId); }
     async revokeForIntervention(interventionId) { await this.revoke(interventionId); }
+    /** Fence a session only after the consumer independently verifies the Human action succeeded. */
+    async completeAfterVerification(intervention) {
+        return this.#core.completeAfterVerification(intervention);
+    }
     /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
     revokeUnclaimed(interventionId) { this.#core.revokeUnclaimed(interventionId); }
     handle(request, boundPrincipal) { return this.#core.handle(request, boundPrincipal); }
@@ -57,7 +61,9 @@ function translateError(error) {
             ? "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
             : error.code === "SUCCESSOR_POLICY_INVALID"
                 ? "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
-                : "WINDOW_HANDOFF_UNAVAILABLE";
+                : error.code === "INITIAL_SECURE_WINDOW_POLICY_INVALID"
+                    ? "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+                    : "WINDOW_HANDOFF_UNAVAILABLE";
     return new WindowHandoffAdapterError(code, error.message);
 }
 //# sourceMappingURL=window-handoff-adapter.js.map

@@ -201,3 +201,143 @@ test("Window Handoff successor lineage is explicit and bounded while exact-one r
       && error.code === "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
   );
 });
+
+test("LocalAuthentication initial secure Window policy is explicit PID-only Human secure-input authority", () => {
+  const secure = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "process.exit(0)"] },
+    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+  });
+  assert.ok(secure.start({
+    intervention: { id: "window-int-local-auth", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 6050 },
+    inputPolicy: { tap: true, scroll: false, text: true, key: true }
+  }));
+  assert.throws(
+    () => secure.start({
+      intervention: { id: "window-int-local-auth-stale-window", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 6050, windowId: 28942 },
+      inputPolicy: { tap: true, scroll: false, text: true, key: true }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_TARGET_INVALID"
+  );
+  assert.throws(
+    () => secure.start({
+      intervention: { id: "window-int-local-auth-policy-widened", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 6050 },
+      inputPolicy: { tap: true, scroll: true, text: true, key: true }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
+  );
+  assert.throws(
+    () => secure.start({
+      intervention: { id: "window-int-local-auth-no-key", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 6050 },
+      inputPolicy: { tap: true, scroll: false, text: true, key: false }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
+  );
+});
+
+test("LocalAuthentication policy is closed-world and cannot combine with successor lineage", () => {
+  assert.throws(
+    () => new WindowHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      initialSecureWindowPolicy: { mode: "other" } as never
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+  );
+  assert.throws(
+    () => new WindowHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      successorWindowPolicy: { mode: "same_process" },
+      initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+  );
+});
+
+test("verified consumer completion leaves a terminal closed route without reviving media", async () => {
+  const adapter = fixture();
+  const intervention = { id: "window-int-verified-complete", epoch: 12 } as const;
+  const locator = adapter.start({
+    intervention,
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: POINTER_ONLY
+  });
+  const sessionId = new URL(locator).pathname.split("/").at(-1)!;
+
+  assert.equal(await adapter.completeAfterVerification({ id: intervention.id, epoch: 11 }), false);
+  assert.equal(await adapter.completeAfterVerification(intervention), true);
+  assert.equal(await adapter.completeAfterVerification(intervention), true);
+
+  const page = await adapter.handle(new Request(`http://localhost${new URL(locator).pathname}`), PRINCIPAL);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Remote control closed/);
+
+  const reconnect = await adapter.handle(new Request(
+    `http://localhost/takeover/api/webrtc-prepare-reconnect/${sessionId}`,
+    {
+      method: "POST",
+      headers: {
+        origin: ORIGIN,
+        "x-takeover-client": "window-client-verified-1234567890",
+        "x-mcp-takeover-reconnect": "x".repeat(43)
+      }
+    }
+  ), PRINCIPAL);
+  assert.equal(reconnect.status, 410);
+  assert.deepEqual(await reconnect.json(), { error: "takeover_completed", completed: true });
+});
+
+
+test("verified terminal route survives the original route cleanup boundary only for bounded grace", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: {
+      enabled: true,
+      publicBaseUrl: ORIGIN,
+      ttlMs: 1_000,
+      reconnectIdleMs: 250,
+      completionGraceMs: 1_500
+    },
+    runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "setInterval(()=>{},1000)"] },
+    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+  });
+  const locator = adapter.start({
+    intervention: { id: "window-int-verified-late", epoch: 3 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: { tap: true, scroll: false, text: true, key: true }
+  });
+  const sessionId = new URL(locator).pathname.split("/").at(-1)!;
+  const client = "window-client-late-verified-1234567890";
+  const claimed = await adapter.handle(new Request(
+    `http://localhost/takeover/api/webrtc-prepare-claim/${sessionId}`,
+    { method: "POST", headers: { origin: ORIGIN, "x-takeover-client": client } }
+  ), PRINCIPAL);
+  assert.equal(claimed.status, 200);
+
+  await new Promise((resolve) => setTimeout(resolve, 2_350));
+  assert.equal(await adapter.completeAfterVerification({ id: "window-int-verified-late", epoch: 3 }), true);
+
+  // Cross the old ttl + completionGrace + cleanup-slack boundary (3.5s from start).
+  await new Promise((resolve) => setTimeout(resolve, 1_250));
+  assert.equal(adapter.ownsPath(new URL(locator).pathname), true);
+  const terminalPage = await adapter.handle(new Request(`http://localhost${new URL(locator).pathname}`), PRINCIPAL);
+  assert.equal(terminalPage.status, 200);
+  assert.match(await terminalPage.text(), /Remote control closed/);
+
+  await adapter.revoke("window-int-verified-late");
+});

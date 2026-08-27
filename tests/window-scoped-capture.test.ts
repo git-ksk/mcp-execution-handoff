@@ -74,7 +74,7 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.match(host, /case \.rejected:\s*controlWriter\.submitInputTextRoute\(\.nativeBoundaryRejected\)\s*return/);
   assert.match(
     host,
-    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*targetAuthority: targetAuthority,\s*afterPrimaryRelease: \{ lineageController\?\.afterPrimaryRelease\(\) \},\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
+    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*targetAuthority: targetAuthority,\s*initialSecureWindowPolicy: initialSecureWindowPolicy,\s*afterPrimaryRelease: \{ lineageController\?\.afterPrimaryRelease\(\) \},\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
   );
   assert.match(host, /private var primaryPressed = false/);
   assert.match(host, /case \"pointer_button\"/);
@@ -244,4 +244,33 @@ test("Window text media profile raises only the Window quality ceiling without c
   assert.match(acceptance, /inputPolicy: \{ tap: false, scroll: false, text: false, key: false \}/);
   assert.match(acceptance, /Refusing direct media-quality LAN acceptance while TURN credentials are present/);
   assert.doesNotMatch(acceptance, /kind: "tap"|kind: "text"|tccutil|password/i);
+});
+
+test("macOS LocalAuthentication initial secure Window admission stays explicit and system-identity bound", () => {
+  const adapter = source("src/window-takeover/window-handoff-adapter.ts");
+  const core = source("src/window-takeover/window-handoff-core.ts");
+  const exact = source("experiments/thin-takeover-runtime/Sources/TakeoverMacOSWindow/ExactWindowSurface.swift");
+  const host = source("experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift");
+
+  assert.match(adapter, /initialSecureWindowPolicy\?: WindowHandoffInitialSecureWindowPolicy/);
+  assert.match(adapter, /mode: "macos_local_authentication"/);
+  assert.match(core, /TAKEOVER_WEBRTC_INITIAL_SECURE_WINDOW = initialSecureWindowPolicy\.mode/);
+  assert.match(core, /LocalAuthentication Window Handoff permits Human tap plus secure text\/backspace only/);
+  assert.match(core, /request\.target\.windowId !== undefined/);
+  assert.match(exact, /com\.apple\.LocalAuthentication\.UIAgent/);
+  assert.match(exact, /com\.apple\.LocalAuthentication\.PasscodeDialog/);
+  assert.match(exact, /window\.layer != 0/);
+  assert.match(exact, /window\.isFocused/);
+  assert.match(exact, /window\.isMain/);
+  assert.match(exact, /eligible\.count == 1/);
+  assert.match(exact, /MacOSLocalAuthenticationWindowInput/);
+  assert.match(exact, /kAXFocusedWindowAttribute/);
+  assert.match(host, /TAKEOVER_WEBRTC_INITIAL_SECURE_WINDOW/);
+  assert.match(host, /MacOSLocalAuthenticationWindowInput\.verifyFocusedSecureTextField\(/);
+  assert.match(host, /initialSecureWindowPolicy == \.macosLocalAuthentication[\s\S]*key == "Backspace"/);
+  assert.match(host, /text\.utf8\.count <= 256/);
+  assert.doesNotMatch(host, /MCP_HANDOFF_DIAGNOSTIC[^\n]*\\\\(text\\\\)/);
+  assert.match(host, /MacOSLocalAuthenticationWindowCapture\.resolve/);
+  assert.match(host, /MacOSLocalAuthenticationWindowInput\.verifyFocused/);
+  assert.doesNotMatch(exact, /layer >= 0/);
 });
