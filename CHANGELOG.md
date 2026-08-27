@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-27
+
 - Complete the v0.3 crash/restart recovery gate (#130) with deterministic first-class conformance across every persisted lifecycle phase, stale Browser/Window locator/capability/generation/reconnect rejection, Terminal Human-active restart and PTY exit, checkpoint tamper/expiry/principal/adapter mismatch, and interrupted writes. Recovery remains hint-only `reissue_and_revalidate`; no stale transport authority or queued Human Terminal input is replayed after restart.
 - Add stable identifier-free operator diagnostics v1 across first-class Browser, Window, and Terminal Handoff (#129). `operatorDiagnosticsSnapshot()` exposes only bounded generic health/failure categories plus namespaced WebRTC/Terminal facts; strict parsing rejects identifiers, target/network/content/input/credential/media fields and false parity, while existing detailed WebRTC diagnostics/latency and Terminal status APIs remain compatible for transport-specific troubleshooting.
 - Stabilize generic execution audit as privacy-bounded schema v1 (#128): retain the existing checkpoint/recovery event names, require `version: 1`, strictly bound and enumerate every field, reject free-form/extra content, cap the in-memory reference sink at the newest 256 events, and contain sink failures as observe-only notifications so audit cannot grant/revoke/restore authority or change checkpoint/recovery outcomes.
