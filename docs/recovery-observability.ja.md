@@ -119,6 +119,33 @@ checkpointは「interventionが存在した」「どのbounded resume policyだ�
 - interrupted actionを自動replayする
 - consumer semantic verificationを省略する
 
+### Deterministic restart conformance matrix
+
+#130ではfirst-class deterministic testでrestart境界を固定します。process restartは、in-memoryのauthority / transport objectをすべて破棄し、durable checkpoint storeだけを残してfresh adapter/runtimeを再構築する形でmodel化します。target/session objectはrestart境界を跨いでコピーしません。
+
+| crash / loss point | surviving state | restart後 | 必須の次手 |
+| --- | --- | --- | --- |
+| `awaiting_human` | bounded checkpointのみ | intervention / Human leaseは再構築されない | consumer target/sessionを再構築し、cancelまたはfresh Human roundを開始 |
+| `human_active` | bounded checkpointのみ | 旧Human authority / transportは消失 | target stateを再読込し、必要な場合だけfresh Human roundを開始 |
+| `verifying` | bounded checkpointのみ | crash前verification authorityは復元されない | consumerがfresh semantic/postcondition verificationを実施 |
+| reissue前の `ready_to_resume` | bounded checkpointのみ | Agent auto-resume / action replayなし | revalidate後、通常lifecycleから明示reissue |
+| Browser / Window locator、capability、generation、reconnect handle | いずれもdurableではない | restart後の旧page/capability/reconnect requestは拒否 | revalidation後にfresh first-class adapter session / locatorを発行 |
+| Terminal Human-active中のconsumer restart | PTY byte / queue / locator / transport authorityは残らない | fresh PTY/session generationは旧intervention/transportを持たず、旧queued Human inputも読めない | fresh consumer-owned PTY/sessionを再構築し、Agent利用前にstate同期 |
+| Human-active中のTerminal PTY/process exit | replacement PTYは生成しない | authority=`none`、lifecycle=`verifying`、session dead | dead-session stateからverify/cancelし、そのPTYへAgent/Human inputを復活させない |
+| tamper / expiry / principal mismatch / adapter mismatch | reject対象のbounded metadataのみ | fail closedまたはrecordなし | 原因確認またはfresh lifecycle開始。validationを緩めない |
+| checkpoint write interruption | partially trusted recovery recordなし | write errorを返す前にactive interventionをcancel/fence | fresh consumer stateから再構築・再検証 |
+
+conformance fixtureではsimulated restart直前にTerminal Human inputをqueueし、fresh adapterから取得できないことも証明します。generic recovery経由でHuman-period byteがAgentへreplayされることはありません。
+
+### Restart後のoperator guidance
+
+1. `recover()` は**hint**として扱い、resumeやtarget mutationのpermissionにはしない。active interventionは再生成されない。
+2. consumerの通常ownership pathからtarget/sessionを再構築する。Browser / Windowはfresh locator/capability generationを発行し、Terminalはfresh consumer-owned PTY/session generationを使う。
+3. targetの現在semantic/postcondition stateを再読込する。crash前の `Done` / `verifying` / `ready_to_resume` checkpointは意図したaction完了の証明ではない。
+4. identity / ownership / target state / postconditionがunknown・changed・ambiguousならfail closedし、replayではなくcancelまたはfresh Human roundを選ぶ。
+5. TerminalはHuman-period stateをdiscard/re-readし、通常のAgent-state synchronization boundaryをacknowledgeしてからAgent input/observation/resizeを再開する。旧processのqueued Human input/outputはreplayしない。
+6. recovered workをconsumerが明示的に解決した後だけcheckpointをclearする。audit / diagnostics snapshotはobservability dataのままで、recovery authorityにはしない。
+
 ## Audit boundary
 
 Auditはdurable-friendlyな **generic control-plane event stream** であり、execution transcriptではありません。v0.3では既存event名 `checkpoint_written` / `checkpoint_cleared` / `recovery_requested` を維持したままschema **version 1** をstable化します。runtimeがemitするeventはすべて `version: 1` を持ちます。event-name stringはpre-v0.3 baselineと互換ですが、audit recordを直接constructしていたconsumerはversioned shapeへ移行する必要があります。

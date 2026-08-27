@@ -40,7 +40,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #127 | v0.3 durable recovery | **Complete.** `HandoffCheckpointStore` is synchronous/provider-neutral, loaded values are untrusted and strictly revalidated by Handoff, the signed-file store remains compatible, and recovery is still only `reissue_and_revalidate`. |
 | #128 | v0.3 audit | **Complete.** Stable v1 strict audit union keeps the existing checkpoint/recovery event names, bounds fields/cardinality, uses a 256-event memory reference sink, and makes sink failure observe-only without an unbounded core queue. |
 | #129 | v0.3 diagnostics | **Complete.** Stable identifier-free v1 operator summaries are exposed by Browser/Window/Terminal, with generic bounded health/failure categories and target/transport-specific facts kept in `webrtc`, `terminal_session`, and `terminal_webrtc` namespaces; detailed diagnostics remain compatible. |
-| #130 | v0.3 restart conformance | **v0.3 recovery gate.** Prove crashes/restarts across lifecycle phases cannot resurrect stale authority, locators/capabilities, generations, request state, media/input sessions, or PTY authority. |
+| #130 | v0.3 restart conformance | **Complete / v0.3 recovery gate.** Deterministic first-class tests cover all persisted lifecycle phases, stale Browser/Window locator/capability/generation/reconnect rejection, Terminal Human-active restart/PTY exit, checkpoint corruption/mismatch/expiry, and interrupted writes without stale authority or Human-input replay. |
 | #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -113,7 +113,7 @@ Tracked work:
 - #127 — **complete:** provider-neutral synchronous bounded checkpoint-store contract; the signed-file store remains the reference implementation and loaded values stay Handoff-validated;
 - #128 — **complete:** stable privacy-bounded v1 audit contract, strict field bounds, bounded memory sink, and observe-only sink-failure semantics;
 - #129 — **complete:** stable identifier-free v1 operator summaries across Browser/Window/Terminal, with namespaced target/transport facts and existing detailed diagnostics retained;
-- #130 — deterministic crash/restart conformance and the release-level stale-authority gate.
+- #130 — **complete:** deterministic first-class crash/restart conformance and the release-level stale-authority gate.
 
 Implementation order is #127 first, #128/#129 in parallel once their shared data-classification boundary is concrete, then #130 as the conformance gate.
 

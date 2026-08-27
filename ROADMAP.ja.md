@@ -42,7 +42,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #127 | v0.3 durable recovery | **完了。** `HandoffCheckpointStore` を同期型provider-neutral contractとして導入し、load値はuntrustedのままHandoffがstrict再検証。signed-file store互換を維持し、recoveryは `reissue_and_revalidate` のみ。 |
 | #128 | v0.3 audit | **完了。** 既存checkpoint/recovery event名を維持したstable v1 strict audit union、field/cardinality上限、256件memory reference sink、observe-onlyなsink failure semanticsを固定。 |
 | #129 | v0.3 diagnostics | **完了。** Browser / Window / Terminalへidentifier-freeなstable v1 operator summaryを追加し、generic bounded health/failure categoryと `webrtc` / `terminal_session` / `terminal_webrtc` namespaceへ固有factを分離。既存詳細diagnosticsも互換維持。 |
-| #130 | v0.3 restart conformance | **v0.3 recovery gate。** lifecycle各phaseのcrash/restartでstale authority、locator/capability、generation、request state、media/input session、PTY authorityが復活しないことを証明。 |
+| #130 | v0.3 restart conformance | **完了 / v0.3 recovery gate。** 全persisted lifecycle phase、Browser / Window旧locator/capability/generation/reconnect拒否、Terminal Human-active restart / PTY exit、checkpoint tamper/mismatch/expiry、write interruptionをdeterministic first-class testでcoverageし、stale authority / Human input replayなしを固定。 |
 | #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -115,7 +115,7 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 - #127 — **完了:** provider-neutral / synchronous / bounded checkpoint-store contract。signed-file storeをreference implementationとして維持し、load値はHandoff側で再検証
 - #128 — **完了:** stable / privacy-bounded v1 execution audit contract、strict field bounds、bounded memory sink、observe-only sink failure semantics
 - #129 — **完了:** Browser / Window / Terminal横断のidentifier-free stable v1 operator summary。target / transport固有factはnamespace分離し、既存詳細diagnosticsも維持
-- #130 — deterministic crash/restart conformanceとrelease-level stale-authority gate
+- #130 — **完了:** deterministic first-class crash/restart conformanceとrelease-level stale-authority gate
 
 実装順は #127 を先に行い、共通data-classification boundaryが具体化した後に #128 / #129 を並行し、最後に #130 をconformance gateとして閉じます。
 

@@ -119,6 +119,33 @@ The checkpoint can tell an operator or consumer that an intervention existed and
 - replay an interrupted action;
 - skip consumer semantic verification.
 
+### Deterministic restart conformance matrix
+
+#130 freezes the restart boundary with first-class deterministic tests. A process restart is modeled by discarding every in-memory authority/transport object and constructing a fresh adapter/runtime with only the durable checkpoint store retained. No target/session object is copied across that boundary.
+
+| Crash / loss point | State allowed to survive | Restart outcome | Required next step |
+| --- | --- | --- | --- |
+| `awaiting_human` | bounded checkpoint only | no intervention or Human lease is reconstructed | reconstruct the consumer target/session, then cancel or start a fresh Human round |
+| `human_active` | bounded checkpoint only | old Human authority and transport are gone | re-read target state and start a fresh Human round only if still required |
+| `verifying` | bounded checkpoint only | no pre-crash verification authority is restored | perform fresh consumer semantic/postcondition verification |
+| `ready_to_resume` before reissue | bounded checkpoint only | no automatic Agent resume or action replay | revalidate and explicitly reissue through the normal lifecycle |
+| Browser / Window locator, capability, generation, reconnect handle | none of these are durable | old page/capability/reconnect requests are rejected after restart | create a fresh first-class adapter session and locator after revalidation |
+| Terminal Human-active consumer restart | no PTY bytes, queue, locator, or transport authority | a fresh PTY/session generation has no old intervention/transport and cannot read old queued Human input | reconstruct a fresh consumer-owned PTY/session and synchronize state before Agent use |
+| Terminal PTY/process exit while Human is active | no replacement PTY is synthesized | authority becomes `none`, lifecycle enters `verifying`, session is dead | verify/cancel from the dead-session state; never restore Agent/Human input to that PTY |
+| tamper / expiry / principal mismatch / adapter mismatch | rejected bounded metadata only | recovery fails closed or returns no record | investigate or begin a fresh lifecycle; never weaken validation |
+| checkpoint write interruption | no partially trusted recovery record | active intervention is cancelled/fenced before the write error escapes | reconstruct and revalidate from fresh consumer state |
+
+The conformance fixture also queues Human Terminal input immediately before the simulated restart and proves that the fresh adapter cannot retrieve it. Human-period bytes are therefore not replayed to Agent through generic recovery.
+
+### Operator guidance after a restart
+
+1. Treat `recover()` as a **hint**, never as permission to call resume or mutate the target. It does not recreate an active intervention.
+2. Reconstruct the target/session through the consumer's normal ownership path. Browser/Window must issue a fresh locator/capability generation; Terminal must use a fresh consumer-owned PTY/session generation.
+3. Re-read the target's current semantic/postcondition state. A pre-crash `Done`, `verifying`, or `ready_to_resume` checkpoint is not proof that the intended action completed.
+4. If identity, ownership, target state, or postcondition is unknown/changed/ambiguous, fail closed: cancel the recovered work or start a fresh Human round instead of replaying it.
+5. For Terminal, discard/re-read Human-period state and acknowledge the normal Agent-state synchronization boundary before Agent input/observation/resize. Never replay queued Human input/output from the old process.
+6. Clear the checkpoint only after the consumer has deliberately resolved the recovered work; audit/diagnostic snapshots remain observability data and are never recovery authority.
+
 ## Audit boundary
 
 Audit is a durable-friendly **generic control-plane event stream**, not an execution transcript. v0.3 stabilizes schema **version 1** with the existing event names `checkpoint_written`, `checkpoint_cleared`, and `recovery_requested`. Every emitted event now carries `version: 1`; the event-name strings remain source-compatible with the pre-v0.3 baseline, while consumers that construct audit records directly must migrate to the versioned shape.
