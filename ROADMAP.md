@@ -27,16 +27,18 @@ The three proven **surface shapes** are Browser, bounded OS Window, and bounded 
 
 Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: their supported work is now represented by first-class bounded Window/WebRTC/WSS evidence and the narrower #56/#19/#12 follow-ups plus completed #94 evidence; whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
-Issue #94 is complete: post-#99/#101 evidence shows the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. Media quality (#56) and Linux editable-region parity (#34) remain the next bounded transport/host improvements.
+Issue #94 is complete: post-#99/#101 evidence shows the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. That acceptance also exposed the narrower successor-window problem: an authorized Human action can legitimately create a modal, sheet, file chooser, or secondary window that the original exact-window binding must not silently follow. Issue #124 is therefore the next bounded Window-authority follow-up. Desktop authority remains a separate future escalation in #125 and must not become a hidden fallback.
 
-### Post-v0.2.0 follow-up issue map — 4 issues
+### Post-v0.2.0 follow-up issue map — 6 issues
 
 The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog is mapped below.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
+| #124 | v0.2.x Window authority | **Next bounded Window follow-up.** Admit only a uniquely proven successor modal/sheet/file-chooser/secondary window, fence the old target first, and fail closed on ambiguity; never follow arbitrary frontmost state or widen to a desktop. |
 | #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
 | #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
+| #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
 
@@ -67,7 +69,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 `v0.2.0` is the current **GitHub source release**. It is a minor pre-1.0 boundary because the public surface materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are exported, and the Window/Terminal package subpaths are part of the source package shape.
 
-The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closes only after the tag and GitHub Release are verified. #94, #56, and #34 are the immediate v0.2.x hardening follow-ups; #19 and #12 remain later transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
+The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closed after the tag and GitHub Release were verified. #124, #56, and #34 are the immediate v0.2.x hardening follow-ups; #125, #19, and #12 remain later authority/transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -77,7 +79,9 @@ Current scope and closeout:
 
 - keep Browser, Window, and Terminal as first-class consumer-facing components without forcing their distinct media/stream mechanics behind one premature generic surface interface;
 - retain #85's completed physical Window evidence across both same-LAN direct and public Tunnel/TURN relay paths, including stale-locator rejection;
-- retain #94 as completed evidence: exact-window Human-only macOS input passes the tested secure System Settings control without privileged/desktop fallback; any future broader backend requires a separately reviewed escalation;
+- retain #94 as completed evidence: exact-window Human-only macOS input passes the tested secure System Settings control without privileged/desktop fallback;
+- use #124 to prove bounded successor-window rotation for modal/sheet/file-chooser flows, fencing the old target first and rejecting arbitrary-frontmost or ambiguous transitions;
+- keep #125 as a separate explicit Human-only Desktop authority investigation, sequenced after #124 unless physical evidence proves a workflow cannot be represented by bounded window lineage;
 - improve bounded Window media legibility in #56 without regressing latency/backpressure, and close Linux editable-region parity in #34 without CDP/DOM/credential exposure;
 - keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;
 - formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;
@@ -123,7 +127,7 @@ Candidate scope:
 - finish the provider-neutral connectivity/relay boundary in #19 without exposing ICE/TURN/provider choice to consumers;
 - define the hosted control-plane + stateful execution-worker topology in #12 with bounded durable state and authenticated outbound worker connectivity;
 - retain the #13 closeout decision: the historical Thin Takeover/mandatory custom Native-client umbrella is superseded by the accepted WebRTC path and completed WSS evaluation; any future native-client work must return as a new narrowly evidenced requirement;
-- retain the #11 closeout decision: first-class bounded Window Handoff plus #94 secure UI and #56 media quality supersede the old full-desktop/provider-latency umbrella; desktop-wide authority remains outside the default boundary;
+- retain the #11 closeout decision: first-class bounded Window Handoff plus #94 secure UI, #124 successor-window lineage, and #56 media quality supersede the old full-desktop/provider-latency umbrella; #125 may investigate explicit Desktop authority, but desktop-wide control remains outside the default Window boundary;
 - validate any additional low-latency push/latest-frame or native Human Takeover path only when it adds evidence not already covered by current WebRTC/WSS acceptance.
 
 ### Transport family direction
