@@ -8,6 +8,8 @@ const image = process.env.HANDOFF_WSS_ACCEPT_IMAGE ?? "handoff-wss-acceptance:lo
 const origin = "https://acceptance.example";
 const container = `handoff-wss-accept-${process.pid}`;
 const MAX_DIAGNOSTIC_BYTES = 16 * 1024;
+const INPUT_X = 0.42;
+const INPUT_Y_CANDIDATES = [0.3, 0.34, 0.38];
 let stage = "docker-run";
 
 function docker(args, stdio = "pipe") {
@@ -54,20 +56,35 @@ async function readAcceptanceStatus(cookie) {
   return await (await get("/acceptance-status", { cookie })).json();
 }
 
-async function diagnosticFocusAndType(ws, cookie) {
-  // This is a temporary CI diagnostic, not the final acceptance contract. First click blank page
-  // content through WSS so browser chrome cannot own keyboard focus, then use one out-of-band Tab
-  // to place DOM focus on the form's only focusable control. The text mutation itself still travels
-  // through WSS. This cleanly distinguishes a WSS text-injection failure from a tap/focus miss.
-  ws.send(JSON.stringify({ kind: "tap", x: 0.9, y: 0.7 }));
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  await dockerOk([
-    "exec", container, "sh", "-c",
-    "DISPLAY=:99 xdotool key --clearmodifiers Tab"
-  ]);
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
-  await waitFor("text", async () => (await readAcceptanceStatus(cookie)).textObserved === true, 8_000);
+async function focusAndTypeViaWss(ws, cookie) {
+  for (const y of INPUT_Y_CANDIDATES) {
+    ws.send(JSON.stringify({ kind: "tap", x: INPUT_X, y }));
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
+    try {
+      await waitFor("text", async () => (await readAcceptanceStatus(cookie)).textObserved === true, 2_000);
+      return;
+    } catch {}
+  }
+  throw new Error("WSS container acceptance could not focus and type into the bounded form");
+}
+
+async function submitViaWss(ws, cookie) {
+  // The scroll path intentionally re-establishes top-level window focus before wheel injection.
+  // Return to the top and explicitly re-focus the form control through WSS before pressing Enter;
+  // no out-of-band keyboard or pointer input is allowed in the final physical acceptance contract.
+  ws.send(JSON.stringify({ kind: "scroll", deltaY: -900 }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  for (const y of INPUT_Y_CANDIDATES) {
+    ws.send(JSON.stringify({ kind: "tap", x: INPUT_X, y }));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
+    try {
+      await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 2_000);
+      return;
+    } catch {}
+  }
+  throw new Error("WSS container acceptance could not submit the bounded form");
 }
 
 async function printBoundedDiagnostics() {
@@ -163,15 +180,14 @@ try {
   await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
 
   stage = "text";
-  await diagnosticFocusAndType(ws, cookie);
+  await focusAndTypeViaWss(ws, cookie);
 
   stage = "scroll";
   ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
   await waitFor("scroll", async () => (await readAcceptanceStatus(cookie)).scrollObserved === true);
 
   stage = "submit";
-  ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
-  await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true);
+  await submitViaWss(ws, cookie);
 
   stage = "done";
   ws.send(JSON.stringify({ kind: "done" }));
