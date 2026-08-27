@@ -210,10 +210,14 @@ Handoff WebRTC runtime
   │    → macOS Window `window_text`: no upscale, ≤1920×1080 / 5 Mbps / 30 fps / quality-priority
   │    → maxInFlight=1 → latest pending encoded frame only (both profiles)
   │    → RFC 6184 RTP → SRTP/DTLS → Safari playsinline video
-  └─ Safari direct tap/swipe/iOS keyboard
-       → bounded WebRTC DataChannels
-       → exact generation authority gate
-       → bounded local helper pipe → CoreGraphics input
+  ├─ Safari direct tap/swipe/iOS keyboard
+  │    → bounded WebRTC DataChannels
+  │    → exact generation authority gate
+  │    → bounded local helper pipe → CoreGraphics/X11 input
+  └─ Linux read-only AT-SPI metadata
+       → exact target process ancestry + top-level geometry gate
+       → bounded editable-region/focus booleans only
+       → no accessible name/text/value, DOM, CDP, or credentials
 ```
 
 The realtime DataChannel is unordered with zero retransmissions and carries swipe/scroll deltas only. Critical tap/text/key input is ordered and reliable but is bounded before it reaches the authority gate. WebRTC signaling/media/input state is process-local; framebuffer bytes, raw input, credentials, MFA/passkeys, SDP/DTLS key material, and target-service secrets are not MCP/model/checkpoint artifacts.

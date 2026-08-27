@@ -46,6 +46,11 @@ export declare class AnnexBAccessUnitParser {
     private acceptNal;
     private emitCurrent;
 }
+export interface LinuxEditableSnapshot {
+    regions: number[][];
+    focusEditable: boolean;
+}
+export declare function parseLinuxAtSpiSnapshotLine(line: string): LinuxEditableSnapshot | undefined;
 export declare function parseOptionalTargetWindowId(value: string | undefined): number | undefined;
 export declare function linuxWebRtcHostMain(): Promise<void>;
 export declare function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean;
