@@ -69,24 +69,6 @@ async function focusAndTypeViaWss(ws, cookie) {
   throw new Error("WSS container acceptance could not focus and type into the bounded form");
 }
 
-async function submitViaWss(ws, cookie) {
-  // The scroll path intentionally re-establishes top-level window focus before wheel injection.
-  // Return to the top and explicitly re-focus the form control through WSS before pressing Enter;
-  // no out-of-band keyboard or pointer input is allowed in the final physical acceptance contract.
-  ws.send(JSON.stringify({ kind: "scroll", deltaY: -900 }));
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  for (const y of INPUT_Y_CANDIDATES) {
-    ws.send(JSON.stringify({ kind: "tap", x: INPUT_X, y }));
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
-    try {
-      await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 2_000);
-      return;
-    } catch {}
-  }
-  throw new Error("WSS container acceptance could not submit the bounded form");
-}
-
 async function printBoundedDiagnostics() {
   process.stderr.write(`WSS_CONTAINER_ACCEPTANCE_FAILED stage=${stage}\n`);
   const health = await get("/healthz").then((response) => response.text()).catch(() => "unreachable");
@@ -179,15 +161,21 @@ try {
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
   await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
 
-  stage = "text";
-  await focusAndTypeViaWss(ws, cookie);
-
+  // Exercise scroll before entering the form value. The shared Linux scroll path intentionally
+  // re-establishes top-level X11 focus, so returning to the form and successfully typing through
+  // WSS proves that a subsequent Enter is tested against a freshly restored editable focus.
   stage = "scroll";
   ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
   await waitFor("scroll", async () => (await readAcceptanceStatus(cookie)).scrollObserved === true);
+  ws.send(JSON.stringify({ kind: "scroll", deltaY: -900 }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  stage = "text";
+  await focusAndTypeViaWss(ws, cookie);
 
   stage = "submit";
-  await submitViaWss(ws, cookie);
+  ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
+  await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 4_000);
 
   stage = "done";
   ws.send(JSON.stringify({ kind: "done" }));
