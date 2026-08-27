@@ -32,7 +32,10 @@ export class WindowHandoffCore {
         }
         this.#initialSecureWindowPolicy = initialSecureWindowPolicy;
         const completionGraceMs = config.takeover.completionGraceMs ?? config.takeover.ttlMs;
-        this.#routeTtlMs = config.takeover.ttlMs + completionGraceMs;
+        // A consumer-verified completion can occur near the end of the original completion grace and
+        // then retains only a terminal closed page for one fresh grace window. Keep route ownership for
+        // that bounded maximum lifetime; broker/session state remains authoritative for actual access.
+        this.#routeTtlMs = config.takeover.ttlMs + (2 * completionGraceMs);
         this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigForHandoff(config.runtime, config.mediaProfile, successorPolicy, initialSecureWindowPolicy));
         this.#broker = new TakeoverBroker(webRtcOnlySurfaceAdapter(), config.takeover, undefined, this.#runtime, config.onComplete ? { completed: config.onComplete } : {});
     }

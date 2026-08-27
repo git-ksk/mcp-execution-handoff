@@ -219,6 +219,10 @@ export class TakeoverSessionManager {
             record.completed = true;
             record.revoked = true;
             record.released = true;
+            // Verified completion may arrive near the end of the original completion-only grace.
+            // Retain only the terminal completed marker for one fresh bounded grace window; mutable
+            // media/input authority remains revoked and duplicate verification cannot extend it again.
+            record.completionExpiresAt = now + this.completionGraceMs;
             completed.push({ ...this.locator(record), alreadyCompleted: false });
         }
         return completed;

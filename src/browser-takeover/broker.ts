@@ -408,7 +408,10 @@ export class TakeoverBroker {
       this.webRtcSessionInterventions.delete(locator.id);
       this.verifiedCompletedWebRtcSessions.delete(locator.id);
       this.completionDelivered.delete(locator.id);
-    }, this.config.ttlMs + this.completionGraceMs + 1_000);
+    // Retain only routing metadata long enough for a consumer-verified terminal completion that
+    // occurs near the original completion deadline. SessionManager still rejects expired mutable
+    // authority, and verified completion can extend only once by one bounded completion grace.
+    }, this.config.ttlMs + (2 * this.completionGraceMs) + 1_000);
     completionExpiryCleanup.unref();
     return new URL(`/takeover/${encodeURIComponent(locator.id)}`, this.config.publicBaseUrl).toString();
   }

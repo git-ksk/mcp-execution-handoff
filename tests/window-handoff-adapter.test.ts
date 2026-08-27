@@ -301,3 +301,43 @@ test("verified consumer completion leaves a terminal closed route without revivi
   assert.equal(reconnect.status, 410);
   assert.deepEqual(await reconnect.json(), { error: "takeover_completed", completed: true });
 });
+
+
+test("verified terminal route survives the original route cleanup boundary only for bounded grace", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: {
+      enabled: true,
+      publicBaseUrl: ORIGIN,
+      ttlMs: 1_000,
+      reconnectIdleMs: 250,
+      completionGraceMs: 1_500
+    },
+    runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "setInterval(()=>{},1000)"] },
+    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+  });
+  const locator = adapter.start({
+    intervention: { id: "window-int-verified-late", epoch: 3 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: { tap: true, scroll: false, text: true, key: true }
+  });
+  const sessionId = new URL(locator).pathname.split("/").at(-1)!;
+  const client = "window-client-late-verified-1234567890";
+  const claimed = await adapter.handle(new Request(
+    `http://localhost/takeover/api/webrtc-prepare-claim/${sessionId}`,
+    { method: "POST", headers: { origin: ORIGIN, "x-takeover-client": client } }
+  ), PRINCIPAL);
+  assert.equal(claimed.status, 200);
+
+  await new Promise((resolve) => setTimeout(resolve, 2_350));
+  assert.equal(await adapter.completeAfterVerification({ id: "window-int-verified-late", epoch: 3 }), true);
+
+  // Cross the old ttl + completionGrace + cleanup-slack boundary (3.5s from start).
+  await new Promise((resolve) => setTimeout(resolve, 1_250));
+  assert.equal(adapter.ownsPath(new URL(locator).pathname), true);
+  const terminalPage = await adapter.handle(new Request(`http://localhost${new URL(locator).pathname}`), PRINCIPAL);
+  assert.equal(terminalPage.status, 200);
+  assert.match(await terminalPage.text(), /Remote control closed/);
+
+  await adapter.revoke("window-int-verified-late");
+});
