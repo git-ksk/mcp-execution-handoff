@@ -25,19 +25,23 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: their supported work is now represented by first-class bounded Window/WebRTC/WSS evidence and the narrower #56/#19/#12 follow-ups plus completed #94 evidence; whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34), v0.3 recovery/observability (#127–#130), and later explicit authority/transport/hosted work (#125/#19/#12). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 Issue #94 is complete: post-#99/#101 evidence shows the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. That acceptance also exposed the narrower successor-window problem: an authorized Human action can legitimately create a modal, sheet, file chooser, or secondary window that the original exact-window binding must not silently follow. Issue #124 is therefore the next bounded Window-authority follow-up. Desktop authority remains a separate future escalation in #125 and must not become a hidden fallback.
 
-### Post-v0.2.0 follow-up issue map — 6 issues
+### Post-v0.2.0 follow-up issue map — 10 issues
 
-The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog is mapped below.
+The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog now includes the explicit v0.3 Recovery & Observability milestone.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
 | #124 | v0.2.x Window authority | **Next bounded Window follow-up.** Admit only a uniquely proven successor modal/sheet/file-chooser/secondary window, fence the old target first, and fail closed on ambiguity; never follow arbitrary frontmost state or widen to a desktop. |
 | #56 | v0.2.x media quality | Improve native-window text/UI legibility while preserving low latency, bounded backpressure, exact-window scope, and direct/TURN behavior. |
 | #34 | v0.2.x cross-platform parity | Add bounded Linux editable-region/focus metadata without CDP/DOM/credential exposure. |
+| #127 | v0.3 durable recovery | Replace the concrete file-store dependency with the smallest provider-neutral checkpoint-store contract while keeping the durable schema bounded and recovery `reissue_and_revalidate` only. |
+| #128 | v0.3 audit | Stabilize versioned privacy-bounded generic audit events and define sink failure/backpressure behavior without creating an execution transcript. |
+| #129 | v0.3 diagnostics | Define stable operator diagnostics across Browser/Window/Terminal while retaining target/transport-specific namespaces and process-memory default retention. |
+| #130 | v0.3 restart conformance | **v0.3 recovery gate.** Prove crashes/restarts across lifecycle phases cannot resurrect stale authority, locators/capabilities, generations, request state, media/input sessions, or PTY authority. |
 | #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -69,7 +73,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 `v0.2.0` is the current **GitHub source release**. It is a minor pre-1.0 boundary because the public surface materially expanded since `v0.1.0`: first-class Browser, Window, and Terminal components are exported, and the Window/Terminal package subpaths are part of the source package shape.
 
-The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closed after the tag and GitHub Release were verified. #124, #56, and #34 are the immediate v0.2.x hardening follow-ups; #125, #19, and #12 remain later authority/transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
+The release was tracked by milestone `v0.2.0 — Source Release` and Issue #119, which closed after the tag and GitHub Release were verified. #124, #56, and #34 are the immediate v0.2.x hardening follow-ups. The dedicated `v0.3 — Recovery & Observability` milestone is #127–#130; #125, #19, and #12 remain later authority/transport/deployment maturity work. npm publication is explicitly separate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -101,20 +105,29 @@ Exit criteria:
 
 npm publication is **not** an exit criterion for v0.2.
 
-## v0.3 — persistence and observability boundaries
+## v0.3 — Recovery & Observability
 
-Candidate scope:
+Milestone `v0.3 — Recovery & Observability` turns the existing signed checkpoint, audit sink, bounded diagnostics, and `reissue_and_revalidate` semantics into a production-grade operator contract. It intentionally adds **no new Target Surface or Human-control authority**.
 
-- evaluate a pluggable durable-checkpoint storage interface while retaining bounded control-plane metadata only;
-- make audit/observability hooks easier to integrate without logging sensitive execution content;
-- define stable event/diagnostic shapes suitable for operators and tests;
-- improve crash/restart conformance coverage.
+Tracked work:
+
+- #127 — provider-neutral bounded checkpoint-store contract; the current signed-file store remains the reference implementation;
+- #128 — stable privacy-bounded execution audit events, versioning, and sink failure/backpressure semantics;
+- #129 — stable operator diagnostics across Browser/Window/Terminal without flattening target/transport-specific mechanics;
+- #130 — deterministic crash/restart conformance and the release-level stale-authority gate.
+
+Implementation order is #127 first, #128/#129 in parallel once their shared data-classification boundary is concrete, then #130 as the conformance gate.
 
 Exit criteria:
 
-- storage abstraction cannot persist raw action arguments, credentials, browser content, challenge answers, or payment data through the generic API;
-- recovery continues to require reissue-and-revalidate rather than restoring stale execution authority;
-- observability additions do not create a new secret/content exfiltration path.
+- a provider-neutral checkpoint-store interface exists without widening the generic durable schema;
+- raw action arguments, Human input, PTY/browser/media content, credentials/tokens, challenge answers, payment data, approval receipts, and live transport capabilities are structurally outside generic checkpoint/audit/diagnostic state;
+- audit events have a versioned, bounded, privacy-reviewed contract with explicit sink failure/backpressure behavior;
+- operator diagnostics expose stable genuinely shared categories while transport/Target-Surface detail remains scoped and process-memory by default;
+- restart conformance across Browser, Window, and Terminal proves stale Agent/Human authority, locator/capability, generation/reconnect handle, requestState, media/input session, and PTY authority are not restored;
+- recovery remains `reissue_and_revalidate`, requires fresh consumer-owned target/session reconstruction where applicable, and never skips semantic verification.
+
+See [Recovery and observability boundary](docs/recovery-observability.md) for the data classification, restart state machine, sequencing, and non-goals.
 
 ## v0.4+ — MCP interoperability and transport maturity
 

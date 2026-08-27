@@ -27,19 +27,23 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidenceと、より狭い #56 / #19 / #12 と完了済み #94 evidenceへ分離され、whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34）、v0.3 recovery / observability（#127〜#130）、後続の明示authority / transport / hosted work（#125 / #19 / #12）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 #94は完了です。#99/#101後のevidenceでは、既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackは不要です。一方で、そのacceptanceから「Human操作で正当に生成されたmodal / sheet / file chooser / secondary windowを、元のexact-window bindingが黙って追従してはいけない」という、より狭いsuccessor-window問題が明確になりました。したがって次のbounded Window authority follow-upは #124です。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
 
-### v0.2.0後のfollow-up Issue map — 6件
+### v0.2.0後のfollow-up Issue map — 10件
 
-#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。#94も完了し、継続するdurable backlogは以下の6件です。
+#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。#94も完了し、継続するdurable backlogには明示的なv0.3 Recovery & Observability milestoneも追加しました。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
 | #124 | v0.2.x Window authority | **次のbounded Window follow-up。** uniquely provenなsuccessor modal / sheet / file chooser / secondary windowだけをadmitし、旧targetを先にfenceする。ambiguityはfail closed、arbitrary frontmost追従やdesktop wideningは禁止。 |
 | #56 | v0.2.x media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
 | #34 | v0.2.x cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
+| #127 | v0.3 durable recovery | concrete file-store依存を最小provider-neutral checkpoint-store contractへ置き換えつつ、durable schemaはboundedのまま、recoveryは `reissue_and_revalidate` のみに維持。 |
+| #128 | v0.3 audit | versioned / privacy-boundedなgeneric audit eventをstable化し、execution transcriptを作らずsink failure/backpressure semanticsを定義。 |
+| #129 | v0.3 diagnostics | Browser / Window / Terminal横断のstable operator diagnosticsを定義し、target/transport固有namespaceとprocess-memory default retentionを維持。 |
+| #130 | v0.3 restart conformance | **v0.3 recovery gate。** lifecycle各phaseのcrash/restartでstale authority、locator/capability、generation、request state、media/input session、PTY authorityが復活しないことを証明。 |
 | #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -71,7 +75,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 `v0.2.0` が現在の **GitHub source release** です。`v0.1.0` 以降、first-class Browser / Window / Terminal componentとWindow/Terminal package subpathまでpublic surfaceが本質的に拡張したため、pre-1.0 minor boundaryとして扱います。
 
-releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、tag / GitHub Release検証後にclose済みです。#124 / #56 / #34が直近のv0.2.x hardening follow-upで、#125 / #19 / #12は後続のauthority / transport / deployment maturityです。npm publicationは明示的に別gateで、`private: true` を維持します。
+releaseはmilestone `v0.2.0 — Source Release` とIssue #119で追跡し、tag / GitHub Release検証後にclose済みです。#124 / #56 / #34が直近のv0.2.x hardening follow-upです。専用milestone `v0.3 — Recovery & Observability` は #127〜#130、#125 / #19 / #12は後続のauthority / transport / deployment maturityです。npm publicationは明示的に別gateで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -103,20 +107,29 @@ Target Surface admissionは引き続きevidence-basedです。provenな Browser 
 
 npm publicationは **v0.2の完了条件ではありません**。
 
-## v0.3 — 永続化とobservabilityの境界
+## v0.3 — Recovery & Observability
 
-候補scope:
+milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoint、audit sink、bounded diagnostics、`reissue_and_revalidate` semanticsをproduction-gradeなoperator contractへ昇格します。**新しいTarget SurfaceやHuman-control authorityは追加しません。**
 
-- control-plane metadataだけを保存する制約を維持したpluggable durable-checkpoint storage interfaceの検討
-- sensitive execution contentをlogせず統合できるaudit / observability hookの整理
-- operator / test向けevent / diagnostic shapeの安定化
-- crash / restart conformance coverageの強化
+追跡Issue:
+
+- #127 — provider-neutral / bounded checkpoint-store contract。現行signed-file storeはreference implementationとして維持
+- #128 — stable / privacy-bounded execution audit event、versioning、sink failure/backpressure semantics
+- #129 — target/transport固有mechanicsを無理にgeneric化しないBrowser / Window / Terminal横断operator diagnostics
+- #130 — deterministic crash/restart conformanceとrelease-level stale-authority gate
+
+実装順は #127 を先に行い、共通data-classification boundaryが具体化した後に #128 / #129 を並行し、最後に #130 をconformance gateとして閉じます。
 
 完了条件:
 
-- generic API経由でraw action arguments、credential、browser content、challenge answer、payment dataを永続化できない
-- recoveryはstale execution authority復元ではなく `reissue_and_revalidate` を維持する
-- observability追加が新しいsecret/content exfiltration pathを作らない
+- generic durable schemaを広げずprovider-neutral checkpoint-store interfaceを導入
+- raw action argument、Human input、PTY/browser/media content、credential/token、challenge answer、payment data、approval receipt、live transport capabilityをgeneric checkpoint/audit/diagnostics stateから構造的に除外
+- audit eventにversioned / bounded / privacy-reviewed contractと明示的sink failure/backpressure behaviorがある
+- operator diagnosticsは本当に共有できるstable categoryを提供し、transport/Target Surface固有detailはscope内、default retentionはprocess-memoryのまま
+- Browser / Window / Terminalのrestart conformanceでstale Agent/Human authority、locator/capability、generation/reconnect handle、requestState、media/input session、PTY authorityが復元されない
+- recoveryは `reissue_and_revalidate` を維持し、必要に応じてfresh consumer-owned target/session reconstructionを要求し、semantic verificationを省略しない
+
+データ分類、restart state machine、実装順、non-goalは [Recovery / Observability boundary](docs/recovery-observability.ja.md) を参照してください。
 
 ## v0.4+ — MCP interoperabilityとtransport成熟
 

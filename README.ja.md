@@ -65,7 +65,7 @@ src/browser-takeover/
 - **Human takeoverの完了は、別actionへの承認ではない。** 重大操作にはconsumer側で別の明示的approval mechanismが必要。
 - stateful / consequential actionは、安全なreplayが別途確認できない限りhandoff後に自動再実行しない。
 
-詳細は [アーキテクチャ](docs/architecture.ja.md)、[位置づけ](docs/positioning.ja.md)、[ロードマップ](ROADMAP.ja.md)、[リリース手順](RELEASING.ja.md)、[セキュリティポリシー](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
+詳細は [アーキテクチャ](docs/architecture.ja.md)、[Recovery / Observability](docs/recovery-observability.ja.md)、[位置づけ](docs/positioning.ja.md)、[ロードマップ](ROADMAP.ja.md)、[リリース手順](RELEASING.ja.md)、[セキュリティポリシー](SECURITY.ja.md)、[Changelog](CHANGELOG.md) を参照してください。
 
 ## Resume policy
 
