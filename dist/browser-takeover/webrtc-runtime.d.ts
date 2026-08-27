@@ -38,6 +38,8 @@ export interface WebRtcHumanInputPolicy {
 export interface WebRtcRuntimeHooks {
     beginInput(input: WebRtcHumanInput): () => void;
     disconnected(): void;
+    /** Return true only when a target/media terminal event must enter consumer verification. */
+    terminal?(cause: WebRtcRuntimeEndCause): boolean;
 }
 export interface WebRtcTakeoverRuntimeProvider {
     prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration>;
@@ -55,7 +57,7 @@ export interface WebRtcTakeoverRuntimeProvider {
 export type WebRtcRuntimeStartStage = "host_spawn" | "host_ready" | "media_ready" | "remote_description" | "track_setup" | "answer_create" | "local_description" | "answer_finalize";
 export type WebRtcRuntimeStartReason = "peer_closed" | "host_not_ready" | "media_not_ready" | "answer_signaling_state" | "answer_remote_description_missing" | "transceiver_missing" | "sctp_missing" | "invalid_media_kind" | "other";
 export type WebRtcRuntimeSignalingState = "stable" | "have-local-offer" | "have-remote-offer" | "have-local-pranswer" | "have-remote-pranswer" | "closed";
-export type WebRtcRuntimeEndCause = "expiry" | "generation_replace" | "explicit_revoke" | "peer_state" | "host_protocol" | "host_exit" | "host_error" | "video_drain";
+export type WebRtcRuntimeEndCause = "expiry" | "generation_replace" | "explicit_revoke" | "peer_state" | "host_protocol" | "host_exit" | "host_error" | "target_missing" | "video_drain";
 export declare class WebRtcTakeoverRuntimeError extends Error {
     readonly code: "WEBRTC_OFFER_INVALID" | "WEBRTC_RUNTIME_ALREADY_ACTIVE" | "WEBRTC_ICE_NOT_PREPARED" | "WEBRTC_RUNTIME_START_FAILED" | "WEBRTC_RUNTIME_REVOKE_FAILED";
     readonly startStage?: WebRtcRuntimeStartStage | undefined;

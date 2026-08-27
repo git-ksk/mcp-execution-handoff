@@ -216,6 +216,8 @@ class FakeBrowserElement {
   readonly listeners = new Map<string, Array<(event: Record<string, unknown>) => void>>();
   videoWidth = 1280;
   videoHeight = 720;
+  srcObject: unknown = null;
+  paused = false;
 
   addEventListener(type: string, listener: (event: Record<string, unknown>) => void): void {
     const listeners = this.listeners.get(type) ?? [];
@@ -250,6 +252,7 @@ class FakeBrowserElement {
     return { left: 0, top: 0, width: 1280, height: 720 };
   }
   play(): Promise<void> { return Promise.resolve(); }
+  pause(): void { this.paused = true; }
 }
 
 type CompletionClientHarness = {
@@ -338,11 +341,14 @@ async function flushAsync(): Promise<void> {
 
 type ReconnectClientHarness = {
   status: FakeBrowserElement;
+  video: FakeBrowserElement;
+  done: FakeBrowserElement;
   peers: FakeLifecyclePeer[];
   setVisibility(value: "visible" | "hidden"): void;
   dispatchDocument(type: string): void;
   dispatchWindow(type: string, persisted?: boolean): void;
   disconnectCurrent(): void;
+  sendCriticalState(state: string): void;
   resolveSuspend(): void;
   suspendRequests(): number;
   reconnectPrepareRequests(): number;
@@ -458,6 +464,9 @@ async function reconnectClientHarness(
       suspendCount += 1;
       return suspendPromise;
     }
+    if (url.includes("/takeover/api/webrtc-state/")) {
+      return Response.json({ error: "takeover_unavailable" }, { status: 404 });
+    }
     if (url.includes("/takeover/api/webrtc-diagnostics/") || url.includes("/takeover/api/webrtc-metrics/")) {
       return Response.json({ accepted: true });
     }
@@ -505,6 +514,8 @@ async function reconnectClientHarness(
 
   return {
     status,
+    video: elements.get("#video")!,
+    done: elements.get("#done")!,
     peers,
     setVisibility(value) { visibilityState = value; },
     dispatchDocument(type) {
@@ -514,6 +525,9 @@ async function reconnectClientHarness(
       for (const listener of windowListeners.get(type) ?? []) listener({ persisted });
     },
     disconnectCurrent() { peers.at(-1)!.disconnect(); },
+    sendCriticalState(state) {
+      peers.at(-1)!.critical.onmessage?.({ data: JSON.stringify({ kind: "state", state }) });
+    },
     resolveSuspend() {
       resolveSuspendResponse(Response.json({ suspended: true, reconnectRequired: true }));
       suspendPromise = Promise.resolve(Response.json({ suspended: true, reconnectRequired: true }));
@@ -651,6 +665,104 @@ test("WebRTC Done failure remains fail-closed and shows completion-specific stat
 });
 
 
+
+test("LocalAuthentication target terminal fences input and waits for consumer verification", async () => {
+  const runtime = new FakeWebRtcRuntime();
+  const broker = new TakeoverBroker(
+    noOpBrowser(),
+    { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 5_000 },
+    undefined,
+    runtime
+  );
+  const intervention = { id: "webrtc-local-auth-terminal", epoch: 17 } as const;
+  const link = broker.createWebRtcLink(
+    intervention,
+    PRINCIPAL,
+    { processId: 4242 },
+    { tap: true, scroll: false, text: true, key: true },
+    { terminalTargetBehavior: "verifying" }
+  );
+  assert.ok(link);
+  const sessionId = new URL(link).pathname.split("/").at(-1)!;
+
+  const activePage = await broker.handle(new Request(link), PRINCIPAL);
+  const activeHtml = await activePage.text();
+  const completionCapability = /data-completion="([A-Za-z0-9_-]+)"/.exec(activeHtml)?.[1];
+  assert.ok(completionCapability);
+
+  const grant = await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  const hooks = runtime.starts[0]!.hooks;
+  assert.equal(hooks.terminal?.("target_missing"), true);
+  assert.throws(
+    () => hooks.beginInput({ kind: "tap", x: 0.5, y: 0.5 }),
+    /stale|unavailable/i,
+    "target terminal must fence the exact Human generation before cleanup"
+  );
+
+  const pendingState = await broker.handle(
+    new Request(`http://localhost/takeover/api/webrtc-state/${sessionId}`),
+    PRINCIPAL
+  );
+  assert.equal(pendingState.status, 200);
+  assert.deepEqual(await pendingState.json(), { state: "verifying" });
+
+  const pendingPage = await broker.handle(new Request(link), PRINCIPAL);
+  const pendingHtml = await pendingPage.text();
+  assert.match(pendingHtml, /Verifying… Remote input is disabled/);
+  assert.doesNotMatch(pendingHtml, /webrtc-client\.js/);
+  assert.doesNotMatch(pendingHtml, /data-completion=/);
+
+  const staleDone = await broker.handle(new Request(
+    `http://localhost/takeover/api/complete/${sessionId}`,
+    {
+      method: "POST",
+      headers: { origin: ORIGIN, "x-mcp-takeover-completion": completionCapability }
+    }
+  ), PRINCIPAL);
+  assert.equal(staleDone.status, 409);
+  assert.deepEqual(await staleDone.json(), { error: "takeover_verifying", verifying: true });
+
+  const reconnect = await prepare(broker, sessionId, "reconnect", CLIENT_B, grant.reconnectHandle);
+  assert.equal(reconnect.status, 409);
+  assert.deepEqual(await reconnect.json(), { error: "takeover_verifying", verifying: true });
+  assert.equal(runtime.prepares.length, 1, "verifying must never spawn a replacement WebRTC host");
+
+  assert.equal(await broker.completeWebRtcAfterVerification(intervention), true);
+  const closedState = await broker.handle(
+    new Request(`http://localhost/takeover/api/webrtc-state/${sessionId}`),
+    PRINCIPAL
+  );
+  assert.equal(closedState.status, 200);
+  assert.deepEqual(await closedState.json(), { state: "closed" });
+  const closedPage = await broker.handle(new Request(link), PRINCIPAL);
+  assert.match(await closedPage.text(), /Remote control closed/);
+});
+
+test("ordinary WebRTC target terminal keeps existing reconnect semantics", async () => {
+  const { broker, runtime, sessionId } = fixture();
+  await prepareAndConnect(broker, sessionId, "claim", CLIENT_A);
+  assert.equal(runtime.starts[0]!.hooks.terminal?.("target_missing"), false);
+  const state = await broker.handle(
+    new Request(`http://localhost/takeover/api/webrtc-state/${sessionId}`),
+    PRINCIPAL
+  );
+  assert.equal(state.status, 404);
+});
+
+test("WebRTC verifying signal clears the stale frame and disables local Human controls", async () => {
+  const { broker } = fixture();
+  const harness = await reconnectClientHarness(broker);
+  harness.video.srcObject = { stale: true };
+
+  harness.sendCriticalState("verifying");
+  assert.equal(harness.video.style.opacity, "0");
+  assert.equal(harness.video.srcObject, null);
+  assert.equal(harness.video.paused, true);
+  assert.equal(harness.done.disabled, true);
+  assert.equal(harness.done.textContent, "Verifying…");
+  assert.equal(harness.status.textContent, "Verifying… Remote input is disabled.");
+  assert.deepEqual(harness.peers.flatMap((peer) => peer.critical.sent), []);
+});
 
 test("Browser reconnect waits for the exact generation release and coalesces Safari lifecycle triggers", async () => {
   const { broker } = fixture();

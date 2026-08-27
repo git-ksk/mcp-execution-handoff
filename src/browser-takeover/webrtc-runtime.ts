@@ -69,6 +69,8 @@ export interface WebRtcHumanInputPolicy {
 export interface WebRtcRuntimeHooks {
   beginInput(input: WebRtcHumanInput): () => void;
   disconnected(): void;
+  /** Return true only when a target/media terminal event must enter consumer verification. */
+  terminal?(cause: WebRtcRuntimeEndCause): boolean;
 }
 
 export interface WebRtcTakeoverRuntimeProvider {
@@ -130,6 +132,7 @@ export type WebRtcRuntimeEndCause =
   | "host_protocol"
   | "host_exit"
   | "host_error"
+  | "target_missing"
   | "video_drain";
 
 export class WebRtcTakeoverRuntimeError extends Error {
@@ -212,6 +215,7 @@ interface ActiveWebRtcRuntime {
   closing: boolean;
   suspended: boolean;
   resumeFailed?: boolean;
+  wasConnected: boolean;
   critical?: RTCDataChannel;
   nextSequence: number;
   lastIdrRequestAt: number;
@@ -416,6 +420,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         hooks,
         closing: false,
         suspended: false,
+        wasConnected: false,
         nextSequence: random16(),
         lastIdrRequestAt: 0,
         videoDrainActive: false,
@@ -659,6 +664,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         this.recordDiagnostic({ stage: "server.peer.state", state });
       }
       if (state === "connected") {
+        runtime.wasConnected = true;
         const keyframe = runtime.preconnectKeyframe;
         delete runtime.preconnectKeyframe;
         if (keyframe && runtime.sender) {
@@ -705,6 +711,9 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         if (stage === "host.window.ready") runtime.hostReady?.resolve();
         if (stage === "host.target.missing" || stage === "host.window.failure.none" || stage === "host.window.failure.multiple") {
           runtime.hostReady?.reject();
+        }
+        if (stage === "host.target.missing" && runtime.wasConnected && !runtime.closing) {
+          void this.end(runtime.binding.takeoverSessionId, true, "target_missing");
         }
       }
     );
@@ -935,7 +944,14 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     clearTimeout(runtime.expiryTimer);
     // Fence broker authority before any OS cleanup or third-party TURN revocation can block.
     // Relay credential revocation is defense-in-depth after the exact client generation is stale.
-    if (notifyDisconnect) runtime.hooks.disconnected();
+    const verificationPending = notifyDisconnect
+      && runtime.wasConnected
+      && runtime.hooks.terminal?.(cause) === true;
+    if (verificationPending && runtime.critical?.readyState === "open") {
+      runtime.critical.send(JSON.stringify({ kind: "state", state: "verifying" }));
+    } else if (notifyDisconnect) {
+      runtime.hooks.disconnected();
+    }
     try {
       runtime.critical?.close();
       await runtime.peer.close().catch(() => undefined);
@@ -1245,6 +1261,11 @@ class HostMetricParser {
           capture_failure_other: "host.capture.failure.other"
         } as const;
         this.onHostStage(stages[diagnostic[1] as keyof typeof stages]);
+        continue;
+      }
+      const macTarget = /^MCP_HANDOFF_DIAGNOSTIC host_exit_reason=(target_unavailable)$/.exec(line);
+      if (macTarget) {
+        this.onHostStage("host.target.missing");
         continue;
       }
       const macPointer = /^MCP_HANDOFF_DIAGNOSTIC input_stage=(activation_failed|primary_down_rejected|primary_down_sent|primary_up_rejected|primary_up_sent)$/.exec(line);

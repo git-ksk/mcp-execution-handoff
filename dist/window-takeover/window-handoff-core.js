@@ -75,7 +75,7 @@ export class WindowHandoffCore {
                 throw new WindowHandoffCoreError("INPUT_POLICY_INVALID", "LocalAuthentication Window Handoff permits Human tap plus secure text/backspace only");
             }
         }
-        const locator = this.#broker.createWebRtcLink(request.intervention, request.principalBinding, request.target, request.inputPolicy);
+        const locator = this.#broker.createWebRtcLink(request.intervention, request.principalBinding, request.target, request.inputPolicy, this.#initialSecureWindowPolicy ? { terminalTargetBehavior: "verifying" } : undefined);
         if (!locator)
             throw new WindowHandoffCoreError("UNAVAILABLE", "bounded Window WebRTC Handoff is unavailable");
         const sessionId = takeoverSessionIdFromPath(new URL(locator).pathname);

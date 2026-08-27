@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { SpawnedWebRtcRuntimeProvider as BaseSpawnedWebRtcRuntimeProvider } from "./webrtc-runtime.js";
 export * from "./webrtc-runtime.js";
-const HOST_EXIT_REASON = /^(stdin_eof|permission|window_resolution|capture_start|encoder|lease_expiry|explicit_stop|unexpected)$/;
+const HOST_EXIT_REASON = /^(stdin_eof|permission|window_resolution|capture_start|encoder|lease_expiry|explicit_stop|target_unavailable|unexpected)$/;
 const HOST_EXIT_PREFIX = "MCP_HANDOFF_DIAGNOSTIC host_exit_reason=";
 const MAX_DIAGNOSTIC_BUFFER_CHARS = 2_048;
 /**

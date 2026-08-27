@@ -22,6 +22,7 @@ private enum WebRtcHostExitReason: String {
     case encoder
     case leaseExpiry = "lease_expiry"
     case explicitStop = "explicit_stop"
+    case targetUnavailable = "target_unavailable"
     case unexpected
 }
 
@@ -55,6 +56,25 @@ private final class StopState: @unchecked Sendable {
     }
     var isStopped: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
     var exitReason: WebRtcHostExitReason? { lock.lock(); defer { lock.unlock() }; return reason }
+}
+
+private func monitorLocalAuthenticationTarget(
+    stop: StopState,
+    processID: pid_t,
+    inputBounds: CGRect
+) {
+    Task.detached(priority: .userInitiated) {
+        while !stop.isStopped {
+            if !MacOSLocalAuthenticationWindowInput.verifyFocused(
+                processID: processID,
+                inputBounds: inputBounds
+            ) {
+                stop.stop(.targetUnavailable)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(60))
+        }
+    }
 }
 
 private func selectedDisplay(from displays: [SCDisplay], requested: CGDirectDisplayID?) throws -> SCDisplay {
@@ -1704,6 +1724,13 @@ struct WebRtcMacHost {
             injector.releaseAll()
         }
         InputReader(stop: stop, injector: injector, requestIDR: requestIDR).start()
+        if initialSecureWindowPolicy == .macosLocalAuthentication, let targetProcessID {
+            monitorLocalAuthenticationTarget(
+                stop: stop,
+                processID: targetProcessID,
+                inputBounds: initialInputBounds
+            )
+        }
         if let targetProcessID {
             EditableRegionPublisher(
                 targetProcessID: targetProcessID,

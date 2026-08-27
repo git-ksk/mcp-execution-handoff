@@ -50,6 +50,8 @@ export declare class TakeoverBroker {
     private readonly nativeOnlySessions;
     private readonly webRtcOnlySessions;
     private readonly webRtcSessionInterventions;
+    private readonly webRtcTerminalVerificationSessions;
+    private readonly verifyingWebRtcSessions;
     private readonly verifiedCompletedWebRtcSessions;
     private readonly webSocketOnlySessions;
     private readonly webSocketRevokeHandlers;
@@ -67,7 +69,9 @@ export declare class TakeoverBroker {
     isPath(pathname: string): boolean;
     createLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined): string | undefined;
     createNativeLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined, target?: TakeoverHostTarget): string | undefined;
-    createWebRtcLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined, target?: TakeoverHostTarget, inputPolicy?: WebRtcHumanInputPolicy): string | undefined;
+    createWebRtcLink(intervention: TakeoverInterventionRef, principalBinding: string | undefined, target?: TakeoverHostTarget, inputPolicy?: WebRtcHumanInputPolicy, options?: {
+        terminalTargetBehavior?: "verifying";
+    }): string | undefined;
     revokeForIntervention(interventionId: string): void;
     revokeNativeForIntervention(interventionId: string): Promise<void>;
     revokeWebRtcForIntervention(interventionId: string): Promise<void>;
