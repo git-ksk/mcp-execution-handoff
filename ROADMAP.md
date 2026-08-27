@@ -10,7 +10,7 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
-### Current working state — 2026-08-27
+### Current working state — 2026-08-28
 
 The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence. #46 documents the semantic-domain/Target Surface admission contract, and the v0.2 terminology convergence adds canonical Human Interaction Policy aliases without freezing a `TargetSurfaceKind` enum:
 
@@ -21,7 +21,7 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 - The HTTPS/WSS managed-runtime experiment is complete (#40). Physical iPhone Safari WSS control and Cloud Run application reachability were proven without adding a WebRTC-to-WebSocket silent downgrade.
 - #47 completed reusable bounded macOS/Linux exact-window primitives without adding whole-desktop fallback.
 - #48 completed the bounded Terminal/PTY semantic dogfood that established staged Agent/Human drain fences, explicit resume, mandatory post-Human state synchronization, and no Human-period output replay to Agent.
-- CUMG is the proven non-browser consumer for both Window and Terminal integration boundaries.
+- CUMG is the proven non-browser consumer for both Window and Terminal integration boundaries. Together with Maps and Japan Cinema, it is now part of the real-consumer compatibility evidence set defined by the Product Readiness track (#151).
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
@@ -31,7 +31,7 @@ Issues #94 and #124 are complete. #94 proved the existing exact-window stateful 
 
 ### Post-v0.2.0 roadmap issue map
 
-The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. With #94 complete, the durable post-release backlog now includes the explicit v0.3 Recovery & Observability milestone.
+The release gate #119 closed after the v0.2.0 tag and GitHub Release were verified. The table intentionally avoids a hard-coded open-issue total: completed milestones remain visible for context, while v0.3.x maintenance/Product Readiness and later v0.4+ work are tracked by their owning issues.
 
 | Issue | Roadmap placement | Current disposition |
 | --- | --- | --- |
@@ -41,6 +41,11 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #128 | v0.3 audit | **Complete.** Stable v1 strict audit union keeps the existing checkpoint/recovery event names, bounds fields/cardinality, uses a 256-event memory reference sink, and makes sink failure observe-only without an unbounded core queue. |
 | #129 | v0.3 diagnostics | **Complete.** Stable identifier-free v1 operator summaries are exposed by Browser/Window/Terminal, with generic bounded health/failure categories and target/transport-specific facts kept in `webrtc`, `terminal_session`, and `terminal_webrtc` namespaces; detailed diagnostics remain compatible. |
 | #130 | v0.3 restart conformance | **Complete / v0.3 recovery gate.** Deterministic first-class tests cover all persisted lifecycle phases, stale Browser/Window locator/capability/generation/reconnect rejection, Terminal Human-active restart/PTY exit, checkpoint corruption/mismatch/expiry, and interrupted writes without stale authority or Human-input replay. |
+| #141 | v0.3.x durability | Harden signed-file checkpoint durability barriers across sudden power loss without changing fail-closed recovery semantics. |
+| #143 | v0.3.x optional mobile composition | Evaluate keyboard-aware composition and exact-window resize only where target identity remains provable; completed Aim precision stays the baseline. |
+| #144 | v0.3.x repository hygiene | Define safe worktree/branch retention and pruning with reachability proof and explicit preservation of local-only WIP. |
+| #150 | v0.3.x Human lifecycle quality | Clear/fence stale LocalAuthentication media/input on target terminal and show non-interactive verification state without treating disappearance as success. |
+| #151 | cross-cutting Product Readiness | Define exact-consumer compatibility evidence, delivery/artifact boundaries, upgrade/rollback expectations, Human lifecycle quality, and supply-chain readiness independently of npm publication. |
 | #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -72,7 +77,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 `v0.3.0` is the current **GitHub source release**. It promotes the completed v0.3 Recovery & Observability contract into the source baseline while also carrying the bounded hardening merged after v0.2.0: secure-system Window admission, same-process successor-window lineage, Window media quality, Linux editable-region parity, and the current Cloudflare TURN credential contract.
 
-The release is tracked by milestone `v0.3.0 — Source Release` and Issue #145. The v0.3.x maintenance issues #141–#144 are explicitly non-blocking and remain separate from this tag. npm publication is still a separate gate and `private: true` remains required.
+The release is tracked by milestone `v0.3.0 — Source Release` and Issue #145. Later v0.3.x maintenance/Product Readiness work (#141, #143, #144, #150, #151) is explicitly non-blocking and remains separate from this tag; #142 is the roadmap reconciliation that records this post-release state. npm publication is still a separate gate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -135,6 +140,16 @@ Exit criteria:
 - recovery remains `reissue_and_revalidate`, requires fresh consumer-owned target/session reconstruction where applicable, and never skips semantic verification.
 
 See [Recovery and observability boundary](docs/recovery-observability.md) for the data classification, restart state machine, sequencing, and non-goals.
+
+## Product Readiness — cross-cutting v0.3.x+ track
+
+Product Readiness is not a new Target Surface and is not synonymous with npm publication. It defines when consumers can rely on a specific source/package/helper revision with reproducible compatibility evidence. Maps, Japan Cinema, and CUMG are the current real-consumer evidence set; release-significant changes record the exact Handoff revision/artifact and relevant consumer revision rather than relying on an unpinned “latest”.
+
+Current source-only delivery remains valid. Candidate npm contents, source-built macOS/Linux helpers, and any future separately distributed native artifacts are distinct delivery layers with distinct provenance and compatibility claims. Native binary readiness requires an explicit integrity/distribution boundary (including macOS signing/notarization where applicable and Linux runtime/ABI expectations) before binary delivery is claimed.
+
+Upgrade/rollback must preserve the same authority/replay invariants as restart recovery: no stale Human/Agent authority, media/input generation, reconnect handle, PTY authority, or queued Human input is restored, and recovery remains `reissue_and_revalidate`. Human-visible lifecycle is also correctness: fenced controls/frames must not continue to look active, and `verifying` never becomes application success without fresh consumer-owned semantic verification.
+
+The complete compatibility record, delivery boundary, upgrade/rollback rules, lifecycle-quality gate, and supply-chain/resource expectations are defined in [Product readiness boundary](docs/product-readiness.md). This track remains separate from #19 relay maturity, #12 hosted topology, and #125 explicit Desktop authority.
 
 ## v0.4+ — MCP interoperability and transport maturity
 

@@ -12,7 +12,7 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-08-27
+### 現在の作業状態 — 2026-08-28
 
 v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みで、v0.2 terminology convergenceでは `TargetSurfaceKind` enumをfreezeせずHuman Interaction Policyへcanonical aliasを追加します。
 
@@ -23,7 +23,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - HTTPS/WSS managed-runtime experimentは #40で完了しました。physical iPhone SafariのWSS操作とCloud Run application reachabilityを確認しつつ、WebRTCからWebSocketへのsilent downgradeは追加していません。
 - #47でmacOS/Linuxのbounded exact-window primitiveを再利用可能にし、whole-desktop fallbackは追加していません。
 - #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
-- CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。
+- CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。Maps / Japan Cinemaと合わせ、#151で定義するProduct Readiness trackのreal-consumer compatibility evidence setとして扱います。
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
@@ -33,7 +33,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 ### v0.2.0後のroadmap Issue map
 
-#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。#94も完了し、継続するdurable backlogには明示的なv0.3 Recovery & Observability milestoneも追加しました。
+#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。このtableではhard-codedなopen Issue総数を持ちません。完了milestoneはcontextとして残し、v0.3.x maintenance / Product Readinessとv0.4+ workはowner Issue単位で追跡します。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
@@ -43,6 +43,11 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #128 | v0.3 audit | **完了。** 既存checkpoint/recovery event名を維持したstable v1 strict audit union、field/cardinality上限、256件memory reference sink、observe-onlyなsink failure semanticsを固定。 |
 | #129 | v0.3 diagnostics | **完了。** Browser / Window / Terminalへidentifier-freeなstable v1 operator summaryを追加し、generic bounded health/failure categoryと `webrtc` / `terminal_session` / `terminal_webrtc` namespaceへ固有factを分離。既存詳細diagnosticsも互換維持。 |
 | #130 | v0.3 restart conformance | **完了 / v0.3 recovery gate。** 全persisted lifecycle phase、Browser / Window旧locator/capability/generation/reconnect拒否、Terminal Human-active restart / PTY exit、checkpoint tamper/mismatch/expiry、write interruptionをdeterministic first-class testでcoverageし、stale authority / Human input replayなしを固定。 |
+| #141 | v0.3.x durability | sudden power loss向けsigned-file checkpoint durability barrierをhardeningし、fail-closed recovery semanticsは変更しない。 |
+| #143 | v0.3.x optional mobile composition | target identityを証明できる範囲だけkeyboard-aware composition / exact-window resizeを評価。完了済みAim precisionをbaselineとして維持。 |
+| #144 | v0.3.x repository hygiene | reachability proofとlocal-only WIPの明示保全を前提に、安全なworktree/branch retention / pruning policyを定義。 |
+| #150 | v0.3.x Human lifecycle quality | LocalAuthentication target terminal時にstale media/inputをclear/fenceし、disappearanceをsuccess扱いせずnon-interactive verification stateを表示。 |
+| #151 | cross-cutting Product Readiness | exact consumer compatibility evidence、delivery/artifact境界、upgrade/rollback、Human lifecycle quality、supply-chain readinessをnpm publishとは独立して定義。 |
 | #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -74,7 +79,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 `v0.3.0` が現在の **GitHub source release** です。完了したv0.3 Recovery / Observability contractをsource baselineへ昇格し、v0.2.0後にmergeしたsecure-system Window admission、same-process successor-window lineage、Window media quality、Linux editable-region parity、現行Cloudflare TURN credential contractも含みます。
 
-releaseはmilestone `v0.3.0 — Source Release` とIssue #145で追跡します。v0.3.x maintenanceの #141〜#144 は明示的にnon-blockingで、このtagとは分離します。npm publicationも別gateのままで、`private: true` を維持します。
+releaseはmilestone `v0.3.0 — Source Release` とIssue #145で追跡します。後続v0.3.x maintenance / Product Readinessの #141 / #143 / #144 / #150 / #151 は明示的にnon-blockingで、このtagとは分離します。#142はこのpost-release状態を反映するroadmap reconciliationです。npm publicationも別gateのままで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -137,6 +142,16 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 - recoveryは `reissue_and_revalidate` を維持し、必要に応じてfresh consumer-owned target/session reconstructionを要求し、semantic verificationを省略しない
 
 データ分類、restart state machine、実装順、non-goalは [Recovery / Observability boundary](docs/recovery-observability.ja.md) を参照してください。
+
+## Product Readiness — cross-cutting v0.3.x+ track
+
+Product Readinessは新しいTarget Surfaceではなく、npm publishと同義でもありません。consumerが特定source/package/helper revisionへ再現可能なcompatibility evidence付きで依存できる条件を定義します。Maps / Japan Cinema / CUMGを現在のreal-consumer evidence setとし、release-significant changeではpinされていない「latest」ではなくexact Handoff revision/artifactと関連consumer revisionを記録します。
+
+現在のsource-only deliveryは有効なままです。candidate npm contents、source-built macOS/Linux helper、将来のseparately distributed native artifactは別delivery layerとしてprovenance / compatibility claimを分けます。native binary readinessをclaimする前に、macOS signing/notarization（該当する場合）やLinux runtime/ABI expectationを含むintegrity / distribution boundaryを明示します。
+
+upgrade/rollbackでもrestart recoveryと同じauthority/replay invariantを維持し、stale Human/Agent authority、media/input generation、reconnect handle、PTY authority、queued Human inputを復元しません。recoveryは `reissue_and_revalidate` のままです。Human-visible lifecycleもcorrectnessとして扱い、fence済みcontrol/frameをactiveに見せず、fresh consumer-owned semantic verificationなしに `verifying` をapplication successへ進めません。
+
+compatibility record、delivery boundary、upgrade/rollback rule、lifecycle-quality gate、supply-chain/resource expectationの詳細は [Product Readiness boundary](docs/product-readiness.ja.md) を参照してください。このtrackは #19 relay maturity、#12 hosted topology、#125 explicit Desktop authorityとは分離します。
 
 ## v0.4+ — MCP interoperabilityとtransport成熟
 

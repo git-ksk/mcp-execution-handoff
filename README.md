@@ -64,7 +64,7 @@ src/browser-takeover/
 - Completing Human takeover **does not approve another action**. Consequential actions require a separate explicit approval mechanism owned by the consumer.
 - Stateful/consequential actions must not be automatically replayed after handoff unless the consumer has independently established that replay is safe.
 
-See [Architecture](docs/architecture.md), [Recovery & observability](docs/recovery-observability.md), [Positioning](docs/positioning.md), [Roadmap](ROADMAP.md), [Release process](RELEASING.md), [Security Policy](SECURITY.md), and [Changelog](CHANGELOG.md).
+See [Architecture](docs/architecture.md), [Recovery & observability](docs/recovery-observability.md), [Product readiness](docs/product-readiness.md), [Positioning](docs/positioning.md), [Roadmap](ROADMAP.md), [Release process](RELEASING.md), [Security Policy](SECURITY.md), and [Changelog](CHANGELOG.md).
 
 ## Resume policy
 

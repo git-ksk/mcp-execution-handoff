@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-**v0.3.0** is the current GitHub/source-release baseline, tracked through milestone `v0.3.0 — Source Release` and Issue #145 after completion of `v0.3 — Recovery & Observability` (#127–#130). The non-blocking v0.3.x maintenance set (#141–#144) remains separate, as do later relay/hosted/desktop maturity issues (#19/#12/#125).
+**v0.3.0** is the current GitHub/source-release baseline, tracked through milestone `v0.3.0 — Source Release` and Issue #145 after completion of `v0.3 — Recovery & Observability` (#127–#130). Later v0.3.x maintenance/Product Readiness work remains separate from that published tag, as do relay/hosted/desktop maturity issues (#19/#12/#125).
 
 ## Versioning policy
 
@@ -32,7 +32,8 @@ Before a final release PR:
 - the release worktree is clean and based on that exact commit;
 - no unresolved known security issue invalidates a documented invariant;
 - required CI, portability, Dependency Review, and CodeQL gates are operational;
-- `package.json` is still `private: true` unless the separate npm publication gate has independently been approved.
+- `package.json` is still `private: true` unless the separate npm publication gate has independently been approved;
+- release-significant consumer compatibility impact has an explicit evidence plan against exact candidate revisions/artifacts.
 
 Do not make optional feature work a release blocker merely because it is listed in the same roadmap family.
 
@@ -88,6 +89,20 @@ NODE
 ```
 
 The final PR must also pass the repository's required GitHub checks. Do not treat a local green run as a substitute for protected-branch checks.
+
+## Consumer compatibility evidence
+
+For release-significant changes, record compatibility against the exact release candidate instead of an unpinned `latest`. The current real-consumer evidence set is Maps Browser MCP, Japan Cinema Browser MCP, and CUMG; only the consumers relevant to the changed boundary need to run, but omitted consumers must be explicitly classified as not applicable rather than silently assumed green.
+
+The record should identify the tested consumer revision, exact Handoff commit/tag or package artifact, affected adapter/Target Surface, clean install/build result, deterministic/E2E evidence, and required physical acceptance. Consumer validation supplements this repository's own gates and never replaces them. See [Product readiness boundary](docs/product-readiness.md) for the release-significant change classes and full gate.
+
+Artifact identity depends on the delivery layer:
+
+- source consumers validate an immutable Handoff commit/tag;
+- a future npm publication validates the exact candidate tarball/artifact, not merely the source tree used to build it;
+- a future distributed native helper validates the exact binary plus its provenance/signing/runtime boundary.
+
+Current macOS Swift helpers and Linux native/accessibility helper build inputs remain source-built repository material. A GitHub source release must not imply separately signed/notarized native binary delivery, and `npm pack` success must not imply that helper distribution has been productized.
 
 ## Publishing the GitHub source release
 
