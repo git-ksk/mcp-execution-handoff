@@ -153,6 +153,8 @@ Route authenticated `/takeover/*` HTTP requests to `browserHandoff.handle(...)`.
 
 For non-browser application windows, `WindowHandoffAdapter` is the first-class high-level component. It requires a positive target process and optionally an exact window id, plus an explicit bounded Human input policy. The adapter never exposes display-wide/desktop fallback. If only `processId` is supplied, the host must resolve exactly one eligible owned window; if `windowId` is supplied, that exact ownership is revalidated by the existing host boundary. Target disappearance, ambiguity or ownership mismatch fails closed.
 
+On macOS, pointer input remains the bounded stateful `CGEvent` / `cghidEventTap` path after exact-window revalidation. #94 verified that this current path can activate the System Settings Accessibility **Add** control on macOS 26.5, so Handoff does not add Screen Sharing/Remote Management as a privileged or desktop-wide fallback. See the architecture input-backend contract for the fail-closed boundary.
+
 ```ts
 import { WindowHandoffAdapter } from "mcp-execution-handoff/window-takeover";
 

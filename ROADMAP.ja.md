@@ -27,17 +27,16 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidenceと、より狭い #94 / #56 / #19 / #12 へ分離され、whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidenceと、より狭い #56 / #19 / #12 と完了済み #94 evidenceへ分離され、whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
-次の実装優先度は #94です。bounded Window Handoffをwhole-desktop authorityへ黙って拡大せず、macOS secure system UI向けの明示的なHuman-only native input backendを調査します。その後は #56のmedia qualityと #34のLinux editable-region parityを、authority modelを変えないbounded transport/host改善として進めます。
+#94は完了です。#99/#101後のevidenceでは、既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackは不要です。次のbounded transport/host改善は #56のmedia qualityと #34のLinux editable-region parityです。
 
-### v0.2.0後のfollow-up Issue map — 5件
+### v0.2.0後のfollow-up Issue map — 4件
 
-#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にだけcloseします。release後も継続するbacklogは以下の5件です。
+#119のrelease gateはv0.2.0 tag / GitHub Releaseの検証後にclose済みです。#94も完了し、継続するdurable backlogは以下の4件です。
 
 | Issue | Roadmap配置 | 現在の扱い |
 | --- | --- | --- |
-| #94 | v0.2.x Window hardening | **次の実装優先度。** Human-onlyかつ明示選択のsecure-system-UI input backend。TCC bypassやhidden desktop fallbackは禁止。 |
 | #56 | v0.2.x media quality | native windowの文字/UI可読性を改善しつつ、low latency、bounded backpressure、exact-window scope、direct/TURN挙動を維持。 |
 | #34 | v0.2.x cross-platform parity | CDP / DOM / credential露出なしでLinux editable-region/focus metadataを追加。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
@@ -80,7 +79,7 @@ repeatableなsource-release checklistとnpm publicationとの分離は [リリ�
 
 - Browser / Window / Terminalをfirst-class consumer-facing componentとして維持し、異なるmedia/stream mechanicsをprematureなgeneric surface interfaceへ無理に押し込めない
 - #85で完了したsame-LAN directとpublic Tunnel/TURN relayの両physical Window evidence、およびstale locator拒否を維持する
-- #94を明示的なHuman-only secure-system-UI input capabilityとして調査し、ordinary Window Handoffのbounded defaultは変えない
+- #94の完了evidenceを維持する。exact-window Human-only macOS inputでテスト対象secure System Settings controlが通り、privileged / desktop fallbackは不要。将来より広いbackendが必要なら別review済みescalationとして扱う
 - #56でlatency/backpressureを悪化させずWindow media可読性を改善し、#34でCDP / DOM / credential露出なしにLinux editable-region parityを閉じる
 - CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す
 - authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalizeする

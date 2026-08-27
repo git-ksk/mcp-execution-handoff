@@ -44,7 +44,8 @@
     "accept:webrtc:linux": "node --import tsx experiments/linux-webrtc-host/scripts/acceptance.mts",
     "accept:window:macos-native-text": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-macos-text-input-fixture && tsx experiments/thin-takeover-runtime/scripts/macos-native-window-text-acceptance.mts",
     "accept:webrtc:coturn-relay": "npm run build && sh experiments/coturn-turn/scripts/container-acceptance.sh",
-    "accept:websocket:cloud-run-container": "node experiments/websocket-cloud-run/container-acceptance.mjs"
+    "accept:websocket:cloud-run-container": "node experiments/websocket-cloud-run/container-acceptance.mjs",
+    "accept:window:macos-secure-ui": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-secure-ui-window-acceptance.mts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

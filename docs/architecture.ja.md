@@ -216,6 +216,20 @@ Window adapterはpositiveな `processId`、必要ならexact `windowId`、明示
 
 実non-browser consumerはCUMGです。CUMGはconsumer-localな `TakeoverBroker` + WebRTC runtime手組みから `WindowHandoffAdapter` へ移行しつつ、authorization / quarantine / replay / semantic verificationはCUMG側に維持しています。merged-code physical iPhone acceptanceではpublic Cloudflare Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator rejectionも確認済みです。#85は完了しており、今後のWindow workはfirst-class adapter境界の再証明ではなくbounded capabilityの拡張として扱います。
 
+### macOS Window input-backend capability contract
+
+通常のmacOS Window Handoff backendは、引き続き **bounded exact-window Human input** です。Apple Screen Sharing / Remote Management、VNC server、trusted-HID daemon、Agent向けmutation APIではありません。現在のcapability contractは次の通りです。
+
+- mutableなHuman inputの直前に、同じexact process/window frameを毎回revalidateしてactivateする。ambiguity、target消失、ownership change、activation failureはinput拒否でfail closedする
+- pointer inputはlogin session内の `combinedSessionState` からstatefulな `CGEvent` mouse move/button lifecycleを作り、exact-window revalidation後にだけ `cghidEventTap` へpostする。disconnect/revoke/expiryではpressed stateをfail-closedにreleaseする
+- ordinary non-secure native textだけは別のbounded AX selected-text routeを利用できる。secure text field / web contentは対象外で、credentialやauthorization secretをHandoff input capabilityにしない
+- input policyは既存の明示 `{ tap, scroll, text, key }` Human policyを維持する。Agentへgeneral trusted-HID、desktop、TCC、authorization、credential-injection primitiveを公開しない
+- **secure UIへのhidden fallbackは存在しない**。exact system controlがこのbounded backendを拒否した場合はfail closedのままにする。desktop-wideまたはprivileged remote-control authorityが本質的に必要な将来backendは、Window Handoffから暗黙選択せず、別の明示review済みescalationとして導入する
+
+#94では#99/#101のstateful macOS pointer修正後に前提を再検証しました。physical failureの原因はWebRTCや `CGEvent` pathではなくpre-input AX gateでした。System SettingsのAccessibility windowはexact geometryでactive/focusedだった一方、`AXRaise` が `kAXErrorAttributeUnsupported` (`-25205`) を返し、Handoffがactivation aidをmandatoryなauthority proofとして誤ってrejectしていました。`AXRaise` はbest-effortへ変更し、admission自体は引き続き同一processがactiveで、focused AX windowがexact capture boundsと一致することを必須にします。macOS 26.5のphysical iPhone acceptanceでは、この修正後に `Privacy & Security > Accessibility` の **追加** controlをactivateしてsystem file chooserを開けました。chooserは別focused windowになりましたがcaptureは元のbounded Accessibility windowのままで、target/desktop fallbackは追加していません。probeではTCC entry、permission value、password、credential、authorization decisionを変更していません。したがって、このcontrolのためにScreen Sharing / Remote Managementという第2backendが必須という前提は反証されています。Apple自身もScreen Sharing / Remote Managementをdesktop-control機能として説明しているため、これをWindow Handoffのsilent fallbackへ入れるとexact-window contractを越えてauthorityを広げます。
+
+実装比較でも、privilegedな別backendを増やすより現行backend familyを維持する根拠が得られました。AppleのCore Graphics documentationはHID event tapと、HID / remote-control eventがlogin sessionへ入るsession tapを区別しています。SunshineのmacOS input backendはstateful mouse eventをCore GraphicsのHID tapへpostし、RustDeskは `CombinedSessionState` からmacOS virtual inputを構築してCore Graphics event-tap pathを使います。成熟したremote-control実装でもevent-tap詳細には差がありますが、Screen Sharing / Remote ManagementをHandoffへ取り込む根拠になるexact-window-safeな別privileged APIは確認できませんでした。参照: [Apple CGEventTapLocation](https://developer.apple.com/documentation/coregraphics/cgeventtaplocation)、[Apple Screen Sharing](https://support.apple.com/guide/mac-help/mh11848/mac)、[Sunshine macOS input](https://github.com/LizardByte/Sunshine/blob/master/src/platform/macos/input.cpp)、[RustDesk input service](https://github.com/rustdesk/rustdesk/blob/master/src/server/input_service.rs)。
+
 ## Terminal / PTY handoff
 
 `TerminalHandoffAdapter` はexactly 1つのboundedでconsumer-ownedなPTY/session向けfirst-class componentです。実証済みTerminal authority machineとDataChannel-only WebRTC transportをcomposeし、2つ目のauthority FSMを作りません。shell spawn、cwd/env/job-control policy、consumer process supervision、terminal transcript永続化もHandoffの責務にはしません。

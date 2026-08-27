@@ -189,7 +189,12 @@ public enum MacOSExactWindowInput {
             return MacOSExactWindowGeometry.framesMatch(frame, inputBounds)
         }
         guard matches.count == 1, let window = matches.first else { return false }
-        guard AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else { return false }
+        // Raising is an activation aid, not an authority proof. Some first-party system windows
+        // (including System Settings privacy panes) can expose AXRaise yet reject the action even
+        // while the exact same window is already focused/frontmost. Treat raise as best-effort and
+        // keep the actual admission criterion below: the same process must be active and its focused
+        // AX window must still match the exact capture bounds.
+        _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         // Raising a window and seeing the process become active are not sufficient proof that the
         // exact captured window is ready for Human input. Chromium can report the application active
         // while focus is still transitioning from the previously-frontmost application/window.

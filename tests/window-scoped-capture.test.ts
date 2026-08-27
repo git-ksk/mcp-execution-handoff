@@ -32,7 +32,8 @@ test("macOS Native host delegates exact-window capture and input to the shared b
   assert.match(exact, /SCContentFilter\(display: display, including: \[window\]\)/);
   assert.match(exact, /window\.frame\.minX - display\.frame\.minX/);
   assert.match(exact, /matches\.count == 1/);
-  assert.match(exact, /AXUIElementPerformAction\(window, kAXRaiseAction as CFString\)/);
+  assert.match(exact, /_ = AXUIElementPerformAction\(window, kAXRaiseAction as CFString\)/);
+  assert.doesNotMatch(exact, /guard AXUIElementPerformAction\(window, kAXRaiseAction as CFString\) == \.success/);
   assert.match(exact, /application\.activate\(options: \[\]\)/);
   assert.match(exact, /exactRunningApplication\(processID: processID\)/);
   assert.match(exact, /for attempt in 0\.\.<6/);
@@ -161,4 +162,24 @@ test("macOS dogfood target exposes verification through the exact window title",
   assert.match(target, /CUMG Handoff Dogfood Target — agent_ready/);
   assert.match(target, /CUMG Handoff Dogfood Target — human_clicked/);
   assert.match(target, /window\?\.title = "CUMG Handoff Dogfood Target — human_clicked"/);
+});
+
+test("macOS secure-system-UI pointer capability stays on the exact-window Human-only backend", () => {
+  const host = source("experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift");
+  const acceptance = source("experiments/thin-takeover-runtime/scripts/macos-secure-ui-window-acceptance.mts");
+  const architecture = source("docs/architecture.md");
+
+  assert.match(host, /CGEventSource\(stateID: \.combinedSessionState\)/);
+  assert.match(host, /guard activateTargetWindowForInput\(\) else/);
+  assert.match(host, /event\.post\(tap: \.cghidEventTap\)/);
+  assert.match(host, /MacOSExactWindowInput\.activate\(processID: targetProcessID, inputBounds: inputBounds\)/);
+  assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
+
+  assert.match(acceptance, /target: \{ processId: TARGET_PID \}/);
+  assert.match(acceptance, /inputPolicy: \{ tap: true, scroll: false, text: false, key: false \}/);
+  assert.match(acceptance, /Refusing secure-UI LAN acceptance while TURN credentials are present/);
+  assert.doesNotMatch(acceptance, /tccutil|kickstart|screensharing|Remote Management|password/i);
+
+  assert.match(architecture, /there is \*\*no hidden secure-UI fallback\*\*/i);
+  assert.match(architecture, /separate, explicitly reviewed escalation/);
 });

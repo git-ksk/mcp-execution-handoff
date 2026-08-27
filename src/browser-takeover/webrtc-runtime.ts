@@ -1059,6 +1059,18 @@ class HostMetricParser {
         this.onHostStage(stages[diagnostic[1] as keyof typeof stages]);
         continue;
       }
+      const macPointer = /^MCP_HANDOFF_DIAGNOSTIC input_stage=(activation_failed|primary_down_rejected|primary_down_sent|primary_up_rejected|primary_up_sent)$/.exec(line);
+      if (macPointer) {
+        const stages = {
+          activation_failed: "host.input.failure",
+          primary_down_rejected: "host.input.failure",
+          primary_down_sent: "host.input.pointer.down_sent",
+          primary_up_rejected: "host.input.failure",
+          primary_up_sent: "host.input.tap.sent"
+        } as const;
+        this.onHostStage(stages[macPointer[1] as keyof typeof stages]);
+        continue;
+      }
       const textRoute = /^MCP_HANDOFF_DIAGNOSTIC input_text_route=(native_ax|pid_keyboard|event_creation_failure|activation_rejected|native_boundary_rejected)$/.exec(line);
       if (textRoute) {
         const stages = {
