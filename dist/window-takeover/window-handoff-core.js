@@ -62,7 +62,7 @@ export class WindowHandoffCore {
                 throw new WindowHandoffCoreError("TARGET_INVALID", "LocalAuthentication Window Handoff resolves the current exact system window from PID only");
             }
             if (!localAuthenticationInputPolicy(request.inputPolicy)) {
-                throw new WindowHandoffCoreError("INPUT_POLICY_INVALID", "LocalAuthentication Window Handoff permits Human tap only");
+                throw new WindowHandoffCoreError("INPUT_POLICY_INVALID", "LocalAuthentication Window Handoff permits Human tap plus secure text/backspace only");
             }
         }
         const locator = this.#broker.createWebRtcLink(request.intervention, request.principalBinding, request.target, request.inputPolicy);
@@ -148,7 +148,7 @@ function validInputPolicy(policy) {
     return validWindowHandoffInputPolicy(policy);
 }
 function localAuthenticationInputPolicy(policy) {
-    return policy.tap === true && policy.scroll === false && policy.text === false && policy.key === false;
+    return policy.tap === true && policy.scroll === false && policy.text === true && policy.key === true;
 }
 function takeoverSessionIdFromPath(pathname) {
     const page = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(pathname);

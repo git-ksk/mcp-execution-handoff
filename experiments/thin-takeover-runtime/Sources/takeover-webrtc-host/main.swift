@@ -978,6 +978,23 @@ private final class HumanInputInjector: @unchecked Sendable {
             event.post(tap: .cghidEventTap)
         case "text":
             guard let text = object["text"] as? String, !text.isEmpty, text.utf8.count <= 4_096 else { return }
+            if initialSecureWindowPolicy == .macosLocalAuthentication {
+                guard let activeProcessID,
+                      text.utf8.count <= 256,
+                      MacOSLocalAuthenticationWindowInput.verifyFocusedSecureTextField(
+                          processID: activeProcessID,
+                          inputBounds: activeInputBounds
+                      ) else {
+                    controlWriter.submitInputTextRoute(.nativeBoundaryRejected)
+                    return
+                }
+                guard postUnicodeKeyboardText(text, targetProcessID: activeProcessID) else {
+                    controlWriter.submitInputTextRoute(.eventCreationFailure)
+                    return
+                }
+                controlWriter.submitInputTextRoute(.pidKeyboard)
+                return
+            }
             if let activeProcessID {
                 switch MacOSExactWindowTextInput.commitFocusedText(
                     processID: activeProcessID,
@@ -994,21 +1011,24 @@ private final class HumanInputInjector: @unchecked Sendable {
                     break
                 }
             }
-            let utf16 = Array(text.utf16)
-            guard utf16.count <= 1_024,
-                  let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+            guard postUnicodeKeyboardText(text, targetProcessID: activeProcessID) else {
                 if activeProcessID != nil { controlWriter.submitInputTextRoute(.eventCreationFailure) }
                 return
             }
-            utf16.withUnsafeBufferPointer { buffer in
-                down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
-                up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
-            }
-            postKeyboard(down, targetProcessID: activeProcessID); postKeyboard(up, targetProcessID: activeProcessID)
             if activeProcessID != nil { controlWriter.submitInputTextRoute(.pidKeyboard) }
         case "key":
             guard let key = object["key"] as? String else { return }
+            if initialSecureWindowPolicy == .macosLocalAuthentication {
+                guard key == "Backspace", let activeProcessID,
+                      MacOSLocalAuthenticationWindowInput.verifyFocusedSecureTextField(
+                          processID: activeProcessID,
+                          inputBounds: activeInputBounds
+                      ) else { return }
+                guard let down = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true),
+                      let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else { return }
+                postKeyboard(down, targetProcessID: activeProcessID); postKeyboard(up, targetProcessID: activeProcessID)
+                return
+            }
             let code: CGKeyCode
             switch key { case "Backspace": code = 51; case "Enter": code = 36; default: return }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
@@ -1131,6 +1151,20 @@ private final class HumanInputInjector: @unchecked Sendable {
         primaryPressed = false
         cursorBeforePrimary = nil
         if let restore { restorePointerAfterCancellation(to: restore) }
+    }
+
+    private func postUnicodeKeyboardText(_ text: String, targetProcessID: pid_t?) -> Bool {
+        let utf16 = Array(text.utf16)
+        guard !utf16.isEmpty, utf16.count <= 1_024,
+              let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { return false }
+        utf16.withUnsafeBufferPointer { buffer in
+            down.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
+            up.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: buffer.baseAddress)
+        }
+        postKeyboard(down, targetProcessID: targetProcessID)
+        postKeyboard(up, targetProcessID: targetProcessID)
+        return true
     }
 
     private func postKeyboard(_ event: CGEvent, targetProcessID: pid_t?) {

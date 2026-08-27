@@ -345,6 +345,23 @@ private func localAuthCandidate(
     }
 }
 
+
+@Test func localAuthenticationSecureTextFieldRequiresExactSecureSubrole() {
+    #expect(MacOSLocalAuthenticationWindowInput.isSecureTextField(
+        role: "AXTextField",
+        subrole: "AXSecureTextField"
+    ))
+    #expect(!MacOSLocalAuthenticationWindowInput.isSecureTextField(
+        role: "AXTextField",
+        subrole: "AXStandardTextField"
+    ))
+    #expect(!MacOSLocalAuthenticationWindowInput.isSecureTextField(
+        role: "AXGroup",
+        subrole: "AXSecureTextField"
+    ))
+    #expect(!MacOSLocalAuthenticationWindowInput.isSecureTextField(role: nil, subrole: nil))
+}
+
 @Test func localAuthenticationInitialWindowFailsClosedOnAmbiguity() {
     let second = localAuthCandidate(windowID: 100)
     #expect(throws: MacOSLocalAuthenticationWindowResolutionError.windowUnavailable) {

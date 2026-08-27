@@ -323,29 +323,57 @@ public enum MacOSLocalAuthenticationWindowCapture {
 /// admitted only while Apple's exact focused passcode dialog still matches the captured bounds.
 public enum MacOSLocalAuthenticationWindowInput {
     public static func verifyFocused(processID: pid_t, inputBounds: CGRect) -> Bool {
+        guard let app = verifiedApplication(processID: processID, inputBounds: inputBounds) else { return false }
+        return exactWindowCount(app: app, inputBounds: inputBounds) == 1
+    }
+
+    /// Human-entered credentials are admitted only while LocalAuthentication itself reports one exact
+    /// secure text field as focused inside the already verified Apple passcode dialog. This function
+    /// never reads the field value and is intentionally unavailable to ordinary Window Handoff.
+    public static func verifyFocusedSecureTextField(processID: pid_t, inputBounds: CGRect) -> Bool {
+        guard let app = verifiedApplication(processID: processID, inputBounds: inputBounds),
+              exactWindowCount(app: app, inputBounds: inputBounds) == 1 else { return false }
+        var focusedRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focusedRaw) == .success,
+              let focusedRaw else { return false }
+        let focused = unsafeDowncast(focusedRaw, to: AXUIElement.self)
+        return isSecureTextField(
+            role: secureAXString(focused, kAXRoleAttribute as CFString),
+            subrole: secureAXString(focused, kAXSubroleAttribute as CFString)
+        )
+    }
+
+    public static func isSecureTextField(role: String?, subrole: String?) -> Bool {
+        role == (kAXTextFieldRole as String) && subrole == "AXSecureTextField"
+    }
+
+    private static func verifiedApplication(processID: pid_t, inputBounds: CGRect) -> AXUIElement? {
         guard let application = NSRunningApplication(processIdentifier: processID),
               !application.isTerminated,
               application.bundleIdentifier == MacOSLocalAuthenticationWindowGeometry.bundleIdentifier else {
-            return false
+            return nil
         }
         let app = AXUIElementCreateApplication(processID)
         var focusedRaw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focusedRaw) == .success,
-              let focusedRaw else { return false }
+              let focusedRaw else { return nil }
         let focused = unsafeDowncast(focusedRaw, to: AXUIElement.self)
         guard let frame = secureAXFrame(focused),
               MacOSExactWindowGeometry.framesMatch(frame, inputBounds),
               secureAXString(focused, "AXIdentifier" as CFString) == MacOSLocalAuthenticationWindowGeometry.axIdentifier,
               secureAXString(focused, kAXRoleAttribute as CFString) == (kAXWindowRole as String),
               secureAXString(focused, kAXSubroleAttribute as CFString) == (kAXStandardWindowSubrole as String),
-              secureAXBool(focused, kAXMainAttribute as CFString) else { return false }
+              secureAXBool(focused, kAXMainAttribute as CFString) else { return nil }
+        return app
+    }
+
+    private static func exactWindowCount(app: AXUIElement, inputBounds: CGRect) -> Int {
         var windowsRaw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
-              let windows = windowsRaw as? [AXUIElement] else { return false }
-        let exact = windows.filter { window in
+              let windows = windowsRaw as? [AXUIElement] else { return 0 }
+        return windows.filter { window in
             secureAXFrame(window).map { MacOSExactWindowGeometry.framesMatch($0, inputBounds) } ?? false
-        }
-        return exact.count == 1
+        }.count
     }
 }
 

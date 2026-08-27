@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Extend the explicit macOS LocalAuthentication initial secure-Window policy (#147) with Human-only secure text entry: exact Apple passcode-dialog and focused `AXSecureTextField` revalidation precede each bounded PID keyboard mutation; Backspace is allowed, Enter cannot approve, and secret text is never logged, audited, checkpointed, or exposed to the Agent.
+
 - Add a default-off macOS LocalAuthentication initial secure-window policy (#147) for Human-only Window Handoff. It admits only one current PID-owned Apple `com.apple.LocalAuthentication.UIAgent` / `com.apple.LocalAuthentication.PasscodeDialog` window with exact process-level focused-frame, role/subrole, main-window, geometry, and containing-display proof; it is PID-only and tap-only, cannot combine with successor lineage, revalidates the same metadata before each Human mutation, and never falls back to arbitrary non-zero layers, credentials, display, or desktop authority. Physical same-LAN iPhone denial reached the exact Secure Enclave user-presence dialog and left the caller unresolved/quarantined after Human Cancel.
 
 ## [0.3.0] - 2026-08-27

@@ -202,7 +202,7 @@ test("Window Handoff successor lineage is explicit and bounded while exact-one r
   );
 });
 
-test("LocalAuthentication initial secure Window policy is explicit PID-only tap-only authority", () => {
+test("LocalAuthentication initial secure Window policy is explicit PID-only Human secure-input authority", () => {
   const secure = new WindowHandoffAdapter({
     takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
     runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "process.exit(0)"] },
@@ -212,21 +212,31 @@ test("LocalAuthentication initial secure Window policy is explicit PID-only tap-
     intervention: { id: "window-int-local-auth", epoch: 1 },
     principalBinding: PRINCIPAL,
     target: { processId: 6050 },
-    inputPolicy: { tap: true, scroll: false, text: false, key: false }
+    inputPolicy: { tap: true, scroll: false, text: true, key: true }
   }));
   assert.throws(
     () => secure.start({
       intervention: { id: "window-int-local-auth-stale-window", epoch: 1 },
       principalBinding: PRINCIPAL,
       target: { processId: 6050, windowId: 28942 },
-      inputPolicy: { tap: true, scroll: false, text: false, key: false }
+      inputPolicy: { tap: true, scroll: false, text: true, key: true }
     }),
     (error: unknown) => error instanceof WindowHandoffAdapterError
       && error.code === "WINDOW_HANDOFF_TARGET_INVALID"
   );
   assert.throws(
     () => secure.start({
-      intervention: { id: "window-int-local-auth-text", epoch: 1 },
+      intervention: { id: "window-int-local-auth-policy-widened", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 6050 },
+      inputPolicy: { tap: true, scroll: true, text: true, key: true }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
+  );
+  assert.throws(
+    () => secure.start({
+      intervention: { id: "window-int-local-auth-no-key", epoch: 1 },
       principalBinding: PRINCIPAL,
       target: { processId: 6050 },
       inputPolicy: { tap: true, scroll: false, text: true, key: false }

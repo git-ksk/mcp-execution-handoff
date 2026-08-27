@@ -255,7 +255,7 @@ test("macOS LocalAuthentication initial secure Window admission stays explicit a
   assert.match(adapter, /initialSecureWindowPolicy\?: WindowHandoffInitialSecureWindowPolicy/);
   assert.match(adapter, /mode: "macos_local_authentication"/);
   assert.match(core, /TAKEOVER_WEBRTC_INITIAL_SECURE_WINDOW = initialSecureWindowPolicy\.mode/);
-  assert.match(core, /LocalAuthentication Window Handoff permits Human tap only/);
+  assert.match(core, /LocalAuthentication Window Handoff permits Human tap plus secure text\/backspace only/);
   assert.match(core, /request\.target\.windowId !== undefined/);
   assert.match(exact, /com\.apple\.LocalAuthentication\.UIAgent/);
   assert.match(exact, /com\.apple\.LocalAuthentication\.PasscodeDialog/);
@@ -266,6 +266,10 @@ test("macOS LocalAuthentication initial secure Window admission stays explicit a
   assert.match(exact, /MacOSLocalAuthenticationWindowInput/);
   assert.match(exact, /kAXFocusedWindowAttribute/);
   assert.match(host, /TAKEOVER_WEBRTC_INITIAL_SECURE_WINDOW/);
+  assert.match(host, /MacOSLocalAuthenticationWindowInput\.verifyFocusedSecureTextField\(/);
+  assert.match(host, /initialSecureWindowPolicy == \.macosLocalAuthentication[\s\S]*key == "Backspace"/);
+  assert.match(host, /text\.utf8\.count <= 256/);
+  assert.doesNotMatch(host, /MCP_HANDOFF_DIAGNOSTIC[^\n]*\\\\(text\\\\)/);
   assert.match(host, /MacOSLocalAuthenticationWindowCapture\.resolve/);
   assert.match(host, /MacOSLocalAuthenticationWindowInput\.verifyFocused/);
   assert.doesNotMatch(exact, /layer >= 0/);

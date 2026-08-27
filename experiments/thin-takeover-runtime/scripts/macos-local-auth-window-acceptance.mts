@@ -51,7 +51,7 @@ const locator = handoff.start({
   intervention: { id: interventionId, epoch: 1 },
   principalBinding: PRINCIPAL,
   target: { processId: TARGET_PID },
-  inputPolicy: { tap: true, scroll: false, text: false, key: false }
+  inputPolicy: { tap: true, scroll: false, text: true, key: true }
 });
 
 function localOnly(req: import("node:http").IncomingMessage): boolean {
@@ -104,7 +104,7 @@ await new Promise<void>((resolve, reject) => {
 console.log(`LocalAuthentication Window Handoff acceptance ready: target_pid=${TARGET_PID}`);
 console.log(`Locator: ${locator}`);
 console.log(`Local diagnostics: http://127.0.0.1:${PORT}/__diag`);
-console.log("Expected action: inspect the exact Apple LocalAuthentication dialog and perform only the reviewed Human Cancel or approval action. Never enter credentials through automation.");
+console.log("Expected action: inspect the exact Apple LocalAuthentication dialog. Human may use the iPhone keyboard for the focused secure field, Backspace if needed, then tap Cancel or OK. Secret text is transient input and must never be logged or copied into diagnostics.");
 
 async function shutdown() {
   await handoff.revoke(interventionId).catch(() => undefined);
