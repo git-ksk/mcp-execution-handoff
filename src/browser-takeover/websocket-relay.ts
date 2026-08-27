@@ -31,6 +31,33 @@ export type {
   ExperimentalWebSocketBrokerBindingOptions as WebSocketBrokerBindingOptions
 } from "../experimental/websocket-broker-binding.js";
 
+export {
+  ExperimentalWebSocketBrowserHandoff as WebSocketBrowserHandoff
+} from "../experimental/websocket-browser-handoff.js";
+export type {
+  ExperimentalWebSocketBrowserHandoffConfig as WebSocketBrowserHandoffConfig,
+  ExperimentalWebSocketBrowserStartRequest as WebSocketBrowserStartRequest
+} from "../experimental/websocket-browser-handoff.js";
+
+export {
+  ExperimentalWebSocketWindowHandoff as WebSocketWindowHandoff,
+  ExperimentalWebSocketWindowHandoffError as WebSocketWindowHandoffError
+} from "../experimental/websocket-window-handoff.js";
+export type {
+  ExperimentalWebSocketWindowHandoffConfig as WebSocketWindowHandoffConfig,
+  ExperimentalWebSocketWindowStartRequest as WebSocketWindowStartRequest,
+  ExperimentalWebSocketWindowSurface as WebSocketWindowSurface
+} from "../experimental/websocket-window-handoff.js";
+
+export {
+  ExperimentalLinuxWebSocketWindowSurface as LinuxWebSocketWindowSurface,
+  LinuxWebSocketHostRecordParser
+} from "../experimental/linux-websocket-window-surface.js";
+export type {
+  ExperimentalLinuxWebSocketWindowSurfaceConfig as LinuxWebSocketWindowSurfaceConfig,
+  LinuxWebSocketJpegFrame
+} from "../experimental/linux-websocket-window-surface.js";
+
 /**
  * First-class internal WSS relay seam for Browser/Window Handoff.
  *
