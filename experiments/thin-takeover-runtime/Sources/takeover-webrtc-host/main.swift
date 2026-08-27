@@ -83,6 +83,23 @@ private func loadTargetWindowID(targetProcessID: pid_t?) throws -> CGWindowID? {
     return CGWindowID(value)
 }
 
+private enum InitialSecureWindowPolicy: String {
+    case macosLocalAuthentication = "macos_local_authentication"
+}
+
+private func loadInitialSecureWindowPolicy(
+    targetProcessID: pid_t?,
+    targetWindowID: CGWindowID?
+) throws -> InitialSecureWindowPolicy? {
+    guard let raw = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_INITIAL_SECURE_WINDOW"] else {
+        return nil
+    }
+    guard raw == InitialSecureWindowPolicy.macosLocalAuthentication.rawValue,
+          targetProcessID != nil,
+          targetWindowID == nil else { throw WebRtcHostError.configuration }
+    return .macosLocalAuthentication
+}
+
 private func loadMediaProfile() throws -> MacOSWindowMediaProfile {
     guard let value = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_MEDIA_PROFILE"] else {
         return .standard
@@ -183,15 +200,24 @@ private func selectedCaptureSurface(
     from content: SCShareableContent,
     requestedDisplay: CGDirectDisplayID?,
     targetProcessID: pid_t?,
-    targetWindowID: CGWindowID?
+    targetWindowID: CGWindowID?,
+    initialSecureWindowPolicy: InitialSecureWindowPolicy?
 ) throws -> CaptureSurface {
     if let targetProcessID {
         do {
-            let exact = try MacOSExactWindowCapture.resolve(
-                from: content,
-                targetProcessID: targetProcessID,
-                targetWindowID: targetWindowID
-            )
+            let exact: MacOSExactWindowCaptureSurface
+            if initialSecureWindowPolicy == .macosLocalAuthentication {
+                exact = try MacOSLocalAuthenticationWindowCapture.resolve(
+                    from: content,
+                    targetProcessID: targetProcessID
+                )
+            } else {
+                exact = try MacOSExactWindowCapture.resolve(
+                    from: content,
+                    targetProcessID: targetProcessID,
+                    targetWindowID: targetWindowID
+                )
+            }
             return CaptureSurface(
                 targetWindowID: exact.windowID,
                 filter: exact.filter,
@@ -764,7 +790,8 @@ private final class WindowLineageController: @unchecked Sendable {
                         from: content,
                         requestedDisplay: nil,
                         targetProcessID: targetProcessID,
-                        targetWindowID: predecessor.windowID
+                        targetWindowID: predecessor.windowID,
+                        initialSecureWindowPolicy: nil
                     )
                     let configuration = makeStreamConfiguration(
                         surface: predecessorSurface,
@@ -871,6 +898,7 @@ private final class HumanInputInjector: @unchecked Sendable {
     private let inputBounds: CGRect
     private let targetProcessID: pid_t?
     private let targetAuthority: WindowTargetAuthority?
+    private let initialSecureWindowPolicy: InitialSecureWindowPolicy?
     private let afterPrimaryRelease: @Sendable () -> Void
     private let writer: LatestOutputWriter
     private let controlWriter: HostControlWriter
@@ -882,6 +910,7 @@ private final class HumanInputInjector: @unchecked Sendable {
         inputBounds: CGRect,
         targetProcessID: pid_t?,
         targetAuthority: WindowTargetAuthority? = nil,
+        initialSecureWindowPolicy: InitialSecureWindowPolicy? = nil,
         afterPrimaryRelease: @escaping @Sendable () -> Void = {},
         writer: LatestOutputWriter,
         controlWriter: HostControlWriter
@@ -889,6 +918,7 @@ private final class HumanInputInjector: @unchecked Sendable {
         self.inputBounds = inputBounds
         self.targetProcessID = targetProcessID
         self.targetAuthority = targetAuthority
+        self.initialSecureWindowPolicy = initialSecureWindowPolicy
         self.afterPrimaryRelease = afterPrimaryRelease
         self.writer = writer
         self.controlWriter = controlWriter
@@ -1113,6 +1143,12 @@ private final class HumanInputInjector: @unchecked Sendable {
 
     private func activateTargetWindowForInput(processID: pid_t?, inputBounds: CGRect) -> Bool {
         guard let processID else { return true }
+        if initialSecureWindowPolicy == .macosLocalAuthentication {
+            return MacOSLocalAuthenticationWindowInput.verifyFocused(
+                processID: processID,
+                inputBounds: inputBounds
+            )
+        }
         return MacOSExactWindowInput.activate(processID: processID, inputBounds: inputBounds)
     }
 
@@ -1234,11 +1270,20 @@ struct WebRtcMacHost {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let targetProcessID = try loadTargetProcessID()
         let targetWindowID = try loadTargetWindowID(targetProcessID: targetProcessID)
+        let initialSecureWindowPolicy = try loadInitialSecureWindowPolicy(
+            targetProcessID: targetProcessID,
+            targetWindowID: targetWindowID
+        )
+        let lineageConfig = try loadWindowLineageConfig(targetProcessID: targetProcessID)
+        guard initialSecureWindowPolicy == nil || lineageConfig == nil else {
+            throw WebRtcHostError.configuration
+        }
         let surface = try selectedCaptureSurface(
             from: content,
             requestedDisplay: loadDisplayID(),
             targetProcessID: targetProcessID,
-            targetWindowID: targetWindowID
+            targetWindowID: targetWindowID,
+            initialSecureWindowPolicy: initialSecureWindowPolicy
         )
         let nativeWidth = surface.pixelWidth, nativeHeight = surface.pixelHeight
         guard nativeWidth > 0, nativeHeight > 0 else { throw WebRtcHostError.display }
@@ -1271,7 +1316,6 @@ struct WebRtcMacHost {
                 writer.submitFrame(record)
             }
         }
-        let lineageConfig = try loadWindowLineageConfig(targetProcessID: targetProcessID)
         let targetAuthority: WindowTargetAuthority?
         if lineageConfig != nil {
             guard let targetProcessID, let resolvedWindowID = surface.targetWindowID else { throw WebRtcHostError.configuration }
@@ -1324,6 +1368,7 @@ struct WebRtcMacHost {
             inputBounds: surface.inputBounds,
             targetProcessID: targetProcessID,
             targetAuthority: targetAuthority,
+            initialSecureWindowPolicy: initialSecureWindowPolicy,
             afterPrimaryRelease: { lineageController?.afterPrimaryRelease() },
             writer: writer,
             controlWriter: controlWriter

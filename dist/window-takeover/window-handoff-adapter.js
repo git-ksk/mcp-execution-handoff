@@ -57,7 +57,9 @@ function translateError(error) {
             ? "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
             : error.code === "SUCCESSOR_POLICY_INVALID"
                 ? "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
-                : "WINDOW_HANDOFF_UNAVAILABLE";
+                : error.code === "INITIAL_SECURE_WINDOW_POLICY_INVALID"
+                    ? "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+                    : "WINDOW_HANDOFF_UNAVAILABLE";
     return new WindowHandoffAdapterError(code, error.message);
 }
 //# sourceMappingURL=window-handoff-adapter.js.map

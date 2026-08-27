@@ -112,6 +112,243 @@ public enum MacOSExactWindowGeometry {
     }
 }
 
+public struct MacOSLocalAuthenticationWindowCandidate: Sendable, Equatable {
+    public let processID: pid_t
+    public let windowID: CGWindowID
+    public let frame: CGRect
+    public let isOnScreen: Bool
+    public let layer: Int
+    public let bundleIdentifier: String?
+    public let axIdentifier: String?
+    public let axRole: String?
+    public let axSubrole: String?
+    public let isMain: Bool
+    public let isFocused: Bool
+
+    public init(
+        processID: pid_t,
+        windowID: CGWindowID,
+        frame: CGRect,
+        isOnScreen: Bool,
+        layer: Int,
+        bundleIdentifier: String?,
+        axIdentifier: String?,
+        axRole: String?,
+        axSubrole: String?,
+        isMain: Bool,
+        isFocused: Bool
+    ) {
+        self.processID = processID
+        self.windowID = windowID
+        self.frame = frame
+        self.isOnScreen = isOnScreen
+        self.layer = layer
+        self.bundleIdentifier = bundleIdentifier
+        self.axIdentifier = axIdentifier
+        self.axRole = axRole
+        self.axSubrole = axSubrole
+        self.isMain = isMain
+        self.isFocused = isFocused
+    }
+}
+
+public enum MacOSLocalAuthenticationWindowResolutionError: Error, Equatable {
+    case windowUnavailable
+    case containingDisplayUnavailable
+    case cropOutsideDisplay
+}
+
+/// Explicit opt-in admission for Apple's LocalAuthentication passcode dialog when it is the
+/// initial Window target. Ordinary exact-window resolution remains layer-zero only.
+public enum MacOSLocalAuthenticationWindowGeometry {
+    public static let bundleIdentifier = "com.apple.LocalAuthentication.UIAgent"
+    public static let axIdentifier = "com.apple.LocalAuthentication.PasscodeDialog"
+
+    public static func resolve(
+        windows: [MacOSLocalAuthenticationWindowCandidate],
+        displays: [MacOSDisplayCandidate],
+        targetProcessID: pid_t,
+        minimumSize: CGSize = CGSize(width: 160, height: 120)
+    ) throws -> MacOSExactWindowResolution {
+        let eligible = windows.indices.filter { index in
+            let window = windows[index]
+            return window.processID == targetProcessID
+                && window.isOnScreen
+                && window.layer != 0
+                && window.bundleIdentifier == bundleIdentifier
+                && window.axIdentifier == axIdentifier
+                && window.axRole == (kAXWindowRole as String)
+                && window.axSubrole == (kAXStandardWindowSubrole as String)
+                && window.isMain
+                && window.isFocused
+                && window.frame.width >= minimumSize.width
+                && window.frame.height >= minimumSize.height
+        }
+        guard eligible.count == 1, let windowIndex = eligible.first else {
+            throw MacOSLocalAuthenticationWindowResolutionError.windowUnavailable
+        }
+        let window = windows[windowIndex]
+        let containingDisplays = displays.indices.filter { displays[$0].frame.contains(window.frame) }
+        guard containingDisplays.count == 1, let displayIndex = containingDisplays.first else {
+            throw MacOSLocalAuthenticationWindowResolutionError.containingDisplayUnavailable
+        }
+        let display = displays[displayIndex]
+        let sourceRect = CGRect(
+            x: window.frame.minX - display.frame.minX,
+            y: window.frame.minY - display.frame.minY,
+            width: window.frame.width,
+            height: window.frame.height
+        )
+        guard CGRect(origin: .zero, size: display.frame.size).contains(sourceRect) else {
+            throw MacOSLocalAuthenticationWindowResolutionError.cropOutsideDisplay
+        }
+        return MacOSExactWindowResolution(
+            windowIndex: windowIndex,
+            displayIndex: displayIndex,
+            sourceRect: sourceRect,
+            inputBounds: window.frame
+        )
+    }
+}
+
+private struct MacOSLocalAuthenticationAXMetadata {
+    let frame: CGRect
+    let identifier: String?
+    let role: String?
+    let subrole: String?
+    let isMain: Bool
+    let isFocused: Bool
+}
+
+private func secureAXFrame(_ element: AXUIElement) -> CGRect? {
+    var positionRaw: CFTypeRef?
+    var sizeRaw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionRaw) == .success,
+          AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRaw) == .success,
+          let positionRaw, let sizeRaw,
+          CFGetTypeID(positionRaw) == AXValueGetTypeID(),
+          CFGetTypeID(sizeRaw) == AXValueGetTypeID() else { return nil }
+    var point = CGPoint.zero
+    var size = CGSize.zero
+    guard AXValueGetValue(unsafeDowncast(positionRaw, to: AXValue.self), .cgPoint, &point),
+          AXValueGetValue(unsafeDowncast(sizeRaw, to: AXValue.self), .cgSize, &size) else { return nil }
+    return CGRect(origin: point, size: size)
+}
+
+private func secureAXString(_ element: AXUIElement, _ attribute: CFString) -> String? {
+    var raw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute, &raw) == .success else { return nil }
+    return raw as? String
+}
+
+private func secureAXBool(_ element: AXUIElement, _ attribute: CFString) -> Bool {
+    var raw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute, &raw) == .success else { return false }
+    return (raw as? NSNumber)?.boolValue ?? false
+}
+
+private func localAuthenticationAXMetadata(processID: pid_t) -> [MacOSLocalAuthenticationAXMetadata] {
+    let app = AXUIElementCreateApplication(processID)
+    var windowsRaw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
+          let windows = windowsRaw as? [AXUIElement] else { return [] }
+    var focusedRaw: CFTypeRef?
+    let focused = AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focusedRaw) == .success
+        ? focusedRaw.map { unsafeDowncast($0, to: AXUIElement.self) }
+        : nil
+    let focusedFrame = focused.flatMap(secureAXFrame)
+    return windows.compactMap { window in
+        guard let frame = secureAXFrame(window) else { return nil }
+        return MacOSLocalAuthenticationAXMetadata(
+            frame: frame,
+            identifier: secureAXString(window, "AXIdentifier" as CFString),
+            role: secureAXString(window, kAXRoleAttribute as CFString),
+            subrole: secureAXString(window, kAXSubroleAttribute as CFString),
+            isMain: secureAXBool(window, kAXMainAttribute as CFString),
+            isFocused: focusedFrame.map { MacOSExactWindowGeometry.framesMatch($0, frame) } ?? false
+        )
+    }
+}
+
+public enum MacOSLocalAuthenticationWindowCapture {
+    public static func resolve(
+        from content: SCShareableContent,
+        targetProcessID: pid_t
+    ) throws -> MacOSExactWindowCaptureSurface {
+        let axMetadata = localAuthenticationAXMetadata(processID: targetProcessID)
+        let windows = content.windows.map { window -> MacOSLocalAuthenticationWindowCandidate in
+            let processID = window.owningApplication?.processID ?? 0
+            let matches = processID == targetProcessID
+                ? axMetadata.filter { MacOSExactWindowGeometry.framesMatch($0.frame, window.frame) }
+                : []
+            let metadata = matches.count == 1 ? matches[0] : nil
+            return MacOSLocalAuthenticationWindowCandidate(
+                processID: processID,
+                windowID: window.windowID,
+                frame: window.frame,
+                isOnScreen: window.isOnScreen,
+                layer: window.windowLayer,
+                bundleIdentifier: window.owningApplication?.bundleIdentifier,
+                axIdentifier: metadata?.identifier,
+                axRole: metadata?.role,
+                axSubrole: metadata?.subrole,
+                isMain: metadata?.isMain ?? false,
+                isFocused: metadata?.isFocused ?? false
+            )
+        }
+        let displays = content.displays.map {
+            MacOSDisplayCandidate(displayID: $0.displayID, frame: $0.frame)
+        }
+        let resolution = try MacOSLocalAuthenticationWindowGeometry.resolve(
+            windows: windows,
+            displays: displays,
+            targetProcessID: targetProcessID
+        )
+        let window = content.windows[resolution.windowIndex]
+        let display = content.displays[resolution.displayIndex]
+        let filter = SCContentFilter(display: display, including: [window])
+        let scale = max(1.0, Double(filter.pointPixelScale))
+        return MacOSExactWindowCaptureSurface(
+            windowID: window.windowID,
+            filter: filter,
+            sourceRect: resolution.sourceRect,
+            inputBounds: resolution.inputBounds,
+            pixelWidth: max(2.0, Double(resolution.sourceRect.width) * scale),
+            pixelHeight: max(2.0, Double(resolution.sourceRect.height) * scale)
+        )
+    }
+}
+
+/// LocalAuthentication does not become an ordinary active application. Human pointer input is
+/// admitted only while Apple's exact focused passcode dialog still matches the captured bounds.
+public enum MacOSLocalAuthenticationWindowInput {
+    public static func verifyFocused(processID: pid_t, inputBounds: CGRect) -> Bool {
+        guard let application = NSRunningApplication(processIdentifier: processID),
+              !application.isTerminated,
+              application.bundleIdentifier == MacOSLocalAuthenticationWindowGeometry.bundleIdentifier else {
+            return false
+        }
+        let app = AXUIElementCreateApplication(processID)
+        var focusedRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focusedRaw) == .success,
+              let focusedRaw else { return false }
+        let focused = unsafeDowncast(focusedRaw, to: AXUIElement.self)
+        guard let frame = secureAXFrame(focused),
+              MacOSExactWindowGeometry.framesMatch(frame, inputBounds),
+              secureAXString(focused, "AXIdentifier" as CFString) == MacOSLocalAuthenticationWindowGeometry.axIdentifier,
+              secureAXString(focused, kAXRoleAttribute as CFString) == (kAXWindowRole as String),
+              secureAXString(focused, kAXSubroleAttribute as CFString) == (kAXStandardWindowSubrole as String),
+              secureAXBool(focused, kAXMainAttribute as CFString) else { return false }
+        var windowsRaw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRaw) == .success,
+              let windows = windowsRaw as? [AXUIElement] else { return false }
+        let exact = windows.filter { window in
+            secureAXFrame(window).map { MacOSExactWindowGeometry.framesMatch($0, inputBounds) } ?? false
+        }
+        return exact.count == 1
+    }
+}
+
 public struct MacOSExactWindowCaptureSurface {
     public let windowID: CGWindowID
     public let filter: SCContentFilter

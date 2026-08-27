@@ -201,3 +201,59 @@ test("Window Handoff successor lineage is explicit and bounded while exact-one r
       && error.code === "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
   );
 });
+
+test("LocalAuthentication initial secure Window policy is explicit PID-only tap-only authority", () => {
+  const secure = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath, hostArgs: ["-e", "process.exit(0)"] },
+    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+  });
+  assert.ok(secure.start({
+    intervention: { id: "window-int-local-auth", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 6050 },
+    inputPolicy: { tap: true, scroll: false, text: false, key: false }
+  }));
+  assert.throws(
+    () => secure.start({
+      intervention: { id: "window-int-local-auth-stale-window", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 6050, windowId: 28942 },
+      inputPolicy: { tap: true, scroll: false, text: false, key: false }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_TARGET_INVALID"
+  );
+  assert.throws(
+    () => secure.start({
+      intervention: { id: "window-int-local-auth-text", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 6050 },
+      inputPolicy: { tap: true, scroll: false, text: true, key: false }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
+  );
+});
+
+test("LocalAuthentication policy is closed-world and cannot combine with successor lineage", () => {
+  assert.throws(
+    () => new WindowHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      initialSecureWindowPolicy: { mode: "other" } as never
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+  );
+  assert.throws(
+    () => new WindowHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      successorWindowPolicy: { mode: "same_process" },
+      initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+  );
+});

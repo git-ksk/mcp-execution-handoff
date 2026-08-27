@@ -286,3 +286,72 @@ private let display = MacOSDisplayCandidate(
         predecessorWindowID: 11
     ))
 }
+
+private func localAuthCandidate(
+    processID: pid_t = 6050,
+    windowID: CGWindowID = 99,
+    layer: Int = 1000,
+    bundleIdentifier: String? = MacOSLocalAuthenticationWindowGeometry.bundleIdentifier,
+    axIdentifier: String? = MacOSLocalAuthenticationWindowGeometry.axIdentifier,
+    axRole: String? = "AXWindow",
+    axSubrole: String? = "AXStandardWindow",
+    isMain: Bool = true,
+    isFocused: Bool = true
+) -> MacOSLocalAuthenticationWindowCandidate {
+    MacOSLocalAuthenticationWindowCandidate(
+        processID: processID,
+        windowID: windowID,
+        frame: CGRect(x: 830, y: 212, width: 260, height: 328),
+        isOnScreen: true,
+        layer: layer,
+        bundleIdentifier: bundleIdentifier,
+        axIdentifier: axIdentifier,
+        axRole: axRole,
+        axSubrole: axSubrole,
+        isMain: isMain,
+        isFocused: isFocused
+    )
+}
+
+@Test func localAuthenticationInitialWindowAdmitsOnlyExactAppleFocusedPasscodeDialog() throws {
+    let result = try MacOSLocalAuthenticationWindowGeometry.resolve(
+        windows: [localAuthCandidate()],
+        displays: [MacOSDisplayCandidate(displayID: 18, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))],
+        targetProcessID: 6050
+    )
+    #expect(result.windowIndex == 0)
+    #expect(result.inputBounds == CGRect(x: 830, y: 212, width: 260, height: 328))
+}
+
+@Test func localAuthenticationInitialWindowRejectsOrdinaryOrUnprovenLayeredWindows() {
+    let variants = [
+        localAuthCandidate(layer: 0),
+        localAuthCandidate(bundleIdentifier: "com.example.fake"),
+        localAuthCandidate(axIdentifier: "com.apple.LocalAuthentication.OtherDialog"),
+        localAuthCandidate(axRole: "AXGroup"),
+        localAuthCandidate(axSubrole: "AXDialog"),
+        localAuthCandidate(isMain: false),
+        localAuthCandidate(isFocused: false),
+        localAuthCandidate(processID: 6051)
+    ]
+    for candidate in variants {
+        #expect(throws: MacOSLocalAuthenticationWindowResolutionError.windowUnavailable) {
+            try MacOSLocalAuthenticationWindowGeometry.resolve(
+                windows: [candidate],
+                displays: [MacOSDisplayCandidate(displayID: 18, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))],
+                targetProcessID: 6050
+            )
+        }
+    }
+}
+
+@Test func localAuthenticationInitialWindowFailsClosedOnAmbiguity() {
+    let second = localAuthCandidate(windowID: 100)
+    #expect(throws: MacOSLocalAuthenticationWindowResolutionError.windowUnavailable) {
+        try MacOSLocalAuthenticationWindowGeometry.resolve(
+            windows: [localAuthCandidate(), second],
+            displays: [MacOSDisplayCandidate(displayID: 18, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))],
+            targetProcessID: 6050
+        )
+    }
+}

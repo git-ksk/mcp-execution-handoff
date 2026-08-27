@@ -10,11 +10,17 @@ export interface WindowHandoffSuccessorPolicy {
     /** Bounded post-Human-action probe window. Defaults to 800 ms. */
     transitionWindowMs?: number;
 }
+export interface WindowHandoffInitialSecureWindowPolicy {
+    /** Admit only Apple's exact LocalAuthentication user-presence dialog as the initial target. */
+    mode: "macos_local_authentication";
+}
 export interface WindowHandoffAdapterConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
     /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
     successorWindowPolicy?: WindowHandoffSuccessorPolicy;
+    /** Optional, default-off admission for Apple's exact LocalAuthentication user-presence dialog. */
+    initialSecureWindowPolicy?: WindowHandoffInitialSecureWindowPolicy;
     /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -26,8 +32,8 @@ export interface WindowHandoffStartRequest {
     inputPolicy: WindowHandoffInputPolicy;
 }
 export declare class WindowHandoffAdapterError extends Error {
-    readonly code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID";
-    constructor(code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID", message: string);
+    readonly code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID" | "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID";
+    constructor(code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID" | "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID", message: string);
 }
 /**
  * First-class bounded OS-window WebRTC Handoff composition for MCP consumers.

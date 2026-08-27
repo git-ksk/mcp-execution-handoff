@@ -13,11 +13,18 @@ export interface WindowHandoffSuccessorPolicy {
   transitionWindowMs?: number;
 }
 
+export interface WindowHandoffInitialSecureWindowPolicy {
+  /** Admit only Apple's exact LocalAuthentication user-presence dialog as the initial target. */
+  mode: "macos_local_authentication";
+}
+
 export interface WindowHandoffAdapterConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
   /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
   successorWindowPolicy?: WindowHandoffSuccessorPolicy;
+  /** Optional, default-off admission for Apple's exact LocalAuthentication user-presence dialog. */
+  initialSecureWindowPolicy?: WindowHandoffInitialSecureWindowPolicy;
   /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -37,7 +44,8 @@ export class WindowHandoffAdapterError extends Error {
       | "WINDOW_HANDOFF_UNAVAILABLE"
       | "WINDOW_HANDOFF_TARGET_INVALID"
       | "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
-      | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID",
+      | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
+      | "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID",
     message: string
   ) {
     super(message);
@@ -96,6 +104,8 @@ function translateError(error: unknown): Error {
       ? "WINDOW_HANDOFF_INPUT_POLICY_INVALID"
       : error.code === "SUCCESSOR_POLICY_INVALID"
         ? "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
-        : "WINDOW_HANDOFF_UNAVAILABLE";
+        : error.code === "INITIAL_SECURE_WINDOW_POLICY_INVALID"
+          ? "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID"
+          : "WINDOW_HANDOFF_UNAVAILABLE";
   return new WindowHandoffAdapterError(code, error.message);
 }
