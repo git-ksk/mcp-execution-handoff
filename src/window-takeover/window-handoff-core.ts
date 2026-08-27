@@ -23,6 +23,8 @@ export interface WindowHandoffCoreSuccessorPolicy {
 export interface WindowHandoffCoreConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
+  /** Internal facade-selected media profile. Browser leaves this unset. */
+  mediaProfile?: "window_text";
   successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -63,7 +65,11 @@ export class WindowHandoffCore {
     }
     const completionGraceMs = config.takeover.completionGraceMs ?? config.takeover.ttlMs;
     this.#routeTtlMs = config.takeover.ttlMs + completionGraceMs;
-    this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigWithSuccessorPolicy(config.runtime, successorPolicy));
+    this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigForHandoff(
+      config.runtime,
+      config.mediaProfile,
+      successorPolicy
+    ));
     this.#broker = new TakeoverBroker(
       webRtcOnlySurfaceAdapter(),
       config.takeover,
@@ -230,18 +236,20 @@ function normalizeSuccessorPolicy(policy: WindowHandoffCoreSuccessorPolicy | und
   return { mode: "same_process", transitionWindowMs };
 }
 
-function runtimeConfigWithSuccessorPolicy(
+function runtimeConfigForHandoff(
   runtime: SpawnedWebRtcRuntimeProviderConfig,
+  mediaProfile: "window_text" | undefined,
   policy: NormalizedSuccessorPolicy | undefined
 ): SpawnedWebRtcRuntimeProviderConfig {
-  if (!policy) return runtime;
+  if (!mediaProfile && !policy) return runtime;
   const baseSpawn = runtime.spawnProcess ?? spawn;
   const spawnProcess = ((command: string, args: readonly string[], options: Parameters<typeof spawn>[2]) => {
-    const env = {
-      ...(options?.env ?? {}),
-      TAKEOVER_WEBRTC_WINDOW_LINEAGE: "same_process_successor",
-      TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS: String(policy.transitionWindowMs)
-    };
+    const env: NodeJS.ProcessEnv = { ...(options?.env ?? {}) };
+    if (mediaProfile) env.TAKEOVER_WEBRTC_MEDIA_PROFILE = mediaProfile;
+    if (policy) {
+      env.TAKEOVER_WEBRTC_WINDOW_LINEAGE = "same_process_successor";
+      env.TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS = String(policy.transitionWindowMs);
+    }
     return baseSpawn(command, args as string[], { ...options, env });
   }) as typeof spawn;
   return { ...runtime, spawnProcess };

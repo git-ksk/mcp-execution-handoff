@@ -351,7 +351,7 @@ export class SpawnedWebRtcRuntimeProvider {
             runtime.mediaReady.reject();
             void this.end(runtime.binding.takeoverSessionId, true, "host_protocol");
         });
-        const metricParser = new HostMetricParser((hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; }, (regions) => this.sendEditableRegions(runtime, regions), (stage) => {
+        const metricParser = new HostMetricParser((hostEncodeMs) => { runtime.lastHostEncodeMs = hostEncodeMs; }, (regions) => this.sendEditableRegions(runtime, regions), (media) => this.recordDiagnostic({ stage: "host.media.window_text", media }), (stage) => {
             this.recordDiagnostic({ stage });
             if (stage === "host.window.ready")
                 runtime.hostReady?.resolve();
@@ -803,11 +803,13 @@ function splitAvcc(sample) {
 class HostMetricParser {
     onHostEncode;
     onEditableRegions;
+    onHostMedia;
     onHostStage;
     text = "";
-    constructor(onHostEncode, onEditableRegions, onHostStage) {
+    constructor(onHostEncode, onEditableRegions, onHostMedia, onHostStage) {
         this.onHostEncode = onHostEncode;
         this.onEditableRegions = onEditableRegions;
+        this.onHostMedia = onHostMedia;
         this.onHostStage = onHostStage;
     }
     push(chunk) {
@@ -827,6 +829,16 @@ class HostMetricParser {
                 const tenths = Number(matched[1]);
                 if (Number.isSafeInteger(tenths) && tenths >= 0 && tenths <= 65_535)
                     this.onHostEncode(tenths / 10);
+                continue;
+            }
+            const media = /^MCP_HANDOFF_DIAGNOSTIC media_profile=window_text width=(\d{1,4}) height=(\d{1,4}) bitrate_kbps=(\d{3,5}) speed_priority=(0|1)$/.exec(line);
+            if (media) {
+                this.onHostMedia({
+                    width: Number(media[1]),
+                    height: Number(media[2]),
+                    bitrateKbps: Number(media[3]),
+                    speedPriority: media[4] === "1"
+                });
                 continue;
             }
             const diagnostic = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=(target_alive|target_missing|window_ready|window_failure_none|window_failure_multiple|capture_started|frame_ready|input_focus_ready|input_tap_sent|input_pointer_helper_ready|input_pointer_helper_failure|input_pointer_move_ready|input_pointer_authority_ready|input_pointer_down_sent|input_pointer_post_authority_ready|input_pointer_delivery_helper_ready|input_pointer_delivery_helper_failure|input_pointer_delivery_arm_failure|input_pointer_delivery_wait_no_from_server_creator_match|input_pointer_delivery_wait_no_from_server_creator_mismatch|input_pointer_delivery_wait_no_from_server_creator_unknown|input_pointer_delivery_wait_swapped|input_pointer_delivery_wait_short_data|input_pointer_delivery_wait_no_event|input_pointer_delivery_wait_event_mismatch|input_pointer_delivery_wait_xi2_mismatch|input_pointer_delivery_wait_window_mismatch|input_pointer_delivery_wait_coord_mismatch|input_pointer_delivery_wait_io_failure|input_pointer_delivery_wait_failure|input_pointer_delivery_ready|input_failure|capture_failure|capture_failure_x11|capture_failure_encoder|capture_failure_option|capture_failure_other)$/.exec(line);

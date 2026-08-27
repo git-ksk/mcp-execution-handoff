@@ -39,6 +39,7 @@ const ALL_STAGES = new Set([
     "host.window.successor.ambiguous",
     "host.window.successor.unsupported",
     "host.window.successor.failure",
+    "host.media.window_text",
     "host.capture.started",
     "host.frame.ready",
     "host.input.focus.ready",
@@ -98,7 +99,8 @@ export class WebRtcDiagnosticsTracker {
         return {
             events: this.events.map((event) => ({
                 ...event,
-                ...(event.candidateCounts ? { candidateCounts: { ...event.candidateCounts } } : {})
+                ...(event.candidateCounts ? { candidateCounts: { ...event.candidateCounts } } : {}),
+                ...(event.media ? { media: { ...event.media } } : {})
             }))
         };
     }
@@ -162,6 +164,7 @@ function normalizeWebRtcDiagnosticEvent(event) {
         "host.window.successor.ambiguous": ["stage"],
         "host.window.successor.unsupported": ["stage"],
         "host.window.successor.failure": ["stage"],
+        "host.media.window_text": ["stage", "media"],
         "host.capture.started": ["stage"],
         "host.frame.ready": ["stage"],
         "host.input.focus.ready": ["stage"],
@@ -226,7 +229,36 @@ function normalizeWebRtcDiagnosticEvent(event) {
         }
         normalized.durationMs = Math.round(event.durationMs * 10) / 10;
     }
+    if (event.media !== undefined) {
+        const media = normalizeMedia(event.media);
+        if (!media)
+            return undefined;
+        normalized.media = media;
+    }
     return normalized;
+}
+function normalizeMedia(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return undefined;
+    const record = value;
+    const keys = ["width", "height", "bitrateKbps", "speedPriority"];
+    if (Object.keys(record).length !== keys.length || Object.keys(record).some((key) => !keys.includes(key))) {
+        return undefined;
+    }
+    if (!Number.isSafeInteger(record.width) || record.width < 2 || record.width > 3_840)
+        return undefined;
+    if (!Number.isSafeInteger(record.height) || record.height < 2 || record.height > 2_160)
+        return undefined;
+    if (!Number.isSafeInteger(record.bitrateKbps) || record.bitrateKbps < 100 || record.bitrateKbps > 20_000)
+        return undefined;
+    if (typeof record.speedPriority !== "boolean")
+        return undefined;
+    return {
+        width: record.width,
+        height: record.height,
+        bitrateKbps: record.bitrateKbps,
+        speedPriority: record.speedPriority
+    };
 }
 function normalizeCandidateCounts(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))

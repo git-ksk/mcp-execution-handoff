@@ -193,7 +193,7 @@ test("macOS successor-window lineage stays same-process, explicit, and desktop-f
   const linux = source("src/browser-takeover/linux-webrtc-host-cli.ts");
 
   assert.match(adapter, /successorWindowPolicy\?: WindowHandoffSuccessorPolicy/);
-  assert.match(core, /TAKEOVER_WEBRTC_WINDOW_LINEAGE: "same_process_successor"/);
+  assert.match(core, /env\.TAKEOVER_WEBRTC_WINDOW_LINEAGE = "same_process_successor"/);
   assert.match(core, /transitionWindowMs < 100 \|\| transitionWindowMs > 2_000/);
   assert.match(exact, /candidate\.processID == targetProcessID/);
   assert.match(exact, /!knownWindowIDs\.contains\(candidate\.windowID\)/);
@@ -213,4 +213,35 @@ test("macOS successor-window lineage stays same-process, explicit, and desktop-f
   assert.match(acceptance, /successorWindowPolicy: \{ mode: "same_process", transitionWindowMs: 1_200 \}/);
   assert.match(acceptance, /inputPolicy: \{ tap: true, scroll: false, text: false, key: false \}/);
   assert.match(linux, /successor-window lineage is not supported by the Linux WebRTC host/);
+});
+
+test("Window text media profile raises only the Window quality ceiling without changing Browser or backpressure", () => {
+  const adapter = source("src/window-takeover/window-handoff-adapter.ts");
+  const browser = source("src/browser-takeover/browser-handoff-adapter.ts");
+  const core = source("src/window-takeover/window-handoff-core.ts");
+  const policy = source("experiments/thin-takeover-runtime/Sources/TakeoverMacOSWindow/MediaPolicy.swift");
+  const host = source("experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift");
+  const runtime = source("src/browser-takeover/webrtc-runtime.ts");
+  const acceptance = source("experiments/thin-takeover-runtime/scripts/macos-window-media-quality-acceptance.mts");
+
+  assert.match(adapter, /new WindowHandoffCore\(\{ \.\.\.config, mediaProfile: "window_text" \}\)/);
+  assert.doesNotMatch(browser, /mediaProfile/);
+  assert.match(core, /TAKEOVER_WEBRTC_MEDIA_PROFILE = mediaProfile/);
+  assert.match(policy, /case standard/);
+  assert.match(policy, /ceiling = \(1_280, 720\)/);
+  assert.match(policy, /bitrate = 3_000_000/);
+  assert.match(policy, /case \.windowText/);
+  assert.match(policy, /ceiling = \(1_920, 1_080\)/);
+  assert.match(policy, /bitrate = 5_000_000/);
+  assert.match(policy, /speedPriority = false/);
+  assert.match(host, /MacOSWindowMediaPolicyResolver\.resolve/);
+  assert.match(host, /averageBitrate: mediaPolicy\.averageBitrate/);
+  assert.match(host, /prioritizeEncodingSpeedOverQuality: mediaPolicy\.prioritizeEncodingSpeedOverQuality/);
+  assert.match(host, /minimumFrameInterval = CMTime\(value: 1, timescale: 30\)/);
+  assert.match(host, /FrameAdmissionGate\(maxInFlight: 1\)/);
+  assert.match(runtime, /await sender\.sendRtp\(/);
+  assert.match(runtime, /pendingFrame/);
+  assert.match(acceptance, /inputPolicy: \{ tap: false, scroll: false, text: false, key: false \}/);
+  assert.match(acceptance, /Refusing direct media-quality LAN acceptance while TURN credentials are present/);
+  assert.doesNotMatch(acceptance, /kind: "tap"|kind: "text"|tccutil|password/i);
 });

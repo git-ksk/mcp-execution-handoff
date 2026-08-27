@@ -122,3 +122,35 @@ test("Linux pointer delivery diagnostics retain only bounded stage names", () =>
   tracker.record({ stage: "host.input.pointer.delivery_ready", durationMs: 1 });
   assert.equal(tracker.snapshot().events.length, stages.length);
 });
+
+test("Window media diagnostics retain only bounded profile metadata", () => {
+  const tracker = new WebRtcDiagnosticsTracker();
+  tracker.record({
+    stage: "host.media.window_text",
+    media: { width: 1440, height: 1080, bitrateKbps: 5000, speedPriority: false }
+  });
+  const snapshot = tracker.snapshot();
+  assert.deepEqual(snapshot, {
+    events: [{
+      stage: "host.media.window_text",
+      media: { width: 1440, height: 1080, bitrateKbps: 5000, speedPriority: false }
+    }]
+  });
+  snapshot.events[0]!.media!.width = 2;
+  assert.equal(tracker.snapshot().events[0]!.media!.width, 1440);
+
+  for (const media of [
+    { width: 1, height: 1080, bitrateKbps: 5000, speedPriority: false },
+    { width: 1440, height: 2161, bitrateKbps: 5000, speedPriority: false },
+    { width: 1440, height: 1080, bitrateKbps: 20001, speedPriority: false },
+    { width: 1440, height: 1080, bitrateKbps: 5000, speedPriority: false, title: "secret" }
+  ]) {
+    tracker.record({ stage: "host.media.window_text", media: media as never });
+  }
+  tracker.record({
+    stage: "host.window.ready",
+    media: { width: 1440, height: 1080, bitrateKbps: 5000, speedPriority: false }
+  });
+  assert.equal(tracker.snapshot().events.length, 1);
+  assert.doesNotMatch(JSON.stringify(tracker.snapshot()), /title|windowId|framebuffer|credential|payload/i);
+});

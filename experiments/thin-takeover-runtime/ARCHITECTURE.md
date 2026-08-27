@@ -206,8 +206,9 @@ control plane: intervention / epoch / principal / client generation / expiry
 Handoff WebRTC runtime
   ├─ no-store HTTP signaling: bounded ICE configuration + bounded SDP
   ├─ ScreenCaptureKit → VideoToolbox H.264 Constrained Baseline
-  │    → 1280×720 / 30 fps initial Safari acceptance profile
-  │    → maxInFlight=1 → latest pending encoded frame only
+  │    → Browser compatibility: ≤1280×720 / 3 Mbps / 30 fps / speed-priority
+  │    → macOS Window `window_text`: no upscale, ≤1920×1080 / 5 Mbps / 30 fps / quality-priority
+  │    → maxInFlight=1 → latest pending encoded frame only (both profiles)
   │    → RFC 6184 RTP → SRTP/DTLS → Safari playsinline video
   └─ Safari direct tap/swipe/iOS keyboard
        → bounded WebRTC DataChannels
