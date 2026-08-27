@@ -50,6 +50,31 @@ async function waitFor(label, predicate, timeoutMs = 45_000) {
   throw new Error(`WSS container acceptance timed out at ${label}`);
 }
 
+async function readAcceptanceStatus(cookie) {
+  return await (await get("/acceptance-status", { cookie })).json();
+}
+
+async function focusAndType(ws, cookie) {
+  const deadline = Date.now() + 8_000;
+  const inputPoints = [
+    { x: 0.42, y: 0.20 },
+    { x: 0.42, y: 0.24 },
+    { x: 0.42, y: 0.28 },
+    { x: 0.42, y: 0.32 }
+  ];
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    if ((await readAcceptanceStatus(cookie)).textObserved === true) return;
+    const point = inputPoints[attempt % inputPoints.length];
+    ws.send(JSON.stringify({ kind: "tap", x: point.x, y: point.y }));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    attempt += 1;
+  }
+  throw new Error("WSS container acceptance timed out at text");
+}
+
 async function printBoundedDiagnostics() {
   process.stderr.write(`WSS_CONTAINER_ACCEPTANCE_FAILED stage=${stage}\n`);
   const health = await get("/healthz").then((response) => response.text()).catch(() => "unreachable");
@@ -124,15 +149,11 @@ try {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/takeover/ws/${sessionId}`, protocols, { origin });
   let ready = false;
   let jpeg = false;
-  let frameCount = 0;
   let closed = false;
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
       const frame = Buffer.from(data);
-      if (frame.length >= 20 && frame.readUInt32BE(0) === 0x484f4631 && frame[4] === 1) {
-        jpeg = true;
-        frameCount += 1;
-      }
+      if (frame.length >= 20 && frame.readUInt32BE(0) === 0x484f4631 && frame[4] === 1) jpeg = true;
       return;
     }
     const message = JSON.parse(String(data));
@@ -143,32 +164,27 @@ try {
   await waitFor("ready-frame", () => ready && jpeg, 20_000);
 
   stage = "tap";
-  const framesBeforeTap = frameCount;
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
-  await waitFor("tap", async () => (await (await get("/acceptance-status", { cookie })).json()).tapObserved === true);
+  await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
 
-  // `tapObserved` is raised when the form navigation reaches the HTTP server. Wait for several
-  // subsequent captured frames so Chromium can commit the new page and run its bounded autofocus
-  // before exercising text input. This synchronizes on visible progress instead of a fixed sleep.
-  stage = "form-rendered";
-  await waitFor("form-rendered", () => frameCount >= framesBeforeTap + 3, 5_000);
-
+  // Navigation arrival proves only that the form request reached the server. Exercise the real
+  // Human path instead of assuming autofocus or a continued media cadence: retry a bounded set of
+  // coordinates covering the visible input, then type only after each explicit focus attempt.
   stage = "text";
-  ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
-  await waitFor("text", async () => (await (await get("/acceptance-status", { cookie })).json()).textObserved === true);
+  await focusAndType(ws, cookie);
 
   stage = "scroll";
   ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
-  await waitFor("scroll", async () => (await (await get("/acceptance-status", { cookie })).json()).scrollObserved === true);
+  await waitFor("scroll", async () => (await readAcceptanceStatus(cookie)).scrollObserved === true);
 
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
-  await waitFor("submit", async () => (await (await get("/acceptance-status", { cookie })).json()).submitObserved === true);
+  await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true);
 
   stage = "done";
   ws.send(JSON.stringify({ kind: "done" }));
   await waitFor("done", async () => {
-    const status = await (await get("/acceptance-status", { cookie })).json();
+    const status = await readAcceptanceStatus(cookie);
     return status.doneObserved === true && closed;
   });
   ws.close();
