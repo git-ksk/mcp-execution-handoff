@@ -124,11 +124,15 @@ try {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/takeover/ws/${sessionId}`, protocols, { origin });
   let ready = false;
   let jpeg = false;
+  let frameCount = 0;
   let closed = false;
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
       const frame = Buffer.from(data);
-      if (frame.length >= 20 && frame.readUInt32BE(0) === 0x484f4631 && frame[4] === 1) jpeg = true;
+      if (frame.length >= 20 && frame.readUInt32BE(0) === 0x484f4631 && frame[4] === 1) {
+        jpeg = true;
+        frameCount += 1;
+      }
       return;
     }
     const message = JSON.parse(String(data));
@@ -139,8 +143,15 @@ try {
   await waitFor("ready-frame", () => ready && jpeg, 20_000);
 
   stage = "tap";
+  const framesBeforeTap = frameCount;
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
   await waitFor("tap", async () => (await (await get("/acceptance-status", { cookie })).json()).tapObserved === true);
+
+  // `tapObserved` is raised when the form navigation reaches the HTTP server. Wait for several
+  // subsequent captured frames so Chromium can commit the new page and run its bounded autofocus
+  // before exercising text input. This synchronizes on visible progress instead of a fixed sleep.
+  stage = "form-rendered";
+  await waitFor("form-rendered", () => frameCount >= framesBeforeTap + 3, 5_000);
 
   stage = "text";
   ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
