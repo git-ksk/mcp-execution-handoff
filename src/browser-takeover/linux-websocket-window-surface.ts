@@ -98,10 +98,10 @@ interface ActiveLinuxSurface {
 /**
  * Private Linux physical-Acceptance surface for the #40 WSS experiment.
  *
- * It deliberately reuses the existing normal-browser exact-window helper. The helper still owns
- * X11 target resolution, capture and Human input. This adapter selects its JPEG-only stdout mode,
- * keeps the process/window tuple server-side, revalidates that exact tuple before every returned
- * frame/input, and never exposes helper transport details to Browser/Window consumers.
+ * It deliberately reuses the existing normal-browser exact-window helper for capture and ordinary
+ * Human input. The bounded Backspace/Enter compatibility path remains server-side on the same exact
+ * PID/XID authority tuple, matching the proven #40 WSS behavior without exposing transport details
+ * to Browser/Window consumers.
  */
 export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebSocketWindowSurface {
   readonly #hostScript: string;
@@ -157,7 +157,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
 
   pressExactWindowKey(target: Readonly<TakeoverHostTarget>, key: string): Promise<void> {
     if (key !== "Backspace" && key !== "Enter") return Promise.reject(new Error("Linux WSS key is unsupported"));
-    return this.#input(target, { kind: "key", key });
+    return this.#pressSpecialKey(target, key);
   }
 
   async close(): Promise<void> {
@@ -165,6 +165,48 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     const active = this.#active;
     this.#active = undefined;
     if (active) await stopActive(active);
+  }
+
+  async #pressSpecialKey(target: Readonly<TakeoverHostTarget>, key: "Backspace" | "Enter"): Promise<void> {
+    const active = await this.#ensure(target);
+    active.inputChain = active.inputChain.then(async () => {
+      if (active.failed || this.#active !== active) throw new Error("Linux WSS exact-window helper is unavailable");
+      if (active.pendingInputAck) throw new Error("Linux WSS exact-window helper input is busy");
+      await this.#revalidate(target);
+      const env = { DISPLAY: this.#displayName, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
+
+      // Match the proven #40 focused-key route while keeping authority exact. Activation is bounded
+      // to the admitted XID, then the active/focused owner is verified before the key mutation.
+      await runBounded(this.#xdotoolExecutable, [
+        "windowactivate", "--sync", String(target.windowId)
+      ], env);
+      const activeWindowId = Number((await runBounded(this.#xdotoolExecutable, [
+        "getactivewindow"
+      ], env)).trim());
+      if (activeWindowId !== target.windowId) throw new Error("Linux WSS target window is not active");
+      const focusedWindowId = Number((await runBounded(this.#xdotoolExecutable, [
+        "getwindowfocus"
+      ], env)).trim());
+      if (!Number.isSafeInteger(focusedWindowId) || focusedWindowId <= 0) {
+        throw new Error("Linux WSS target process does not own input focus");
+      }
+      if (focusedWindowId !== target.windowId) {
+        const focusedOwner = Number((await runBounded(this.#xdotoolExecutable, [
+          "getwindowpid", String(focusedWindowId)
+        ], env).catch(() => "")).trim());
+        if (focusedOwner !== target.processId) {
+          throw new Error("Linux WSS target process does not own input focus");
+        }
+      }
+
+      // Activation/focus checks are themselves observable X11 state changes, so revalidate the exact
+      // PID/XID tuple again immediately before the Human key. Never clear unrelated local modifiers.
+      await this.#revalidate(target);
+      const xdotoolKey = key === "Backspace" ? "BackSpace" : "Return";
+      await runBounded(this.#xdotoolExecutable, ["key", xdotoolKey], env);
+      await this.#revalidate(target);
+    });
+    return active.inputChain;
   }
 
   async #input(target: Readonly<TakeoverHostTarget>, input: Record<string, unknown>): Promise<void> {
