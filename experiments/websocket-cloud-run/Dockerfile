@@ -7,12 +7,10 @@ RUN apt-get update \
       gcc \
       libc6-dev \
       libx11-dev \
-      libxres-dev \
       libxtst-dev \
       openbox \
       pkg-config \
       x11-utils \
-      x11-xserver-utils \
       xdotool \
       xvfb \
  && rm -rf /var/lib/apt/lists/*
@@ -24,25 +22,12 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY native ./native
 COPY scripts ./scripts
-COPY experiments/websocket-cloud-run/xrecord-key-delivery-probe.c ./experiments/websocket-cloud-run/xrecord-key-delivery-probe.c
-COPY experiments/websocket-cloud-run/xdotool-focus-preserving-wrapper.sh /usr/local/bin/handoff-xdotool
 RUN npm run build \
  && npm run build:linux-xtest-helper \
- && mkdir -p dist/native \
- && cc \
-      -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
-      -D_POSIX_C_SOURCE=200809L -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE \
-      experiments/websocket-cloud-run/xrecord-key-delivery-probe.c \
-      -Wl,-z,relro,-z,now -pie -lX11 -lXtst -lXRes \
-      -o dist/native/mcp-handoff-wss-xrecord-key-probe \
- && chmod 0755 dist/native/mcp-handoff-wss-xrecord-key-probe /usr/local/bin/handoff-xdotool \
  && npm prune --omit=dev \
- && test -x dist/native/mcp-handoff-linux-xtest-helper \
- && test -x dist/native/mcp-handoff-wss-xrecord-key-probe \
- && test -x /usr/local/bin/handoff-xdotool
+ && test -x dist/native/mcp-handoff-linux-xtest-helper
 
 ENV NODE_ENV=production
 ENV PORT=8080
-ENV TAKEOVER_LINUX_XDOTOOL=/usr/local/bin/handoff-xdotool
 EXPOSE 8080
 CMD ["node", "dist/experimental/websocket-cloud-run-acceptance-server.js"]
