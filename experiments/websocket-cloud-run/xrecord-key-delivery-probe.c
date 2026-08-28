@@ -17,6 +17,8 @@
 
 #define WAIT_TIMEOUT_MS 1500
 #define MAX_WINDOW_ANCESTRY 32
+#define MAX_PROCESS_ANCESTRY 64
+#define MAX_PROC_STAT_BYTES 4096
 #define X_EVENT_BYTES 32
 
 #define WIRE_EVENT_TYPE_OFFSET 0
@@ -76,6 +78,42 @@ static bool parse_positive_long(const char *value, long *parsed_return) {
   if (errno != 0 || end == value || *end != '\0' || parsed <= 0) return false;
   *parsed_return = parsed;
   return true;
+}
+
+static bool parent_pid_of(pid_t pid, pid_t *parent_pid_return) {
+  char path[64];
+  char buffer[MAX_PROC_STAT_BYTES];
+  FILE *file;
+  char *close;
+  char state = '\0';
+  long parsed_parent = 0;
+
+  if (pid <= 0 || snprintf(path, sizeof(path), "/proc/%ld/stat", (long)pid) < 0) return false;
+  file = fopen(path, "r");
+  if (file == NULL) return false;
+  const bool read_ok = fgets(buffer, sizeof(buffer), file) != NULL;
+  const bool complete = read_ok && strchr(buffer, '\n') != NULL;
+  (void)fclose(file);
+  if (!complete) return false;
+  close = strrchr(buffer, ')');
+  if (close == NULL || close[1] != ' ') return false;
+  if (sscanf(close + 2, "%c %ld", &state, &parsed_parent) != 2 || state == '\0') return false;
+  if (parsed_parent <= 0 || parsed_parent > INT_MAX) return false;
+  *parent_pid_return = (pid_t)parsed_parent;
+  return true;
+}
+
+static bool process_is_target_or_descendant(pid_t pid, pid_t target_pid) {
+  pid_t current = pid;
+  int depth;
+  if (pid <= 0 || target_pid <= 0) return false;
+  for (depth = 0; depth < MAX_PROCESS_ANCESTRY; depth += 1) {
+    pid_t parent = 0;
+    if (current == target_pid) return true;
+    if (current <= 1 || !parent_pid_of(current, &parent) || parent == current) return false;
+    current = parent;
+  }
+  return false;
 }
 
 static bool window_descends_from(Display *display, Window ancestor, Window candidate) {
@@ -139,7 +177,7 @@ static bool collect_target_clients(
     const pid_t pid = XResGetClientPid(&ids[index]);
     const XRecordClientSpec client = (XRecordClientSpec)ids[index].spec.client;
     bool duplicate = false;
-    if (pid != target_pid || client == (XRecordClientSpec)None) continue;
+    if (!process_is_target_or_descendant(pid, target_pid) || client == (XRecordClientSpec)None) continue;
     for (existing = 0; existing < client_count; existing += 1) {
       if (clients[existing] == client) {
         duplicate = true;
