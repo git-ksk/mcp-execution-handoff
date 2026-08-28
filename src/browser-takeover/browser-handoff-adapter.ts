@@ -1,3 +1,5 @@
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
@@ -11,11 +13,19 @@ import type {
   SpawnedWebRtcRuntimeProviderConfig,
   WebRtcHumanInputPolicy
 } from "./webrtc-runtime-diagnostics.js";
+import {
+  ManagedWindowHandoffRuntime,
+  type BrowserHandoffManagedFallbackConfig
+} from "./managed-handoff-runtime.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "../window-takeover/window-handoff-core.js";
+
+export type { BrowserHandoffManagedFallbackConfig } from "./managed-handoff-runtime.js";
 
 export interface BrowserHandoffAdapterConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
+  /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
+  managedFallback?: BrowserHandoffManagedFallbackConfig;
   /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -43,17 +53,28 @@ export class BrowserHandoffAdapterError extends Error {
 }
 
 /**
- * First-class Browser WebRTC Handoff composition for standalone MCP consumers.
+ * First-class Browser Handoff composition for standalone MCP consumers.
  *
- * Browser/profile/authentication semantics remain consumer-owned. This facade reuses the same
- * bounded exact-window WebRTC/session core as `WindowHandoffAdapter`, while preserving the existing
- * Browser public API and its explicit no-HTTP-frame-downgrade contract.
+ * Direct WebRTC remains unchanged by default. When managed fallback is configured, Handoff owns
+ * the strict direct WebRTC -> WSS -> optional TURN transition while the consumer keeps one locator
+ * and the same Browser lifecycle API.
  */
 export class BrowserHandoffAdapter {
-  readonly #core: WindowHandoffCore;
+  readonly #core: WindowHandoffCore | ManagedWindowHandoffRuntime;
 
   constructor(config: BrowserHandoffAdapterConfig) {
-    this.#core = new WindowHandoffCore(config);
+    try {
+      this.#core = config.managedFallback
+        ? new ManagedWindowHandoffRuntime({
+            takeover: config.takeover,
+            runtime: config.runtime,
+            managedFallback: config.managedFallback,
+            ...(config.onComplete ? { onComplete: config.onComplete } : {})
+          })
+        : new WindowHandoffCore(config);
+    } catch (error) {
+      throw translateError(error);
+    }
   }
 
   isEnabled(): boolean { return this.#core.isEnabled(); }
@@ -70,14 +91,114 @@ export class BrowserHandoffAdapter {
 
   async revoke(interventionId: string): Promise<void> { await this.#core.revoke(interventionId); }
   async revokeForIntervention(interventionId: string): Promise<void> { await this.revoke(interventionId); }
-  handle(request: Request, boundPrincipal: string | undefined): Promise<Response> { return this.#core.handle(request, boundPrincipal); }
+  handle(request: Request, boundPrincipal: string | undefined): Promise<Response> {
+    return this.#core.handle(request, boundPrincipal);
+  }
+  /** Route Node HTTP upgrades only when managed WSS is the active Handoff transport. */
+  handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.handleUpgrade(request, socket, head)
+      : false;
+  }
   diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot { return this.#core.diagnosticsSnapshot(); }
-  operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot { return webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot()); }
+  operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.operatorDiagnosticsSnapshot("browser_handoff")
+      : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
+  }
+  /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
+  managedSurfaceDiagnosticsSnapshot(): {
+    lastFailure: string;
+    framesObserved: number;
+    lastInputStage: string;
+    lastInputBoundaryStage: string;
+    inputAttempts: number;
+    failure: string;
+    failureInputStage: string;
+    failureInputBoundaryStage: string;
+    lastInputFailureDetail: string;
+    failureInputFailureDetail: string;
+    lastHelperStopReason: string;
+    failureHelperStopReason: string;
+    lastHelperCrashReason: string;
+    failureHelperCrashReason: string;
+    lastHelperExitKind: string;
+    failureHelperExitKind: string;
+    lastHelperCrashClass: string;
+    failureHelperCrashClass: string;
+    lastHelperCrashOrigin: string;
+    failureHelperCrashOrigin: string;
+    lastHelperCrashErrorKind: string;
+    failureHelperCrashErrorKind: string;
+    lastHelperCrashMessageClass: string;
+    failureHelperCrashMessageClass: string;
+  } {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedSurfaceDiagnosticsSnapshot()
+      : {
+          lastFailure: "none",
+          framesObserved: 0,
+          lastInputStage: "none",
+          lastInputBoundaryStage: "none",
+          inputAttempts: 0,
+          failure: "none",
+          failureInputStage: "none",
+          failureInputBoundaryStage: "none",
+          lastInputFailureDetail: "none",
+          failureInputFailureDetail: "none",
+          lastHelperStopReason: "none",
+          failureHelperStopReason: "none",
+          lastHelperCrashReason: "none",
+          failureHelperCrashReason: "none",
+          lastHelperExitKind: "none",
+          failureHelperExitKind: "none",
+          lastHelperCrashClass: "none",
+          failureHelperCrashClass: "none",
+          lastHelperCrashOrigin: "none",
+          failureHelperCrashOrigin: "none",
+          lastHelperCrashErrorKind: "none",
+          failureHelperCrashErrorKind: "none",
+          lastHelperCrashMessageClass: "none",
+          failureHelperCrashMessageClass: "none"
+        };
+  }
+  /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
+  managedWebSocketDiagnosticsSnapshot(): {
+    disconnectKind: string;
+    channelState: string;
+    sentFrames: number;
+    droppedFrames: number;
+    lastFailure: string;
+    lastInputStage: string;
+    failureDisconnectKind: string;
+    failureChannelState: string;
+    failureCode: string;
+    failureInputStage: string;
+  } {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedWebSocketDiagnosticsSnapshot()
+      : {
+          disconnectKind: "none",
+          channelState: "none",
+          sentFrames: 0,
+          droppedFrames: 0,
+          lastFailure: "none",
+          lastInputStage: "none",
+          failureDisconnectKind: "none",
+          failureChannelState: "none",
+          failureCode: "none",
+          failureInputStage: "none"
+        };
+  }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }
 
 function translateError(error: unknown): Error {
-  if (!(error instanceof WindowHandoffCoreError)) return error instanceof Error ? error : new Error("Browser Handoff failed");
+  if (!(error instanceof WindowHandoffCoreError)) {
+    return error instanceof Error
+      ? new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", error.message)
+      : new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser Handoff failed");
+  }
   if (error.code === "TARGET_INVALID") {
     return new BrowserHandoffAdapterError(
       "BROWSER_HANDOFF_TARGET_INVALID",
@@ -90,5 +211,5 @@ function translateError(error: unknown): Error {
       "Browser Handoff requires an explicit bounded Human input policy"
     );
   }
-  return new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser WebRTC Handoff is unavailable");
+  return new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", error.message);
 }

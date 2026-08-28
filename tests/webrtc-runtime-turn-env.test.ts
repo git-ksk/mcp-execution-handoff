@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  createDirectOnlyWebRtcRuntime,
+  createRelayEnabledWebRtcRuntime
+} from "../src/browser-takeover/webrtc-runtime-attempt.js";
 import { SpawnedWebRtcRuntimeProvider } from "../src/browser-takeover/webrtc-runtime.js";
 
 const NAMES = [
@@ -21,6 +25,56 @@ function binding() {
     clientGeneration: 1, expiresAt: Date.now() + 60_000
   };
 }
+
+test("direct-only runtime construction never observes or issues configured TURN credentials", async () => {
+  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  try {
+    clear();
+    process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID = "configured-cloudflare-key";
+    process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN = "server-only-test-token";
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      throw new Error("direct-only must not call the relay provider");
+    };
+
+    const provider = createDirectOnlyWebRtcRuntime({ hostExecutable: process.execPath });
+    assert.equal(process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID, "configured-cloudflare-key");
+    assert.equal(process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN, "server-only-test-token");
+
+    const ice = await provider.prepare(binding());
+    assert.equal(fetchCalls, 0);
+    assert.equal(ice.relay, "disabled");
+    assert.deepEqual(ice.iceServers, []);
+    assert.deepEqual(provider.diagnosticsSnapshot(), { events: [] });
+    await provider.revoke("turn-env-session");
+  } finally {
+    globalThis.fetch = originalFetch;
+    clear();
+    for (const [name, value] of original) if (value !== undefined) process.env[name] = value;
+  }
+});
+
+test("relay-enabled runtime construction can still issue configured TURN credentials", async () => {
+  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  try {
+    clear();
+    process.env.MCP_HANDOFF_COTURN_SHARED_SECRET = "0123456789abcdef0123456789abcdef";
+    process.env.MCP_HANDOFF_COTURN_TURN_URLS = "turn:turn.example.test:3478?transport=udp";
+    process.env.MCP_HANDOFF_COTURN_STUN_URLS = "stun:turn.example.test:3478";
+
+    const provider = createRelayEnabledWebRtcRuntime({ hostExecutable: process.execPath });
+    const ice = await provider.prepare(binding());
+    assert.equal(ice.relay, "available");
+    assert.equal(ice.iceServers.length, 2);
+    assert.deepEqual(ice.iceServers[0], { urls: "stun:turn.example.test:3478" });
+    await provider.revoke("turn-env-session");
+  } finally {
+    clear();
+    for (const [name, value] of original) if (value !== undefined) process.env[name] = value;
+  }
+});
 
 test("runtime selects coturn from complete env and fails closed on partial or conflicting TURN providers", async () => {
   const original = new Map(NAMES.map((name) => [name, process.env[name]]));

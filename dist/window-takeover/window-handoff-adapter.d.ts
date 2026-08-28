@@ -1,9 +1,13 @@
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
 import type { TakeoverBrokerConfig } from "../browser-takeover/broker.js";
+import { type BrowserHandoffManagedFallbackConfig } from "../browser-takeover/managed-handoff-runtime.js";
+export type { BrowserHandoffManagedFallbackConfig } from "../browser-takeover/managed-handoff-runtime.js";
 export interface WindowHandoffSuccessorPolicy {
     /** Admit only one newly observed successor owned by the exact same process. */
     mode: "same_process";
@@ -17,6 +21,8 @@ export interface WindowHandoffInitialSecureWindowPolicy {
 export interface WindowHandoffAdapterConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
+    /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
+    managedFallback?: BrowserHandoffManagedFallbackConfig;
     /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
     successorWindowPolicy?: WindowHandoffSuccessorPolicy;
     /** Optional, default-off admission for Apple's exact LocalAuthentication user-presence dialog. */
@@ -36,14 +42,10 @@ export declare class WindowHandoffAdapterError extends Error {
     constructor(code: "WINDOW_HANDOFF_UNAVAILABLE" | "WINDOW_HANDOFF_TARGET_INVALID" | "WINDOW_HANDOFF_INPUT_POLICY_INVALID" | "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID" | "WINDOW_HANDOFF_INITIAL_SECURE_WINDOW_POLICY_INVALID", message: string);
 }
 /**
- * First-class bounded OS-window WebRTC Handoff composition for MCP consumers.
+ * First-class bounded OS-window Handoff composition for MCP consumers.
  *
- * Consumers own application/domain semantics, process lifecycle, intervention policy and fresh
- * verification. Handoff owns locator/session lifecycle, exact process/window capture/input,
- * WebRTC/TURN/reconnect behavior, revoke and privacy-bounded transport diagnostics.
- *
- * This adapter always requires an exact process boundary and never exposes display/desktop-wide
- * capture as a fallback.
+ * Direct WebRTC remains the default. When managed fallback is configured, Handoff owns strict
+ * direct WebRTC -> WSS -> optional TURN transitions and still never widens to display capture.
  */
 export declare class WindowHandoffAdapter {
     #private;
@@ -59,6 +61,8 @@ export declare class WindowHandoffAdapter {
     /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
     revokeUnclaimed(interventionId: string): void;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    /** Route Node HTTP upgrades only when managed WSS is the active Handoff transport. */
+    handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot;
     latencySnapshot(): WebRtcLatencyComparison;

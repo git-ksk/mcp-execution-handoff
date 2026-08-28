@@ -1,4 +1,5 @@
 import { webRtcOperatorDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
+import { ManagedWindowHandoffRuntime } from "./managed-handoff-runtime.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "../window-takeover/window-handoff-core.js";
 export class BrowserHandoffAdapterError extends Error {
     code;
@@ -9,16 +10,28 @@ export class BrowserHandoffAdapterError extends Error {
     }
 }
 /**
- * First-class Browser WebRTC Handoff composition for standalone MCP consumers.
+ * First-class Browser Handoff composition for standalone MCP consumers.
  *
- * Browser/profile/authentication semantics remain consumer-owned. This facade reuses the same
- * bounded exact-window WebRTC/session core as `WindowHandoffAdapter`, while preserving the existing
- * Browser public API and its explicit no-HTTP-frame-downgrade contract.
+ * Direct WebRTC remains unchanged by default. When managed fallback is configured, Handoff owns
+ * the strict direct WebRTC -> WSS -> optional TURN transition while the consumer keeps one locator
+ * and the same Browser lifecycle API.
  */
 export class BrowserHandoffAdapter {
     #core;
     constructor(config) {
-        this.#core = new WindowHandoffCore(config);
+        try {
+            this.#core = config.managedFallback
+                ? new ManagedWindowHandoffRuntime({
+                    takeover: config.takeover,
+                    runtime: config.runtime,
+                    managedFallback: config.managedFallback,
+                    ...(config.onComplete ? { onComplete: config.onComplete } : {})
+                })
+                : new WindowHandoffCore(config);
+        }
+        catch (error) {
+            throw translateError(error);
+        }
     }
     isEnabled() { return this.#core.isEnabled(); }
     isPath(pathname) { return this.#core.isPath(pathname); }
@@ -33,20 +46,83 @@ export class BrowserHandoffAdapter {
     }
     async revoke(interventionId) { await this.#core.revoke(interventionId); }
     async revokeForIntervention(interventionId) { await this.revoke(interventionId); }
-    handle(request, boundPrincipal) { return this.#core.handle(request, boundPrincipal); }
+    handle(request, boundPrincipal) {
+        return this.#core.handle(request, boundPrincipal);
+    }
+    /** Route Node HTTP upgrades only when managed WSS is the active Handoff transport. */
+    handleUpgrade(request, socket, head) {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.handleUpgrade(request, socket, head)
+            : false;
+    }
     diagnosticsSnapshot() { return this.#core.diagnosticsSnapshot(); }
-    operatorDiagnosticsSnapshot() { return webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot()); }
+    operatorDiagnosticsSnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.operatorDiagnosticsSnapshot("browser_handoff")
+            : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
+    }
+    /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
+    managedSurfaceDiagnosticsSnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.managedSurfaceDiagnosticsSnapshot()
+            : {
+                lastFailure: "none",
+                framesObserved: 0,
+                lastInputStage: "none",
+                lastInputBoundaryStage: "none",
+                inputAttempts: 0,
+                failure: "none",
+                failureInputStage: "none",
+                failureInputBoundaryStage: "none",
+                lastInputFailureDetail: "none",
+                failureInputFailureDetail: "none",
+                lastHelperStopReason: "none",
+                failureHelperStopReason: "none",
+                lastHelperCrashReason: "none",
+                failureHelperCrashReason: "none",
+                lastHelperExitKind: "none",
+                failureHelperExitKind: "none",
+                lastHelperCrashClass: "none",
+                failureHelperCrashClass: "none",
+                lastHelperCrashOrigin: "none",
+                failureHelperCrashOrigin: "none",
+                lastHelperCrashErrorKind: "none",
+                failureHelperCrashErrorKind: "none",
+                lastHelperCrashMessageClass: "none",
+                failureHelperCrashMessageClass: "none"
+            };
+    }
+    /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
+    managedWebSocketDiagnosticsSnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.managedWebSocketDiagnosticsSnapshot()
+            : {
+                disconnectKind: "none",
+                channelState: "none",
+                sentFrames: 0,
+                droppedFrames: 0,
+                lastFailure: "none",
+                lastInputStage: "none",
+                failureDisconnectKind: "none",
+                failureChannelState: "none",
+                failureCode: "none",
+                failureInputStage: "none"
+            };
+    }
     latencySnapshot() { return this.#core.latencySnapshot(); }
 }
 function translateError(error) {
-    if (!(error instanceof WindowHandoffCoreError))
-        return error instanceof Error ? error : new Error("Browser Handoff failed");
+    if (!(error instanceof WindowHandoffCoreError)) {
+        return error instanceof Error
+            ? new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", error.message)
+            : new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser Handoff failed");
+    }
     if (error.code === "TARGET_INVALID") {
         return new BrowserHandoffAdapterError("BROWSER_HANDOFF_TARGET_INVALID", "Browser Handoff requires a positive process id and an optional positive window id");
     }
     if (error.code === "INPUT_POLICY_INVALID") {
         return new BrowserHandoffAdapterError("BROWSER_HANDOFF_INPUT_POLICY_INVALID", "Browser Handoff requires an explicit bounded Human input policy");
     }
-    return new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", "Browser WebRTC Handoff is unavailable");
+    return new BrowserHandoffAdapterError("BROWSER_HANDOFF_UNAVAILABLE", error.message);
 }
 //# sourceMappingURL=browser-handoff-adapter.js.map

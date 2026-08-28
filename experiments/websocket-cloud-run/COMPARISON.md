@@ -1,6 +1,6 @@
 # WebSocket takeover comparison — Issue #40
 
-This note records the evidence for the private WebSocket takeover experiment. It is an engineering comparison, not a performance claim.
+This note records the evidence from the original private WebSocket takeover experiment and the later promotion context. It is an engineering comparison, not a performance claim.
 
 ## Evidence status
 
@@ -57,10 +57,22 @@ Therefore the defensible comparison today is operational rather than numeric:
 | Expected latency under loss | Can exhibit TCP head-of-line delay; latest-frame dropping bounds producer backlog but cannot remove transport-level HOL | Best latency when direct path is viable | Added relay RTT/cost, but retains real-time media semantics |
 | Infra requirement | Standard HTTPS/WSS ingress only | STUN/ICE reachability | TURN provider/credentials when direct path is unavailable |
 | Operational simplicity | Highest for HTTPS-only platforms if their WebSocket routing works | Moderate | Highest network reachability, more infra/trust boundary |
-| Recommended role | Private/experimental managed-runtime alternative and diagnostic path | Primary browser low-latency transport | WebRTC fallback for WAN/NAT reachability |
+| Recommended role | First-class managed-runtime fallback after direct WebRTC; no TURN required for the WSS leg | Primary browser low-latency transport | Optional third-stage Handoff-owned relay fallback |
 
 A future numeric comparison should capture the same identifier-free metrics for each viable path: locator/connect start to first rendered frame, input creation to visible target response, and (for WebRTC) selected-pair RTT. Until those are collected in the same physical session, this repository should not claim that WSS is faster or slower by a specific number.
 
+## Promotion status
+
+Issue #40 supplied the original protocol, physical iPhone Safari, bounded backpressure, reconnect, revoke, and managed-runtime reachability evidence. Issues #155 and #156 later promoted those proven primitives behind the first-class Handoff-managed Browser/Window transport boundary rather than creating a second authority/session implementation.
+
+The supported managed order is now:
+
+```text
+WebRTC direct -> WebSocket relay -> optional WebRTC/TURN relay
+```
+
+Each transition revokes/fences the abandoned transport before the next attempt and rotates generation/capability state. The consumer still receives one Handoff lifecycle abstraction and does not select WebSocket/ICE/TURN providers. Cloud Run-equivalent container acceptance is green on candidate `866aee849f0cc5d2294f2be282362f681d2b3d14`; the remaining parent #152 gate is production-shaped `run.app` physical iPhone Safari acceptance on the exact candidate revision.
+
 ## Decision
 
-Keep WebRTC as the primary browser low-latency transport. Keep WebSocket as a private experimental sibling because it successfully provides physical iPhone Safari Human takeover without TURN and preserves the same authority boundary. Cloud Run application reachability is now proven; the acceptance-only stale-locator reuse bug was fixed before teardown. Do not promote the WebSocket API to stable/public while same-session numeric latency data is absent and the experiment remains intentionally private.
+Keep WebRTC direct as the primary browser low-latency path. Treat bounded WebSocket relay as the supported second-stage managed-runtime fallback, especially for HTTPS/WSS-only environments where TURN should not be mandatory. Keep WebRTC/TURN as an optional Handoff-owned third stage for deployments that want relay media semantics. Same-session numeric latency is still intentionally not claimed without comparable measurements.

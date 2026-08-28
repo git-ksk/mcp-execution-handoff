@@ -177,8 +177,13 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
   assert.match(host, /packagedLinuxAtSpiEditableHelper\(import\.meta\.url\)/);
   assert.match(host, /MCP_HANDOFF_CONTROL editable_regions=/);
-  assert.match(host, /linux_stage=editable_helper_ready/);
+  assert.match(host, /editableHelper \? "editable_helper_ready" : "editable_helper_unavailable"/);
   assert.match(host, /linux_stage=editable_helper_unavailable/);
+  const atspiClass = host.split("class LinuxAtSpiEditableHelper", 2)[1] ?? "";
+  assert.match(atspiClass, /private readonly readyPromise: Promise<boolean>/);
+  assert.match(atspiClass, /this\.readyResolve\(false\)/);
+  assert.match(atspiClass, /Promise<LinuxAtSpiEditableHelper \| undefined>/);
+  assert.doesNotMatch(atspiClass.split("function packagedLinuxAtSpiEditableHelper", 1)[0] ?? "", /readyReject/);
   assert.match(host, /setInterval\(\(\) => \{/);
   assert.match(host, /}, 250\)/);
   assert.match(host, /private latestFrame: Buffer \| undefined/);
@@ -210,12 +215,22 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /delivery\.arm|waitPrimaryPress|deliveryHelper\(\)/);
   assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.doesNotMatch(host, /\["windowactivate", "--sync"/);
+  assert.match(host, /HELPER_COMMAND_TIMEOUT_MS = 2_000/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
   assert.match(host, /await this\.pointer\.up\(\)/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);
   assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
   assert.match(host, /Never fall back to xdotool/);
   assert.match(host, /private primaryPressed = false/);
+  assert.match(host, /private pressedKey: "Backspace" \| "Enter" \| undefined/);
+  assert.match(host, /await this\.pointer\.keyDown\(key\)/);
+  assert.match(host, /await this\.pointer\.keyUp\(key\)/);
+  assert.match(host, /await this\.pointer\.cancelKey\(\)\.catch/);
+  assert.match(host, /target geometry changed during special key press/);
+  assert.match(host, /linux_stage=input_key_down_sent/);
+  assert.match(host, /linux_stage=input_key_authority_ready/);
+  assert.match(host, /linux_stage=input_key_up_sent/);
   assert.match(host, /async releaseAll\(\): Promise<void>/);
   assert.match(host, /inputChain = inputChain[\s\S]*input\.shutdown\(\)[\s\S]*stopPromise = inputChain\.then\(async \(\) =>/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["click", "1"\]/);
@@ -227,8 +242,11 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_tap_sent/);
   assert.match(host, /linux_stage=input_failure/);
   assert.match(host, /target window ownership changed/);
-  assert.match(host, /void stopHost\(\)/);
-  assert.match(host, /\["key", "--clearmodifiers", key\]/);
+  assert.match(host, /linux_stage=host_stop_\$\{reason\}/);
+  assert.match(host, /stopHost\("capture_failure"\)/);
+  assert.match(host, /stopHost\("input_failure"\)/);
+  assert.match(host, /stopHost\("stdin_end"\)/);
+  assert.doesNotMatch(host, /\["key", "--clearmodifiers", key\]/);
   assert.doesNotMatch(host, /\["key", "--window"/);
   assert.match(host, /if \(this\.child === current\) this\.child = undefined;[\s\S]*current\.kill\("SIGTERM"\)/);
   assert.match(host, /if \(!this\.stopping && this\.child === child && code !== 0\)/);
@@ -237,14 +255,21 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /console\.(?:log|error)[^\n]*text/);
 });
 
-
-test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", () => {
+test("Linux native XTEST helper keeps pointer and special-key mechanisms narrow and stateful", () => {
   const helper = readFileSync("native/linux-xtest-helper.c", "utf8");
+  assert.match(helper, /PROTOCOL_VERSION 2/);
   assert.match(helper, /XOpenDisplay\(NULL\)/);
   assert.match(helper, /XTestQueryExtension/);
   assert.match(helper, /XGetPointerMapping/);
   assert.match(helper, /XTestFakeMotionEvent/);
   assert.match(helper, /XTestFakeButtonEvent/);
+  assert.match(helper, /XTestFakeKeyEvent/);
+  assert.match(helper, /XKeysymToKeycode\(state\.display, XK_Return\)/);
+  assert.match(helper, /XKeysymToKeycode\(state\.display, XK_BackSpace\)/);
+  assert.match(helper, /XQueryKeymap/);
+  assert.match(helper, /key_state\(state, keycode, false\)/);
+  assert.match(helper, /state->held_key = key/);
+  assert.match(helper, /cleanup_pressed_key/);
   assert.match(helper, /XSync\(state->display, False\)/);
   assert.match(helper, /XQueryPointer/);
   assert.match(helper, /Button1Mask/);
@@ -253,17 +278,24 @@ test("Linux native XTEST helper keeps pointer mechanism narrow and stateful", ()
   assert.match(helper, /pointer_position_known/);
   assert.match(helper, /pointer_at\(state, state->pointer_x, state->pointer_y\)/);
   assert.match(helper, /primary_button_state\(state, false\)/);
-  assert.match(helper, /READY.*1/);
+  assert.match(helper, /READY.*2/);
   assert.match(helper, /strcmp\(tokens\[0\], "MOVE"\)/);
   assert.match(helper, /strcmp\(tokens\[0\], "DOWN"\)/);
   assert.match(helper, /strcmp\(tokens\[0\], "UP"\)/);
   assert.match(helper, /strcmp\(tokens\[0\], "CANCEL"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "KEYDOWN"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "KEYUP"\)/);
+  assert.match(helper, /strcmp\(tokens\[0\], "CANCELKEY"\)/);
+  assert.match(helper, /strcmp\(name, "RETURN"\)/);
+  assert.match(helper, /strcmp\(name, "BACKSPACE"\)/);
+  assert.doesNotMatch(helper, /XStringToKeysym/);
+  assert.doesNotMatch(helper, /XK_(?:Shift|Control|Alt|Super)/);
   assert.match(helper, /cleanup_pressed_button/);
+  assert.match(helper, /cleanup_all/);
   assert.doesNotMatch(helper, /XSendEvent/);
   assert.doesNotMatch(helper, /XTestGrabControl/);
   assert.doesNotMatch(helper, /_NET_WM_PID|window title|targetPid|windowId/);
 });
-
 
 test("Linux XRecord diagnostic helper remains strict and non-injecting", () => {
   const helper = readFileSync("native/linux-xrecord-delivery-helper.c", "utf8");

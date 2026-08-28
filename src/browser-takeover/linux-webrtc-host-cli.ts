@@ -11,6 +11,7 @@ import {
 } from "../target-surface/os-window.js";
 
 const MAX_HOST_FRAME_BYTES = 8 * 1024 * 1024;
+const HELPER_COMMAND_TIMEOUT_MS = 2_000;
 const MAX_INPUT_LINE_BYTES = 4 * 1024;
 const MAX_PENDING_INPUT_BYTES = 8 * 1024;
 const DEFAULT_FPS = 15;
@@ -319,11 +320,48 @@ async function runCommand(executable: string, args: string[], display: string): 
     bytes += chunk.byteLength;
     if (bytes <= 64 * 1024) stdout.push(chunk);
   });
-  child.once("error", () => undefined);
-  const [code] = await once(child, "close") as [number | null, NodeJS.Signals | null];
+  const result = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`Linux WebRTC host helper command timed out: ${executable}`));
+    }, HELPER_COMMAND_TIMEOUT_MS);
+    timer.unref();
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve([code, signal]);
+    });
+  });
+  const [code] = result;
   if (code !== 0 || bytes > 64 * 1024) throw new Error(`Linux WebRTC host helper command failed: ${executable}`);
   return Buffer.concat(stdout).toString("utf8");
 }
+
+type LinuxXTestHelperFailure =
+  | "none"
+  | "unavailable"
+  | "busy"
+  | "invalid"
+  | "ack_timeout"
+  | "write_failure"
+  | "output_bounds"
+  | "protocol_mismatch"
+  | "unexpected_response"
+  | "state_rejected"
+  | "xtest_rejected"
+  | "protocol_rejected"
+  | "process_error"
+  | "process_closed";
 
 class LinuxXTestPointerHelper {
   private readonly child: ChildProcessByStdio<Writable, Readable, null>;
@@ -334,12 +372,17 @@ class LinuxXTestPointerHelper {
   private readyReject!: (error: Error) => void;
   private readyTimer: NodeJS.Timeout;
   private pending: {
-    expected: "MOVE" | "DOWN" | "UP" | "CANCEL";
+    expected: "MOVE" | "DOWN" | "UP" | "CANCEL" | "KEYDOWN" | "KEYUP" | "CANCELKEY";
     resolve: () => void;
     reject: (error: Error) => void;
     timer: NodeJS.Timeout;
   } | undefined;
   private closing: Promise<void> | undefined;
+  private lastFailureValue: LinuxXTestHelperFailure = "none";
+
+  get lastFailure(): LinuxXTestHelperFailure {
+    return this.lastFailureValue;
+  }
 
   private constructor(executable: string, display: string) {
     this.readyPromise = new Promise<void>((resolve, reject) => {
@@ -349,16 +392,17 @@ class LinuxXTestPointerHelper {
     this.readyTimer = setTimeout(() => {
       if (this.readyState !== "waiting") return;
       this.readyState = "failed";
-      this.readyReject(new Error("Linux XTEST pointer helper readiness timed out"));
-      void this.close();
+      this.lastFailureValue = "ack_timeout";
+      this.readyReject(new Error("Linux XTEST input helper readiness timed out"));
+      void this.close().catch(() => undefined);
     }, XTEST_HELPER_ACK_TIMEOUT_MS);
     this.child = spawn(executable, [], {
       env: boundedEnvironment(display),
       stdio: ["pipe", "pipe", "ignore"]
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.consume(chunk));
-    this.child.once("error", () => this.fail("Linux XTEST pointer helper failed"));
-    this.child.once("close", () => this.fail("Linux XTEST pointer helper closed"));
+    this.child.once("error", () => this.fail("Linux XTEST input helper failed", "process_error"));
+    this.child.once("close", () => this.fail("Linux XTEST input helper closed", "process_closed"));
   }
 
   static async start(executable: string, display: string): Promise<LinuxXTestPointerHelper> {
@@ -383,14 +427,25 @@ class LinuxXTestPointerHelper {
     return this.command("CANCEL 1", "CANCEL");
   }
 
+  keyDown(key: "Backspace" | "Enter"): Promise<void> {
+    return this.command(`KEYDOWN ${key === "Backspace" ? "BACKSPACE" : "RETURN"}`, "KEYDOWN");
+  }
+
+  keyUp(key: "Backspace" | "Enter"): Promise<void> {
+    return this.command(`KEYUP ${key === "Backspace" ? "BACKSPACE" : "RETURN"}`, "KEYUP");
+  }
+
+  cancelKey(): Promise<void> {
+    return this.command("CANCELKEY", "CANCELKEY");
+  }
+
   async close(): Promise<void> {
     if (this.closing) return this.closing;
     this.closing = (async () => {
       clearTimeout(this.readyTimer);
       if (this.child.exitCode !== null || this.child.signalCode !== null) return;
-      // EOF is part of the helper protocol: if Button1 is armed, the helper performs its bounded
-      // cleanup move/release and XSync before exiting. This is also the fallback when an ACK path
-      // fails; never continue the same gesture through xdotool or a replacement helper.
+      // EOF is part of the helper protocol: if Button1 or one admitted special key is armed, the
+      // helper performs its bounded release and XSync before exiting. Never fall back to xdotool.
       this.child.stdin.end();
       const closed = once(this.child, "close").then(() => true, () => true);
       const ended = await Promise.race([
@@ -408,22 +463,34 @@ class LinuxXTestPointerHelper {
     return this.closing;
   }
 
-  private command(line: string, expected: "MOVE" | "DOWN" | "UP" | "CANCEL"): Promise<void> {
+  private command(
+    line: string,
+    expected: "MOVE" | "DOWN" | "UP" | "CANCEL" | "KEYDOWN" | "KEYUP" | "CANCELKEY"
+  ): Promise<void> {
     if (this.readyState !== "ready" || this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
-      return Promise.reject(new Error("Linux XTEST pointer helper is unavailable"));
+      this.lastFailureValue = "unavailable";
+      return Promise.reject(new Error("Linux XTEST input helper is unavailable"));
     }
-    if (this.pending) return Promise.reject(new Error("Linux XTEST pointer helper is busy"));
-    if (!/^[A-Z0-9 -]{2,96}$/.test(line)) return Promise.reject(new Error("Linux XTEST pointer helper command is invalid"));
+    if (this.pending) {
+      this.lastFailureValue = "busy";
+      return Promise.reject(new Error("Linux XTEST input helper is busy"));
+    }
+    if (!/^[A-Z0-9 -]{2,96}$/.test(line)) {
+      this.lastFailureValue = "invalid";
+      return Promise.reject(new Error("Linux XTEST input helper command is invalid"));
+    }
+    this.lastFailureValue = "none";
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (!this.pending || this.pending.expected !== expected) return;
         this.pending = undefined;
-        reject(new Error("Linux XTEST pointer helper acknowledgement timed out"));
-        void this.close();
+        this.lastFailureValue = "ack_timeout";
+        reject(new Error("Linux XTEST input helper acknowledgement timed out"));
+        void this.close().catch(() => undefined);
       }, XTEST_HELPER_ACK_TIMEOUT_MS);
       this.pending = { expected, resolve, reject, timer };
       this.child.stdin.write(`${line}\n`, (error) => {
-        if (error) this.fail("Linux XTEST pointer helper write failed");
+        if (error) this.fail("Linux XTEST input helper write failed", "write_failure");
       });
     });
   }
@@ -431,8 +498,8 @@ class LinuxXTestPointerHelper {
   private consume(chunk: Buffer): void {
     this.output += chunk.toString("utf8");
     if (this.output.length > XTEST_HELPER_MAX_OUTPUT_BYTES) {
-      this.fail("Linux XTEST pointer helper output exceeded limit");
-      void this.close();
+      this.fail("Linux XTEST input helper output exceeded limit", "output_bounds");
+      void this.close().catch(() => undefined);
       return;
     }
     while (true) {
@@ -441,9 +508,9 @@ class LinuxXTestPointerHelper {
       const line = this.output.slice(0, newline).trim();
       this.output = this.output.slice(newline + 1);
       if (this.readyState === "waiting") {
-        if (line !== "READY 1") {
-          this.fail("Linux XTEST pointer helper protocol mismatch");
-          void this.close();
+        if (line !== "READY 2") {
+          this.fail("Linux XTEST input helper protocol mismatch", "protocol_mismatch");
+          void this.close().catch(() => undefined);
           return;
         }
         clearTimeout(this.readyTimer);
@@ -453,8 +520,8 @@ class LinuxXTestPointerHelper {
       }
       const pending = this.pending;
       if (!pending) {
-        this.fail("Linux XTEST pointer helper emitted an unexpected response");
-        void this.close();
+        this.fail("Linux XTEST input helper emitted an unexpected response", "unexpected_response");
+        void this.close().catch(() => undefined);
         return;
       }
       clearTimeout(pending.timer);
@@ -463,13 +530,21 @@ class LinuxXTestPointerHelper {
         pending.resolve();
         continue;
       }
-      pending.reject(new Error("Linux XTEST pointer helper rejected a command"));
-      void this.close();
+      this.lastFailureValue = line === "ERR STATE"
+        ? "state_rejected"
+        : line === "ERR XTEST"
+          ? "xtest_rejected"
+          : line === "ERR PROTOCOL"
+            ? "protocol_rejected"
+            : "protocol_mismatch";
+      pending.reject(new Error("Linux XTEST input helper rejected a command"));
+      void this.close().catch(() => undefined);
       return;
     }
   }
 
-  private fail(message: string): void {
+  private fail(message: string, failure: LinuxXTestHelperFailure): void {
+    if (this.lastFailureValue === "none") this.lastFailureValue = failure;
     if (this.readyState === "waiting") {
       clearTimeout(this.readyTimer);
       this.readyState = "failed";
@@ -516,9 +591,8 @@ class LinuxAtSpiEditableHelper {
   private readonly child: ChildProcessByStdio<Writable, Readable, null>;
   private output = "";
   private readyState: "waiting" | "ready" | "failed" = "waiting";
-  private readonly readyPromise: Promise<void>;
-  private readyResolve!: () => void;
-  private readyReject!: (error: Error) => void;
+  private readonly readyPromise: Promise<boolean>;
+  private readyResolve!: (ready: boolean) => void;
   private readyTimer: NodeJS.Timeout;
   private pending: {
     resolve: (snapshot: LinuxEditableSnapshot | undefined) => void;
@@ -528,15 +602,14 @@ class LinuxAtSpiEditableHelper {
   private closing: Promise<void> | undefined;
 
   private constructor(executable: string, targetPid: number, geometry: LinuxWindowGeometry, display: string) {
-    this.readyPromise = new Promise<void>((resolve, reject) => {
+    this.readyPromise = new Promise<boolean>((resolve) => {
       this.readyResolve = resolve;
-      this.readyReject = reject;
     });
     this.readyTimer = setTimeout(() => {
       if (this.readyState !== "waiting") return;
       this.readyState = "failed";
-      this.readyReject(new Error("Linux AT-SPI editable helper readiness timed out"));
-      void this.close();
+      this.readyResolve(false);
+      void this.close().catch(() => undefined);
     }, ATSPI_HELPER_ACK_TIMEOUT_MS);
     this.child = spawn(executable, [
       "--pid", String(targetPid),
@@ -558,10 +631,9 @@ class LinuxAtSpiEditableHelper {
     targetPid: number,
     geometry: LinuxWindowGeometry,
     display: string
-  ): Promise<LinuxAtSpiEditableHelper> {
+  ): Promise<LinuxAtSpiEditableHelper | undefined> {
     const helper = new LinuxAtSpiEditableHelper(executable, targetPid, geometry, display);
-    await helper.readyPromise;
-    return helper;
+    return await helper.readyPromise ? helper : undefined;
   }
 
   snapshot(): Promise<LinuxEditableSnapshot | undefined> {
@@ -607,7 +679,7 @@ class LinuxAtSpiEditableHelper {
     this.output += chunk.toString("utf8");
     if (this.output.length > ATSPI_HELPER_MAX_OUTPUT_BYTES) {
       this.fail("Linux AT-SPI editable helper output exceeded limit");
-      void this.close();
+      void this.close().catch(() => undefined);
       return;
     }
     while (true) {
@@ -618,18 +690,18 @@ class LinuxAtSpiEditableHelper {
       if (this.readyState === "waiting") {
         if (line !== "READY 1") {
           this.fail("Linux AT-SPI editable helper protocol mismatch");
-          void this.close();
+          void this.close().catch(() => undefined);
           return;
         }
         clearTimeout(this.readyTimer);
         this.readyState = "ready";
-        this.readyResolve();
+        this.readyResolve(true);
         continue;
       }
       const pending = this.pending;
       if (!pending) {
         this.fail("Linux AT-SPI editable helper emitted an unexpected response");
-        void this.close();
+        void this.close().catch(() => undefined);
         return;
       }
       clearTimeout(pending.timer);
@@ -638,7 +710,7 @@ class LinuxAtSpiEditableHelper {
         pending.resolve(parseLinuxAtSpiSnapshotLine(line));
       } catch (error) {
         pending.reject(error instanceof Error ? error : new Error("Linux AT-SPI editable helper response failed"));
-        void this.close();
+        void this.close().catch(() => undefined);
         return;
       }
     }
@@ -648,7 +720,7 @@ class LinuxAtSpiEditableHelper {
     if (this.readyState === "waiting") {
       clearTimeout(this.readyTimer);
       this.readyState = "failed";
-      this.readyReject(new Error(message));
+      this.readyResolve(false);
     }
     const pending = this.pending;
     if (!pending) return;
@@ -665,7 +737,6 @@ function packagedLinuxAtSpiEditableHelper(moduleUrl: string): string {
 function packagedLinuxXTestHelper(moduleUrl: string): string {
   return fileURLToPath(new URL("../native/mcp-handoff-linux-xtest-helper", moduleUrl));
 }
-
 
 export function parseOptionalTargetWindowId(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
@@ -779,6 +850,7 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
 class LinuxWindowInput {
   private primaryPressed = false;
   private primaryPoint: { x: number; y: number } | undefined;
+  private pressedKey: "Backspace" | "Enter" | undefined;
 
   constructor(
     private geometry: LinuxWindowGeometry,
@@ -811,7 +883,7 @@ class LinuxWindowInput {
         && await this.activeTargetOnce()
         && await this.inputFocusOwnedByTargetOnce();
       if (!alreadyAuthorized) {
-        await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
+        await runCommand(this.xdotool, ["windowactivate", String(this.geometry.windowId)], this.display);
       }
       // Let the EWMH-aware window manager own pointer focus transitions. Calling windowfocus here
       // would bypass the WM with XSetInputFocus and can diverge from its click/grab bookkeeping.
@@ -855,13 +927,48 @@ class LinuxWindowInput {
       return;
     }
     if (input.kind === "key") {
-      const key = input.key === "Backspace" ? "BackSpace" : "Return";
-      await runCommand(this.xdotool, ["key", "--clearmodifiers", key], this.display);
+      await this.pressSpecialKey(input.key!);
       return;
     }
     await this.typeText(input.text!);
   }
 
+  private async pressSpecialKey(key: "Backspace" | "Enter"): Promise<void> {
+    if (this.pressedKey) throw new Error("Linux WebRTC special key is already pressed");
+    const expected = { ...this.geometry };
+    try {
+      await this.pointer.keyDown(key);
+      this.pressedKey = key;
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_key_down_sent\n");
+
+      // KEYUP is a second Human mutation. Revalidate the exact target after the X server ACK for
+      // KEYDOWN and before releasing it. If authority changed, cleanup releases only the key this
+      // helper owns; it never clears modifiers or unrelated local keyboard state.
+      const current = await this.currentOwnedGeometry();
+      if (
+        current.windowId !== expected.windowId
+        || current.x !== expected.x
+        || current.y !== expected.y
+        || current.width !== expected.width
+        || current.height !== expected.height
+      ) {
+        throw new Error("Linux WebRTC target geometry changed during special key press");
+      }
+      this.geometry = current;
+      await this.confirmActiveTarget();
+      await this.confirmInputFocusOwnedByTarget();
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_key_authority_ready\n");
+      await this.pointer.keyUp(key);
+      this.pressedKey = undefined;
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_key_up_sent\n");
+    } catch (error) {
+      if (this.pressedKey) {
+        await this.pointer.cancelKey().catch(() => undefined);
+        this.pressedKey = undefined;
+      }
+      throw error;
+    }
+  }
 
   private async postPrimaryButton(state: "down" | "up", x: number, y: number): Promise<void> {
     if (state === "down") {
@@ -922,7 +1029,16 @@ class LinuxWindowInput {
     this.primaryPoint = undefined;
   }
 
+  inputFailureDiagnosticStage(): string | undefined {
+    const failure = this.pointer.lastFailure;
+    return failure === "none" ? undefined : `input_xtest_${failure}`;
+  }
+
   async releaseAll(): Promise<void> {
+    if (this.pressedKey) {
+      await this.pointer.cancelKey().catch(() => undefined);
+      this.pressedKey = undefined;
+    }
     if (!this.primaryPressed) return;
     // The helper was armed with a Node-computed safe cleanup point before DOWN. CANCEL performs
     // move-away + Button1 release + XSync on the same connection. Never fall back to xdotool.
@@ -935,7 +1051,6 @@ class LinuxWindowInput {
     await this.releaseAll();
     await this.pointer.close();
   }
-
 
   private async confirmPostDownAuthority(expected: LinuxWindowGeometry): Promise<void> {
     const current = await this.currentOwnedGeometry();
@@ -1231,6 +1346,8 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   let pointer: LinuxXTestPointerHelper;
   try {
     pointer = await LinuxXTestPointerHelper.start(xtestHelperExecutable, display);
+    // Keep the existing bounded diagnostic stage name for operator compatibility. The helper now
+    // owns pointer mutations plus the narrowly admitted Return/Backspace XTEST press/release pair.
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_ready\n");
   } catch (error) {
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_failure\n");
@@ -1241,15 +1358,26 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   let editableHelper: LinuxAtSpiEditableHelper | undefined;
   try {
     editableHelper = await LinuxAtSpiEditableHelper.start(atspiHelperExecutable, targetPid, geometry, display);
-    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_ready\n");
+    process.stderr.write(
+      `MCP_HANDOFF_DIAGNOSTIC linux_stage=${editableHelper ? "editable_helper_ready" : "editable_helper_unavailable"}\n`
+    );
   } catch {
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_unavailable\n");
   }
   let stopped = false;
-  let stopHost!: () => Promise<void>;
+  type HostStopReason =
+    | "capture_failure"
+    | "input_failure"
+    | "stdin_end"
+    | "signal_term"
+    | "signal_int"
+    | "expiry"
+    | "input_buffer_bounds"
+    | "explicit_stop";
+  let stopHost!: (reason: HostStopReason) => Promise<void>;
   const capture = new LinuxCapture(geometry, display, ffmpeg, frameFormat, writer, () => {
     process.exitCode = 1;
-    void stopHost();
+    void stopHost("capture_failure").catch(() => { process.exitCode = 1; });
   });
 
   let accessibilityChain: Promise<LinuxEditableSnapshot | undefined> = Promise.resolve(undefined);
@@ -1262,7 +1390,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
     accessibilityChain = requested.catch(() => {
       editableHelper = undefined;
       process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=editable_helper_unavailable\n");
-      void helper.close();
+      void helper.close().catch(() => undefined);
       return undefined;
     });
     return accessibilityChain;
@@ -1287,20 +1415,23 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   const accessibilityPoll = setInterval(() => {
     if (stopped || accessibilityPollBusy) return;
     accessibilityPollBusy = true;
-    void publishEditableRegions().finally(() => { accessibilityPollBusy = false; });
+    void publishEditableRegions()
+      .catch(() => undefined)
+      .finally(() => { accessibilityPollBusy = false; });
   }, 250);
   accessibilityPoll.unref();
-  void publishEditableRegions();
+  void publishEditableRegions().catch(() => undefined);
 
   let pending = Buffer.alloc(0);
   let inputChain = Promise.resolve();
   let stopPromise: Promise<void> | undefined;
-  stopHost = () => {
+  stopHost = (reason: HostStopReason) => {
     if (stopPromise) return stopPromise;
+    process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=host_stop_${reason}\n`);
     stopped = true;
     // Serialize lifecycle cleanup after every already-admitted Human mutation. If shutdown races
-    // an in-flight primary-down command, releasing outside the chain can observe primaryPressed
-    // before mousedown completes and leave the X11 button stuck after helper exit.
+    // an in-flight XTEST press, releasing outside the chain can observe stale helper-owned state
+    // and leave a Button1 or special key pressed after helper exit.
     clearInterval(accessibilityPoll);
     inputChain = inputChain
       .then(() => input.shutdown())
@@ -1311,13 +1442,13 @@ export async function linuxWebRtcHostMain(): Promise<void> {
     return stopPromise;
   };
   capture.start();
-  const expiry = setTimeout(() => { void stopHost(); }, Math.max(0, expiresAt - Date.now()));
+  const expiry = setTimeout(() => { void stopHost("expiry").catch(() => { process.exitCode = 1; }); }, Math.max(0, expiresAt - Date.now()));
 
   process.stdin.on("data", (chunk: Buffer) => {
     if (stopped) return;
     pending = pending.byteLength === 0 ? Buffer.from(chunk) : Buffer.concat([pending, chunk]);
     if (pending.byteLength > MAX_PENDING_INPUT_BYTES) {
-      void stopHost();
+      void stopHost("input_buffer_bounds").catch(() => { process.exitCode = 1; });
       return;
     }
     for (;;) {
@@ -1330,7 +1461,7 @@ export async function linuxWebRtcHostMain(): Promise<void> {
       try { value = JSON.parse(line.toString("utf8")); } catch { continue; }
       const command = parseHostInput(value);
       if (!command) continue;
-      if (command.kind === "stop") { void stopHost(); continue; }
+      if (command.kind === "stop") { void stopHost("explicit_stop").catch(() => { process.exitCode = 1; }); continue; }
       if (command.kind === "requestIDR") { capture.requestIDR(); continue; }
       inputChain = inputChain
         .then(() => input.apply(command))
@@ -1341,18 +1472,168 @@ export async function linuxWebRtcHostMain(): Promise<void> {
           process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_applied\n");
         })
         .catch(() => {
+          const failureStage = input.inputFailureDiagnosticStage();
+          if (failureStage) {
+            process.stderr.write(`MCP_HANDOFF_DIAGNOSTIC linux_stage=${failureStage}\n`);
+          }
           process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_failure\n");
-          void stopHost();
+          void stopHost("input_failure").catch(() => { process.exitCode = 1; });
         });
     }
   });
-  process.stdin.once("end", () => { void stopHost(); });
-  process.once("SIGTERM", () => { void stopHost(); });
-  process.once("SIGINT", () => { void stopHost(); });
+  process.stdin.once("end", () => { void stopHost("stdin_end").catch(() => { process.exitCode = 1; }); });
+  process.once("SIGTERM", () => { void stopHost("signal_term").catch(() => { process.exitCode = 1; }); });
+  process.once("SIGINT", () => { void stopHost("signal_int").catch(() => { process.exitCode = 1; }); });
 
   while (!stopped) await new Promise((resolve) => setTimeout(resolve, 40));
   clearTimeout(expiry);
   await stopPromise;
+}
+
+type LinuxHostCrashClass =
+  | "pipe_epipe"
+  | "stream_write_after_end"
+  | "stream_destroyed"
+  | "jpeg_parser"
+  | "frame_writer"
+  | "input_callback"
+  | "xtest_callback"
+  | "accessibility_callback"
+  | "capture_callback"
+  | "stream_internal"
+  | "event_dispatch"
+  | "child_process_internal"
+  | "special_key"
+  | "exact_window_revalidate"
+  | "active_target_check"
+  | "focus_target_check"
+  | "scroll_input"
+  | "text_input"
+  | "host_input_apply"
+  | "host_input_chain"
+  | "host_module"
+  | "unknown";
+
+type LinuxHostCrashOrigin =
+  | "uncaught_exception"
+  | "unhandled_rejection"
+  | "unknown";
+
+type LinuxHostCrashErrorKind =
+  | "error"
+  | "type_error"
+  | "range_error"
+  | "other";
+
+type LinuxHostCrashMessageClass =
+  | "focus_not_owned"
+  | "window_not_active"
+  | "target_process_unavailable"
+  | "window_not_visible"
+  | "window_owner_changed"
+  | "window_geometry_unavailable"
+  | "special_key_geometry_changed"
+  | "xtest_helper_unavailable"
+  | "xtest_helper_busy"
+  | "xtest_helper_ack_timeout"
+  | "xtest_helper_rejected"
+  | "atspi_unavailable"
+  | "atspi_busy"
+  | "atspi_timeout"
+  | "atspi_readiness_timeout"
+  | "atspi_response_failed"
+  | "atspi_response_invalid"
+  | "atspi_response_large"
+  | "atspi_regions_many"
+  | "atspi_region_invalid"
+  | "atspi_region_bounds"
+  | "atspi_write_failure"
+  | "atspi_output_bounds"
+  | "atspi_protocol_mismatch"
+  | "atspi_unexpected_response"
+  | "atspi_process_failed"
+  | "atspi_process_closed"
+  | "atspi_failed"
+  | "helper_command_timeout"
+  | "helper_command_failed"
+  | "other";
+
+function classifyLinuxHostCrashMessage(error: unknown): LinuxHostCrashMessageClass {
+  const message = error instanceof Error ? error.message : "";
+  if (/input focus is not owned/.test(message)) return "focus_not_owned";
+  if (/window did not become active/.test(message)) return "window_not_active";
+  if (/target process is unavailable/.test(message)) return "target_process_unavailable";
+  if (/window is no longer visible/.test(message)) return "window_not_visible";
+  if (/window ownership changed/.test(message)) return "window_owner_changed";
+  if (/window geometry is unavailable/.test(message)) return "window_geometry_unavailable";
+  if (/geometry changed during special key press/.test(message)) return "special_key_geometry_changed";
+  if (/XTEST input helper is unavailable/.test(message)) return "xtest_helper_unavailable";
+  if (/XTEST input helper is busy/.test(message)) return "xtest_helper_busy";
+  if (/XTEST input helper acknowledgement timed out/.test(message)) return "xtest_helper_ack_timeout";
+  if (/XTEST input helper rejected a command/.test(message)) return "xtest_helper_rejected";
+  if (/AT-SPI editable helper is unavailable/.test(message)) return "atspi_unavailable";
+  if (/AT-SPI editable helper is busy/.test(message)) return "atspi_busy";
+  if (/AT-SPI editable helper snapshot timed out/.test(message)) return "atspi_timeout";
+  if (/AT-SPI editable helper readiness timed out/.test(message)) return "atspi_readiness_timeout";
+  if (/AT-SPI editable helper response failed/.test(message)) return "atspi_response_failed";
+  if (/AT-SPI editable helper response is invalid/.test(message)) return "atspi_response_invalid";
+  if (/AT-SPI editable helper response is too large/.test(message)) return "atspi_response_large";
+  if (/AT-SPI editable helper returned too many regions/.test(message)) return "atspi_regions_many";
+  if (/AT-SPI editable helper region is invalid/.test(message)) return "atspi_region_invalid";
+  if (/AT-SPI editable helper region is out of bounds/.test(message)) return "atspi_region_bounds";
+  if (/AT-SPI editable helper write failed/.test(message)) return "atspi_write_failure";
+  if (/AT-SPI editable helper output exceeded limit/.test(message)) return "atspi_output_bounds";
+  if (/AT-SPI editable helper protocol mismatch/.test(message)) return "atspi_protocol_mismatch";
+  if (/AT-SPI editable helper emitted an unexpected response/.test(message)) return "atspi_unexpected_response";
+  if (/AT-SPI editable helper failed/.test(message)) return "atspi_process_failed";
+  if (/AT-SPI editable helper closed/.test(message)) return "atspi_process_closed";
+  if (/AT-SPI editable helper/.test(message)) return "atspi_failed";
+  if (/host helper command timed out/.test(message)) return "helper_command_timeout";
+  if (/host helper command failed/.test(message)) return "helper_command_failed";
+  return "other";
+}
+
+function classifyLinuxHostCrash(error: unknown): LinuxHostCrashClass {
+  const code = error && typeof error === "object" && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+  if (code === "EPIPE") return "pipe_epipe";
+  if (code === "ERR_STREAM_WRITE_AFTER_END") return "stream_write_after_end";
+  if (code === "ERR_STREAM_DESTROYED") return "stream_destroyed";
+  const message = error instanceof Error ? error.message : "";
+  const stack = error instanceof Error ? error.stack ?? "" : "";
+  if (/Linux WebSocket host JPEG/.test(message) || /JpegFrameParser/.test(stack)) return "jpeg_parser";
+  if (/LatestFrameWriter/.test(stack)) return "frame_writer";
+  if (/LinuxWindowInput\.pressSpecialKey|pressSpecialKey/.test(stack)) return "special_key";
+  if (/LinuxWindowInput\.currentOwnedGeometry|currentOwnedGeometry/.test(stack)) return "exact_window_revalidate";
+  if (/LinuxWindowInput\.confirmActiveTarget|confirmActiveTarget|activeTargetOnce/.test(stack)) return "active_target_check";
+  if (/LinuxWindowInput\.confirmInputFocusOwnedByTarget|confirmInputFocusOwnedByTarget|inputFocusOwnedByTargetOnce/.test(stack)) return "focus_target_check";
+  if (/LinuxWindowInput\.scrollAxis|scrollAxis/.test(stack)) return "scroll_input";
+  if (/LinuxWindowInput\.typeText|typeText/.test(stack)) return "text_input";
+  if (/LinuxWindowInput\.apply|\.apply \(/.test(stack)) return "host_input_apply";
+  if (/inputChain/.test(stack)) return "host_input_chain";
+  if (/LinuxWindowInput/.test(stack)) return "input_callback";
+  if (/LinuxXTestPointerHelper/.test(stack)) return "xtest_callback";
+  if (/LinuxAtSpiEditableHelper|publishEditable/.test(stack)) return "accessibility_callback";
+  if (/LinuxCapture/.test(stack)) return "capture_callback";
+  if (/node:internal\/streams|node:stream/.test(stack)) return "stream_internal";
+  if (/node:events/.test(stack)) return "event_dispatch";
+  if (/node:internal\/child_process|node:child_process/.test(stack)) return "child_process_internal";
+  if (/linux-webrtc-host-cli\.(?:js|ts)/.test(stack)) return "host_module";
+  return "unknown";
+}
+
+function classifyLinuxHostCrashOrigin(origin: string): LinuxHostCrashOrigin {
+  if (origin === "uncaughtException") return "uncaught_exception";
+  if (origin === "unhandledRejection") return "unhandled_rejection";
+  return "unknown";
+}
+
+function classifyLinuxHostCrashErrorKind(error: unknown): LinuxHostCrashErrorKind {
+  if (error instanceof TypeError) return "type_error";
+  if (error instanceof RangeError) return "range_error";
+  if (error instanceof Error) return "error";
+  return "other";
 }
 
 export function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean {
@@ -1365,5 +1646,29 @@ export function isLinuxWebRtcHostCliEntryPoint(moduleUrl: string, argvPath: stri
 }
 
 if (isLinuxWebRtcHostCliEntryPoint(import.meta.url, process.argv[1])) {
-  linuxWebRtcHostMain().catch(() => { process.exitCode = 1; });
+  let crashDiagnosticEmitted = false;
+  process.on("uncaughtExceptionMonitor", (error, origin) => {
+    if (crashDiagnosticEmitted) return;
+    crashDiagnosticEmitted = true;
+    process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=host_crash_uncaught_exception\n");
+    process.stderr.write(
+      `MCP_HANDOFF_DIAGNOSTIC linux_stage=host_crash_origin_${classifyLinuxHostCrashOrigin(origin)}\n`
+    );
+    process.stderr.write(
+      `MCP_HANDOFF_DIAGNOSTIC linux_stage=host_crash_error_${classifyLinuxHostCrashErrorKind(error)}\n`
+    );
+    process.stderr.write(
+      `MCP_HANDOFF_DIAGNOSTIC linux_stage=host_crash_message_${classifyLinuxHostCrashMessage(error)}\n`
+    );
+    process.stderr.write(
+      `MCP_HANDOFF_DIAGNOSTIC linux_stage=host_crash_class_${classifyLinuxHostCrash(error)}\n`
+    );
+  });
+  linuxWebRtcHostMain().catch(() => {
+    if (!crashDiagnosticEmitted) {
+      crashDiagnosticEmitted = true;
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=host_crash_main_rejection\n");
+    }
+    process.exitCode = 1;
+  });
 }

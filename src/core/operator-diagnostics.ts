@@ -10,6 +10,12 @@ export type OperatorDiagnosticsSource = (typeof OPERATOR_DIAGNOSTICS_SOURCES)[nu
 export type OperatorDiagnosticsHealth = "idle" | "starting" | "available" | "degraded" | "failed";
 export type OperatorDiagnosticsFailureCategory = "target" | "transport" | "input" | "recovery";
 export type OperatorDiagnosticsPeerState = "new" | "connecting" | "connected" | "disconnected" | "failed" | "closed";
+export type OperatorManagedTransportClass =
+  | "webrtc_direct"
+  | "websocket_relay"
+  | "webrtc_relay"
+  | "none";
+export type OperatorManagedFallbackReason = "transport_unavailable";
 
 export interface OperatorDiagnosticsCandidateCounts {
   host: number;
@@ -23,6 +29,15 @@ export interface OperatorWebRtcTransportDiagnostics {
   eventCount: number;
   peerState?: OperatorDiagnosticsPeerState;
   candidateCounts?: OperatorDiagnosticsCandidateCounts;
+}
+
+export interface OperatorManagedHandoffTransportDiagnostics {
+  namespace: "managed_handoff";
+  currentTransport: OperatorManagedTransportClass;
+  lastTransport: OperatorManagedTransportClass;
+  generation: number;
+  transitionCount: number;
+  lastFallbackReason?: OperatorManagedFallbackReason;
 }
 
 export interface OperatorTerminalSessionDiagnostics {
@@ -47,7 +62,7 @@ export type OperatorDiagnosticsSnapshot =
       source: "browser_handoff" | "window_handoff";
       health: OperatorDiagnosticsHealth;
       failureCategory?: OperatorDiagnosticsFailureCategory;
-      transport: OperatorWebRtcTransportDiagnostics;
+      transport: OperatorWebRtcTransportDiagnostics | OperatorManagedHandoffTransportDiagnostics;
     }
   | {
       version: typeof OPERATOR_DIAGNOSTICS_SCHEMA_VERSION;
@@ -63,12 +78,24 @@ export type OperatorDiagnosticsSnapshot =
 const ROOT_WEBRTC_KEYS = new Set(["version", "source", "health", "failureCategory", "transport"]);
 const ROOT_TERMINAL_KEYS = new Set(["version", "source", "health", "authority", "phase", "failureCategory", "terminal", "transport"]);
 const WEBRTC_KEYS = new Set(["namespace", "eventCount", "peerState", "candidateCounts"]);
+const MANAGED_KEYS = new Set([
+  "namespace",
+  "currentTransport",
+  "lastTransport",
+  "generation",
+  "transitionCount",
+  "lastFallbackReason"
+]);
 const TERMINAL_SESSION_KEYS = new Set(["namespace", "alive", "humanDisconnected", "synchronizationRequired"]);
 const TERMINAL_KEYS = new Set(["namespace", "ready", "disconnected", "completed", "faulted", "queuedEvents"]);
 const COUNT_KEYS = new Set(["host", "srflx", "prflx", "relay"]);
 const HEALTH = new Set<OperatorDiagnosticsHealth>(["idle", "starting", "available", "degraded", "failed"]);
 const FAILURE = new Set<OperatorDiagnosticsFailureCategory>(["target", "transport", "input", "recovery"]);
 const PEER = new Set<OperatorDiagnosticsPeerState>(["new", "connecting", "connected", "disconnected", "failed", "closed"]);
+const MANAGED_TRANSPORT = new Set<OperatorManagedTransportClass>([
+  "webrtc_direct", "websocket_relay", "webrtc_relay", "none"
+]);
+const MANAGED_REASON = new Set<OperatorManagedFallbackReason>(["transport_unavailable"]);
 const AUTHORITY = new Set<ExecutionAuthority>(["agent", "human", "none"]);
 const PHASE = new Set<InterventionStatus>(["awaiting_human", "human_active", "verifying", "ready_to_resume"]);
 
@@ -112,6 +139,30 @@ function parseWebRtcTransport(value: unknown): OperatorWebRtcTransportDiagnostic
   };
 }
 
+function parseManagedTransport(value: unknown): OperatorManagedHandoffTransportDiagnostics {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid operator diagnostics snapshot");
+  const record = value as Record<string, unknown>;
+  if (!exactKeys(record, MANAGED_KEYS)
+    || record.namespace !== "managed_handoff"
+    || !MANAGED_TRANSPORT.has(record.currentTransport as OperatorManagedTransportClass)
+    || !MANAGED_TRANSPORT.has(record.lastTransport as OperatorManagedTransportClass)
+    || !boundedInteger(record.generation, 1_000_000)
+    || !boundedInteger(record.transitionCount, 128)
+    || (record.lastFallbackReason !== undefined
+      && !MANAGED_REASON.has(record.lastFallbackReason as OperatorManagedFallbackReason))) {
+    throw new Error("Invalid operator diagnostics snapshot");
+  }
+  return {
+    namespace: "managed_handoff",
+    currentTransport: record.currentTransport as OperatorManagedTransportClass,
+    lastTransport: record.lastTransport as OperatorManagedTransportClass,
+    generation: record.generation as number,
+    transitionCount: record.transitionCount as number,
+    ...(record.lastFallbackReason === undefined
+      ? {}
+      : { lastFallbackReason: record.lastFallbackReason as OperatorManagedFallbackReason })
+  };
+}
 
 function parseTerminalSession(value: unknown): OperatorTerminalSessionDiagnostics {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid operator diagnostics snapshot");
@@ -170,12 +221,18 @@ export function parseOperatorDiagnosticsSnapshot(value: unknown): OperatorDiagno
 
   if (record.source === "browser_handoff" || record.source === "window_handoff") {
     if (!exactKeys(record, ROOT_WEBRTC_KEYS)) throw new Error("Invalid operator diagnostics snapshot");
+    const transportRecord = record.transport && typeof record.transport === "object" && !Array.isArray(record.transport)
+      ? record.transport as Record<string, unknown>
+      : undefined;
+    const transport = transportRecord?.namespace === "managed_handoff"
+      ? parseManagedTransport(record.transport)
+      : parseWebRtcTransport(record.transport);
     return {
       version: 1,
       source: record.source,
       health: record.health as OperatorDiagnosticsHealth,
       ...(record.failureCategory === undefined ? {} : { failureCategory: record.failureCategory as OperatorDiagnosticsFailureCategory }),
-      transport: parseWebRtcTransport(record.transport)
+      transport
     };
   }
 
