@@ -139,4 +139,65 @@ jobs:
       - name: Build Cloud Run-equivalent WSS acceptance image
         run: docker build -f experiments/websocket-cloud-run/Dockerfile -t handoff-wss-acceptance:local .
       - name: Run bounded WSS container acceptance
+        id: wss_accept
+        continue-on-error: true
         run: npm run accept:websocket:cloud-run-container
+      - name: WSS stage docker-run
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "docker-run"
+      - name: WSS stage target-ready
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "target-ready"
+      - name: WSS stage start
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "start"
+      - name: WSS stage restart-fencing
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "restart-fencing"
+      - name: WSS stage takeover-page
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "takeover-page"
+      - name: WSS stage bootstrap
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "bootstrap"
+      - name: WSS stage websocket-ready
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "websocket-ready"
+      - name: WSS stage tap
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "tap"
+      - name: WSS stage focus
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "focus"
+      - name: WSS stage text
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "text"
+      - name: WSS stage scroll
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "scroll"
+      - name: WSS stage refocus
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "refocus"
+      - name: WSS stage submit
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit"
+      - name: WSS stage done
+        if: always()
+        continue-on-error: true
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "done"
+      - name: Require WSS container acceptance
+        if: always()
+        run: test "${{ steps.wss_accept.outcome }}" = success
