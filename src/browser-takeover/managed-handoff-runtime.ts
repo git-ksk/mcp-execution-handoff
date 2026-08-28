@@ -462,8 +462,14 @@ export class ManagedWindowHandoffRuntime {
     let script = await response.text();
     const helperMarker = "const MARK='_';";
     const failedMarker = "status(finalStatus);failureInProgress=false}";
+    const firstFrameMarker = "if(!fired){fired=true;clearFirstFrameTimer();recoveryReconnectUsed=false;";
     const initialMarker = "resetKeyboard();resetViewTransform();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});";
-    if (!script.includes(helperMarker) || !script.includes(failedMarker) || !script.includes(initialMarker)) {
+    if (
+      !script.includes(helperMarker)
+      || !script.includes(failedMarker)
+      || !script.includes(firstFrameMarker)
+      || !script.includes(initialMarker)
+    ) {
       return json(500, { error: "managed_webrtc_client_incompatible" });
     }
     script = script.replace(helperMarker, `${helperMarker}${managedWebRtcFallbackHelper()}`);
@@ -472,8 +478,12 @@ export class ManagedWindowHandoffRuntime {
       "failureInProgress=false;if(await managedTransportFallback())return;status(finalStatus)}"
     );
     script = script.replace(
+      firstFrameMarker,
+      "if(!fired){fired=true;clearManagedReadyTimeout();clearFirstFrameTimer();recoveryReconnectUsed=false;"
+    );
+    script = script.replace(
       initialMarker,
-      "resetKeyboard();resetViewTransform();armKeyboardFallback();void connect('claim').catch(async function(){closePeer();if(await managedTransportFallback())return;if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});"
+      "resetKeyboard();resetViewTransform();armKeyboardFallback();armManagedReadyTimeout();void connect('claim').catch(async function(){closePeer();if(await managedTransportFallback())return;if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});"
     );
     return cloneResponse(response, script);
   }
@@ -559,7 +569,7 @@ function safeCapabilityEqual(candidate: string | null, expected: string): boolea
 }
 
 function managedWebRtcFallbackHelper(): string {
-  return "let managedFallbackStarted=false;async function managedTransportFallback(){const b=document.querySelector('#done');const f=b&&b.dataset?b.dataset.fallback||'':'';if(!f||managedFallbackStarted||stopped)return false;managedFallbackStarted=true;try{const r=await fetch('/takeover/api/transport-fallback/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers:{'x-mcp-handoff-fallback':f}});if(!r.ok)return false;const d=await r.json();if(!d||typeof d.path!=='string'||!d.path.startsWith('/takeover/'))return false;location.replace(d.path);return true}catch{return false}}";
+  return "let managedFallbackStarted=false,managedReadyTimer=0;function clearManagedReadyTimeout(){if(managedReadyTimer){clearTimeout(managedReadyTimer);managedReadyTimer=0}}function armManagedReadyTimeout(){clearManagedReadyTimeout();managedReadyTimer=setTimeout(()=>{managedReadyTimer=0;if(!stopped)void managedTransportFallback()},10000)}async function managedTransportFallback(){const b=document.querySelector('#done');const f=b&&b.dataset?b.dataset.fallback||'':'';if(!f||managedFallbackStarted||stopped)return false;managedFallbackStarted=true;clearManagedReadyTimeout();try{const r=await fetch('/takeover/api/transport-fallback/'+encodeURIComponent(sessionId),{method:'POST',cache:'no-store',headers:{'x-mcp-handoff-fallback':f}});if(!r.ok)return false;const d=await r.json();if(!d||typeof d.path!=='string'||!d.path.startsWith('/takeover/'))return false;location.replace(d.path);return true}catch{return false}}";
 }
 
 function managedWebSocketFallbackHelper(): string {
