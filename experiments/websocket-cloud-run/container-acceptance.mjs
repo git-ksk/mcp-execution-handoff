@@ -84,6 +84,11 @@ async function printBoundedDiagnostics() {
     "DISPLAY=:99 xdotool search --onlyvisible --name 'Handoff WSS Physical Acceptance' 2>/dev/null | wc -l"
   ]).catch(() => "window-probe-unavailable");
   process.stderr.write(`matching_windows=${windowCount.trim()}\n`);
+  const keymap = await dockerText([
+    "exec", container, "sh", "-c",
+    "DISPLAY=:99 xmodmap -pk 2>/dev/null | grep -E '\\<(Return|BackSpace)\\>' | head -n 8"
+  ]).catch(() => "keymap-probe-unavailable");
+  process.stderr.write(`special_keymap=${keymap.trim().slice(0, 1024)}\n`);
   const logs = await dockerText(["logs", container]).catch(() => "logs-unavailable");
   if (logs.trim()) process.stderr.write(`container_logs=${logs.trim()}\n`);
 }
