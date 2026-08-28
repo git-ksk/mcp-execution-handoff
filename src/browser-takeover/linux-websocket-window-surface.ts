@@ -13,6 +13,20 @@ const FRAME_WAIT_TIMEOUT_MS = 4_000;
 const INPUT_ACK_TIMEOUT_MS = 4_000;
 const HELPER_STOP_TIMEOUT_MS = 1_000;
 
+export type LinuxWebSocketSurfaceFailure =
+  | "none"
+  | "frame_timeout"
+  | "helper_closed"
+  | "helper_error"
+  | "frame_protocol"
+  | "diagnostics_bounds"
+  | "input_failure"
+  | "revalidation_failure"
+  | "capture_x11"
+  | "capture_encoder"
+  | "capture_option"
+  | "capture_other";
+
 export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
   hostScript: string;
   displayName: string;
@@ -110,6 +124,8 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   readonly #helperTtlMs: number;
   #active: ActiveLinuxSurface | undefined;
   #transition: Promise<void> | undefined;
+  #lastFailure: LinuxWebSocketSurfaceFailure = "none";
+  #framesObserved = 0;
 
   constructor(config: ExperimentalLinuxWebSocketWindowSurfaceConfig) {
     if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
@@ -130,11 +146,31 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     this.#helperTtlMs = helperTtlMs;
   }
 
+  diagnosticsSnapshot(): { lastFailure: LinuxWebSocketSurfaceFailure; framesObserved: number } {
+    return {
+      lastFailure: this.#lastFailure,
+      framesObserved: Math.min(this.#framesObserved, 1_000_000)
+    };
+  }
+
   async captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame> {
     const active = await this.#ensure(target);
     const before = active.sequence;
-    await this.#revalidate(target);
-    const frame = await this.#frameAfter(active, before);
+    try {
+      await this.#revalidate(target);
+    } catch (error) {
+      this.#lastFailure = "revalidation_failure";
+      throw error;
+    }
+    let frame: LinuxWebSocketJpegFrame;
+    try {
+      frame = await this.#frameAfter(active, before);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("frame timed out")) {
+        this.#lastFailure = "frame_timeout";
+      }
+      throw error;
+    }
     return {
       data: Buffer.from(frame.data),
       width: frame.width,
@@ -238,6 +274,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       if (state.failed) return;
       state.latest = frame;
       state.sequence += 1;
+      this.#framesObserved += 1;
       const ready = state.frameWaiters.filter((waiter) => state.sequence > waiter.afterSequence);
       state.frameWaiters = state.frameWaiters.filter((waiter) => state.sequence <= waiter.afterSequence);
       for (const waiter of ready) {
@@ -246,11 +283,24 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       }
     });
     child.stdout.on("data", (chunk: Buffer) => {
-      try { parser.push(chunk); } catch { failActive(state, "Linux WSS exact-window helper frame protocol failed"); }
+      try { parser.push(chunk); } catch {
+        this.#lastFailure = "frame_protocol";
+        failActive(state, "Linux WSS exact-window helper frame protocol failed");
+      }
     });
-    child.stderr.on("data", (chunk: Buffer) => consumeDiagnostics(state, chunk));
-    child.once("error", () => failActive(state, "Linux WSS exact-window helper failed"));
-    child.once("close", () => failActive(state, "Linux WSS exact-window helper closed"));
+    child.stderr.on("data", (chunk: Buffer) => consumeDiagnostics(state, chunk, (stage) => {
+      const category = captureFailureCategory(stage);
+      if (category) this.#lastFailure = category;
+      else if (stage === "input_failure") this.#lastFailure = "input_failure";
+    }));
+    child.once("error", () => {
+      if (this.#lastFailure === "none") this.#lastFailure = "helper_error";
+      failActive(state, "Linux WSS exact-window helper failed");
+    });
+    child.once("close", () => {
+      if (this.#lastFailure === "none") this.#lastFailure = "helper_closed";
+      failActive(state, "Linux WSS exact-window helper closed");
+    });
     this.#active = state;
     await this.#frameAfter(state, 0);
   }
@@ -299,10 +349,15 @@ function sameTarget(left: Readonly<TakeoverHostTarget>, right: Readonly<Takeover
   return left.processId === right.processId && left.windowId === right.windowId;
 }
 
-function consumeDiagnostics(active: ActiveLinuxSurface, chunk: Buffer): void {
+function consumeDiagnostics(
+  active: ActiveLinuxSurface,
+  chunk: Buffer,
+  onStage: (stage: string) => void
+): void {
   if (active.failed) return;
   active.stderrBuffer += chunk.toString("utf8");
   if (active.stderrBuffer.length > MAX_DIAGNOSTIC_BUFFER_BYTES) {
+    onStage("diagnostics_bounds");
     failActive(active, "Linux WSS exact-window helper diagnostics exceeded bounds");
     return;
   }
@@ -313,6 +368,7 @@ function consumeDiagnostics(active: ActiveLinuxSurface, chunk: Buffer): void {
     active.stderrBuffer = active.stderrBuffer.slice(newline + 1);
     const match = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=([a-z0-9_]{1,64})$/.exec(line);
     if (!match) continue;
+    onStage(match[1]!);
     if (match[1] === "input_applied") {
       const pending = active.pendingInputAck;
       if (!pending) continue;
@@ -323,6 +379,15 @@ function consumeDiagnostics(active: ActiveLinuxSurface, chunk: Buffer): void {
       failActive(active, "Linux WSS exact-window helper input failed");
     }
   }
+}
+
+function captureFailureCategory(stage: string): LinuxWebSocketSurfaceFailure | undefined {
+  if (stage === "capture_failure_x11") return "capture_x11";
+  if (stage === "capture_failure_encoder") return "capture_encoder";
+  if (stage === "capture_failure_option") return "capture_option";
+  if (stage === "capture_failure_other") return "capture_other";
+  if (stage === "diagnostics_bounds") return "diagnostics_bounds";
+  return undefined;
 }
 
 function failActive(active: ActiveLinuxSurface, message: string): void {

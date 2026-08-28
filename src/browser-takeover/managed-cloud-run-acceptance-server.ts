@@ -401,6 +401,8 @@ function acceptanceSnapshot(): object {
     exactWindowCountObserved,
     exactWindowOwnerObserved,
     exactWindowTitleObserved,
+    wssSurfaceLastFailure: handoff?.managedSurfaceDiagnosticsSnapshot().lastFailure ?? "none",
+    wssFramesObserved: handoff?.managedSurfaceDiagnosticsSnapshot().framesObserved ?? 0,
     turnConfigured: false,
     currentTransport: managedEvidence.currentTransport,
     lastTransport: managedEvidence.lastTransport,

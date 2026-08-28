@@ -106,6 +106,12 @@ export class BrowserHandoffAdapter {
       ? this.#core.operatorDiagnosticsSnapshot("browser_handoff")
       : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
   }
+  /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
+  managedSurfaceDiagnosticsSnapshot(): { lastFailure: string; framesObserved: number } {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedSurfaceDiagnosticsSnapshot()
+      : { lastFailure: "none", framesObserved: 0 };
+  }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }
 
