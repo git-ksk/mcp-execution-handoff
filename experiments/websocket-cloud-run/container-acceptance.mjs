@@ -13,6 +13,7 @@ const INPUT_X = 0.42;
 const INPUT_Y_CANDIDATES = [0.3, 0.34, 0.38];
 const STAGE_FILE = "/tmp/handoff-wss-stage";
 let stage = "docker-run";
+let keyProbe;
 
 function docker(args, stdio = "pipe") {
   return spawn("docker", args, { stdio });
@@ -39,6 +40,74 @@ async function dockerText(args) {
   child.stderr?.on("data", collect);
   await once(child, "close").catch(() => undefined);
   return Buffer.concat(chunks).toString("utf8");
+}
+
+function lineReader(child) {
+  let buffer = "";
+  const queued = [];
+  const waiters = [];
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    buffer += chunk;
+    for (;;) {
+      const newline = buffer.indexOf("\n");
+      if (newline < 0) break;
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      const waiter = waiters.shift();
+      if (waiter) waiter(line);
+      else queued.push(line);
+    }
+  });
+  return () => {
+    const line = queued.shift();
+    if (line !== undefined) return Promise.resolve(line);
+    return new Promise((resolveLine) => waiters.push(resolveLine));
+  };
+}
+
+async function boundedLine(label, nextLine, timeoutMs = 3_000) {
+  return await Promise.race([
+    nextLine(),
+    new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+      timer.unref?.();
+    })
+  ]);
+}
+
+async function resolveExactKeyProbeTarget() {
+  const raw = await dockerText([
+    "exec", container, "sh", "-c",
+    "set -eu; wid=$(DISPLAY=:99 xdotool search --onlyvisible --name 'Handoff WSS Physical Acceptance'); test $(printf '%s\\n' \"$wid\" | sed '/^$/d' | wc -l) -eq 1; pid=$(DISPLAY=:99 xdotool getwindowpid \"$wid\"); printf '%s %s\\n' \"$wid\" \"$pid\""
+  ]);
+  const match = /^(\d+) (\d+)\s*$/.exec(raw.trim());
+  if (!match) throw new Error("WSS XRecord key probe target is ambiguous");
+  const windowId = Number(match[1]);
+  const processId = Number(match[2]);
+  if (!Number.isSafeInteger(windowId) || windowId <= 0 || !Number.isSafeInteger(processId) || processId <= 0) {
+    throw new Error("WSS XRecord key probe target is invalid");
+  }
+  return { windowId, processId };
+}
+
+async function startKeyDeliveryProbe() {
+  const target = await resolveExactKeyProbeTarget();
+  const child = docker([
+    "exec", "-i", "-e", "DISPLAY=:99", container,
+    "/app/dist/native/mcp-handoff-wss-xrecord-key-probe",
+    "--pid", String(target.processId),
+    "--window", String(target.windowId),
+    "--keycode", "36"
+  ]);
+  child.stderr?.resume();
+  const nextLine = lineReader(child);
+  const ready = await boundedLine("WSS XRecord key probe readiness", nextLine);
+  if (ready !== "READY") {
+    child.kill("SIGTERM");
+    throw new Error("WSS XRecord key probe failed to arm");
+  }
+  return { child, nextLine };
 }
 
 async function get(path, headers = {}) {
@@ -188,15 +257,26 @@ try {
   stage = "refocus";
   await ensureInputFocusedViaWss(ws, cookie);
 
+  // Acceptance-only XRecord observes one fact: whether Return KeyPress reached an X11 connection
+  // owned by the exact browser PID and the admitted Window subtree. It never records key text,
+  // credentials, framebuffer content, WebSocket payloads, or provider state.
+  stage = "submit-xrecord-arm";
+  keyProbe = await startKeyDeliveryProbe();
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
+  keyProbe.child.stdin.write("WAIT\n");
+  const keyDelivery = await boundedLine("WSS XRecord key delivery", keyProbe.nextLine, 3_000);
+  if (keyDelivery !== "OK KEY") {
+    stage = "submit-xrecord-delivery-missing";
+    throw new Error("WSS Return was not delivered to the exact X11 target");
+  }
   try {
     await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 4_000);
   } catch (error) {
     const status = await readAcceptanceStatus(cookie);
-    if (status.enterKeyDownObserved !== true) stage = "submit-keydown-missing";
-    else if (status.enterKeyUpObserved !== true) stage = "submit-keyup-missing";
-    else stage = "submit-event-missing";
+    if (status.enterKeyDownObserved !== true) stage = "submit-dom-keydown-missing-after-xrecord";
+    else if (status.enterKeyUpObserved !== true) stage = "submit-dom-keyup-missing-after-xrecord";
+    else stage = "submit-event-missing-after-xrecord";
     throw error;
   }
 
@@ -213,5 +293,8 @@ try {
   await printBoundedDiagnostics();
   throw error;
 } finally {
+  if (keyProbe?.child && keyProbe.child.exitCode === null && keyProbe.child.signalCode === null) {
+    keyProbe.child.kill("SIGTERM");
+  }
   await dockerOk(["rm", "-f", container]).catch(() => undefined);
 }
