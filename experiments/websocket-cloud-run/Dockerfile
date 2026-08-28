@@ -25,6 +25,7 @@ COPY src ./src
 COPY native ./native
 COPY scripts ./scripts
 COPY experiments/websocket-cloud-run/xrecord-key-delivery-probe.c ./experiments/websocket-cloud-run/xrecord-key-delivery-probe.c
+COPY experiments/websocket-cloud-run/xdotool-focus-preserving-wrapper.sh /usr/local/bin/handoff-xdotool
 RUN npm run build \
  && npm run build:linux-xtest-helper \
  && mkdir -p dist/native \
@@ -34,12 +35,14 @@ RUN npm run build \
       experiments/websocket-cloud-run/xrecord-key-delivery-probe.c \
       -Wl,-z,relro,-z,now -pie -lX11 -lXtst -lXRes \
       -o dist/native/mcp-handoff-wss-xrecord-key-probe \
- && chmod 0755 dist/native/mcp-handoff-wss-xrecord-key-probe \
+ && chmod 0755 dist/native/mcp-handoff-wss-xrecord-key-probe /usr/local/bin/handoff-xdotool \
  && npm prune --omit=dev \
  && test -x dist/native/mcp-handoff-linux-xtest-helper \
- && test -x dist/native/mcp-handoff-wss-xrecord-key-probe
+ && test -x dist/native/mcp-handoff-wss-xrecord-key-probe \
+ && test -x /usr/local/bin/handoff-xdotool
 
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV TAKEOVER_LINUX_XDOTOOL=/usr/local/bin/handoff-xdotool
 EXPOSE 8080
 CMD ["node", "dist/experimental/websocket-cloud-run-acceptance-server.js"]
