@@ -13,6 +13,7 @@ const DISPLAY = ":99";
 const COOKIE_NAME = "__Host-handoff-accept";
 const SESSION_TTL_MS = 15 * 60_000;
 const PRINCIPAL_BYTES = 24;
+const MAX_HTTP_BODY_BYTES = 64 * 1024;
 const INTERVENTION_ID = "cloud-run-managed-physical-acceptance";
 const TARGET_TITLE = "Handoff Managed Physical Acceptance";
 const TARGET_WINDOW_TITLE = `${TARGET_TITLE} - Chromium`;
@@ -27,6 +28,7 @@ const TURN_ENV = [
 interface TargetState {
   ready: boolean;
   formOpened: boolean;
+  focusObserved: boolean;
   inputFocused: boolean;
   textObserved: boolean;
   backspaceObserved: boolean;
@@ -58,6 +60,7 @@ const hostScript = path.resolve("dist/browser-takeover/linux-webrtc-host-cli.js"
 const targetState: TargetState = {
   ready: false,
   formOpened: false,
+  focusObserved: false,
   inputFocused: false,
   textObserved: false,
   backspaceObserved: false,
@@ -130,6 +133,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
   }
   if (url.pathname === "/target-focused" && req.method === "POST") {
     if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
+    targetState.focusObserved = true;
     targetState.inputFocused = true;
     return sendJson(res, 204, undefined);
   }
@@ -227,9 +231,12 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
   if (!handoff || !handoff.ownsPath(url.pathname)) return sendJson(res, 404, { error: "not_found" });
   const principal = principalFromRequest(req);
+  const method = req.method ?? "GET";
+  const body = method === "GET" || method === "HEAD" ? undefined : await readBoundedBody(req);
   const request = new Request(new URL(req.url ?? "/", publicBaseUrl), {
-    method: req.method ?? "GET",
-    headers: requestHeaders(req)
+    method,
+    headers: requestHeaders(req),
+    ...(body === undefined ? {} : { body })
   });
   const response = await handoff.handle(request, principal);
   await refreshManagedEvidence();
@@ -340,6 +347,7 @@ function acceptanceSnapshot(): object {
       staleDirectLocatorRejected && managedEvidence.generation >= 2 && managedEvidence.transitionCount >= 1,
     staleWebSocketLocatorRejected,
     tapObserved: targetState.formOpened,
+    focusObserved: targetState.focusObserved,
     inputFocused: targetState.inputFocused,
     textObserved: targetState.textObserved,
     backspaceObserved: targetState.backspaceObserved,
@@ -362,6 +370,7 @@ function resetAcceptanceState(): void {
   initialDirectPath = undefined;
   observedWebSocketPath = undefined;
   targetState.formOpened = false;
+  targetState.focusObserved = false;
   targetState.inputFocused = false;
   targetState.textObserved = false;
   targetState.backspaceObserved = false;
@@ -484,6 +493,18 @@ function requestHeaders(req: IncomingMessage): Headers {
     headers.set(name, Array.isArray(value) ? value.join(", ") : value);
   }
   return headers;
+}
+
+async function readBoundedBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > MAX_HTTP_BODY_BYTES) throw new Error("Managed acceptance request body exceeds bound");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 async function writeFetchResponse(res: ServerResponse, response: Response): Promise<void> {
