@@ -11,6 +11,7 @@ RUN apt-get update \
       openbox \
       pkg-config \
       x11-utils \
+      x11-xserver-utils \
       xdotool \
       xvfb \
  && rm -rf /var/lib/apt/lists/*
