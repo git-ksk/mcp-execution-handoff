@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { rmSync, writeFileSync } from "node:fs";
 import { WebSocket } from "ws";
 
 const port = 18080 + (process.pid % 1000);
@@ -10,6 +11,7 @@ const container = `handoff-wss-accept-${process.pid}`;
 const MAX_DIAGNOSTIC_BYTES = 16 * 1024;
 const INPUT_X = 0.42;
 const INPUT_Y_CANDIDATES = [0.3, 0.34, 0.38];
+const STAGE_FILE = "/tmp/handoff-wss-stage";
 let stage = "docker-run";
 
 function docker(args, stdio = "pipe") {
@@ -86,6 +88,7 @@ async function printBoundedDiagnostics() {
   if (logs.trim()) process.stderr.write(`container_logs=${logs.trim()}\n`);
 }
 
+rmSync(STAGE_FILE, { force: true });
 await dockerOk(["rm", "-f", container]).catch(() => undefined);
 try {
   stage = "docker-run";
@@ -193,6 +196,7 @@ try {
   ws.close();
   process.stdout.write("WSS_CONTAINER_ACCEPTANCE_OK\n");
 } catch (error) {
+  try { writeFileSync(STAGE_FILE, `${stage}\n`, { mode: 0o600 }); } catch {}
   await printBoundedDiagnostics();
   throw error;
 } finally {
