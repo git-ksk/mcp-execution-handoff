@@ -532,8 +532,8 @@ export class ManagedWindowHandoffRuntime {
     );
     html = html.replace(helperMarker, `${helperMarker}${managedWebSocketFallbackHelper()}`);
     html = html.replace(readyMarker, "if(message.kind==='ready'){clearManagedReadyTimeout();ready=true;");
-    html = html.replace(closeMarker, "ws.onclose=()=>{ready=false;if(!stopped)void managedTransportFallback()};");
-    html = html.replace(errorMarker, "ws.onerror=()=>{ready=false;if(!stopped)void managedTransportFallback()}");
+    html = html.replace(closeMarker, "ws.onclose=()=>{ready=false;if(!stopped)void managedWebSocketDisconnected(ws)};");
+    html = html.replace(errorMarker, "ws.onerror=()=>{ready=false;if(!stopped)void managedWebSocketDisconnected(ws)}");
     html = html.replace(
       initialMarker,
       "controls();armManagedReadyTimeout();void connect().catch(()=>{ready=false;if(!stopped)void managedTransportFallback()})"
@@ -593,7 +593,7 @@ function managedWebRtcFallbackHelper(): string {
 }
 
 function managedWebSocketFallbackHelper(): string {
-  return "let managedFallbackStarted=false,managedReadyTimer=0;function clearManagedReadyTimeout(){if(managedReadyTimer){clearTimeout(managedReadyTimer);managedReadyTimer=0}}function armManagedReadyTimeout(){clearManagedReadyTimeout();managedReadyTimer=setTimeout(()=>{managedReadyTimer=0;if(!ready&&!stopped)void managedTransportFallback()},10000)}async function managedTransportFallback(){const f=app.dataset.fallback||'';if(!f||managedFallbackStarted||stopped)return false;managedFallbackStarted=true;clearManagedReadyTimeout();try{const r=await fetch('/takeover/api/transport-fallback/'+encodeURIComponent(id),{method:'POST',cache:'no-store',headers:{'x-mcp-handoff-fallback':f}});if(r.ok){const d=await r.json();if(d&&typeof d.path==='string'&&d.path.startsWith('/takeover/')){location.replace(d.path);return true}}}catch{}stopped=true;setStatus('Session unavailable');return false}";
+  return "let managedFallbackStarted=false,managedReadyTimer=0,managedReconnectUsed=false;const managedHandledSockets=new WeakSet();function clearManagedReadyTimeout(){if(managedReadyTimer){clearTimeout(managedReadyTimer);managedReadyTimer=0}}function armManagedReadyTimeout(){clearManagedReadyTimeout();managedReadyTimer=setTimeout(()=>{managedReadyTimer=0;if(!ready&&!stopped)void managedTransportFallback()},10000)}function managedWebSocketDisconnected(ws){if(stopped||managedFallbackStarted||managedHandledSockets.has(ws))return;managedHandledSockets.add(ws);clearManagedReadyTimeout();ready=false;if(!managedReconnectUsed){managedReconnectUsed=true;setStatus('Reconnecting…');setTimeout(()=>{if(stopped||managedFallbackStarted)return;armManagedReadyTimeout();void connect().catch(()=>{if(!stopped)void managedTransportFallback()})},300);return}void managedTransportFallback()}async function managedTransportFallback(){const f=app.dataset.fallback||'';if(!f||managedFallbackStarted||stopped)return false;managedFallbackStarted=true;clearManagedReadyTimeout();try{const r=await fetch('/takeover/api/transport-fallback/'+encodeURIComponent(id),{method:'POST',cache:'no-store',headers:{'x-mcp-handoff-fallback':f}});if(r.ok){const d=await r.json();if(d&&typeof d.path==='string'&&d.path.startsWith('/takeover/')){location.replace(d.path);return true}}}catch{}stopped=true;setStatus('Session unavailable');return false}";
 }
 
 function cloneResponse(response: Response, body: string): Response {

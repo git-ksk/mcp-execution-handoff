@@ -97,6 +97,11 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     const wssHtml = await wssPage.text();
     assert.match(wssHtml, /<img id="frame"/);
     assert.match(wssHtml, /managedTransportFallback/);
+    assert.match(wssHtml, /managedWebSocketDisconnected/);
+    assert.match(wssHtml, /managedReconnectUsed=false/);
+    assert.match(wssHtml, /setStatus\('Reconnecting…'\)/);
+    assert.match(wssHtml, /setTimeout\(\(\)=>\{if\(stopped\|\|managedFallbackStarted\)return;armManagedReadyTimeout\(\)/);
+    assert.match(wssHtml, /managedWebSocketDisconnected\(ws\)/);
     assert.deepEqual(runtime.operatorDiagnosticsSnapshot("browser_handoff").transport, {
       namespace: "managed_handoff",
       currentTransport: "websocket_relay",
