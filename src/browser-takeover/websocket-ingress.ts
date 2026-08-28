@@ -15,7 +15,9 @@ import {
   type WebSocketTakeoverInputPolicy,
   type WebSocketTakeoverLease,
   type WebSocketTakeoverPeer,
-  type WebSocketTakeoverServerMessage
+  type WebSocketTakeoverServerMessage,
+  type WebSocketTakeoverState,
+  type WebSocketTakeoverFailureCode
 } from "./websocket-takeover.js";
 
 const HANDOFF_SUBPROTOCOL = "mcp-handoff.websocket.v1";
@@ -271,12 +273,34 @@ interface ActiveConnection {
   readonly channel: ExperimentalWebSocketTakeoverChannel;
 }
 
+export type ExperimentalWebSocketIngressDisconnectKind =
+  | "none"
+  | "peer_close"
+  | "peer_error"
+  | "policy_close"
+  | "channel_failure";
+
+export interface ExperimentalWebSocketIngressDiagnostics {
+  disconnectKind: ExperimentalWebSocketIngressDisconnectKind;
+  channelState: WebSocketTakeoverState | "none";
+  sentFrames: number;
+  droppedFrames: number;
+  lastFailure: WebSocketTakeoverFailureCode | "none";
+}
+
 /** Concrete Node HTTPS/WSS ingress for the experimental WebSocket transport carrying Browser Handoff. */
 export class ExperimentalWebSocketTakeoverIngress {
   readonly #origins: ReadonlySet<string>;
   readonly #server: WebSocketServer;
   readonly #maxInboundBytes: number;
   readonly #active = new Map<string, ActiveConnection>();
+  #lastDiagnostics: ExperimentalWebSocketIngressDiagnostics = {
+    disconnectKind: "none",
+    channelState: "none",
+    sentFrames: 0,
+    droppedFrames: 0,
+    lastFailure: "none"
+  };
 
   constructor(private readonly options: ExperimentalWebSocketTakeoverIngressOptions) {
     this.#origins = normalizeAllowedOrigins(options.allowedOrigins);
@@ -370,12 +394,14 @@ export class ExperimentalWebSocketTakeoverIngress {
             channel
           };
           this.#active.set(parsed.sessionId, active);
+          this.#recordDiagnostics(active, "none");
           if (previous) {
             void previous.channel.disconnect().catch(() => undefined);
             void previous.peer.close(POLICY_CLOSE, "stale_generation").catch(() => undefined);
           }
           this.#wireConnection(parsed.sessionId, active, webSocket);
           void channel.start().catch(() => {
+            this.#recordDiagnostics(active, "channel_failure");
             this.options.authority.invalidateTicket(parsed.ticket);
           });
         } catch {
@@ -393,6 +419,11 @@ export class ExperimentalWebSocketTakeoverIngress {
 
   hasActiveConnection(sessionId: string): boolean {
     return this.#active.get(sessionId)?.channel.state === "open";
+  }
+
+  /** @internal Content-free WebSocket transport diagnostics for managed physical acceptance. */
+  diagnosticsSnapshot(): ExperimentalWebSocketIngressDiagnostics {
+    return { ...this.#lastDiagnostics };
   }
 
   async pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean> {
@@ -413,32 +444,50 @@ export class ExperimentalWebSocketTakeoverIngress {
 
   #wireConnection(sessionId: string, active: ActiveConnection, webSocket: WebSocket): void {
     let disconnected = false;
-    const disconnectOnce = (): void => {
+    let disconnectKind: ExperimentalWebSocketIngressDisconnectKind = "none";
+    const disconnectOnce = async (kind: ExperimentalWebSocketIngressDisconnectKind): Promise<void> => {
+      if (disconnectKind === "none" || kind === "channel_failure") disconnectKind = kind;
       if (disconnected) return;
       disconnected = true;
       if (this.#active.get(sessionId) === active) this.#active.delete(sessionId);
-      void active.channel.disconnect().catch(() => undefined);
+      await active.channel.disconnect().catch(() => undefined);
+      this.#recordDiagnostics(active, disconnectKind);
     };
 
     webSocket.on("message", (data, isBinary) => {
       if (isBinary || rawDataByteLength(data) > this.#maxInboundBytes) {
         this.options.authority.invalidateTicket(active.ticket);
         void active.peer.close(POLICY_CLOSE, "invalid_message").catch(() => undefined);
-        disconnectOnce();
+        void disconnectOnce("policy_close");
         return;
       }
       const text = rawDataToUtf8(data);
       void active.channel.receiveText(text).catch(() => {
         if (active.channel.state === "failed") {
+          this.#recordDiagnostics(active, "channel_failure");
           this.options.authority.invalidateTicket(active.ticket);
         }
       });
     });
-    webSocket.once("close", disconnectOnce);
+    webSocket.once("close", () => {
+      const kind = active.channel.diagnostics.lastFailure ? "channel_failure" : "peer_close";
+      void disconnectOnce(kind);
+    });
     webSocket.once("error", () => {
       void active.peer.close(INTERNAL_CLOSE, "transport_failure").catch(() => undefined);
-      disconnectOnce();
+      void disconnectOnce("peer_error");
     });
+  }
+
+  #recordDiagnostics(active: ActiveConnection, kind: ExperimentalWebSocketIngressDisconnectKind): void {
+    const channel = active.channel.diagnostics;
+    this.#lastDiagnostics = {
+      disconnectKind: channel.lastFailure ? "channel_failure" : kind,
+      channelState: channel.state,
+      sentFrames: Math.min(channel.sentFrames, 1_000_000),
+      droppedFrames: Math.min(channel.droppedFrames, 1_000_000),
+      lastFailure: channel.lastFailure ?? "none"
+    };
   }
 
   #parseHandshake(request: IncomingMessage):

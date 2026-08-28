@@ -80,6 +80,7 @@ interface ManagedHandoffSession {
   readonly coordinator: ManagedBrowserHandoffTransportCoordinator;
   readonly state: ManagedDriverState;
   readonly surface: LinuxWebSocketWindowSurface;
+  readonly webSocketHandoff: WebSocketBrowserHandoff;
   readonly cleanupTimer: NodeJS.Timeout;
   lease: ManagedBrowserHandoffTransportLease;
   activeSessionId: string | undefined;
@@ -262,6 +263,7 @@ export class ManagedWindowHandoffRuntime {
       coordinator,
       state,
       surface,
+      webSocketHandoff: wss,
       cleanupTimer,
       lease,
       activeSessionId: sessionId,
@@ -278,6 +280,17 @@ export class ManagedWindowHandoffRuntime {
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
   managedSurfaceDiagnosticsSnapshot(): ReturnType<LinuxWebSocketWindowSurface["diagnosticsSnapshot"]> {
     return this.#lastSession?.surface.diagnosticsSnapshot() ?? { lastFailure: "none", framesObserved: 0 };
+  }
+
+  /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
+  managedWebSocketDiagnosticsSnapshot(): ReturnType<WebSocketBrowserHandoff["diagnosticsSnapshot"]> {
+    return this.#lastSession?.webSocketHandoff.diagnosticsSnapshot() ?? {
+      disconnectKind: "none",
+      channelState: "none",
+      sentFrames: 0,
+      droppedFrames: 0,
+      lastFailure: "none"
+    };
   }
 
   async revoke(interventionId: string): Promise<void> {

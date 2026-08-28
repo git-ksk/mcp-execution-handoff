@@ -218,13 +218,20 @@ test("WSS ingress rejects invalid tickets without consuming client authority", a
 test("WSS clean disconnect reconnects with a fresh server-derived generation", async () => {
   const { locator, authority } = makeSession();
   const ticket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
-  const { server, inputs, connect } = await startIngress(ticket, authority);
+  const { ingress, server, inputs, connect } = await startIngress(ticket, authority);
   try {
     const first = connect();
     await openAndFirstMessage(first);
     first.close();
     await onceClose(first);
     await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.deepEqual(ingress.diagnosticsSnapshot(), {
+      disconnectKind: "peer_close",
+      channelState: "closed",
+      sentFrames: 0,
+      droppedFrames: 0,
+      lastFailure: "none"
+    });
 
     const second = connect();
     await openAndFirstMessage(second);
@@ -281,7 +288,7 @@ test("WSS concurrent claimant is fenced while the first generation is active", a
 test("WSS protocol identity injection fails closed and invalidates reconnect ticket", async () => {
   const { locator, authority } = makeSession();
   const ticket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
-  const { server, connect, inputs } = await startIngress(ticket, authority);
+  const { ingress, server, connect, inputs } = await startIngress(ticket, authority);
   try {
     const first = connect();
     await openAndFirstMessage(first);
@@ -292,7 +299,12 @@ test("WSS protocol identity injection fails closed and invalidates reconnect tic
       principalBinding: "attacker"
     }));
     await onceClose(first);
+    await new Promise((resolve) => setTimeout(resolve, 5));
     assert.deepEqual(inputs, []);
+    const diagnostics = ingress.diagnosticsSnapshot();
+    assert.equal(diagnostics.disconnectKind, "channel_failure");
+    assert.equal(diagnostics.channelState, "closed");
+    assert.equal(diagnostics.lastFailure, "invalid_message");
 
     const second = connect();
     const [error] = await new Promise<[Error]>((resolve) => second.once("error", (value) => resolve([value])));

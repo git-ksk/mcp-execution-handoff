@@ -129,6 +129,11 @@ export class ExperimentalWebSocketBrokerBinding {
     return this.#ingress.hasActiveConnection(sessionId);
   }
 
+  /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
+  diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketTakeoverIngress["diagnosticsSnapshot"]> {
+    return this.#ingress.diagnosticsSnapshot();
+  }
+
   pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean> {
     return this.#ingress.pushFrame(sessionId, frame);
   }

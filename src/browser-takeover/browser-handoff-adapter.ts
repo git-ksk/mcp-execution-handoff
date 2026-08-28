@@ -112,6 +112,14 @@ export class BrowserHandoffAdapter {
       ? this.#core.managedSurfaceDiagnosticsSnapshot()
       : { lastFailure: "none", framesObserved: 0 };
   }
+  /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
+  managedWebSocketDiagnosticsSnapshot(): {
+    disconnectKind: string; channelState: string; sentFrames: number; droppedFrames: number; lastFailure: string;
+  } {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedWebSocketDiagnosticsSnapshot()
+      : { disconnectKind: "none", channelState: "none", sentFrames: 0, droppedFrames: 0, lastFailure: "none" };
+  }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }
 

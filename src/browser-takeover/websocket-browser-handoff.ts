@@ -118,6 +118,11 @@ export class ExperimentalWebSocketBrowserHandoff {
     return this.#window.ownsPath(pathname);
   }
 
+  /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
+  diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketWindowHandoff["diagnosticsSnapshot"]> {
+    return this.#window.diagnosticsSnapshot();
+  }
+
   revoke(interventionId: string): void {
     const state = this.#sessionsByIntervention.get(interventionId);
     if (state) this.#forget(state);

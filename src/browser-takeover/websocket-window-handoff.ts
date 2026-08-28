@@ -200,6 +200,11 @@ export class ExperimentalWebSocketWindowHandoff {
     return this.#sessionsById.has(sessionId) && this.#binding.validateLocator(sessionId, boundPrincipal);
   }
 
+  /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
+  diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketBrokerBinding["diagnosticsSnapshot"]> {
+    return this.#binding.diagnosticsSnapshot();
+  }
+
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> | Response {
     return this.#binding.handleBootstrap(request, boundPrincipal)
       ?? this.#broker.handle(request, boundPrincipal);
