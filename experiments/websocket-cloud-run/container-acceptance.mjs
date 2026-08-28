@@ -185,7 +185,15 @@ try {
 
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
-  await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 4_000);
+  try {
+    await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 4_000);
+  } catch (error) {
+    const status = await readAcceptanceStatus(cookie);
+    if (status.enterKeyDownObserved !== true) stage = "submit-keydown-missing";
+    else if (status.enterKeyUpObserved !== true) stage = "submit-keyup-missing";
+    else stage = "submit-event-missing";
+    throw error;
+  }
 
   stage = "done";
   ws.send(JSON.stringify({ kind: "done" }));
