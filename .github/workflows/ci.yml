@@ -139,4 +139,24 @@ jobs:
       - name: Build Cloud Run-equivalent WSS acceptance image
         run: docker build -f experiments/websocket-cloud-run/Dockerfile -t handoff-wss-acceptance:local .
       - name: Run bounded WSS container acceptance
+        id: wss_acceptance
+        continue-on-error: true
         run: npm run accept:websocket:cloud-run-container
+      - name: WSS XRecord arm failed
+        if: always()
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-xrecord-arm"
+      - name: WSS X11 delivery missing
+        if: always()
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-xrecord-delivery-missing"
+      - name: WSS DOM keydown missing after XRecord
+        if: always()
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-dom-keydown-missing-after-xrecord"
+      - name: WSS DOM keyup missing after XRecord
+        if: always()
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-dom-keyup-missing-after-xrecord"
+      - name: WSS submit event missing after XRecord
+        if: always()
+        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-event-missing-after-xrecord"
+      - name: Require WSS container acceptance
+        if: always()
+        run: test "${{ steps.wss_acceptance.outcome }}" = success
