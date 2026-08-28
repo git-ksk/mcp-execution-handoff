@@ -4,7 +4,7 @@ set -euo pipefail
 command -v gcloud >/dev/null
 
 PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
-REGION="${HANDOFF_ACCEPTANCE_REGION:-asia-northeast1}"
+REGION="${HANDOFF_ACCEPTANCE_REGION:-us-central1}"
 SERVICE="${HANDOFF_ACCEPTANCE_SERVICE:-}"
 
 if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then

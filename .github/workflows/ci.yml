@@ -166,12 +166,24 @@ jobs:
             -e HANDOFF_ACCEPTANCE_REVISION=0000000000000000000000000000000000000000 \
             handoff-managed-acceptance:local
           trap 'docker stop handoff-managed-smoke >/dev/null 2>&1 || true' EXIT
+          ready=0
           for _ in $(seq 1 60); do
             body="$(curl --fail --silent http://127.0.0.1:18081/ready 2>/dev/null || true)"
             if node -e 'try{const x=JSON.parse(process.argv[1]);process.exit(x.ok===true&&x.targetReady===true?0:1)}catch{process.exit(1)}' "$body"; then
-              exit 0
+              ready=1
+              break
             fi
             sleep 1
           done
-          docker logs handoff-managed-smoke || true
-          exit 1
+          if [ "$ready" != 1 ]; then
+            docker logs handoff-managed-smoke || true
+            exit 1
+          fi
+          headers="$(mktemp)"
+          body_file="$(mktemp)"
+          curl --fail --silent --dump-header "$headers" --output "$body_file" \
+            http://127.0.0.1:18081/start
+          grep -q '^HTTP/1.1 200' "$headers"
+          grep -q '^set-cookie: __Host-handoff-accept=' "$headers"
+          grep -q '/start/continue' "$body_file"
+          ! grep -Eq '/takeover/[A-Za-z0-9-]{8,100}' "$body_file"

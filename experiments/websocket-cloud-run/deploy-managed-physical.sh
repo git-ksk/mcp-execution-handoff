@@ -13,7 +13,7 @@ if [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
-REGION="${HANDOFF_ACCEPTANCE_REGION:-asia-northeast1}"
+REGION="${HANDOFF_ACCEPTANCE_REGION:-us-central1}"
 IMAGE_REPOSITORY="${HANDOFF_ACCEPTANCE_IMAGE_REPOSITORY:-}"
 SERVICE="${HANDOFF_ACCEPTANCE_SERVICE:-handoff-managed-${REVISION:0:8}}"
 
@@ -23,7 +23,7 @@ if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then
 fi
 if [[ -z "$IMAGE_REPOSITORY" ]]; then
   echo "Set HANDOFF_ACCEPTANCE_IMAGE_REPOSITORY to a fully qualified Artifact Registry repository" >&2
-  echo "Example: asia-northeast1-docker.pkg.dev/PROJECT/REPOSITORY" >&2
+  echo "Example: us-central1-docker.pkg.dev/PROJECT/REPOSITORY" >&2
   exit 1
 fi
 if [[ ! "$SERVICE" =~ ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ ]]; then

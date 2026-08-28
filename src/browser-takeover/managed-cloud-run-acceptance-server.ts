@@ -221,11 +221,30 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     sendJson(res, 200, acceptanceSnapshot());
     return;
   }
+  if (url.pathname === "/start/continue") {
+    if (req.method !== "GET") return sendJson(res, 405, { error: "method_not_allowed" });
+    const principal = principalFromRequest(req);
+    if (
+      !principal
+      || principal !== activePrincipal
+      || !activeLocator
+      || !initialDirectPath
+      || doneObserved
+    ) {
+      return sendJson(res, 404, { error: "not_found" });
+    }
+    res.statusCode = 302;
+    res.setHeader("cache-control", "no-store");
+    res.setHeader("location", initialDirectPath);
+    res.end();
+    return;
+  }
   if (url.pathname === "/start") {
     if (req.method !== "GET") return sendJson(res, 405, { error: "method_not_allowed" });
     const target = browserTarget;
     if (!target) return sendJson(res, 503, { error: "target_not_ready" });
     let cookieValue = cookieValueFromRequest(req);
+    const hadCookie = cookieValue !== undefined;
     if (!cookieValue) cookieValue = randomBytes(PRINCIPAL_BYTES).toString("base64url");
     const principal = `physical:${cookieValue}`;
     if (activeLocator && activeStartedAt > 0 && Date.now() - activeStartedAt >= SESSION_TTL_MS) {
@@ -254,13 +273,17 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     initialDirectPath = new URL(activeLocator).pathname;
     activeStartedAt = Date.now();
     await refreshManagedEvidence();
-    res.statusCode = 302;
-    res.setHeader("cache-control", "no-store");
-    res.setHeader("location", initialDirectPath);
     res.setHeader(
       "set-cookie",
       `${COOKIE_NAME}=${cookieValue}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=900`
     );
+    if (!hadCookie) {
+      sendHtml(res, startBootstrapPage());
+      return;
+    }
+    res.statusCode = 302;
+    res.setHeader("cache-control", "no-store");
+    res.setHeader("location", initialDirectPath);
     res.end();
     return;
   }
@@ -541,6 +564,10 @@ function classifyTargetInitFailure(error: unknown): TargetInitFailure {
   if (message.includes("target-page")) return "target_page_unavailable";
   if (message.includes("exact-window")) return "exact_window_unavailable";
   return "unknown";
+}
+
+function startBootstrapPage(): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/start/continue"><title>Starting Handoff</title></head><body><script>location.replace("/start/continue")</script><noscript><a href="/start/continue">Continue</a></noscript></body></html>`;
 }
 
 function targetLandingPage(): string {

@@ -14,8 +14,8 @@ Use an existing Artifact Registry repository; the helper never creates or change
 
 ```bash
 export GOOGLE_CLOUD_PROJECT='<project-id>'
-export HANDOFF_ACCEPTANCE_IMAGE_REPOSITORY='asia-northeast1-docker.pkg.dev/<project-id>/<repository>'
-export HANDOFF_ACCEPTANCE_REGION='asia-northeast1'
+export HANDOFF_ACCEPTANCE_IMAGE_REPOSITORY='us-central1-docker.pkg.dev/<project-id>/<repository>'
+export HANDOFF_ACCEPTANCE_REGION='us-central1'
 
 bash experiments/websocket-cloud-run/deploy-managed-physical.sh
 ```
@@ -29,14 +29,14 @@ HANDOFF_ACCEPTANCE_URL=...
 HANDOFF_ACCEPTANCE_START=.../start
 HANDOFF_ACCEPTANCE_REVISION=<40-char SHA>
 HANDOFF_ACCEPTANCE_SERVICE=handoff-managed-...
-HANDOFF_ACCEPTANCE_REGION=asia-northeast1
+HANDOFF_ACCEPTANCE_REGION=us-central1
 ```
 
 Do not record or publish any takeover locator, client generation capability, Human input text, framebuffer data, SDP/ICE payload, or WebSocket payload.
 
 ## Physical iPhone Safari sequence
 
-Open only the emitted `HANDOFF_ACCEPTANCE_START` URL on a physical iPhone in Safari. The first page is direct WebRTC. In the Cloud Run topology it must become unusable without TURN, after which the Handoff-owned page transitions to the WSS locator with a fresh generation.
+Open only the emitted `HANDOFF_ACCEPTANCE_START` URL on a physical iPhone in Safari. The fixed `/start` bootstrap first commits the principal cookie on a 200 response, then continues to the direct WebRTC locator. In the Cloud Run topology direct WebRTC must become unusable without TURN, after which the Handoff-owned page transitions to the WSS locator with a fresh generation.
 
 Exercise the WSS-controlled exact window in this order:
 
@@ -76,7 +76,7 @@ Use the exact service name emitted by deploy:
 
 ```bash
 export HANDOFF_ACCEPTANCE_SERVICE='handoff-managed-...'
-export HANDOFF_ACCEPTANCE_REGION='asia-northeast1'
+export HANDOFF_ACCEPTANCE_REGION='us-central1'
 export GOOGLE_CLOUD_PROJECT='<project-id>'
 
 bash experiments/websocket-cloud-run/teardown-managed-physical.sh
