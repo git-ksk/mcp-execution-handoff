@@ -88,7 +88,7 @@ try {
   const record = start(recordBin);
   assert.equal(await deadline("record readiness", record.nextLine()), "READY 3");
   const xtest = start(xtestBin);
-  assert.equal(await deadline("xtest readiness", xtest.nextLine()), "READY 1");
+  assert.equal(await deadline("xtest readiness", xtest.nextLine()), "READY 2");
 
   const x = 300;
   const y = 250;
