@@ -12,7 +12,7 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-08-27
+### 現在の作業状態 — 2026-08-28
 
 v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みで、v0.2 terminology convergenceでは `TargetSurfaceKind` enumをfreezeせずHuman Interaction Policyへcanonical aliasを追加します。
 
@@ -20,7 +20,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - `WindowHandoffAdapter` は #85で完成し、CUMGもconsumer-localな `TakeoverBroker` / runtime手組みから移行済みです。merged codeのphysical iPhone acceptanceでは、public Tunnel/TURN relayとsame-LAN directの両方を通過し、stale locator拒否も確認済みです。
 - `TerminalHandoffAdapter` は #86で完成しました。CUMGはexperimental PTY authorityとTerminal WebRTC transportの個別compositionをやめ、merged-code real PTY cross-repo E2Eとphysical iPhone Human acceptanceも通過済みです。mobileのconnection / Human authority / verifying表示は #91で明示的かつfail-closedになりました。
 - Safari suspend/disconnect後のBrowser WebRTC reconnectは #104でdeterministic化しました。generation releaseをsingle-flight化し、重複lifecycle eventを1本のreconnectへ集約し、active-lease conflictをboundedに観測できます。same-LAN iPhoneのphysical runではbackground/foregroundを3回連続で復帰し、409 loopやblack-frame固定は発生しませんでした。Safari appの完全終了はimplicit lease reclaimを行わず、fresh authorized flowを要求します。
-- HTTPS/WSS managed-runtime experimentは #40で完了しました。physical iPhone SafariのWSS操作とCloud Run application reachabilityを確認しつつ、WebRTCからWebSocketへのsilent downgradeは追加していません。
+- #40のHTTPS/WSS managed-runtime evaluationは、#155 / #156でHandoff-ownedなBrowser / Window fallback `WebRTC direct -> WebSocket relay -> optional WebRTC/TURN relay` へ昇格しました。deterministic testとCloud Run-equivalent container acceptanceはgreenで、#152にはexact candidate revisionのproduction-shaped `run.app` physical iPhone acceptanceだけを残しています。
 - #47でmacOS/Linuxのbounded exact-window primitiveを再利用可能にし、whole-desktop fallbackは追加していません。
 - #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
 - CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。
@@ -158,15 +158,15 @@ Human takeover transportはconsumerごとのforkにせず、同じbroker authori
 
 - **Native** — 専用native operator client。性能・制御の上限は高いが、専用appのinstallが必要。
 - **WebRTC** — browser向けlow-latency transportの主系統。到達可能ならdirect ICEを優先し、WAN/NATで必要な場合だけoptional TURN providerへfallbackする。TURNはinfraでありHandoff coreの必須要件にはしない。
-- **WebSocket** — TURNを不要にできるHTTPS-only managed-runtime path（Cloud Runのようなdeploymentを含む）の第一候補。既存のexact-window host helper、one-client lease、generation fencing、revoke、bounded latest-frame policyを再利用する。
+- **WebSocket** — direct WebRTCの次に使うsupportedなHTTPS/WSS managed-runtime fallback。WSS legではTURNを必須にせず、既存のexact-window host helper、one-client lease、generation fencing、revoke、bounded latest-frame policyを再利用する。
 - **HTTP streaming + bounded input request** — 必要ならcorrectness / deployability重視の簡易fallbackまたはdiagnostic pathとして検討する。性能上の本命にはしない。
 - **WebTransport / HTTP/3** — deployment platformが適切なend-to-end pathを提供できるようになった場合の将来low-latency候補。core semanticsを変更せずoptional transportとして扱う。
 
 ICE / SDP / RTP / DataChannel、WebSocket framing / backpressure、将来のWebTransport stream / datagramなどtransport固有mechanismはtransport実装内部へ閉じ込めます。consumerは下層network protocolではなく、locator / start / reconnect / revoke系のlifecycle semanticsへ依存し続けます。
 
-Issue #40で初期WebSocket managed-runtime evaluationは完了しました。physical iPhone SafariのWSS操作、bounded latest-frame/drop挙動、Cloud Run application reachabilityを確認し、WebRTCからWebSocketへのsilent downgradeは導入していません。今後WebSocketをproductizeするかは、#40の未完acceptanceではなくtransport maturityとして別途判断します。
+Issue #40で初期WebSocket managed-runtime evaluationを完了し、physical iPhone SafariのWSS操作、bounded latest-frame/drop挙動、Cloud Run application reachabilityを確認しました。その後 #155 / #156で実証済みprimitiveをHandoff-owned Browser / Window managed fallbackへ昇格し、authority/session stackを二重化せず再利用しています。これはtransparentなsocket downgradeではなく、各transitionで旧transportをrevoke/fenceしてからfresh generation/capabilityへauthorityを移す明示的なtransitionです。
 
-現在のexperimental sequenceではphysical Acceptance完了までAPIをprivateに保ちます。bounded channel coreとHandoff-owned Node HTTPS/WSS ingressは、brokerと同じ`TakeoverSessionManager`へprivateに結線済みです。WSSには明示的なroute markerを持たせ、同一live locatorをlegacy HTTP / Native / WebRTCからclaimできないようにし、broker revokeではWSS channelも閉じ、Human Doneでは既存completion hookより先にshared generationをfenceします。privateなGeneric Window compositionではexact process/window targetをserver側だけに保持し、frame/inputはexact-window host-helper surfaceだけへ渡し、認証済みWSS clientがactiveになる前はcaptureせず、exact capture revalidation失敗時はsessionをrevokeします。privateなGeneric Browser compositionではprincipal-boundなHandoff-owned WSS pageを提供し、bounded JPEG/PNG frameとtap/scroll/text/key/Doneだけを扱い、target process/window identityやtransport selectionをconsumerへ露出しません。real Linux exact-window helperを使うphysical iPhone Safari WSS AcceptanceはHTTPS/WSS public Tunnel経由で通過し、tap/text/scroll/submit/Doneはcontent-freeなserver-side evidenceでも確認済みです。slow-clientは10,000 frame backlog stressでlatest-frame/drop semanticsを固定しています。同じacceptance imageはCloud Run内でもhealthyです。初期にはGoogle Frontend 404がありましたが、その後 `asia-northeast1` のpublic routeはphysical iPhone Safariからacceptance applicationまで到達し、そこで返った `takeover_unavailable` からacceptance専用のstale locator再利用bugを特定しました。このbugは `/start` ごとにfresh locatorへrotateし、`old locator -> 404` / `fresh locator -> 200` を保証する修正で解消済みです。Cloud Runで2回目のHuman操作一式は再実施せず、physical action evidenceは既に通過したiPhone HTTPS/WSS run、Cloud Run evidenceはapplication reachabilityとdeterministic fresh-locator/container acceptanceとして区別して記録します。証拠取得後、temporary Cloud Run acceptance serviceは削除しました。WebRTC direct / TURNとの同一session数値latency比較は保存されていないため、`experiments/websocket-cloud-run/COMPARISON.md`では根拠のない数値性能主張を行わずoperational comparisonを記録します。WebRTCからWebSocketへのautomatic downgradeは行いません。
+現在のsupported managed orderは `WebRTC direct -> WebSocket relay -> optional WebRTC/TURN relay` です。Browser / Window consumerは単一のHandoff lifecycle abstractionを使い続け、WebSocket / ICE / TURN providerを選択しません。stale direct-WebRTC / WSS generationはfail closed、transport間でadmit済みinputをreplayせず、disconnectはDoneを意味せず、fallback後もexact process/windowとHuman input policyは変わりません。#157 candidateではdeterministic suite、Linux normal-browser WebRTC repeated acceptance、Cloud Run-equivalent bounded WSS container acceptanceがgreenです。parent #152は、exact current candidateでproduction-shaped `run.app` physical iPhone Safari acceptanceを通し、direct-WebRTC unavailableを誘発して`websocket_relay`選択を確認し、stale pre-fallback generation / revoke / teardownまで記録するために意図的にopenのままです。WebRTC direct / TURNとの同一session数値latency比較は未記録のため、`experiments/websocket-cloud-run/COMPARISON.md`では根拠のない数値性能主張を行いません。
 
 具体的なworkが決まった時点でversionを割り当てます。必要なら `0.5`、`0.6`、`0.10` 以降も使用します。
 
