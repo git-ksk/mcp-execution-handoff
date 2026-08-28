@@ -2,6 +2,7 @@
 set -eu
 
 REAL_XDOTOOL=/usr/bin/xdotool
+SKIP_MARKER=/tmp/handoff-xdotool-activation-skipped
 
 if [ "${1:-}" = "windowactivate" ]; then
   requested=""
@@ -18,11 +19,13 @@ if [ "${1:-}" = "windowactivate" ]; then
       focused="$($REAL_XDOTOOL getwindowfocus 2>/dev/null || true)"
       if [ "$active" = "$requested" ]; then
         if [ "$focused" = "$requested" ]; then
+          : > "$SKIP_MARKER"
           exit 0
         fi
         requested_pid="$($REAL_XDOTOOL getwindowpid "$requested" 2>/dev/null || true)"
         focused_pid="$($REAL_XDOTOOL getwindowpid "$focused" 2>/dev/null || true)"
         if [ -n "$requested_pid" ] && [ "$requested_pid" = "$focused_pid" ]; then
+          : > "$SKIP_MARKER"
           exit 0
         fi
       fi
