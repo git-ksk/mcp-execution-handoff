@@ -135,7 +135,7 @@ void initializeBrowser().catch((error: unknown) => {
 
 async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", publicBaseUrl);
-  if (url.pathname === "/healthz") {
+  if (url.pathname === "/ready" || url.pathname === "/healthz") {
     sendJson(res, 200, {
       ok: true,
       targetReady: browserTarget !== undefined,

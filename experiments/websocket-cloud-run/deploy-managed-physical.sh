@@ -57,6 +57,7 @@ gcloud run deploy "$SERVICE" \
   --max-instances 1 \
   --min-instances 0 \
   --cpu 1 \
+  --no-cpu-throttling \
   --memory 2Gi \
   --timeout 900 \
   --set-env-vars "HANDOFF_WSS_PUBLIC_BASE_URL=https://placeholder.invalid,HANDOFF_ACCEPTANCE_REVISION=$REVISION"
@@ -76,7 +77,7 @@ gcloud run services update "$SERVICE" \
   --update-env-vars "HANDOFF_WSS_PUBLIC_BASE_URL=$URL,HANDOFF_ACCEPTANCE_REVISION=$REVISION"
 
 for _ in $(seq 1 90); do
-  BODY="$(curl --fail --silent --show-error "$URL/healthz" 2>/dev/null || true)"
+  BODY="$(curl --fail --silent --show-error "$URL/ready" 2>/dev/null || true)"
   if node -e '
     try {
       const body = JSON.parse(process.argv[1]);

@@ -167,7 +167,7 @@ jobs:
             handoff-managed-acceptance:local
           trap 'docker stop handoff-managed-smoke >/dev/null 2>&1 || true' EXIT
           for _ in $(seq 1 60); do
-            body="$(curl --fail --silent http://127.0.0.1:18081/healthz 2>/dev/null || true)"
+            body="$(curl --fail --silent http://127.0.0.1:18081/ready 2>/dev/null || true)"
             if node -e 'try{const x=JSON.parse(process.argv[1]);process.exit(x.ok===true&&x.targetReady===true?0:1)}catch{process.exit(1)}' "$body"; then
               exit 0
             fi

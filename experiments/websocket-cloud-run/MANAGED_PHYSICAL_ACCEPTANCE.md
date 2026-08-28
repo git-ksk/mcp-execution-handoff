@@ -20,7 +20,7 @@ export HANDOFF_ACCEPTANCE_REGION='asia-northeast1'
 bash experiments/websocket-cloud-run/deploy-managed-physical.sh
 ```
 
-The helper builds from `git archive HEAD`, tags the image with the exact 40-character git SHA, refuses to overwrite an existing Cloud Run service, deploys with concurrency/max-instances bounded to one, configures no TURN credentials, binds the application to the returned HTTPS service origin, and waits for the exact-window target to become ready.
+The helper builds from `git archive HEAD`, tags the image with the exact 40-character git SHA, refuses to overwrite an existing Cloud Run service, deploys with concurrency/max-instances bounded to one and instance-based CPU for the normal browser runtime, configures no TURN credentials, binds the application to the returned HTTPS service origin, and waits on the Cloud Run-safe `/ready` route for the exact-window target to become ready.
 
 Retain the emitted values:
 
