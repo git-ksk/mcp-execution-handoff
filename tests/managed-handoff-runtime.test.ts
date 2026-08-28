@@ -99,10 +99,15 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     assert.match(wssHtml, /managedTransportFallback/);
     assert.match(wssHtml, /managedWebSocketDisconnected/);
     assert.match(wssHtml, /managedReconnectAttempts=0/);
-    assert.match(wssHtml, /managedReconnectLimit=2/);
+    assert.match(wssHtml, /managedReconnectLimit=4/);
+    assert.match(wssHtml, /managedReconnectWindowMs=8000/);
+    assert.match(wssHtml, /managedReconnectStableMs=1500/);
+    assert.match(wssHtml, /managedWebSocketReady\(\)/);
+    assert.match(wssHtml, /600\+200\*\(managedReconnectAttempts-1\)/);
     assert.match(wssHtml, /event\.code===1008\|\|event\.code===1011/);
     assert.match(wssHtml, /setStatus\('Reconnecting…'\)/);
-    assert.match(wssHtml, /setTimeout\(\(\)=>\{if\(stopped\|\|managedFallbackStarted\)return;armManagedReadyTimeout\(\)/);
+    assert.match(wssHtml, /if\(Date\.now\(\)>=managedReconnectDeadline\)\{void managedTransportFallback\(\);return\}armManagedReadyTimeout\(\)/);
+    assert.match(wssHtml, /managedReconnectAttempts=0;managedReconnectDeadline=0/);
     assert.match(wssHtml, /managedWebSocketDisconnected\(ws,event\)/);
     assert.match(wssHtml, /ws\.onerror=.*Connection unavailable/);
     assert.deepEqual(runtime.operatorDiagnosticsSnapshot("browser_handoff").transport, {
