@@ -248,23 +248,34 @@ static void cleanup(ProbeState *state) {
 }
 
 static bool arm(ProbeState *state, pid_t target_pid) {
-  XRecordClientSpec *clients = NULL;
+  XRecordClientSpec *target_clients = NULL;
+  XRecordClientSpec all_clients = XRecordAllClients;
   XRecordRange *ranges[2] = {NULL, NULL};
-  int client_count = 0;
+  int target_client_count = 0;
   int major = 0;
   int minor = 0;
 
   if (!XRecordQueryVersion(state->control, &major, &minor)) return false;
   (void)major;
   (void)minor;
-  if (!collect_target_clients(state->control, target_pid, &clients, &client_count)) return false;
+
+  /*
+   * First prove that XRes can still resolve at least one client belonging to the admitted browser
+   * process lineage. The actual acceptance observer deliberately records all clients, however,
+   * because Chromium may route keyboard delivery through an internal X11 connection whose XRes PID
+   * identity does not match the top-level _NET_WM_PID lineage. Safety is retained by accepting only
+   * Return KeyPress whose event window is in the exact admitted top-level XID subtree. This helper
+   * exists only inside the isolated Cloud Run-equivalent acceptance image and never records text.
+   */
+  if (!collect_target_clients(state->control, target_pid, &target_clients, &target_client_count)) return false;
+  free(target_clients);
+  (void)target_client_count;
 
   ranges[0] = XRecordAllocRange();
   ranges[1] = XRecordAllocRange();
   if (ranges[0] == NULL || ranges[1] == NULL) {
     if (ranges[0] != NULL) XFree(ranges[0]);
     if (ranges[1] != NULL) XFree(ranges[1]);
-    free(clients);
     return false;
   }
   ranges[0]->delivered_events.first = KeyPress;
@@ -273,10 +284,9 @@ static bool arm(ProbeState *state, pid_t target_pid) {
   ranges[1]->delivered_events.last = GenericEvent;
 
   x_error_seen = 0;
-  state->context = XRecordCreateContext(state->control, 0, clients, client_count, ranges, 2);
+  state->context = XRecordCreateContext(state->control, 0, &all_clients, 1, ranges, 2);
   XFree(ranges[0]);
   XFree(ranges[1]);
-  free(clients);
   if (state->context == 0) return false;
   XSync(state->control, False);
   if (x_error_seen != 0) {
