@@ -8,12 +8,10 @@ const port = 18080 + (process.pid % 1000);
 const image = process.env.HANDOFF_WSS_ACCEPT_IMAGE ?? "handoff-wss-acceptance:local";
 const origin = "https://acceptance.example";
 const container = `handoff-wss-accept-${process.pid}`;
-const MAX_DIAGNOSTIC_BYTES = 16 * 1024;
 const INPUT_X = 0.42;
 const INPUT_Y_CANDIDATES = [0.3, 0.34, 0.38];
 const STAGE_FILE = "/tmp/handoff-wss-stage";
 let stage = "docker-run";
-let keyProbe;
 
 function docker(args, stdio = "pipe") {
   return spawn("docker", args, { stdio });
@@ -25,93 +23,12 @@ async function dockerOk(args) {
   if (code !== 0) throw new Error(`docker command failed: ${args[0]}`);
 }
 
-async function dockerText(args) {
-  const child = docker(args);
-  const chunks = [];
-  let bytes = 0;
-  const collect = (chunk) => {
-    if (bytes >= MAX_DIAGNOSTIC_BYTES) return;
-    const remaining = MAX_DIAGNOSTIC_BYTES - bytes;
-    const bounded = Buffer.from(chunk).subarray(0, remaining);
-    chunks.push(bounded);
-    bytes += bounded.byteLength;
-  };
-  child.stdout?.on("data", collect);
-  child.stderr?.on("data", collect);
-  await once(child, "close").catch(() => undefined);
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function lineReader(child) {
-  let buffer = "";
-  const queued = [];
-  const waiters = [];
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
-    buffer += chunk;
-    for (;;) {
-      const newline = buffer.indexOf("\n");
-      if (newline < 0) break;
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
-      const waiter = waiters.shift();
-      if (waiter) waiter(line);
-      else queued.push(line);
-    }
-  });
-  return () => {
-    const line = queued.shift();
-    if (line !== undefined) return Promise.resolve(line);
-    return new Promise((resolveLine) => waiters.push(resolveLine));
-  };
-}
-
-async function boundedLine(label, nextLine, timeoutMs = 3_000) {
-  return await Promise.race([
-    nextLine(),
-    new Promise((_, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
-      timer.unref?.();
-    })
-  ]);
-}
-
-async function resolveExactKeyProbeTarget() {
-  const raw = await dockerText([
-    "exec", container, "sh", "-c",
-    "set -eu; wid=$(DISPLAY=:99 xdotool search --onlyvisible --name 'Handoff WSS Physical Acceptance'); test $(printf '%s\\n' \"$wid\" | sed '/^$/d' | wc -l) -eq 1; pid=$(DISPLAY=:99 xdotool getwindowpid \"$wid\"); printf '%s %s\\n' \"$wid\" \"$pid\""
-  ]);
-  const match = /^(\d+) (\d+)\s*$/.exec(raw.trim());
-  if (!match) throw new Error("WSS XRecord key probe target is ambiguous");
-  const windowId = Number(match[1]);
-  const processId = Number(match[2]);
-  if (!Number.isSafeInteger(windowId) || windowId <= 0 || !Number.isSafeInteger(processId) || processId <= 0) {
-    throw new Error("WSS XRecord key probe target is invalid");
-  }
-  return { windowId, processId };
-}
-
-async function startKeyDeliveryProbe() {
-  const target = await resolveExactKeyProbeTarget();
-  const child = docker([
-    "exec", "-i", "-e", "DISPLAY=:99", container,
-    "/app/dist/native/mcp-handoff-wss-xrecord-key-probe",
-    "--pid", String(target.processId),
-    "--window", String(target.windowId),
-    "--keycode", "36"
-  ]);
-  child.stderr?.resume();
-  const nextLine = lineReader(child);
-  const ready = await boundedLine("WSS XRecord key probe readiness", nextLine);
-  if (ready !== "READY") {
-    child.kill("SIGTERM");
-    throw new Error("WSS XRecord key probe failed to arm");
-  }
-  return { child, nextLine };
-}
-
 async function get(path, headers = {}) {
-  return fetch(`http://127.0.0.1:${port}${path}`, { redirect: "manual", headers, cache: "no-store" });
+  return fetch(`http://127.0.0.1:${port}${path}`, {
+    redirect: "manual",
+    headers,
+    cache: "no-store"
+  });
 }
 
 async function waitFor(label, predicate, timeoutMs = 45_000) {
@@ -132,34 +49,15 @@ async function ensureInputFocusedViaWss(ws, cookie) {
   for (const y of INPUT_Y_CANDIDATES) {
     ws.send(JSON.stringify({ kind: "tap", x: INPUT_X, y }));
     try {
-      await waitFor("input-focus", async () => (await readAcceptanceStatus(cookie)).inputFocused === true, 1_500);
+      await waitFor(
+        "input-focus",
+        async () => (await readAcceptanceStatus(cookie)).inputFocused === true,
+        1_500
+      );
       return;
     } catch {}
   }
   throw new Error("WSS container acceptance could not establish bounded input focus");
-}
-
-async function printBoundedDiagnostics() {
-  process.stderr.write(`WSS_CONTAINER_ACCEPTANCE_FAILED stage=${stage}\n`);
-  const health = await get("/healthz").then((response) => response.text()).catch(() => "unreachable");
-  process.stderr.write(`health=${health.slice(0, 512)}\n`);
-  const processes = await dockerText([
-    "exec", container, "sh", "-c",
-    "for p in Xvfb openbox chromium; do if pgrep -x \"$p\" >/dev/null 2>&1; then echo \"$p=up\"; else echo \"$p=down\"; fi; done"
-  ]).catch(() => "process-probe-unavailable");
-  process.stderr.write(`processes=${processes.trim()}\n`);
-  const windowCount = await dockerText([
-    "exec", container, "sh", "-c",
-    "DISPLAY=:99 xdotool search --onlyvisible --name 'Handoff WSS Physical Acceptance' 2>/dev/null | wc -l"
-  ]).catch(() => "window-probe-unavailable");
-  process.stderr.write(`matching_windows=${windowCount.trim()}\n`);
-  const keymap = await dockerText([
-    "exec", container, "sh", "-c",
-    "DISPLAY=:99 xmodmap -pk 2>/dev/null | grep -E '\\<(Return|BackSpace)\\>' | head -n 8"
-  ]).catch(() => "keymap-probe-unavailable");
-  process.stderr.write(`special_keymap=${keymap.trim().slice(0, 1024)}\n`);
-  const logs = await dockerText(["logs", container]).catch(() => "logs-unavailable");
-  if (logs.trim()) process.stderr.write(`container_logs=${logs.trim()}\n`);
 }
 
 rmSync(STAGE_FILE, { force: true });
@@ -172,6 +70,7 @@ try {
     "-e", `HANDOFF_WSS_PUBLIC_BASE_URL=${origin}`,
     image
   ]);
+
   stage = "target-ready";
   await waitFor("target-ready", async () => {
     const response = await get("/healthz").catch(() => undefined);
@@ -207,23 +106,36 @@ try {
 
   stage = "bootstrap";
   const sessionId = freshLocation.split("/").at(-1);
-  const bootstrap = await fetch(`http://127.0.0.1:${port}/takeover/api/websocket-bootstrap/${sessionId}`, {
-    method: "POST",
-    headers: { cookie, origin, "content-type": "application/json" }
-  });
+  const bootstrap = await fetch(
+    `http://127.0.0.1:${port}/takeover/api/websocket-bootstrap/${sessionId}`,
+    {
+      method: "POST",
+      headers: { cookie, origin, "content-type": "application/json" }
+    }
+  );
   assert.equal(bootstrap.status, 200);
   const { protocols } = await bootstrap.json();
   assert.equal(protocols.length, 2);
 
   stage = "websocket-ready";
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/takeover/ws/${sessionId}`, protocols, { origin });
+  const ws = new WebSocket(
+    `ws://127.0.0.1:${port}/takeover/ws/${sessionId}`,
+    protocols,
+    { origin }
+  );
   let ready = false;
   let jpeg = false;
   let closed = false;
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
       const frame = Buffer.from(data);
-      if (frame.length >= 20 && frame.readUInt32BE(0) === 0x484f4631 && frame[4] === 1) jpeg = true;
+      if (
+        frame.length >= 20 &&
+        frame.readUInt32BE(0) === 0x484f4631 &&
+        frame[4] === 1
+      ) {
+        jpeg = true;
+      }
       return;
     }
     const message = JSON.parse(String(data));
@@ -235,48 +147,40 @@ try {
 
   stage = "tap";
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
-  await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
+  await waitFor(
+    "tap",
+    async () => (await readAcceptanceStatus(cookie)).tapObserved === true
+  );
 
-  // Prove editable focus through the target page's boolean-only signal before sending Human text.
-  // No DOM value, key payload, credential, or framebuffer content is surfaced by this signal.
   stage = "focus";
   await ensureInputFocusedViaWss(ws, cookie);
 
   stage = "text";
   ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
-  await waitFor("text", async () => (await readAcceptanceStatus(cookie)).textObserved === true, 4_000);
+  await waitFor(
+    "text",
+    async () => (await readAcceptanceStatus(cookie)).textObserved === true,
+    4_000
+  );
 
+  // Keep the deterministic path aligned with the physical #40 acceptance: scroll once, preserve
+  // the editable DOM focus, then press Enter. XRecord/X11 client delivery diagnostics are not part
+  // of this blocking end-to-end Human-operation gate.
   stage = "scroll";
   ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
-  await waitFor("scroll", async () => (await readAcceptanceStatus(cookie)).scrollObserved === true);
-  ws.send(JSON.stringify({ kind: "scroll", deltaY: -900 }));
+  await waitFor(
+    "scroll",
+    async () => (await readAcceptanceStatus(cookie)).scrollObserved === true
+  );
 
-  // The Linux scroll path may move top-level X11 focus. The blur/focus hooks report only the
-  // current boolean DOM focus state, so either preserved focus or an explicit WSS tap must prove
-  // the editable target again before the special-key mutation is admitted.
-  stage = "refocus";
-  await ensureInputFocusedViaWss(ws, cookie);
-
-  // XRecord is an informational acceptance diagnostic only. The blocking acceptance criterion is
-  // whether the Human Enter operation actually submits through the admitted WSS session. Failure
-  // to arm or observe the deeper X11 delivery path must not override that end-to-end result.
-  stage = "submit-xrecord-arm";
-  try {
-    keyProbe = await startKeyDeliveryProbe();
-  } catch {
-    process.stderr.write("WSS_XRECORD_DIAGNOSTIC_UNAVAILABLE\n");
-  }
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
-  if (keyProbe) {
-    keyProbe.child.stdin.write("WAIT\n");
-    const keyDelivery = await boundedLine("WSS XRecord key delivery", keyProbe.nextLine, 3_000).catch(() => "NO_DELIVERY");
-    if (keyDelivery !== "OK KEY") {
-      process.stderr.write("WSS_XRECORD_DIAGNOSTIC_NO_DELIVERY\n");
-    }
-  }
   try {
-    await waitFor("submit", async () => (await readAcceptanceStatus(cookie)).submitObserved === true, 4_000);
+    await waitFor(
+      "submit",
+      async () => (await readAcceptanceStatus(cookie)).submitObserved === true,
+      4_000
+    );
   } catch (error) {
     const status = await readAcceptanceStatus(cookie);
     if (status.enterKeyDownObserved !== true) stage = "submit-dom-keydown-missing";
@@ -294,12 +198,10 @@ try {
   ws.close();
   process.stdout.write("WSS_CONTAINER_ACCEPTANCE_OK\n");
 } catch (error) {
-  try { writeFileSync(STAGE_FILE, `${stage}\n`, { mode: 0o600 }); } catch {}
-  await printBoundedDiagnostics();
+  try {
+    writeFileSync(STAGE_FILE, `${stage}\n`, { mode: 0o600 });
+  } catch {}
   throw error;
 } finally {
-  if (keyProbe?.child && keyProbe.child.exitCode === null && keyProbe.child.signalCode === null) {
-    keyProbe.child.kill("SIGTERM");
-  }
   await dockerOk(["rm", "-f", container]).catch(() => undefined);
 }
