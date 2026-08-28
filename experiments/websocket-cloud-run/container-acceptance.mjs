@@ -163,16 +163,9 @@ try {
     4_000
   );
 
-  // Keep the deterministic path aligned with the physical #40 acceptance: scroll once, preserve
-  // the editable DOM focus, then press Enter. XRecord/X11 client delivery diagnostics are not part
-  // of this blocking end-to-end Human-operation gate.
-  stage = "scroll";
-  ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
-  await waitFor(
-    "scroll",
-    async () => (await readAcceptanceStatus(cookie)).scrollObserved === true
-  );
-
+  // Keep the blocking keyboard path aligned with the Linux WebRTC acceptance baseline:
+  // tap/focus -> text -> Enter. Scroll is a separate Human-operation capability and must not
+  // perturb transport-to-transport keyboard comparisons.
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
   try {
