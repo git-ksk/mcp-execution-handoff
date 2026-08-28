@@ -64,7 +64,7 @@ test("Linux WSS physical surface reuses exact helper without transport or target
 });
 
 
-test("Linux WSS capture restarts one failed helper for the same exact PID/window", async () => {
+test("Linux WSS capture restarts one failed helper for the same exact PID/window", { skip: process.platform === "win32" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "handoff-wss-recovery-"));
   const countFile = join(dir, "count");
   const hostScript = join(dir, "host.mjs");
@@ -113,7 +113,7 @@ esac
   }
 });
 
-test("Linux WSS capture does not retry an exact-window ownership failure", async () => {
+test("Linux WSS capture does not retry an exact-window ownership failure", { skip: process.platform === "win32" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "handoff-wss-boundary-"));
   const countFile = join(dir, "count");
   const hostScript = join(dir, "host.mjs");
