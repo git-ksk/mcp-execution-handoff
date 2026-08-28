@@ -56,17 +56,16 @@ async function readAcceptanceStatus(cookie) {
   return await (await get("/acceptance-status", { cookie })).json();
 }
 
-async function focusAndTypeViaWss(ws, cookie) {
+async function ensureInputFocusedViaWss(ws, cookie) {
+  if ((await readAcceptanceStatus(cookie)).inputFocused === true) return;
   for (const y of INPUT_Y_CANDIDATES) {
     ws.send(JSON.stringify({ kind: "tap", x: INPUT_X, y }));
-    await new Promise((resolve) => setTimeout(resolve, 140));
-    ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
     try {
-      await waitFor("text", async () => (await readAcceptanceStatus(cookie)).textObserved === true, 2_000);
+      await waitFor("input-focus", async () => (await readAcceptanceStatus(cookie)).inputFocused === true, 1_500);
       return;
     } catch {}
   }
-  throw new Error("WSS container acceptance could not focus and type into the bounded form");
+  throw new Error("WSS container acceptance could not establish bounded input focus");
 }
 
 async function printBoundedDiagnostics() {
@@ -161,17 +160,25 @@ try {
   ws.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
   await waitFor("tap", async () => (await readAcceptanceStatus(cookie)).tapObserved === true);
 
-  // Exercise scroll before entering the form value. The shared Linux scroll path intentionally
-  // re-establishes top-level X11 focus, so returning to the form and successfully typing through
-  // WSS proves that a subsequent Enter is tested against a freshly restored editable focus.
+  // Prove editable focus through the target page's boolean-only signal before sending Human text.
+  // No DOM value, key payload, credential, or framebuffer content is surfaced by this signal.
+  stage = "focus";
+  await ensureInputFocusedViaWss(ws, cookie);
+
+  stage = "text";
+  ws.send(JSON.stringify({ kind: "text", text: "harmless40" }));
+  await waitFor("text", async () => (await readAcceptanceStatus(cookie)).textObserved === true, 4_000);
+
   stage = "scroll";
   ws.send(JSON.stringify({ kind: "scroll", deltaY: 900 }));
   await waitFor("scroll", async () => (await readAcceptanceStatus(cookie)).scrollObserved === true);
   ws.send(JSON.stringify({ kind: "scroll", deltaY: -900 }));
-  await new Promise((resolve) => setTimeout(resolve, 250));
 
-  stage = "text";
-  await focusAndTypeViaWss(ws, cookie);
+  // The Linux scroll path may move top-level X11 focus. The blur/focus hooks report only the
+  // current boolean DOM focus state, so either preserved focus or an explicit WSS tap must prove
+  // the editable target again before the special-key mutation is admitted.
+  stage = "refocus";
+  await ensureInputFocusedViaWss(ws, cookie);
 
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
