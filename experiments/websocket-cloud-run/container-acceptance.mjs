@@ -12,6 +12,9 @@ const INPUT_X = 0.42;
 const INPUT_Y_CANDIDATES = [0.3, 0.34, 0.38];
 const STAGE_FILE = "/tmp/handoff-wss-stage";
 let stage = "docker-run";
+process.once("exit", () => {
+  try { writeFileSync(STAGE_FILE, `${stage}\n`, { mode: 0o600 }); } catch {}
+});
 
 function docker(args, stdio = "pipe") {
   return spawn("docker", args, { stdio });
@@ -163,9 +166,22 @@ try {
     4_000
   );
 
-  // Keep the blocking keyboard path aligned with the Linux WebRTC acceptance baseline:
-  // tap/focus -> text -> Enter. Scroll is a separate Human-operation capability and must not
-  // perturb transport-to-transport keyboard comparisons.
+  stage = "backspace";
+  ws.send(JSON.stringify({ kind: "key", key: "Backspace" }));
+  await waitFor(
+    "backspace",
+    async () => (await readAcceptanceStatus(cookie)).backspaceObserved === true,
+    4_000
+  );
+
+  stage = "scroll";
+  ws.send(JSON.stringify({ kind: "scroll", deltaY: 600 }));
+  await waitFor(
+    "scroll",
+    async () => (await readAcceptanceStatus(cookie)).scrollObserved === true,
+    4_000
+  );
+
   stage = "submit";
   ws.send(JSON.stringify({ kind: "key", key: "Enter" }));
   try {
@@ -194,6 +210,41 @@ try {
   ws.close();
   process.stdout.write("WSS_CONTAINER_ACCEPTANCE_OK\n");
 } catch (error) {
+  try {
+    const response = await get("/acceptance-result");
+    if (response.ok) {
+      const status = await response.json();
+      const diagnostics = {
+        wssSurfaceLastFailure: status.wssSurfaceLastFailure ?? "none",
+        wssLastInputStage: status.wssLastInputStage ?? "none",
+        wssSurfaceInputBoundaryStage: status.wssSurfaceInputBoundaryStage ?? "none",
+        wssSurfaceFailure: status.wssSurfaceFailure ?? "none",
+        wssSurfaceFailureInputStage: status.wssSurfaceFailureInputStage ?? "none",
+        wssSurfaceFailureInputBoundaryStage: status.wssSurfaceFailureInputBoundaryStage ?? "none",
+        wssSurfaceLastInputFailureDetail: status.wssSurfaceLastInputFailureDetail ?? "none",
+        wssSurfaceFailureInputFailureDetail: status.wssSurfaceFailureInputFailureDetail ?? "none",
+        wssSurfaceLastHelperStopReason: status.wssSurfaceLastHelperStopReason ?? "none",
+        wssSurfaceFailureHelperStopReason: status.wssSurfaceFailureHelperStopReason ?? "none",
+        wssSurfaceLastHelperCrashReason: status.wssSurfaceLastHelperCrashReason ?? "none",
+        wssSurfaceFailureHelperCrashReason: status.wssSurfaceFailureHelperCrashReason ?? "none",
+        wssSurfaceLastHelperExitKind: status.wssSurfaceLastHelperExitKind ?? "none",
+        wssSurfaceFailureHelperExitKind: status.wssSurfaceFailureHelperExitKind ?? "none",
+        wssSurfaceLastHelperCrashClass: status.wssSurfaceLastHelperCrashClass ?? "none",
+        wssSurfaceFailureHelperCrashClass: status.wssSurfaceFailureHelperCrashClass ?? "none",
+        wssSurfaceLastHelperCrashOrigin: status.wssSurfaceLastHelperCrashOrigin ?? "none",
+        wssSurfaceFailureHelperCrashOrigin: status.wssSurfaceFailureHelperCrashOrigin ?? "none",
+        wssSurfaceLastHelperCrashErrorKind: status.wssSurfaceLastHelperCrashErrorKind ?? "none",
+        wssSurfaceFailureHelperCrashErrorKind: status.wssSurfaceFailureHelperCrashErrorKind ?? "none",
+        wssSurfaceLastHelperCrashMessageClass: status.wssSurfaceLastHelperCrashMessageClass ?? "none",
+        wssSurfaceFailureHelperCrashMessageClass: status.wssSurfaceFailureHelperCrashMessageClass ?? "none",
+        wssChannelLastFailure: status.wssChannelLastFailure ?? "none",
+        wssChannelLastInputStage: status.wssChannelLastInputStage ?? "none",
+        wssFailureCode: status.wssFailureCode ?? "none",
+        wssFailureInputStage: status.wssFailureInputStage ?? "none"
+      };
+      process.stderr.write(`WSS_CONTAINER_DIAGNOSTICS:${JSON.stringify(diagnostics)}\n`);
+    }
+  } catch {}
   try {
     writeFileSync(STAGE_FILE, `${stage}\n`, { mode: 0o600 });
   } catch {}

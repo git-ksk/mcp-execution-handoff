@@ -1,5 +1,14 @@
 export type WebSocketTakeoverState = "open" | "closing" | "closed" | "revoked" | "failed";
 
+export type WebSocketTakeoverInputStage =
+  | "none"
+  | "received"
+  | "authority_begin_ready"
+  | "dispatch_started"
+  | "dispatch_completed"
+  | "authority_end_ready"
+  | "applied";
+
 /**
  * Trusted binding created only after Handoff-owned WSS ingress authenticates the principal,
  * validates the request Origin, and claims one client generation. Never populate these fields
@@ -253,6 +262,7 @@ export class ExperimentalWebSocketTakeoverChannel {
   private sentFramesValue = 0;
   private droppedFramesValue = 0;
   private lastFailureValue?: WebSocketTakeoverFailureCode;
+  private lastInputStageValue: WebSocketTakeoverInputStage = "none";
 
   constructor(options: ExperimentalWebSocketTakeoverOptions) {
     validateBinding(options.binding);
@@ -290,12 +300,14 @@ export class ExperimentalWebSocketTakeoverChannel {
     sentFrames: number;
     droppedFrames: number;
     lastFailure?: WebSocketTakeoverFailureCode;
+    lastInputStage: WebSocketTakeoverInputStage;
   }> {
     return {
       state: this.stateValue,
       sentFrames: this.sentFramesValue,
       droppedFrames: this.droppedFramesValue,
-      ...(this.lastFailureValue ? { lastFailure: this.lastFailureValue } : {})
+      ...(this.lastFailureValue ? { lastFailure: this.lastFailureValue } : {}),
+      lastInputStage: this.lastInputStageValue
     };
   }
 
@@ -331,9 +343,19 @@ export class ExperimentalWebSocketTakeoverChannel {
         await this.complete();
         return;
       }
-      await this.runBoundUse(async () => {
-        await this.onInput(message);
-      });
+      this.lastInputStageValue = "received";
+      await this.runBoundUse(
+        async () => {
+          this.lastInputStageValue = "dispatch_started";
+          await this.onInput(message);
+          this.lastInputStageValue = "dispatch_completed";
+        },
+        {
+          onBeginReady: () => { this.lastInputStageValue = "authority_begin_ready"; },
+          onEndReady: () => { this.lastInputStageValue = "authority_end_ready"; }
+        }
+      );
+      this.lastInputStageValue = "applied";
     });
   }
 
@@ -432,9 +454,13 @@ export class ExperimentalWebSocketTakeoverChannel {
     }
   }
 
-  private async runBoundUse(operation: () => Promise<void>): Promise<void> {
+  private async runBoundUse(
+    operation: () => Promise<void>,
+    stages?: { onBeginReady?: () => void; onEndReady?: () => void }
+  ): Promise<void> {
     try {
       await this.lease.beginUse(this.binding);
+      stages?.onBeginReady?.();
     } catch {
       const stale = new WebSocketTakeoverError(
         "stale_generation",
@@ -452,6 +478,7 @@ export class ExperimentalWebSocketTakeoverChannel {
 
     try {
       await this.lease.endUse(this.binding);
+      if (operationError === undefined) stages?.onEndReady?.();
     } catch {
       const stale = new WebSocketTakeoverError(
         "stale_generation",

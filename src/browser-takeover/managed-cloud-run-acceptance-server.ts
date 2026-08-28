@@ -413,11 +413,59 @@ function acceptanceSnapshot(): object {
     wssSurfaceLastFailure: handoff?.managedSurfaceDiagnosticsSnapshot().lastFailure ?? "none",
     wssFramesObserved: handoff?.managedSurfaceDiagnosticsSnapshot().framesObserved ?? 0,
     wssLastInputStage: handoff?.managedSurfaceDiagnosticsSnapshot().lastInputStage ?? "none",
+    wssSurfaceInputBoundaryStage:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastInputBoundaryStage ?? "none",
+    wssSurfaceInputAttempts: handoff?.managedSurfaceDiagnosticsSnapshot().inputAttempts ?? 0,
+    wssSurfaceFailure: handoff?.managedSurfaceDiagnosticsSnapshot().failure ?? "none",
+    wssSurfaceFailureInputStage:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureInputStage ?? "none",
+    wssSurfaceFailureInputBoundaryStage:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureInputBoundaryStage ?? "none",
+    wssSurfaceLastInputFailureDetail:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastInputFailureDetail ?? "none",
+    wssSurfaceFailureInputFailureDetail:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureInputFailureDetail ?? "none",
+    wssSurfaceLastHelperStopReason:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperStopReason ?? "none",
+    wssSurfaceFailureHelperStopReason:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperStopReason ?? "none",
+    wssSurfaceLastHelperCrashReason:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperCrashReason ?? "none",
+    wssSurfaceFailureHelperCrashReason:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperCrashReason ?? "none",
+    wssSurfaceLastHelperExitKind:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperExitKind ?? "none",
+    wssSurfaceFailureHelperExitKind:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperExitKind ?? "none",
+    wssSurfaceLastHelperCrashClass:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperCrashClass ?? "none",
+    wssSurfaceFailureHelperCrashClass:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperCrashClass ?? "none",
+    wssSurfaceLastHelperCrashOrigin:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperCrashOrigin ?? "none",
+    wssSurfaceFailureHelperCrashOrigin:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperCrashOrigin ?? "none",
+    wssSurfaceLastHelperCrashErrorKind:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperCrashErrorKind ?? "none",
+    wssSurfaceFailureHelperCrashErrorKind:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperCrashErrorKind ?? "none",
+    wssSurfaceLastHelperCrashMessageClass:
+      handoff?.managedSurfaceDiagnosticsSnapshot().lastHelperCrashMessageClass ?? "none",
+    wssSurfaceFailureHelperCrashMessageClass:
+      handoff?.managedSurfaceDiagnosticsSnapshot().failureHelperCrashMessageClass ?? "none",
     wssDisconnectKind: handoff?.managedWebSocketDiagnosticsSnapshot().disconnectKind ?? "none",
     wssChannelState: handoff?.managedWebSocketDiagnosticsSnapshot().channelState ?? "none",
     wssSentFrames: handoff?.managedWebSocketDiagnosticsSnapshot().sentFrames ?? 0,
     wssDroppedFrames: handoff?.managedWebSocketDiagnosticsSnapshot().droppedFrames ?? 0,
     wssChannelLastFailure: handoff?.managedWebSocketDiagnosticsSnapshot().lastFailure ?? "none",
+    wssChannelLastInputStage: handoff?.managedWebSocketDiagnosticsSnapshot().lastInputStage ?? "none",
+    wssFailureDisconnectKind:
+      handoff?.managedWebSocketDiagnosticsSnapshot().failureDisconnectKind ?? "none",
+    wssFailureChannelState:
+      handoff?.managedWebSocketDiagnosticsSnapshot().failureChannelState ?? "none",
+    wssFailureCode: handoff?.managedWebSocketDiagnosticsSnapshot().failureCode ?? "none",
+    wssFailureInputStage:
+      handoff?.managedWebSocketDiagnosticsSnapshot().failureInputStage ?? "none",
     turnConfigured: false,
     currentTransport: managedEvidence.currentTransport,
     lastTransport: managedEvidence.lastTransport,

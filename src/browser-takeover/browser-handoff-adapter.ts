@@ -107,18 +107,88 @@ export class BrowserHandoffAdapter {
       : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
   }
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
-  managedSurfaceDiagnosticsSnapshot(): { lastFailure: string; framesObserved: number; lastInputStage: string } {
+  managedSurfaceDiagnosticsSnapshot(): {
+    lastFailure: string;
+    framesObserved: number;
+    lastInputStage: string;
+    lastInputBoundaryStage: string;
+    inputAttempts: number;
+    failure: string;
+    failureInputStage: string;
+    failureInputBoundaryStage: string;
+    lastInputFailureDetail: string;
+    failureInputFailureDetail: string;
+    lastHelperStopReason: string;
+    failureHelperStopReason: string;
+    lastHelperCrashReason: string;
+    failureHelperCrashReason: string;
+    lastHelperExitKind: string;
+    failureHelperExitKind: string;
+    lastHelperCrashClass: string;
+    failureHelperCrashClass: string;
+    lastHelperCrashOrigin: string;
+    failureHelperCrashOrigin: string;
+    lastHelperCrashErrorKind: string;
+    failureHelperCrashErrorKind: string;
+    lastHelperCrashMessageClass: string;
+    failureHelperCrashMessageClass: string;
+  } {
     return this.#core instanceof ManagedWindowHandoffRuntime
       ? this.#core.managedSurfaceDiagnosticsSnapshot()
-      : { lastFailure: "none", framesObserved: 0, lastInputStage: "none" };
+      : {
+          lastFailure: "none",
+          framesObserved: 0,
+          lastInputStage: "none",
+          lastInputBoundaryStage: "none",
+          inputAttempts: 0,
+          failure: "none",
+          failureInputStage: "none",
+          failureInputBoundaryStage: "none",
+          lastInputFailureDetail: "none",
+          failureInputFailureDetail: "none",
+          lastHelperStopReason: "none",
+          failureHelperStopReason: "none",
+          lastHelperCrashReason: "none",
+          failureHelperCrashReason: "none",
+          lastHelperExitKind: "none",
+          failureHelperExitKind: "none",
+          lastHelperCrashClass: "none",
+          failureHelperCrashClass: "none",
+          lastHelperCrashOrigin: "none",
+          failureHelperCrashOrigin: "none",
+          lastHelperCrashErrorKind: "none",
+          failureHelperCrashErrorKind: "none",
+          lastHelperCrashMessageClass: "none",
+          failureHelperCrashMessageClass: "none"
+        };
   }
   /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
   managedWebSocketDiagnosticsSnapshot(): {
-    disconnectKind: string; channelState: string; sentFrames: number; droppedFrames: number; lastFailure: string;
+    disconnectKind: string;
+    channelState: string;
+    sentFrames: number;
+    droppedFrames: number;
+    lastFailure: string;
+    lastInputStage: string;
+    failureDisconnectKind: string;
+    failureChannelState: string;
+    failureCode: string;
+    failureInputStage: string;
   } {
     return this.#core instanceof ManagedWindowHandoffRuntime
       ? this.#core.managedWebSocketDiagnosticsSnapshot()
-      : { disconnectKind: "none", channelState: "none", sentFrames: 0, droppedFrames: 0, lastFailure: "none" };
+      : {
+          disconnectKind: "none",
+          channelState: "none",
+          sentFrames: 0,
+          droppedFrames: 0,
+          lastFailure: "none",
+          lastInputStage: "none",
+          failureDisconnectKind: "none",
+          failureChannelState: "none",
+          failureCode: "none",
+          failureInputStage: "none"
+        };
   }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }

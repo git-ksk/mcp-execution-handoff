@@ -58,13 +58,18 @@ function nextMessage(socket: WebSocket): Promise<{ data: WebSocket.RawData; isBi
   });
 }
 
-async function startIngress(ticket: string, authority: ExperimentalWebSocketTakeoverSessionAuthority) {
+async function startIngress(
+  ticket: string,
+  authority: ExperimentalWebSocketTakeoverSessionAuthority,
+  failInput = false
+) {
   const inputs: Array<{ generation: number; input: object }> = [];
   const ingress = new ExperimentalWebSocketTakeoverIngress({
     authority,
     allowedOrigins: [ORIGIN],
     onInput(binding, input) {
       inputs.push({ generation: binding.clientGeneration, input });
+      if (failInput) throw new Error("input failed");
     }
   });
   const server = createServer((_request, response) => {
@@ -230,7 +235,12 @@ test("WSS clean disconnect reconnects with a fresh server-derived generation", a
       channelState: "closed",
       sentFrames: 0,
       droppedFrames: 0,
-      lastFailure: "none"
+      lastFailure: "none",
+      lastInputStage: "none",
+      failureDisconnectKind: "none",
+      failureChannelState: "none",
+      failureCode: "none",
+      failureInputStage: "none"
     });
 
     const second = connect();
@@ -243,6 +253,39 @@ test("WSS clean disconnect reconnects with a fresh server-derived generation", a
     }]);
     second.close();
     await onceClose(second);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("WSS diagnostics keep the first input failure across close and fresh reconnect", async () => {
+  const { locator, authority } = makeSession();
+  const firstTicket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
+  const { ingress, server, connect } = await startIngress(firstTicket, authority, true);
+  try {
+    const first = connect();
+    await openAndFirstMessage(first);
+    first.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
+    await onceClose(first);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(ingress.diagnosticsSnapshot().failureDisconnectKind, "channel_failure");
+    assert.equal(ingress.diagnosticsSnapshot().failureChannelState, "failed");
+    assert.equal(ingress.diagnosticsSnapshot().failureCode, "transport_failure");
+    assert.equal(ingress.diagnosticsSnapshot().failureInputStage, "dispatch_started");
+
+    const secondTicket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
+    const second = connect(ORIGIN, secondTicket);
+    await openAndFirstMessage(second);
+    second.close();
+    await onceClose(second);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const diagnostics = ingress.diagnosticsSnapshot();
+    assert.equal(diagnostics.disconnectKind, "peer_close");
+    assert.equal(diagnostics.failureDisconnectKind, "channel_failure");
+    assert.equal(diagnostics.failureChannelState, "failed");
+    assert.equal(diagnostics.failureCode, "transport_failure");
+    assert.equal(diagnostics.failureInputStage, "dispatch_started");
   } finally {
     await closeServer(server);
   }

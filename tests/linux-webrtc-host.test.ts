@@ -177,8 +177,13 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /packagedLinuxXTestHelper\(import\.meta\.url\)/);
   assert.match(host, /packagedLinuxAtSpiEditableHelper\(import\.meta\.url\)/);
   assert.match(host, /MCP_HANDOFF_CONTROL editable_regions=/);
-  assert.match(host, /linux_stage=editable_helper_ready/);
+  assert.match(host, /editableHelper \? "editable_helper_ready" : "editable_helper_unavailable"/);
   assert.match(host, /linux_stage=editable_helper_unavailable/);
+  const atspiClass = host.split("class LinuxAtSpiEditableHelper", 2)[1] ?? "";
+  assert.match(atspiClass, /private readonly readyPromise: Promise<boolean>/);
+  assert.match(atspiClass, /this\.readyResolve\(false\)/);
+  assert.match(atspiClass, /Promise<LinuxAtSpiEditableHelper \| undefined>/);
+  assert.doesNotMatch(atspiClass.split("function packagedLinuxAtSpiEditableHelper", 1)[0] ?? "", /readyReject/);
   assert.match(host, /setInterval\(\(\) => \{/);
   assert.match(host, /}, 250\)/);
   assert.match(host, /private latestFrame: Buffer \| undefined/);
@@ -237,7 +242,10 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /linux_stage=input_tap_sent/);
   assert.match(host, /linux_stage=input_failure/);
   assert.match(host, /target window ownership changed/);
-  assert.match(host, /void stopHost\(\)/);
+  assert.match(host, /linux_stage=host_stop_\$\{reason\}/);
+  assert.match(host, /stopHost\("capture_failure"\)/);
+  assert.match(host, /stopHost\("input_failure"\)/);
+  assert.match(host, /stopHost\("stdin_end"\)/);
   assert.doesNotMatch(host, /\["key", "--clearmodifiers", key\]/);
   assert.doesNotMatch(host, /\["key", "--window"/);
   assert.match(host, /if \(this\.child === current\) this\.child = undefined;[\s\S]*current\.kill\("SIGTERM"\)/);

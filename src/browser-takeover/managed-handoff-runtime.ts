@@ -279,7 +279,32 @@ export class ManagedWindowHandoffRuntime {
 
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
   managedSurfaceDiagnosticsSnapshot(): ReturnType<LinuxWebSocketWindowSurface["diagnosticsSnapshot"]> {
-    return this.#lastSession?.surface.diagnosticsSnapshot() ?? { lastFailure: "none", framesObserved: 0, lastInputStage: "none" };
+    return this.#lastSession?.surface.diagnosticsSnapshot() ?? {
+      lastFailure: "none",
+      framesObserved: 0,
+      lastInputStage: "none",
+      lastInputBoundaryStage: "none",
+      inputAttempts: 0,
+      failure: "none",
+      failureInputStage: "none",
+      failureInputBoundaryStage: "none",
+      lastInputFailureDetail: "none",
+      failureInputFailureDetail: "none",
+      lastHelperStopReason: "none",
+      failureHelperStopReason: "none",
+      lastHelperCrashReason: "none",
+      failureHelperCrashReason: "none",
+      lastHelperExitKind: "none",
+      failureHelperExitKind: "none",
+      lastHelperCrashClass: "none",
+      failureHelperCrashClass: "none",
+      lastHelperCrashOrigin: "none",
+      failureHelperCrashOrigin: "none",
+      lastHelperCrashErrorKind: "none",
+      failureHelperCrashErrorKind: "none",
+      lastHelperCrashMessageClass: "none",
+      failureHelperCrashMessageClass: "none"
+    };
   }
 
   /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
@@ -289,7 +314,12 @@ export class ManagedWindowHandoffRuntime {
       channelState: "none",
       sentFrames: 0,
       droppedFrames: 0,
-      lastFailure: "none"
+      lastFailure: "none",
+      lastInputStage: "none",
+      failureDisconnectKind: "none",
+      failureChannelState: "none",
+      failureCode: "none",
+      failureInputStage: "none"
     };
   }
 

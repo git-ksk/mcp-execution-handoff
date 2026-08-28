@@ -17,7 +17,8 @@ import {
   type WebSocketTakeoverPeer,
   type WebSocketTakeoverServerMessage,
   type WebSocketTakeoverState,
-  type WebSocketTakeoverFailureCode
+  type WebSocketTakeoverFailureCode,
+  type WebSocketTakeoverInputStage
 } from "./websocket-takeover.js";
 
 const HANDOFF_SUBPROTOCOL = "mcp-handoff.websocket.v1";
@@ -286,6 +287,11 @@ export interface ExperimentalWebSocketIngressDiagnostics {
   sentFrames: number;
   droppedFrames: number;
   lastFailure: WebSocketTakeoverFailureCode | "none";
+  lastInputStage: WebSocketTakeoverInputStage;
+  failureDisconnectKind: ExperimentalWebSocketIngressDisconnectKind;
+  failureChannelState: WebSocketTakeoverState | "none";
+  failureCode: WebSocketTakeoverFailureCode | "none";
+  failureInputStage: WebSocketTakeoverInputStage;
 }
 
 /** Concrete Node HTTPS/WSS ingress for the experimental WebSocket transport carrying Browser Handoff. */
@@ -299,7 +305,12 @@ export class ExperimentalWebSocketTakeoverIngress {
     channelState: "none",
     sentFrames: 0,
     droppedFrames: 0,
-    lastFailure: "none"
+    lastFailure: "none",
+    lastInputStage: "none",
+    failureDisconnectKind: "none",
+    failureChannelState: "none",
+    failureCode: "none",
+    failureInputStage: "none"
   };
 
   constructor(private readonly options: ExperimentalWebSocketTakeoverIngressOptions) {
@@ -481,12 +492,28 @@ export class ExperimentalWebSocketTakeoverIngress {
 
   #recordDiagnostics(active: ActiveConnection, kind: ExperimentalWebSocketIngressDisconnectKind): void {
     const channel = active.channel.diagnostics;
+    const disconnectKind = channel.lastFailure ? "channel_failure" : kind;
+    const captureFailure = this.#lastDiagnostics.failureDisconnectKind === "none"
+      && (channel.lastFailure !== undefined || kind === "peer_error");
     this.#lastDiagnostics = {
-      disconnectKind: channel.lastFailure ? "channel_failure" : kind,
+      disconnectKind,
       channelState: channel.state,
       sentFrames: Math.min(channel.sentFrames, 1_000_000),
       droppedFrames: Math.min(channel.droppedFrames, 1_000_000),
-      lastFailure: channel.lastFailure ?? "none"
+      lastFailure: channel.lastFailure ?? "none",
+      lastInputStage: channel.lastInputStage,
+      failureDisconnectKind: captureFailure
+        ? disconnectKind
+        : this.#lastDiagnostics.failureDisconnectKind,
+      failureChannelState: captureFailure
+        ? channel.state
+        : this.#lastDiagnostics.failureChannelState,
+      failureCode: captureFailure
+        ? channel.lastFailure ?? "transport_failure"
+        : this.#lastDiagnostics.failureCode,
+      failureInputStage: captureFailure
+        ? channel.lastInputStage
+        : this.#lastDiagnostics.failureInputStage
     };
   }
 

@@ -44,6 +44,124 @@ export type LinuxWebSocketInputStage =
   | "key_up_sent"
   | "applied";
 
+export type LinuxWebSocketInputBoundaryStage =
+  | "none"
+  | "requested"
+  | "helper_ready"
+  | "revalidation_ready"
+  | "command_sent"
+  | "acknowledged";
+
+export type LinuxWebSocketInputFailureDetail =
+  | "none"
+  | "xtest_unavailable"
+  | "xtest_busy"
+  | "xtest_invalid"
+  | "xtest_ack_timeout"
+  | "xtest_write_failure"
+  | "xtest_output_bounds"
+  | "xtest_protocol_mismatch"
+  | "xtest_unexpected_response"
+  | "xtest_state_rejected"
+  | "xtest_xtest_rejected"
+  | "xtest_protocol_rejected"
+  | "xtest_process_error"
+  | "xtest_process_closed";
+
+export type LinuxWebSocketHelperStopReason =
+  | "none"
+  | "capture_failure"
+  | "input_failure"
+  | "stdin_end"
+  | "signal_term"
+  | "signal_int"
+  | "expiry"
+  | "input_buffer_bounds"
+  | "explicit_stop";
+
+export type LinuxWebSocketHelperCrashReason =
+  | "none"
+  | "uncaught_exception"
+  | "main_rejection";
+
+export type LinuxWebSocketHelperExitKind =
+  | "none"
+  | "clean"
+  | "nonzero"
+  | "signal";
+
+export type LinuxWebSocketHelperCrashClass =
+  | "none"
+  | "pipe_epipe"
+  | "stream_write_after_end"
+  | "stream_destroyed"
+  | "jpeg_parser"
+  | "frame_writer"
+  | "input_callback"
+  | "xtest_callback"
+  | "accessibility_callback"
+  | "capture_callback"
+  | "stream_internal"
+  | "event_dispatch"
+  | "child_process_internal"
+  | "special_key"
+  | "exact_window_revalidate"
+  | "active_target_check"
+  | "focus_target_check"
+  | "scroll_input"
+  | "text_input"
+  | "host_input_apply"
+  | "host_input_chain"
+  | "host_module"
+  | "unknown";
+
+export type LinuxWebSocketHelperCrashOrigin =
+  | "none"
+  | "uncaught_exception"
+  | "unhandled_rejection"
+  | "unknown";
+
+export type LinuxWebSocketHelperCrashErrorKind =
+  | "none"
+  | "error"
+  | "type_error"
+  | "range_error"
+  | "other";
+
+export type LinuxWebSocketHelperCrashMessageClass =
+  | "none"
+  | "focus_not_owned"
+  | "window_not_active"
+  | "target_process_unavailable"
+  | "window_not_visible"
+  | "window_owner_changed"
+  | "window_geometry_unavailable"
+  | "special_key_geometry_changed"
+  | "xtest_helper_unavailable"
+  | "xtest_helper_busy"
+  | "xtest_helper_ack_timeout"
+  | "xtest_helper_rejected"
+  | "atspi_unavailable"
+  | "atspi_busy"
+  | "atspi_timeout"
+  | "atspi_readiness_timeout"
+  | "atspi_response_failed"
+  | "atspi_response_invalid"
+  | "atspi_response_large"
+  | "atspi_regions_many"
+  | "atspi_region_invalid"
+  | "atspi_region_bounds"
+  | "atspi_write_failure"
+  | "atspi_output_bounds"
+  | "atspi_protocol_mismatch"
+  | "atspi_unexpected_response"
+  | "atspi_process_failed"
+  | "atspi_process_closed"
+  | "atspi_failed"
+  | "helper_command_timeout"
+  | "helper_command_failed"
+  | "other";
+
 export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
   hostScript: string;
   displayName: string;
@@ -142,8 +260,29 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   #active: ActiveLinuxSurface | undefined;
   #transition: Promise<void> | undefined;
   #lastFailure: LinuxWebSocketSurfaceFailure = "none";
+  #failure: LinuxWebSocketSurfaceFailure = "none";
   #framesObserved = 0;
   #lastInputStage: LinuxWebSocketInputStage = "none";
+  #lastInputBoundaryStage: LinuxWebSocketInputBoundaryStage = "none";
+  #failureInputStage: LinuxWebSocketInputStage = "none";
+  #failureInputBoundaryStage: LinuxWebSocketInputBoundaryStage = "none";
+  #lastInputFailureDetail: LinuxWebSocketInputFailureDetail = "none";
+  #failureInputFailureDetail: LinuxWebSocketInputFailureDetail = "none";
+  #lastHelperStopReason: LinuxWebSocketHelperStopReason = "none";
+  #failureHelperStopReason: LinuxWebSocketHelperStopReason = "none";
+  #lastHelperCrashReason: LinuxWebSocketHelperCrashReason = "none";
+  #failureHelperCrashReason: LinuxWebSocketHelperCrashReason = "none";
+  #lastHelperExitKind: LinuxWebSocketHelperExitKind = "none";
+  #failureHelperExitKind: LinuxWebSocketHelperExitKind = "none";
+  #lastHelperCrashClass: LinuxWebSocketHelperCrashClass = "none";
+  #failureHelperCrashClass: LinuxWebSocketHelperCrashClass = "none";
+  #lastHelperCrashOrigin: LinuxWebSocketHelperCrashOrigin = "none";
+  #failureHelperCrashOrigin: LinuxWebSocketHelperCrashOrigin = "none";
+  #lastHelperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind = "none";
+  #failureHelperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind = "none";
+  #lastHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass = "none";
+  #failureHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass = "none";
+  #inputAttempts = 0;
 
   constructor(config: ExperimentalLinuxWebSocketWindowSurfaceConfig) {
     if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
@@ -168,11 +307,53 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     lastFailure: LinuxWebSocketSurfaceFailure;
     framesObserved: number;
     lastInputStage: LinuxWebSocketInputStage;
+    lastInputBoundaryStage: LinuxWebSocketInputBoundaryStage;
+    inputAttempts: number;
+    failure: LinuxWebSocketSurfaceFailure;
+    failureInputStage: LinuxWebSocketInputStage;
+    failureInputBoundaryStage: LinuxWebSocketInputBoundaryStage;
+    lastInputFailureDetail: LinuxWebSocketInputFailureDetail;
+    failureInputFailureDetail: LinuxWebSocketInputFailureDetail;
+    lastHelperStopReason: LinuxWebSocketHelperStopReason;
+    failureHelperStopReason: LinuxWebSocketHelperStopReason;
+    lastHelperCrashReason: LinuxWebSocketHelperCrashReason;
+    failureHelperCrashReason: LinuxWebSocketHelperCrashReason;
+    lastHelperExitKind: LinuxWebSocketHelperExitKind;
+    failureHelperExitKind: LinuxWebSocketHelperExitKind;
+    lastHelperCrashClass: LinuxWebSocketHelperCrashClass;
+    failureHelperCrashClass: LinuxWebSocketHelperCrashClass;
+    lastHelperCrashOrigin: LinuxWebSocketHelperCrashOrigin;
+    failureHelperCrashOrigin: LinuxWebSocketHelperCrashOrigin;
+    lastHelperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind;
+    failureHelperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind;
+    lastHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
+    failureHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
   } {
     return {
       lastFailure: this.#lastFailure,
       framesObserved: Math.min(this.#framesObserved, 1_000_000),
-      lastInputStage: this.#lastInputStage
+      lastInputStage: this.#lastInputStage,
+      lastInputBoundaryStage: this.#lastInputBoundaryStage,
+      inputAttempts: Math.min(this.#inputAttempts, 1_000_000),
+      failure: this.#failure,
+      failureInputStage: this.#failureInputStage,
+      failureInputBoundaryStage: this.#failureInputBoundaryStage,
+      lastInputFailureDetail: this.#lastInputFailureDetail,
+      failureInputFailureDetail: this.#failureInputFailureDetail,
+      lastHelperStopReason: this.#lastHelperStopReason,
+      failureHelperStopReason: this.#failureHelperStopReason,
+      lastHelperCrashReason: this.#lastHelperCrashReason,
+      failureHelperCrashReason: this.#failureHelperCrashReason,
+      lastHelperExitKind: this.#lastHelperExitKind,
+      failureHelperExitKind: this.#failureHelperExitKind,
+      lastHelperCrashClass: this.#lastHelperCrashClass,
+      failureHelperCrashClass: this.#failureHelperCrashClass,
+      lastHelperCrashOrigin: this.#lastHelperCrashOrigin,
+      failureHelperCrashOrigin: this.#failureHelperCrashOrigin,
+      lastHelperCrashErrorKind: this.#lastHelperCrashErrorKind,
+      failureHelperCrashErrorKind: this.#failureHelperCrashErrorKind,
+      lastHelperCrashMessageClass: this.#lastHelperCrashMessageClass,
+      failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass
     };
   }
 
@@ -182,7 +363,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     try {
       await this.#revalidate(target);
     } catch (error) {
-      this.#lastFailure = "revalidation_failure";
+      this.#recordFailure("revalidation_failure");
       throw error;
     }
     let frame: LinuxWebSocketJpegFrame;
@@ -190,7 +371,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       frame = await this.#frameAfter(active, before);
     } catch (error) {
       if (error instanceof Error && error.message.includes("frame timed out")) {
-        this.#lastFailure = "frame_timeout";
+        this.#recordFailure("frame_timeout");
       }
       throw error;
     }
@@ -227,13 +408,19 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   }
 
   async #input(target: Readonly<TakeoverHostTarget>, input: Record<string, unknown>): Promise<void> {
+    this.#inputAttempts += 1;
+    this.#lastInputStage = "none";
+    this.#lastInputFailureDetail = "none";
+    this.#lastInputBoundaryStage = "requested";
     const active = await this.#ensure(target);
+    this.#lastInputBoundaryStage = "helper_ready";
     active.inputChain = active.inputChain.then(async () => {
       if (active.failed || this.#active !== active) throw new Error("Linux WSS exact-window helper is unavailable");
       try {
         await this.#revalidate(target);
+        this.#lastInputBoundaryStage = "revalidation_ready";
       } catch (error) {
-        this.#lastFailure = "input_revalidation_failure";
+        this.#recordFailure("input_revalidation_failure");
         throw error;
       }
       if (active.pendingInputAck) throw new Error("Linux WSS exact-window helper input is busy");
@@ -241,15 +428,21 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
         const timer = setTimeout(() => {
           if (active.pendingInputAck?.timer !== timer) return;
           active.pendingInputAck = undefined;
-          this.#lastFailure = "input_timeout";
+          this.#recordFailure("input_timeout");
           reject(new Error("Linux WSS exact-window helper input acknowledgement timed out"));
           failActive(active, "Linux WSS exact-window helper input acknowledgement timed out");
         }, INPUT_ACK_TIMEOUT_MS);
-        active.pendingInputAck = { resolve, reject, timer };
+        active.pendingInputAck = {
+          resolve: () => {
+            this.#lastInputBoundaryStage = "acknowledged";
+            resolve();
+          },
+          reject,
+          timer
+        };
         const line = `${JSON.stringify(input)}\n`;
-        if (!active.child.stdin.write(line)) {
-          active.child.stdin.once("drain", () => undefined);
-        }
+        active.child.stdin.write(line);
+        this.#lastInputBoundaryStage = "command_sent";
       });
     });
     return active.inputChain;
@@ -313,23 +506,38 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     });
     child.stdout.on("data", (chunk: Buffer) => {
       try { parser.push(chunk); } catch {
-        this.#lastFailure = "frame_protocol";
+        this.#recordFailure("frame_protocol");
         failActive(state, "Linux WSS exact-window helper frame protocol failed");
       }
     });
     child.stderr.on("data", (chunk: Buffer) => consumeDiagnostics(state, chunk, (stage) => {
       const category = captureFailureCategory(stage);
-      if (category) this.#lastFailure = category;
-      else if (stage === "input_failure") this.#lastFailure = "input_failure";
+      if (category) this.#recordFailure(category);
+      else if (stage === "input_failure") this.#recordFailure("input_failure");
       const inputStage = boundedInputStage(stage);
       if (inputStage) this.#lastInputStage = inputStage;
+      const inputFailureDetail = boundedInputFailureDetail(stage);
+      if (inputFailureDetail) this.#lastInputFailureDetail = inputFailureDetail;
+      const helperStopReason = boundedHelperStopReason(stage);
+      if (helperStopReason) this.#lastHelperStopReason = helperStopReason;
+      const helperCrashReason = boundedHelperCrashReason(stage);
+      if (helperCrashReason) this.#lastHelperCrashReason = helperCrashReason;
+      const helperCrashClass = boundedHelperCrashClass(stage);
+      if (helperCrashClass) this.#lastHelperCrashClass = helperCrashClass;
+      const helperCrashOrigin = boundedHelperCrashOrigin(stage);
+      if (helperCrashOrigin) this.#lastHelperCrashOrigin = helperCrashOrigin;
+      const helperCrashErrorKind = boundedHelperCrashErrorKind(stage);
+      if (helperCrashErrorKind) this.#lastHelperCrashErrorKind = helperCrashErrorKind;
+      const helperCrashMessageClass = boundedHelperCrashMessageClass(stage);
+      if (helperCrashMessageClass) this.#lastHelperCrashMessageClass = helperCrashMessageClass;
     }));
     child.once("error", () => {
-      if (this.#lastFailure === "none") this.#lastFailure = "helper_error";
+      if (this.#lastFailure === "none") this.#recordFailure("helper_error");
       failActive(state, "Linux WSS exact-window helper failed");
     });
-    child.once("close", () => {
-      if (this.#lastFailure === "none") this.#lastFailure = "helper_closed";
+    child.once("close", (code, signal) => {
+      this.#lastHelperExitKind = signal !== null ? "signal" : code === 0 ? "clean" : "nonzero";
+      if (this.#lastFailure === "none") this.#recordFailure("helper_closed");
       failActive(state, "Linux WSS exact-window helper closed");
     });
     this.#active = state;
@@ -346,6 +554,22 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       }, FRAME_WAIT_TIMEOUT_MS);
       active.frameWaiters.push({ afterSequence, resolve, reject, timer });
     });
+  }
+
+  #recordFailure(failure: LinuxWebSocketSurfaceFailure): void {
+    this.#lastFailure = failure;
+    if (this.#failure !== "none") return;
+    this.#failure = failure;
+    this.#failureInputStage = this.#lastInputStage;
+    this.#failureInputBoundaryStage = this.#lastInputBoundaryStage;
+    this.#failureInputFailureDetail = this.#lastInputFailureDetail;
+    this.#failureHelperStopReason = this.#lastHelperStopReason;
+    this.#failureHelperCrashReason = this.#lastHelperCrashReason;
+    this.#failureHelperExitKind = this.#lastHelperExitKind;
+    this.#failureHelperCrashClass = this.#lastHelperCrashClass;
+    this.#failureHelperCrashOrigin = this.#lastHelperCrashOrigin;
+    this.#failureHelperCrashErrorKind = this.#lastHelperCrashErrorKind;
+    this.#failureHelperCrashMessageClass = this.#lastHelperCrashMessageClass;
   }
 
   async #revalidate(target: Readonly<TakeoverHostTarget>): Promise<void> {
@@ -424,6 +648,43 @@ function boundedInputStage(stage: string): LinuxWebSocketInputStage | undefined 
   if (stage === "input_key_up_sent") return "key_up_sent";
   if (stage === "input_applied") return "applied";
   return undefined;
+}
+
+function boundedInputFailureDetail(stage: string): LinuxWebSocketInputFailureDetail | undefined {
+  const match = /^input_xtest_(unavailable|busy|invalid|ack_timeout|write_failure|output_bounds|protocol_mismatch|unexpected_response|state_rejected|xtest_rejected|protocol_rejected|process_error|process_closed)$/.exec(stage);
+  return match ? (`xtest_${match[1]}` as LinuxWebSocketInputFailureDetail) : undefined;
+}
+
+function boundedHelperStopReason(stage: string): LinuxWebSocketHelperStopReason | undefined {
+  const match = /^host_stop_(capture_failure|input_failure|stdin_end|signal_term|signal_int|expiry|input_buffer_bounds|explicit_stop)$/.exec(stage);
+  return match ? (match[1] as LinuxWebSocketHelperStopReason) : undefined;
+}
+
+function boundedHelperCrashReason(stage: string): LinuxWebSocketHelperCrashReason | undefined {
+  if (stage === "host_crash_uncaught_exception") return "uncaught_exception";
+  if (stage === "host_crash_main_rejection") return "main_rejection";
+  return undefined;
+}
+
+function boundedHelperCrashClass(stage: string): LinuxWebSocketHelperCrashClass | undefined {
+  const match = /^host_crash_class_(pipe_epipe|stream_write_after_end|stream_destroyed|jpeg_parser|frame_writer|input_callback|xtest_callback|accessibility_callback|capture_callback|stream_internal|event_dispatch|child_process_internal|special_key|exact_window_revalidate|active_target_check|focus_target_check|scroll_input|text_input|host_input_apply|host_input_chain|host_module|unknown)$/.exec(stage);
+  return match ? (match[1] as LinuxWebSocketHelperCrashClass) : undefined;
+}
+
+function boundedHelperCrashOrigin(stage: string): LinuxWebSocketHelperCrashOrigin | undefined {
+  const match = /^host_crash_origin_(uncaught_exception|unhandled_rejection|unknown)$/.exec(stage);
+  return match ? (match[1] as LinuxWebSocketHelperCrashOrigin) : undefined;
+}
+
+function boundedHelperCrashErrorKind(stage: string): LinuxWebSocketHelperCrashErrorKind | undefined {
+  const match = /^host_crash_error_(error|type_error|range_error|other)$/.exec(stage);
+  return match ? (match[1] as LinuxWebSocketHelperCrashErrorKind) : undefined;
+}
+
+
+function boundedHelperCrashMessageClass(stage: string): LinuxWebSocketHelperCrashMessageClass | undefined {
+  const match = /^host_crash_message_(focus_not_owned|window_not_active|target_process_unavailable|window_not_visible|window_owner_changed|window_geometry_unavailable|special_key_geometry_changed|xtest_helper_unavailable|xtest_helper_busy|xtest_helper_ack_timeout|xtest_helper_rejected|atspi_unavailable|atspi_busy|atspi_timeout|atspi_readiness_timeout|atspi_response_failed|atspi_response_invalid|atspi_response_large|atspi_regions_many|atspi_region_invalid|atspi_region_bounds|atspi_write_failure|atspi_output_bounds|atspi_protocol_mismatch|atspi_unexpected_response|atspi_process_failed|atspi_process_closed|atspi_failed|helper_command_timeout|helper_command_failed|other)$/.exec(stage);
+  return match ? (match[1] as LinuxWebSocketHelperCrashMessageClass) : undefined;
 }
 
 function captureFailureCategory(stage: string): LinuxWebSocketSurfaceFailure | undefined {

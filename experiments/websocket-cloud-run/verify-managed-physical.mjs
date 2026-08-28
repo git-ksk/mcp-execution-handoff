@@ -37,6 +37,14 @@ if (result.lastTransport !== "websocket_relay") failures.push("lastTransport");
 if (result.lastFallbackReason !== "transport_unavailable") failures.push("lastFallbackReason");
 if (!Number.isSafeInteger(result.generation) || result.generation < 2) failures.push("generation");
 if (!Number.isSafeInteger(result.transitionCount) || result.transitionCount < 1) failures.push("transitionCount");
+if (result.wssFailureCode !== "none") failures.push("wssFailureCode");
+if (result.wssSurfaceFailure !== "none") failures.push("wssSurfaceFailure");
+if (result.wssChannelLastInputStage !== "applied") failures.push("wssChannelLastInputStage");
+if (result.wssSurfaceInputBoundaryStage !== "acknowledged") failures.push("wssSurfaceInputBoundaryStage");
+if (result.wssLastInputStage !== "applied") failures.push("wssLastInputStage");
+if (!Number.isSafeInteger(result.wssSurfaceInputAttempts) || result.wssSurfaceInputAttempts < 6) {
+  failures.push("wssSurfaceInputAttempts");
+}
 for (const key of requiredTrue) if (result[key] !== true) failures.push(key);
 
 if (failures.length > 0) {

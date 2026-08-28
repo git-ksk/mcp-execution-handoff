@@ -144,6 +144,19 @@ test("WebSocket takeover bounds input with explicit policy", async () => {
   assert.deepEqual(h.closes.at(-1), { code: 1008, reason: "input_not_allowed" });
 });
 
+test("WebSocket input diagnostics distinguish authority, dispatch, and applied stages", async () => {
+  const h = createHarness();
+  await h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.25, y: 0.5 }));
+  assert.equal(h.channel.diagnostics.lastInputStage, "applied");
+
+  h.setFailBegin(true);
+  await assert.rejects(
+    h.channel.receiveText(JSON.stringify({ kind: "scroll", deltaY: 20 })),
+    /generation is no longer active/
+  );
+  assert.equal(h.channel.diagnostics.lastInputStage, "received");
+});
+
 test("WebSocket protocol refuses peer-supplied ingress identity and Origin fields", async () => {
   const h = createHarness();
   await assert.rejects(
@@ -366,6 +379,7 @@ test("WebSocket target input failure fences after ending bound use", async () =>
   assert.equal(h.calls.release, 1);
   assert.equal(h.channel.state, "failed");
   assert.equal(h.channel.diagnostics.lastFailure, "transport_failure");
+  assert.equal(h.channel.diagnostics.lastInputStage, "dispatch_started");
 });
 
 test("WebSocket control failure fences after ending bound use", async () => {
