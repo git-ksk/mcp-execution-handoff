@@ -38,6 +38,26 @@ interface TargetState {
   submitted: boolean;
 }
 
+type TargetInitStage =
+  | "not_started"
+  | "xvfb_starting"
+  | "xvfb_ready"
+  | "openbox_starting"
+  | "openbox_ready"
+  | "browser_starting"
+  | "target_page_wait"
+  | "exact_window_wait"
+  | "ready"
+  | "failed";
+
+type TargetInitFailure =
+  | "xvfb_unavailable"
+  | "openbox_unavailable"
+  | "browser_unavailable"
+  | "target_page_unavailable"
+  | "exact_window_unavailable"
+  | "unknown";
+
 interface BrowserTarget {
   processId: number;
   windowId: number;
@@ -75,6 +95,12 @@ let teardownCompleted = false;
 let staleDirectLocatorRejected = false;
 let staleWebSocketLocatorRejected = false;
 let browserTarget: BrowserTarget | undefined;
+let targetInitStage: TargetInitStage = "not_started";
+let targetInitFailure: TargetInitFailure | undefined;
+let windowSearchObserved = false;
+let exactWindowCountObserved = false;
+let exactWindowOwnerObserved = false;
+let exactWindowTitleObserved = false;
 let browser: ChildProcess | undefined;
 let xvfb: ChildProcess | undefined;
 let openbox: ChildProcess | undefined;
@@ -101,8 +127,10 @@ server.on("upgrade", (req, socket, head) => {
 
 server.listen(port, "0.0.0.0");
 await once(server, "listening");
-void initializeBrowser().catch(() => {
+void initializeBrowser().catch((error: unknown) => {
   browserTarget = undefined;
+  targetInitStage = "failed";
+  targetInitFailure = classifyTargetInitFailure(error);
 });
 
 async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -111,6 +139,13 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     sendJson(res, 200, {
       ok: true,
       targetReady: browserTarget !== undefined,
+      targetInitStage,
+      targetInitFailure: targetInitFailure ?? null,
+      browserExitObserved: browser !== undefined && (browser.exitCode !== null || browser.signalCode !== null),
+      windowSearchObserved,
+      exactWindowCountObserved,
+      exactWindowOwnerObserved,
+      exactWindowTitleObserved,
       revision: acceptanceRevision
     });
     return;
@@ -335,6 +370,13 @@ function acceptanceSnapshot(): object {
     revision: acceptanceRevision,
     targetReady: browserTarget !== undefined,
     exactTargetBounded: browserTarget !== undefined,
+    targetInitStage,
+    targetInitFailure: targetInitFailure ?? null,
+    browserExitObserved: browser !== undefined && (browser.exitCode !== null || browser.signalCode !== null),
+    windowSearchObserved,
+    exactWindowCountObserved,
+    exactWindowOwnerObserved,
+    exactWindowTitleObserved,
     turnConfigured: false,
     currentTransport: managedEvidence.currentTransport,
     lastTransport: managedEvidence.lastTransport,
@@ -388,6 +430,8 @@ function resetAcceptanceState(): void {
 
 async function initializeBrowser(): Promise<void> {
   if (process.platform !== "linux") throw new Error("Cloud Run managed acceptance requires Linux");
+  targetInitFailure = undefined;
+  targetInitStage = "xvfb_starting";
   const root = path.join(os.tmpdir(), `handoff-managed-${process.pid}`);
   await rm(root, { recursive: true, force: true });
   await Promise.all([
@@ -414,12 +458,15 @@ async function initializeBrowser(): Promise<void> {
     ).catch(() => "")).includes("X="),
     8_000
   );
+  targetInitStage = "xvfb_ready";
+  targetInitStage = "openbox_starting";
   openbox = spawn("/usr/bin/openbox", ["--sm-disable"], {
     env: xEnv,
     stdio: ["ignore", "ignore", "ignore"]
   });
   await new Promise((resolve) => setTimeout(resolve, 350));
   if (openbox.exitCode !== null) throw new Error("openbox unavailable");
+  targetInitStage = "openbox_ready";
 
   const chrome = firstExecutable([
     "/usr/bin/chromium",
@@ -440,10 +487,13 @@ async function initializeBrowser(): Promise<void> {
   if (args.some((arg) => /remote-debugging|enable-automation|headless/i.test(arg))) {
     throw new Error("normal-browser acceptance flags are invalid");
   }
+  targetInitStage = "browser_starting";
   browser = spawn(chrome, args, { env: xEnv, stdio: ["ignore", "ignore", "ignore"] });
   if (!browser.pid) throw new Error("browser pid unavailable");
   const pid = browser.pid;
+  targetInitStage = "target_page_wait";
   await waitFor("target-page", () => targetState.ready, 30_000);
+  targetInitStage = "exact_window_wait";
   let stable: number | undefined;
   let samples = 0;
   await waitFor("exact-window", async () => {
@@ -454,7 +504,9 @@ async function initializeBrowser(): Promise<void> {
       xEnv
     ).catch(() => "");
     const ids = [...new Set(parseWindowIds(raw))];
+    if (ids.length > 0) windowSearchObserved = true;
     if (ids.length !== 1) { stable = undefined; samples = 0; return false; }
+    exactWindowCountObserved = true;
     const id = ids[0]!;
     const owner = Number((await runBounded(
       "/usr/bin/xdotool",
@@ -466,6 +518,8 @@ async function initializeBrowser(): Promise<void> {
       ["getwindowname", String(id)],
       xEnv
     ).catch(() => "")).trim();
+    if (owner === pid) exactWindowOwnerObserved = true;
+    if (title === TARGET_WINDOW_TITLE) exactWindowTitleObserved = true;
     if (owner !== pid || title !== TARGET_WINDOW_TITLE) {
       stable = undefined;
       samples = 0;
@@ -476,6 +530,19 @@ async function initializeBrowser(): Promise<void> {
     return samples >= 2;
   }, 30_000);
   browserTarget = { processId: pid, windowId: stable! };
+  targetInitStage = "ready";
+}
+
+function classifyTargetInitFailure(error: unknown): TargetInitFailure {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("xvfb")) return "xvfb_unavailable";
+  if (message.includes("openbox")) return "openbox_unavailable";
+  if (message.includes("browser pid") || message.includes("browser exited") || message.includes("browser executable")) {
+    return "browser_unavailable";
+  }
+  if (message.includes("target-page")) return "target_page_unavailable";
+  if (message.includes("exact-window")) return "exact_window_unavailable";
+  return "unknown";
 }
 
 function targetLandingPage(): string {
