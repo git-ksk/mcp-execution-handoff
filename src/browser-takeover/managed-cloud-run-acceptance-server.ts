@@ -275,17 +275,19 @@ function createManagedHandoff(): BrowserHandoffAdapter {
 async function refreshManagedEvidence(): Promise<void> {
   if (!handoff) return;
   const snapshot = handoff.operatorDiagnosticsSnapshot();
-  if (snapshot.transport.namespace !== "managed_handoff") return;
+  if (snapshot.source !== "browser_handoff") return;
+  const transport = snapshot.transport;
+  if (transport.namespace !== "managed_handoff") return;
   managedEvidence = {
-    currentTransport: snapshot.transport.currentTransport,
-    lastTransport: snapshot.transport.lastTransport,
-    generation: Math.max(managedEvidence.generation, snapshot.transport.generation),
-    transitionCount: Math.max(managedEvidence.transitionCount, snapshot.transport.transitionCount),
-    ...(snapshot.transport.lastFallbackReason === undefined
+    currentTransport: transport.currentTransport,
+    lastTransport: transport.lastTransport,
+    generation: Math.max(managedEvidence.generation, transport.generation),
+    transitionCount: Math.max(managedEvidence.transitionCount, transport.transitionCount),
+    ...(transport.lastFallbackReason === undefined
       ? managedEvidence.lastFallbackReason === undefined
         ? {}
         : { lastFallbackReason: managedEvidence.lastFallbackReason }
-      : { lastFallbackReason: snapshot.transport.lastFallbackReason })
+      : { lastFallbackReason: transport.lastFallbackReason })
   };
 }
 
