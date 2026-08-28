@@ -5,6 +5,8 @@ import { parseWindowGeometry, parseWindowIds } from "../browser-takeover/linux-w
 const MAX_HOST_RECORD_BYTES = 8 * 1024 * 1024;
 const MAX_DIAGNOSTIC_BUFFER_BYTES = 8 * 1024;
 const FRAME_WAIT_TIMEOUT_MS = 4_000;
+const CAPTURE_RECOVERY_ATTEMPTS = 2;
+const CAPTURE_RECOVERY_DELAY_MS = 120;
 const INPUT_ACK_TIMEOUT_MS = 4_000;
 const HELPER_STOP_TIMEOUT_MS = 1_000;
 const QUERY_TIMEOUT_MS = 2_000;
@@ -145,31 +147,52 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         };
     }
     async captureExactWindow(target) {
-        const active = await this.#ensure(target);
-        const before = active.sequence;
-        try {
-            await this.#revalidate(target);
-        }
-        catch (error) {
-            this.#recordFailure("revalidation_failure");
-            throw error;
-        }
-        let frame;
-        try {
-            frame = await this.#frameAfter(active, before);
-        }
-        catch (error) {
-            if (error instanceof Error && error.message.includes("frame timed out")) {
-                this.#recordFailure("frame_timeout");
+        let lastError;
+        for (let attempt = 0; attempt < CAPTURE_RECOVERY_ATTEMPTS; attempt += 1) {
+            let active;
+            try {
+                active = await this.#ensure(target);
             }
-            throw error;
+            catch (error) {
+                if (isExactWindowBoundaryError(error) || attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS)
+                    throw error;
+                lastError = error;
+                await delay(CAPTURE_RECOVERY_DELAY_MS);
+                continue;
+            }
+            const before = active.sequence;
+            try {
+                await this.#revalidate(target);
+            }
+            catch (error) {
+                this.#recordFailure("revalidation_failure");
+                throw error;
+            }
+            try {
+                const frame = await this.#frameAfter(active, before);
+                return {
+                    data: Buffer.from(frame.data),
+                    width: frame.width,
+                    height: frame.height,
+                    mimeType: "image/jpeg"
+                };
+            }
+            catch (error) {
+                lastError = error;
+                if (isExactWindowBoundaryError(error))
+                    throw error;
+                if (error instanceof Error && error.message.includes("frame timed out")) {
+                    this.#recordFailure("frame_timeout");
+                }
+                if (attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS)
+                    throw error;
+                // Keep the authority boundary exact: fence only the failed helper process, then recreate it
+                // for the same PID/window after the next mandatory ownership revalidation.
+                failActive(active, "Linux WSS exact-window helper capture stalled");
+                await delay(CAPTURE_RECOVERY_DELAY_MS);
+            }
         }
-        return {
-            data: Buffer.from(frame.data),
-            width: frame.width,
-            height: frame.height,
-            mimeType: "image/jpeg"
-        };
+        throw lastError instanceof Error ? lastError : new Error("Linux WSS exact-window capture failed");
     }
     tapExactWindow(target, x, y) {
         return this.#input(target, { kind: "tap", x, y });
@@ -403,6 +426,17 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         if (!geometry)
             throw new Error("Linux WSS target window geometry is unavailable");
     }
+}
+function isExactWindowBoundaryError(error) {
+    if (!(error instanceof Error))
+        return false;
+    return error.message === "Linux WSS target process is unavailable"
+        || error.message === "Linux WSS target window is no longer visible"
+        || error.message === "Linux WSS target window ownership changed"
+        || error.message === "Linux WSS target window geometry is unavailable";
+}
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function validateExactTarget(target) {
     if (!Number.isSafeInteger(target.processId) || target.processId <= 0) {
