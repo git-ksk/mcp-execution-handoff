@@ -23,6 +23,8 @@ interface TargetState {
   inputFocused: boolean;
   textObserved: boolean;
   scrolled: boolean;
+  enterKeyDownObserved: boolean;
+  enterKeyUpObserved: boolean;
   submitted: boolean;
 }
 
@@ -37,6 +39,8 @@ const targetState: TargetState = {
   inputFocused: false,
   textObserved: false,
   scrolled: false,
+  enterKeyDownObserved: false,
+  enterKeyUpObserved: false,
   submitted: false
 };
 let doneObserved = false;
@@ -110,6 +114,16 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     targetState.scrolled = true;
     return sendJson(res, 204, undefined);
   }
+  if (url.pathname === "/target-enter-keydown" && req.method === "POST") {
+    if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
+    targetState.enterKeyDownObserved = true;
+    return sendJson(res, 204, undefined);
+  }
+  if (url.pathname === "/target-enter-keyup" && req.method === "POST") {
+    if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
+    targetState.enterKeyUpObserved = true;
+    return sendJson(res, 204, undefined);
+  }
   if (url.pathname === "/target-submitted" && req.method === "POST") {
     if (!isLoopback(req)) return sendJson(res, 404, { error: "not_found" });
     targetState.submitted = true;
@@ -122,6 +136,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       inputFocused: targetState.inputFocused,
       textObserved: targetState.textObserved,
       scrollObserved: targetState.scrolled,
+      enterKeyDownObserved: targetState.enterKeyDownObserved,
+      enterKeyUpObserved: targetState.enterKeyUpObserved,
       submitObserved: targetState.submitted,
       doneObserved
     });
@@ -137,6 +153,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       inputFocused: targetState.inputFocused,
       textObserved: targetState.textObserved,
       scrollObserved: targetState.scrolled,
+      enterKeyDownObserved: targetState.enterKeyDownObserved,
+      enterKeyUpObserved: targetState.enterKeyUpObserved,
       submitObserved: targetState.submitted,
       doneObserved
     });
@@ -196,6 +214,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     targetState.inputFocused = false;
     targetState.textObserved = false;
     targetState.scrolled = false;
+    targetState.enterKeyDownObserved = false;
+    targetState.enterKeyUpObserved = false;
     targetState.submitted = false;
     activePrincipal = principal;
     activeLocator = handoff.start({
@@ -291,7 +311,7 @@ function targetLandingPage(): string {
 }
 
 function targetFormPage(): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui;min-height:2200px;background:linear-gradient(#fff,#ddd)"><form id="f" style="padding:60px"><label style="font-size:30px">Type any harmless text, scroll, then press Enter<br><input id="i" autocomplete="off" style="margin-top:24px;width:80%;font-size:34px;padding:16px"></label></form><div style="margin-top:1400px;font-size:36px;padding:60px">Scroll marker</div><script>const i=document.getElementById('i');const f=document.getElementById('f');let typed=false,scrolled=false;i.addEventListener('focus',()=>{fetch('/target-focused',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('blur',()=>{fetch('/target-blurred',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('input',()=>{if(!typed){typed=true;fetch('/target-typed',{method:'POST',cache:'no-store'}).catch(()=>{})}});addEventListener('scroll',()=>{if(!scrolled&&scrollY>80){scrolled=true;fetch('/target-scrolled',{method:'POST',cache:'no-store'}).catch(()=>{})}},{passive:true});f.addEventListener('submit',e=>{e.preventDefault();fetch('/target-submitted',{method:'POST',cache:'no-store'}).then(()=>{document.body.innerHTML='<div style="padding:80px;font-size:42px">Submitted — press Done on the takeover UI.</div>'}).catch(()=>{})});</script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui;min-height:2200px;background:linear-gradient(#fff,#ddd)"><form id="f" style="padding:60px"><label style="font-size:30px">Type any harmless text, scroll, then press Enter<br><input id="i" autocomplete="off" style="margin-top:24px;width:80%;font-size:34px;padding:16px"></label></form><div style="margin-top:1400px;font-size:36px;padding:60px">Scroll marker</div><script>const i=document.getElementById('i');const f=document.getElementById('f');let typed=false,scrolled=false;i.addEventListener('focus',()=>{fetch('/target-focused',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('blur',()=>{fetch('/target-blurred',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('input',()=>{if(!typed){typed=true;fetch('/target-typed',{method:'POST',cache:'no-store'}).catch(()=>{})}});document.addEventListener('keydown',e=>{if(e.key==='Enter'){fetch('/target-enter-keydown',{method:'POST',cache:'no-store'}).catch(()=>{})}});document.addEventListener('keyup',e=>{if(e.key==='Enter'){fetch('/target-enter-keyup',{method:'POST',cache:'no-store'}).catch(()=>{})}});addEventListener('scroll',()=>{if(!scrolled&&scrollY>80){scrolled=true;fetch('/target-scrolled',{method:'POST',cache:'no-store'}).catch(()=>{})}},{passive:true});f.addEventListener('submit',e=>{e.preventDefault();fetch('/target-submitted',{method:'POST',cache:'no-store'}).then(()=>{document.body.innerHTML='<div style="padding:80px;font-size:42px">Submitted — press Done on the takeover UI.</div>'}).catch(()=>{})});</script></body></html>`;
 }
 
 function requestHeaders(req: IncomingMessage): Headers {
