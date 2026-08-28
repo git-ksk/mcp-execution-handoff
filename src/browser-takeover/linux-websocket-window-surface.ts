@@ -12,6 +12,7 @@ const MAX_DIAGNOSTIC_BUFFER_BYTES = 8 * 1024;
 const FRAME_WAIT_TIMEOUT_MS = 4_000;
 const INPUT_ACK_TIMEOUT_MS = 4_000;
 const HELPER_STOP_TIMEOUT_MS = 1_000;
+const QUERY_TIMEOUT_MS = 2_000;
 
 export type LinuxWebSocketSurfaceFailure =
   | "none"
@@ -21,11 +22,27 @@ export type LinuxWebSocketSurfaceFailure =
   | "frame_protocol"
   | "diagnostics_bounds"
   | "input_failure"
+  | "input_timeout"
+  | "input_revalidation_failure"
   | "revalidation_failure"
   | "capture_x11"
   | "capture_encoder"
   | "capture_option"
   | "capture_other";
+
+
+export type LinuxWebSocketInputStage =
+  | "none"
+  | "focus_ready"
+  | "pointer_move_ready"
+  | "pointer_authority_ready"
+  | "pointer_down_sent"
+  | "pointer_post_authority_ready"
+  | "tap_sent"
+  | "key_down_sent"
+  | "key_authority_ready"
+  | "key_up_sent"
+  | "applied";
 
 export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
   hostScript: string;
@@ -126,6 +143,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   #transition: Promise<void> | undefined;
   #lastFailure: LinuxWebSocketSurfaceFailure = "none";
   #framesObserved = 0;
+  #lastInputStage: LinuxWebSocketInputStage = "none";
 
   constructor(config: ExperimentalLinuxWebSocketWindowSurfaceConfig) {
     if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
@@ -146,10 +164,15 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     this.#helperTtlMs = helperTtlMs;
   }
 
-  diagnosticsSnapshot(): { lastFailure: LinuxWebSocketSurfaceFailure; framesObserved: number } {
+  diagnosticsSnapshot(): {
+    lastFailure: LinuxWebSocketSurfaceFailure;
+    framesObserved: number;
+    lastInputStage: LinuxWebSocketInputStage;
+  } {
     return {
       lastFailure: this.#lastFailure,
-      framesObserved: Math.min(this.#framesObserved, 1_000_000)
+      framesObserved: Math.min(this.#framesObserved, 1_000_000),
+      lastInputStage: this.#lastInputStage
     };
   }
 
@@ -207,12 +230,18 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     const active = await this.#ensure(target);
     active.inputChain = active.inputChain.then(async () => {
       if (active.failed || this.#active !== active) throw new Error("Linux WSS exact-window helper is unavailable");
-      await this.#revalidate(target);
+      try {
+        await this.#revalidate(target);
+      } catch (error) {
+        this.#lastFailure = "input_revalidation_failure";
+        throw error;
+      }
       if (active.pendingInputAck) throw new Error("Linux WSS exact-window helper input is busy");
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           if (active.pendingInputAck?.timer !== timer) return;
           active.pendingInputAck = undefined;
+          this.#lastFailure = "input_timeout";
           reject(new Error("Linux WSS exact-window helper input acknowledgement timed out"));
           failActive(active, "Linux WSS exact-window helper input acknowledgement timed out");
         }, INPUT_ACK_TIMEOUT_MS);
@@ -292,6 +321,8 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       const category = captureFailureCategory(stage);
       if (category) this.#lastFailure = category;
       else if (stage === "input_failure") this.#lastFailure = "input_failure";
+      const inputStage = boundedInputStage(stage);
+      if (inputStage) this.#lastInputStage = inputStage;
     }));
     child.once("error", () => {
       if (this.#lastFailure === "none") this.#lastFailure = "helper_error";
@@ -381,6 +412,20 @@ function consumeDiagnostics(
   }
 }
 
+function boundedInputStage(stage: string): LinuxWebSocketInputStage | undefined {
+  if (stage === "input_focus_ready") return "focus_ready";
+  if (stage === "input_pointer_move_ready") return "pointer_move_ready";
+  if (stage === "input_pointer_authority_ready") return "pointer_authority_ready";
+  if (stage === "input_pointer_down_sent") return "pointer_down_sent";
+  if (stage === "input_pointer_post_authority_ready") return "pointer_post_authority_ready";
+  if (stage === "input_tap_sent") return "tap_sent";
+  if (stage === "input_key_down_sent") return "key_down_sent";
+  if (stage === "input_key_authority_ready") return "key_authority_ready";
+  if (stage === "input_key_up_sent") return "key_up_sent";
+  if (stage === "input_applied") return "applied";
+  return undefined;
+}
+
 function captureFailureCategory(stage: string): LinuxWebSocketSurfaceFailure | undefined {
   if (stage === "capture_failure_x11") return "capture_x11";
   if (stage === "capture_failure_encoder") return "capture_encoder";
@@ -432,8 +477,28 @@ async function runBounded(executable: string, args: string[], env: NodeJS.Proces
     bytes += chunk.byteLength;
     if (bytes <= 64 * 1024) chunks.push(chunk);
   });
-  child.once("error", () => undefined);
-  const [code] = await once(child, "close") as [number | null, NodeJS.Signals | null];
+  const [code] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error("Linux WSS exact-window query timed out"));
+    }, QUERY_TIMEOUT_MS);
+    timer.unref();
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve([code, signal]);
+    });
+  });
   if (code !== 0 || bytes > 64 * 1024) throw new Error("Linux WSS exact-window query failed");
   return Buffer.concat(chunks).toString("utf8");
 }

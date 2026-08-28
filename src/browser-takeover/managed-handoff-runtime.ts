@@ -279,7 +279,7 @@ export class ManagedWindowHandoffRuntime {
 
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
   managedSurfaceDiagnosticsSnapshot(): ReturnType<LinuxWebSocketWindowSurface["diagnosticsSnapshot"]> {
-    return this.#lastSession?.surface.diagnosticsSnapshot() ?? { lastFailure: "none", framesObserved: 0 };
+    return this.#lastSession?.surface.diagnosticsSnapshot() ?? { lastFailure: "none", framesObserved: 0, lastInputStage: "none" };
   }
 
   /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */

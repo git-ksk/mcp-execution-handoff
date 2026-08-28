@@ -412,6 +412,7 @@ function acceptanceSnapshot(): object {
     exactWindowTitleObserved,
     wssSurfaceLastFailure: handoff?.managedSurfaceDiagnosticsSnapshot().lastFailure ?? "none",
     wssFramesObserved: handoff?.managedSurfaceDiagnosticsSnapshot().framesObserved ?? 0,
+    wssLastInputStage: handoff?.managedSurfaceDiagnosticsSnapshot().lastInputStage ?? "none",
     wssDisconnectKind: handoff?.managedWebSocketDiagnosticsSnapshot().disconnectKind ?? "none",
     wssChannelState: handoff?.managedWebSocketDiagnosticsSnapshot().channelState ?? "none",
     wssSentFrames: handoff?.managedWebSocketDiagnosticsSnapshot().sentFrames ?? 0,

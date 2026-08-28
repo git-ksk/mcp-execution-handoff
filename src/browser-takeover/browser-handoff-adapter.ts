@@ -107,10 +107,10 @@ export class BrowserHandoffAdapter {
       : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
   }
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
-  managedSurfaceDiagnosticsSnapshot(): { lastFailure: string; framesObserved: number } {
+  managedSurfaceDiagnosticsSnapshot(): { lastFailure: string; framesObserved: number; lastInputStage: string } {
     return this.#core instanceof ManagedWindowHandoffRuntime
       ? this.#core.managedSurfaceDiagnosticsSnapshot()
-      : { lastFailure: "none", framesObserved: 0 };
+      : { lastFailure: "none", framesObserved: 0, lastInputStage: "none" };
   }
   /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
   managedWebSocketDiagnosticsSnapshot(): {
