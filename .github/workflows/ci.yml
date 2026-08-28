@@ -156,3 +156,22 @@ jobs:
       - name: Require WSS container acceptance
         if: always()
         run: test "${{ steps.wss_acceptance.outcome }}" = success
+      - name: Build managed Cloud Run physical acceptance image
+        run: docker build -f experiments/websocket-cloud-run/Dockerfile.managed -t handoff-managed-acceptance:local .
+      - name: Smoke managed exact-window target
+        run: |
+          docker run --rm -d --name handoff-managed-smoke \
+            -p 127.0.0.1:18081:8080 \
+            -e HANDOFF_WSS_PUBLIC_BASE_URL=https://placeholder.invalid \
+            -e HANDOFF_ACCEPTANCE_REVISION=0000000000000000000000000000000000000000 \
+            handoff-managed-acceptance:local
+          trap 'docker stop handoff-managed-smoke >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 60); do
+            body="$(curl --fail --silent http://127.0.0.1:18081/healthz 2>/dev/null || true)"
+            if node -e 'try{const x=JSON.parse(process.argv[1]);process.exit(x.ok===true&&x.targetReady===true?0:1)}catch{process.exit(1)}' "$body"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs handoff-managed-smoke || true
+          exit 1
