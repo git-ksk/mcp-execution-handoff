@@ -79,7 +79,7 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     const clientScript = await client.text();
     assert.match(clientScript, /managedTransportFallback/);
     assert.match(clientScript, /armManagedReadyTimeout\(\)/);
-    assert.match(clientScript, /setTimeout\(\(\)=>\{managedReadyTimer=0;if\(!stopped\)void managedTransportFallback\(\)\},10000\)/);
+    assert.match(clientScript, /setTimeout\(\(\)=>\{managedReadyTimer=0;if\(!stopped\)void managedTransportFallback\(\)\},4000\)/);
     assert.match(clientScript, /clearManagedReadyTimeout\(\);clearFirstFrameTimer\(\)/);
 
     const moved = await runtime.handle(fallbackRequest(directId, capability), PRINCIPAL);
