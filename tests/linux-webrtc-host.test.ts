@@ -210,6 +210,8 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.doesNotMatch(host, /delivery\.arm|waitPrimaryPress|deliveryHelper\(\)/);
   assert.match(host, /await this\.pointer\.cancel\(\)\.catch/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mousedown", "1"\]/);
+  assert.doesNotMatch(host, /\["windowactivate", "--sync"/);
+  assert.match(host, /HELPER_COMMAND_TIMEOUT_MS = 2_000/);
   assert.doesNotMatch(host, /runCommand\(this\.xdotool, \["mouseup", "1"\]/);
   assert.match(host, /await this\.pointer\.up\(\)/);
   assert.match(host, /Math\.abs\(pressed\.x - x\) > 1 \|\| Math\.abs\(pressed\.y - y\) > 1/);

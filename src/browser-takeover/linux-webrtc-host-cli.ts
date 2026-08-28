@@ -11,6 +11,7 @@ import {
 } from "../target-surface/os-window.js";
 
 const MAX_HOST_FRAME_BYTES = 8 * 1024 * 1024;
+const HELPER_COMMAND_TIMEOUT_MS = 2_000;
 const MAX_INPUT_LINE_BYTES = 4 * 1024;
 const MAX_PENDING_INPUT_BYTES = 8 * 1024;
 const DEFAULT_FPS = 15;
@@ -319,8 +320,29 @@ async function runCommand(executable: string, args: string[], display: string): 
     bytes += chunk.byteLength;
     if (bytes <= 64 * 1024) stdout.push(chunk);
   });
-  child.once("error", () => undefined);
-  const [code] = await once(child, "close") as [number | null, NodeJS.Signals | null];
+  const result = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`Linux WebRTC host helper command timed out: ${executable}`));
+    }, HELPER_COMMAND_TIMEOUT_MS);
+    timer.unref();
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve([code, signal]);
+    });
+  });
+  const [code] = result;
   if (code !== 0 || bytes > 64 * 1024) throw new Error(`Linux WebRTC host helper command failed: ${executable}`);
   return Buffer.concat(stdout).toString("utf8");
 }
@@ -825,7 +847,7 @@ class LinuxWindowInput {
         && await this.activeTargetOnce()
         && await this.inputFocusOwnedByTargetOnce();
       if (!alreadyAuthorized) {
-        await runCommand(this.xdotool, ["windowactivate", "--sync", String(this.geometry.windowId)], this.display);
+        await runCommand(this.xdotool, ["windowactivate", String(this.geometry.windowId)], this.display);
       }
       // Let the EWMH-aware window manager own pointer focus transitions. Calling windowfocus here
       // would bypass the WM with XSetInputFocus and can diverge from its click/grab bookkeeping.
