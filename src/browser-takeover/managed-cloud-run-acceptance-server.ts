@@ -14,6 +14,7 @@ const COOKIE_NAME = "__Host-handoff-accept";
 const SESSION_TTL_MS = 15 * 60_000;
 const PRINCIPAL_BYTES = 24;
 const MAX_HTTP_BODY_BYTES = 64 * 1024;
+const COMMAND_TIMEOUT_MS = 2_000;
 const INTERVENTION_ID = "cloud-run-managed-physical-acceptance";
 const TARGET_TITLE = "Handoff Managed Physical Acceptance";
 const TARGET_WINDOW_TITLE = `${TARGET_TITLE} - Chromium`;
@@ -451,11 +452,8 @@ async function initializeBrowser(): Promise<void> {
   });
   await waitFor(
     "xvfb",
-    async () => (await runBounded(
-      "/usr/bin/xdotool",
-      ["getmouselocation", "--shell"],
-      xEnv
-    ).catch(() => "")).includes("X="),
+    async () => runQuietBounded("/usr/bin/xdpyinfo", ["-display", DISPLAY], xEnv)
+      .then(() => true, () => false),
     8_000
   );
   targetInitStage = "xvfb_ready";
@@ -662,6 +660,35 @@ async function waitFor(
   throw new Error(`Managed physical acceptance timed out at ${label}`);
 }
 
+async function runQuietBounded(
+  executable: string,
+  args: string[],
+  env: NodeJS.ProcessEnv
+): Promise<void> {
+  const child = spawn(executable, args, { env, stdio: "ignore" });
+  child.once("error", () => undefined);
+  const result = await Promise.race([
+    once(child, "close")
+      .then(([code]) => ({ kind: "closed" as const, code }))
+      .catch(() => ({ kind: "failed" as const })),
+    new Promise<{ kind: "timeout" }>((resolve) => {
+      const timer = setTimeout(() => resolve({ kind: "timeout" }), COMMAND_TIMEOUT_MS);
+      timer.unref();
+    })
+  ]);
+  if (result.kind === "timeout") {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await Promise.race([
+      once(child, "close").catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 250))
+    ]);
+    throw new Error("bounded acceptance command timed out");
+  }
+  if (result.kind === "failed" || result.code !== 0) {
+    throw new Error("bounded acceptance command failed");
+  }
+}
+
 async function runBounded(
   executable: string,
   args: string[],
@@ -675,8 +702,22 @@ async function runBounded(
     if (bytes <= 64 * 1024) chunks.push(chunk);
   });
   child.once("error", () => undefined);
-  const [code] = await once(child, "close") as [number | null, NodeJS.Signals | null];
-  if (code !== 0 || bytes > 64 * 1024) throw new Error("bounded acceptance command failed");
+  const result = await Promise.race([
+    once(child, "close").then(([code]) => ({ kind: "closed" as const, code })),
+    new Promise<{ kind: "timeout" }>((resolve) => {
+      const timer = setTimeout(() => resolve({ kind: "timeout" }), COMMAND_TIMEOUT_MS);
+      timer.unref();
+    })
+  ]);
+  if (result.kind === "timeout") {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await Promise.race([
+      once(child, "close").catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 250))
+    ]);
+    throw new Error("bounded acceptance command timed out");
+  }
+  if (result.code !== 0 || bytes > 64 * 1024) throw new Error("bounded acceptance command failed");
   return Buffer.concat(chunks).toString("utf8");
 }
 
