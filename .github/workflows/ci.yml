@@ -166,6 +166,27 @@ jobs:
             -e HANDOFF_ACCEPTANCE_REVISION=0000000000000000000000000000000000000000 \
             handoff-managed-acceptance:local
           trap 'docker stop handoff-managed-smoke >/dev/null 2>&1 || true' EXIT
+          headers="$(mktemp)"
+          body_file="$(mktemp)"
+          started=0
+          for _ in $(seq 1 40); do
+            : > "$headers"
+            : > "$body_file"
+            if curl --silent --max-time 12 --dump-header "$headers" --output "$body_file" \
+              http://127.0.0.1:18081/start; then
+              started=1
+              break
+            fi
+            sleep 0.25
+          done
+          if [ "$started" != 1 ]; then
+            docker logs handoff-managed-smoke || true
+            exit 1
+          fi
+          grep -q '^HTTP/1.1 200' "$headers"
+          grep -q '^set-cookie: __Host-handoff-accept=' "$headers"
+          grep -q '/start/continue' "$body_file"
+          ! grep -Eq '/takeover/[A-Za-z0-9-]{8,100}' "$body_file"
           ready=0
           for _ in $(seq 1 60); do
             body="$(curl --fail --silent http://127.0.0.1:18081/ready 2>/dev/null || true)"
@@ -179,11 +200,3 @@ jobs:
             docker logs handoff-managed-smoke || true
             exit 1
           fi
-          headers="$(mktemp)"
-          body_file="$(mktemp)"
-          curl --fail --silent --dump-header "$headers" --output "$body_file" \
-            http://127.0.0.1:18081/start
-          grep -q '^HTTP/1.1 200' "$headers"
-          grep -q '^set-cookie: __Host-handoff-accept=' "$headers"
-          grep -q '/start/continue' "$body_file"
-          ! grep -Eq '/takeover/[A-Za-z0-9-]{8,100}' "$body_file"

@@ -15,6 +15,7 @@ const SESSION_TTL_MS = 15 * 60_000;
 const PRINCIPAL_BYTES = 24;
 const MAX_HTTP_BODY_BYTES = 64 * 1024;
 const COMMAND_TIMEOUT_MS = 2_000;
+const START_TARGET_WAIT_MS = 10_000;
 const INTERVENTION_ID = "cloud-run-managed-physical-acceptance";
 const TARGET_TITLE = "Handoff Managed Physical Acceptance";
 const TARGET_WINDOW_TITLE = `${TARGET_TITLE} - Chromium`;
@@ -134,6 +135,14 @@ void initializeBrowser().catch((error: unknown) => {
   targetInitFailure = classifyTargetInitFailure(error);
 });
 
+async function waitForBrowserTarget(): Promise<BrowserTarget | undefined> {
+  const deadline = Date.now() + START_TARGET_WAIT_MS;
+  while (!browserTarget && targetInitStage !== "failed" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return browserTarget;
+}
+
 async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", publicBaseUrl);
   if (url.pathname === "/ready" || url.pathname === "/healthz") {
@@ -241,7 +250,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
   }
   if (url.pathname === "/start") {
     if (req.method !== "GET") return sendJson(res, 405, { error: "method_not_allowed" });
-    const target = browserTarget;
+    const target = browserTarget ?? await waitForBrowserTarget();
     if (!target) return sendJson(res, 503, { error: "target_not_ready" });
     let cookieValue = cookieValueFromRequest(req);
     const hadCookie = cookieValue !== undefined;
