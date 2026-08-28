@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { jpegFrameRecord } from "../src/browser-takeover/linux-webrtc-host-cli.js";
-import { LinuxWebSocketHostRecordParser } from "../src/experimental/linux-websocket-window-surface.js";
+import {
+  ExperimentalLinuxWebSocketWindowSurface,
+  LinuxWebSocketHostRecordParser
+} from "../src/experimental/linux-websocket-window-surface.js";
 
 function editableFocusRecord(editable: boolean): Buffer {
   const record = Buffer.allocUnsafe(6);
@@ -49,7 +54,103 @@ test("Linux WSS physical surface reuses exact helper without transport or target
   assert.match(surface, /parseWindowGeometry/);
   assert.match(surface, /match\[1\] === "input_applied"/);
   assert.match(surface, /mimeType: "image\/jpeg"/);
+  assert.match(surface, /CAPTURE_RECOVERY_ATTEMPTS = 2/);
+  assert.match(surface, /failActive\(active, "Linux WSS exact-window helper capture stalled"\)/);
+  assert.match(surface, /isExactWindowBoundaryError\(error\)/);
+  assert.match(surface, /target window ownership changed/);
   assert.doesNotMatch(surface, /RTCPeerConnection|ICE|TURN|STUN|DataChannel/);
   assert.doesNotMatch(surface, /\.\.\.process\.env/);
   assert.doesNotMatch(surface, /console\.(?:log|error).*text/);
+});
+
+
+test("Linux WSS capture restarts one failed helper for the same exact PID/window", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "handoff-wss-recovery-"));
+  const countFile = join(dir, "count");
+  const hostScript = join(dir, "host.mjs");
+  const xdotool = join(dir, "xdotool");
+  const targetPid = process.pid;
+  const targetWindowId = 7331;
+  writeFileSync(countFile, "0");
+  writeFileSync(hostScript, `
+import { readFileSync, writeFileSync } from "node:fs";
+const countFile = ${JSON.stringify(countFile)};
+const next = Number(readFileSync(countFile, "utf8")) + 1;
+writeFileSync(countFile, String(next));
+const jpeg = Buffer.from([0xff,0xd8,0x01,0x02,0xff,0xd9]);
+const payload = Buffer.allocUnsafe(4 + jpeg.length);
+payload.writeUInt16BE(640, 0); payload.writeUInt16BE(480, 2); jpeg.copy(payload, 4);
+const record = Buffer.allocUnsafe(5 + payload.length);
+record[0] = 2; record.writeUInt32BE(payload.length, 1); payload.copy(record, 5);
+process.stdout.write(record);
+if (next === 1) setTimeout(() => process.exit(1), 20);
+else setInterval(() => process.stdout.write(record), 25);
+`);
+  writeFileSync(xdotool, `#!/bin/sh
+case "$1" in
+  search) echo ${targetWindowId} ;;
+  getwindowpid) echo ${targetPid} ;;
+  getwindowgeometry) printf 'WINDOW=${targetWindowId}\\nX=0\\nY=0\\nWIDTH=640\\nHEIGHT=480\\nSCREEN=0\\n' ;;
+  *) exit 1 ;;
+esac
+`);
+  chmodSync(xdotool, 0o755);
+
+  const surface = new ExperimentalLinuxWebSocketWindowSurface({
+    hostScript,
+    displayName: ":99",
+    xdotoolExecutable: xdotool,
+    helperTtlMs: 30_000
+  });
+  try {
+    const frame = await surface.captureExactWindow({ processId: targetPid, windowId: targetWindowId });
+    assert.equal(frame.width, 640);
+    assert.equal(frame.height, 480);
+    assert.equal(Number(readFileSync(countFile, "utf8")), 2, "failed helper must be replaced exactly once");
+  } finally {
+    await surface.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Linux WSS capture does not retry an exact-window ownership failure", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "handoff-wss-boundary-"));
+  const countFile = join(dir, "count");
+  const hostScript = join(dir, "host.mjs");
+  const xdotool = join(dir, "xdotool");
+  const targetPid = process.pid;
+  const targetWindowId = 7331;
+  writeFileSync(countFile, "0");
+  writeFileSync(hostScript, `
+import { readFileSync, writeFileSync } from "node:fs";
+const countFile = ${JSON.stringify(countFile)};
+writeFileSync(countFile, String(Number(readFileSync(countFile, "utf8")) + 1));
+setInterval(() => {}, 1000);
+`);
+  writeFileSync(xdotool, `#!/bin/sh
+case "$1" in
+  search) echo ${targetWindowId} ;;
+  getwindowpid) echo $(( ${targetPid} + 1 )) ;;
+  getwindowgeometry) printf 'WINDOW=${targetWindowId}\\nX=0\\nY=0\\nWIDTH=640\\nHEIGHT=480\\nSCREEN=0\\n' ;;
+  *) exit 1 ;;
+esac
+`);
+  chmodSync(xdotool, 0o755);
+
+  const surface = new ExperimentalLinuxWebSocketWindowSurface({
+    hostScript,
+    displayName: ":99",
+    xdotoolExecutable: xdotool,
+    helperTtlMs: 30_000
+  });
+  try {
+    await assert.rejects(
+      surface.captureExactWindow({ processId: targetPid, windowId: targetWindowId }),
+      /ownership changed/
+    );
+    assert.equal(Number(readFileSync(countFile, "utf8")), 0, "authority failure must fail before helper start");
+  } finally {
+    await surface.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
