@@ -183,8 +183,11 @@ try {
     );
   } catch (error) {
     const status = await readAcceptanceStatus(cookie);
-    if (status.enterKeyDownObserved !== true) stage = "submit-dom-keydown-missing";
-    else if (status.enterKeyUpObserved !== true) stage = "submit-dom-keyup-missing";
+    if (status.enterKeyDownObserved !== true) {
+      stage = status.inputFocused === true
+        ? "submit-dom-keydown-missing-focus-held"
+        : "submit-dom-keydown-missing-focus-lost";
+    } else if (status.enterKeyUpObserved !== true) stage = "submit-dom-keyup-missing";
     else stage = "submit-event-missing";
     throw error;
   }
