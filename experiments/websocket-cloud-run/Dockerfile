@@ -7,6 +7,7 @@ RUN apt-get update \
       gcc \
       libc6-dev \
       libx11-dev \
+      libxres-dev \
       libxtst-dev \
       openbox \
       pkg-config \
@@ -23,10 +24,20 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY native ./native
 COPY scripts ./scripts
+COPY experiments/websocket-cloud-run/xrecord-key-delivery-probe.c ./experiments/websocket-cloud-run/xrecord-key-delivery-probe.c
 RUN npm run build \
  && npm run build:linux-xtest-helper \
+ && mkdir -p dist/native \
+ && cc \
+      -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+      -D_POSIX_C_SOURCE=200809L -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE \
+      experiments/websocket-cloud-run/xrecord-key-delivery-probe.c \
+      -Wl,-z,relro,-z,now -pie -lX11 -lXtst -lXRes \
+      -o dist/native/mcp-handoff-wss-xrecord-key-probe \
+ && chmod 0755 dist/native/mcp-handoff-wss-xrecord-key-probe \
  && npm prune --omit=dev \
- && test -x dist/native/mcp-handoff-linux-xtest-helper
+ && test -x dist/native/mcp-handoff-linux-xtest-helper \
+ && test -x dist/native/mcp-handoff-wss-xrecord-key-probe
 
 ENV NODE_ENV=production
 ENV PORT=8080
