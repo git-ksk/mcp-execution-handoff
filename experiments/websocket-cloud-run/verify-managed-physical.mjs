@@ -38,7 +38,14 @@ if (result.lastFallbackReason !== "transport_unavailable") failures.push("lastFa
 if (!Number.isSafeInteger(result.generation) || result.generation < 2) failures.push("generation");
 if (!Number.isSafeInteger(result.transitionCount) || result.transitionCount < 1) failures.push("transitionCount");
 if (result.wssFailureCode !== "none") failures.push("wssFailureCode");
-if (result.wssSurfaceFailure !== "none") failures.push("wssSurfaceFailure");
+const cleanTeardownHelperClose = result.teardownCompleted === true
+  && result.wssSurfaceFailure === "helper_closed"
+  && result.wssSurfaceFailureHelperStopReason === "explicit_stop"
+  && result.wssSurfaceFailureHelperExitKind === "clean"
+  && result.wssSurfaceFailureHelperCrashReason === "none";
+if (result.wssSurfaceFailure !== "none" && !cleanTeardownHelperClose) {
+  failures.push("wssSurfaceFailure");
+}
 if (result.wssChannelLastInputStage !== "applied") failures.push("wssChannelLastInputStage");
 if (result.wssSurfaceInputBoundaryStage !== "acknowledged") failures.push("wssSurfaceInputBoundaryStage");
 if (result.wssLastInputStage !== "applied") failures.push("wssLastInputStage");

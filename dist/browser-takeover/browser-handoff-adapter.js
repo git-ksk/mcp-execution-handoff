@@ -61,6 +61,54 @@ export class BrowserHandoffAdapter {
             ? this.#core.operatorDiagnosticsSnapshot("browser_handoff")
             : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
     }
+    /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
+    managedSurfaceDiagnosticsSnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.managedSurfaceDiagnosticsSnapshot()
+            : {
+                lastFailure: "none",
+                framesObserved: 0,
+                lastInputStage: "none",
+                lastInputBoundaryStage: "none",
+                inputAttempts: 0,
+                failure: "none",
+                failureInputStage: "none",
+                failureInputBoundaryStage: "none",
+                lastInputFailureDetail: "none",
+                failureInputFailureDetail: "none",
+                lastHelperStopReason: "none",
+                failureHelperStopReason: "none",
+                lastHelperCrashReason: "none",
+                failureHelperCrashReason: "none",
+                lastHelperExitKind: "none",
+                failureHelperExitKind: "none",
+                lastHelperCrashClass: "none",
+                failureHelperCrashClass: "none",
+                lastHelperCrashOrigin: "none",
+                failureHelperCrashOrigin: "none",
+                lastHelperCrashErrorKind: "none",
+                failureHelperCrashErrorKind: "none",
+                lastHelperCrashMessageClass: "none",
+                failureHelperCrashMessageClass: "none"
+            };
+    }
+    /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
+    managedWebSocketDiagnosticsSnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.managedWebSocketDiagnosticsSnapshot()
+            : {
+                disconnectKind: "none",
+                channelState: "none",
+                sentFrames: 0,
+                droppedFrames: 0,
+                lastFailure: "none",
+                lastInputStage: "none",
+                failureDisconnectKind: "none",
+                failureChannelState: "none",
+                failureCode: "none",
+                failureInputStage: "none"
+            };
+    }
     latencySnapshot() { return this.#core.latencySnapshot(); }
 }
 function translateError(error) {

@@ -47,6 +47,46 @@ export declare class BrowserHandoffAdapter {
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot;
+    /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
+    managedSurfaceDiagnosticsSnapshot(): {
+        lastFailure: string;
+        framesObserved: number;
+        lastInputStage: string;
+        lastInputBoundaryStage: string;
+        inputAttempts: number;
+        failure: string;
+        failureInputStage: string;
+        failureInputBoundaryStage: string;
+        lastInputFailureDetail: string;
+        failureInputFailureDetail: string;
+        lastHelperStopReason: string;
+        failureHelperStopReason: string;
+        lastHelperCrashReason: string;
+        failureHelperCrashReason: string;
+        lastHelperExitKind: string;
+        failureHelperExitKind: string;
+        lastHelperCrashClass: string;
+        failureHelperCrashClass: string;
+        lastHelperCrashOrigin: string;
+        failureHelperCrashOrigin: string;
+        lastHelperCrashErrorKind: string;
+        failureHelperCrashErrorKind: string;
+        lastHelperCrashMessageClass: string;
+        failureHelperCrashMessageClass: string;
+    };
+    /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
+    managedWebSocketDiagnosticsSnapshot(): {
+        disconnectKind: string;
+        channelState: string;
+        sentFrames: number;
+        droppedFrames: number;
+        lastFailure: string;
+        lastInputStage: string;
+        failureDisconnectKind: string;
+        failureChannelState: string;
+        failureCode: string;
+        failureInputStage: string;
+    };
     latencySnapshot(): WebRtcLatencyComparison;
 }
 //# sourceMappingURL=browser-handoff-adapter.d.ts.map

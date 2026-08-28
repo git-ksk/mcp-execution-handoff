@@ -20,6 +20,7 @@ const targetState = {
     formOpened: false,
     inputFocused: false,
     textObserved: false,
+    backspaceObserved: false,
     scrolled: false,
     enterKeyDownObserved: false,
     enterKeyUpObserved: false,
@@ -94,6 +95,12 @@ async function handleHttp(req, res) {
         targetState.textObserved = true;
         return sendJson(res, 204, undefined);
     }
+    if (url.pathname === "/target-backspace" && req.method === "POST") {
+        if (!isLoopback(req))
+            return sendJson(res, 404, { error: "not_found" });
+        targetState.backspaceObserved = true;
+        return sendJson(res, 204, undefined);
+    }
     if (url.pathname === "/target-scrolled" && req.method === "POST") {
         if (!isLoopback(req))
             return sendJson(res, 404, { error: "not_found" });
@@ -124,11 +131,39 @@ async function handleHttp(req, res) {
             tapObserved: targetState.formOpened,
             inputFocused: targetState.inputFocused,
             textObserved: targetState.textObserved,
+            backspaceObserved: targetState.backspaceObserved,
             scrollObserved: targetState.scrolled,
             enterKeyDownObserved: targetState.enterKeyDownObserved,
             enterKeyUpObserved: targetState.enterKeyUpObserved,
             submitObserved: targetState.submitted,
-            doneObserved
+            doneObserved,
+            wssSurfaceLastFailure: surface?.diagnosticsSnapshot().lastFailure ?? "none",
+            wssLastInputStage: surface?.diagnosticsSnapshot().lastInputStage ?? "none",
+            wssSurfaceInputBoundaryStage: surface?.diagnosticsSnapshot().lastInputBoundaryStage ?? "none",
+            wssSurfaceInputAttempts: surface?.diagnosticsSnapshot().inputAttempts ?? 0,
+            wssSurfaceFailure: surface?.diagnosticsSnapshot().failure ?? "none",
+            wssSurfaceFailureInputStage: surface?.diagnosticsSnapshot().failureInputStage ?? "none",
+            wssSurfaceFailureInputBoundaryStage: surface?.diagnosticsSnapshot().failureInputBoundaryStage ?? "none",
+            wssSurfaceLastInputFailureDetail: surface?.diagnosticsSnapshot().lastInputFailureDetail ?? "none",
+            wssSurfaceFailureInputFailureDetail: surface?.diagnosticsSnapshot().failureInputFailureDetail ?? "none",
+            wssSurfaceLastHelperStopReason: surface?.diagnosticsSnapshot().lastHelperStopReason ?? "none",
+            wssSurfaceFailureHelperStopReason: surface?.diagnosticsSnapshot().failureHelperStopReason ?? "none",
+            wssSurfaceLastHelperCrashReason: surface?.diagnosticsSnapshot().lastHelperCrashReason ?? "none",
+            wssSurfaceFailureHelperCrashReason: surface?.diagnosticsSnapshot().failureHelperCrashReason ?? "none",
+            wssSurfaceLastHelperExitKind: surface?.diagnosticsSnapshot().lastHelperExitKind ?? "none",
+            wssSurfaceFailureHelperExitKind: surface?.diagnosticsSnapshot().failureHelperExitKind ?? "none",
+            wssSurfaceLastHelperCrashClass: surface?.diagnosticsSnapshot().lastHelperCrashClass ?? "none",
+            wssSurfaceFailureHelperCrashClass: surface?.diagnosticsSnapshot().failureHelperCrashClass ?? "none",
+            wssSurfaceLastHelperCrashOrigin: surface?.diagnosticsSnapshot().lastHelperCrashOrigin ?? "none",
+            wssSurfaceFailureHelperCrashOrigin: surface?.diagnosticsSnapshot().failureHelperCrashOrigin ?? "none",
+            wssSurfaceLastHelperCrashErrorKind: surface?.diagnosticsSnapshot().lastHelperCrashErrorKind ?? "none",
+            wssSurfaceFailureHelperCrashErrorKind: surface?.diagnosticsSnapshot().failureHelperCrashErrorKind ?? "none",
+            wssSurfaceLastHelperCrashMessageClass: surface?.diagnosticsSnapshot().lastHelperCrashMessageClass ?? "none",
+            wssSurfaceFailureHelperCrashMessageClass: surface?.diagnosticsSnapshot().failureHelperCrashMessageClass ?? "none",
+            wssChannelLastFailure: handoff?.diagnosticsSnapshot().lastFailure ?? "none",
+            wssChannelLastInputStage: handoff?.diagnosticsSnapshot().lastInputStage ?? "none",
+            wssFailureCode: handoff?.diagnosticsSnapshot().failureCode ?? "none",
+            wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none"
         });
         return;
     }
@@ -142,11 +177,39 @@ async function handleHttp(req, res) {
             tapObserved: targetState.formOpened,
             inputFocused: targetState.inputFocused,
             textObserved: targetState.textObserved,
+            backspaceObserved: targetState.backspaceObserved,
             scrollObserved: targetState.scrolled,
             enterKeyDownObserved: targetState.enterKeyDownObserved,
             enterKeyUpObserved: targetState.enterKeyUpObserved,
             submitObserved: targetState.submitted,
-            doneObserved
+            doneObserved,
+            wssSurfaceLastFailure: surface?.diagnosticsSnapshot().lastFailure ?? "none",
+            wssLastInputStage: surface?.diagnosticsSnapshot().lastInputStage ?? "none",
+            wssSurfaceInputBoundaryStage: surface?.diagnosticsSnapshot().lastInputBoundaryStage ?? "none",
+            wssSurfaceInputAttempts: surface?.diagnosticsSnapshot().inputAttempts ?? 0,
+            wssSurfaceFailure: surface?.diagnosticsSnapshot().failure ?? "none",
+            wssSurfaceFailureInputStage: surface?.diagnosticsSnapshot().failureInputStage ?? "none",
+            wssSurfaceFailureInputBoundaryStage: surface?.diagnosticsSnapshot().failureInputBoundaryStage ?? "none",
+            wssSurfaceLastInputFailureDetail: surface?.diagnosticsSnapshot().lastInputFailureDetail ?? "none",
+            wssSurfaceFailureInputFailureDetail: surface?.diagnosticsSnapshot().failureInputFailureDetail ?? "none",
+            wssSurfaceLastHelperStopReason: surface?.diagnosticsSnapshot().lastHelperStopReason ?? "none",
+            wssSurfaceFailureHelperStopReason: surface?.diagnosticsSnapshot().failureHelperStopReason ?? "none",
+            wssSurfaceLastHelperCrashReason: surface?.diagnosticsSnapshot().lastHelperCrashReason ?? "none",
+            wssSurfaceFailureHelperCrashReason: surface?.diagnosticsSnapshot().failureHelperCrashReason ?? "none",
+            wssSurfaceLastHelperExitKind: surface?.diagnosticsSnapshot().lastHelperExitKind ?? "none",
+            wssSurfaceFailureHelperExitKind: surface?.diagnosticsSnapshot().failureHelperExitKind ?? "none",
+            wssSurfaceLastHelperCrashClass: surface?.diagnosticsSnapshot().lastHelperCrashClass ?? "none",
+            wssSurfaceFailureHelperCrashClass: surface?.diagnosticsSnapshot().failureHelperCrashClass ?? "none",
+            wssSurfaceLastHelperCrashOrigin: surface?.diagnosticsSnapshot().lastHelperCrashOrigin ?? "none",
+            wssSurfaceFailureHelperCrashOrigin: surface?.diagnosticsSnapshot().failureHelperCrashOrigin ?? "none",
+            wssSurfaceLastHelperCrashErrorKind: surface?.diagnosticsSnapshot().lastHelperCrashErrorKind ?? "none",
+            wssSurfaceFailureHelperCrashErrorKind: surface?.diagnosticsSnapshot().failureHelperCrashErrorKind ?? "none",
+            wssSurfaceLastHelperCrashMessageClass: surface?.diagnosticsSnapshot().lastHelperCrashMessageClass ?? "none",
+            wssSurfaceFailureHelperCrashMessageClass: surface?.diagnosticsSnapshot().failureHelperCrashMessageClass ?? "none",
+            wssChannelLastFailure: handoff?.diagnosticsSnapshot().lastFailure ?? "none",
+            wssChannelLastInputStage: handoff?.diagnosticsSnapshot().lastInputStage ?? "none",
+            wssFailureCode: handoff?.diagnosticsSnapshot().failureCode ?? "none",
+            wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none"
         });
         return;
     }
@@ -315,7 +378,7 @@ function targetLandingPage() {
     return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui"><button onclick="location.href='/target-form'" style="position:fixed;inset:0;border:0;font-size:40px">Tap to open WSS acceptance form</button><script>fetch('/target-ready',{method:'POST',cache:'no-store'}).catch(()=>{});</script></body></html>`;
 }
 function targetFormPage() {
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui;min-height:2200px;background:linear-gradient(#fff,#ddd)"><form id="f" style="padding:60px"><label style="font-size:30px">Type any harmless text, scroll, then press Enter<br><input id="i" autocomplete="off" style="margin-top:24px;width:80%;font-size:34px;padding:16px"></label></form><div style="margin-top:1400px;font-size:36px;padding:60px">Scroll marker</div><script>const i=document.getElementById('i');const f=document.getElementById('f');let typed=false,scrolled=false;i.addEventListener('focus',()=>{fetch('/target-focused',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('blur',()=>{fetch('/target-blurred',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('input',()=>{if(!typed){typed=true;fetch('/target-typed',{method:'POST',cache:'no-store'}).catch(()=>{})}});document.addEventListener('keydown',e=>{if(e.key==='Enter'){fetch('/target-enter-keydown',{method:'POST',cache:'no-store'}).catch(()=>{})}});document.addEventListener('keyup',e=>{if(e.key==='Enter'){fetch('/target-enter-keyup',{method:'POST',cache:'no-store'}).catch(()=>{})}});addEventListener('scroll',()=>{if(!scrolled&&scrollY>80){scrolled=true;fetch('/target-scrolled',{method:'POST',cache:'no-store'}).catch(()=>{})}},{passive:true});f.addEventListener('submit',e=>{e.preventDefault();fetch('/target-submitted',{method:'POST',cache:'no-store'}).then(()=>{document.body.innerHTML='<div style="padding:80px;font-size:42px">Submitted — press Done on the takeover UI.</div>'}).catch(()=>{})});setTimeout(()=>i.focus(),50);</script></body></html>`;
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${TARGET_TITLE}</title></head><body style="margin:0;font-family:system-ui;min-height:2200px;background:linear-gradient(#fff,#ddd)"><form id="f" style="padding:60px"><label style="font-size:30px">Type harmless text, press Backspace, scroll, then press Enter<br><input id="i" autocomplete="off" style="margin-top:24px;width:80%;font-size:34px;padding:16px"></label></form><div style="margin-top:1400px;font-size:36px;padding:60px">Scroll marker</div><script>const i=document.getElementById('i');const f=document.getElementById('f');let typed=false,backspaced=false,scrolled=false;i.addEventListener('focus',()=>{fetch('/target-focused',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('blur',()=>{fetch('/target-blurred',{method:'POST',cache:'no-store'}).catch(()=>{})});i.addEventListener('input',()=>{if(!typed){typed=true;fetch('/target-typed',{method:'POST',cache:'no-store'}).catch(()=>{})}});document.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!backspaced){backspaced=true;fetch('/target-backspace',{method:'POST',cache:'no-store'}).catch(()=>{})}if(e.key==='Enter'){fetch('/target-enter-keydown',{method:'POST',cache:'no-store'}).catch(()=>{})}});document.addEventListener('keyup',e=>{if(e.key==='Enter'){fetch('/target-enter-keyup',{method:'POST',cache:'no-store'}).catch(()=>{})}});addEventListener('scroll',()=>{if(!scrolled&&scrollY>80){scrolled=true;fetch('/target-scrolled',{method:'POST',cache:'no-store'}).catch(()=>{})}},{passive:true});f.addEventListener('submit',e=>{e.preventDefault();fetch('/target-submitted',{method:'POST',cache:'no-store'}).then(()=>{document.body.innerHTML='<div style="padding:80px;font-size:42px">Submitted — press Done on the takeover UI.</div>'}).catch(()=>{})});setTimeout(()=>i.focus(),50);</script></body></html>`;
 }
 function requestHeaders(req) {
     const headers = new Headers();
