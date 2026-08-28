@@ -334,7 +334,7 @@ class LinuxXTestPointerHelper {
   private readyReject!: (error: Error) => void;
   private readyTimer: NodeJS.Timeout;
   private pending: {
-    expected: "MOVE" | "DOWN" | "UP" | "CANCEL";
+    expected: "MOVE" | "DOWN" | "UP" | "CANCEL" | "KEYDOWN" | "KEYUP" | "CANCELKEY";
     resolve: () => void;
     reject: (error: Error) => void;
     timer: NodeJS.Timeout;
@@ -349,7 +349,7 @@ class LinuxXTestPointerHelper {
     this.readyTimer = setTimeout(() => {
       if (this.readyState !== "waiting") return;
       this.readyState = "failed";
-      this.readyReject(new Error("Linux XTEST pointer helper readiness timed out"));
+      this.readyReject(new Error("Linux XTEST input helper readiness timed out"));
       void this.close();
     }, XTEST_HELPER_ACK_TIMEOUT_MS);
     this.child = spawn(executable, [], {
@@ -357,8 +357,8 @@ class LinuxXTestPointerHelper {
       stdio: ["pipe", "pipe", "ignore"]
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.consume(chunk));
-    this.child.once("error", () => this.fail("Linux XTEST pointer helper failed"));
-    this.child.once("close", () => this.fail("Linux XTEST pointer helper closed"));
+    this.child.once("error", () => this.fail("Linux XTEST input helper failed"));
+    this.child.once("close", () => this.fail("Linux XTEST input helper closed"));
   }
 
   static async start(executable: string, display: string): Promise<LinuxXTestPointerHelper> {
@@ -383,14 +383,25 @@ class LinuxXTestPointerHelper {
     return this.command("CANCEL 1", "CANCEL");
   }
 
+  keyDown(key: "Backspace" | "Enter"): Promise<void> {
+    return this.command(`KEYDOWN ${key === "Backspace" ? "BACKSPACE" : "RETURN"}`, "KEYDOWN");
+  }
+
+  keyUp(key: "Backspace" | "Enter"): Promise<void> {
+    return this.command(`KEYUP ${key === "Backspace" ? "BACKSPACE" : "RETURN"}`, "KEYUP");
+  }
+
+  cancelKey(): Promise<void> {
+    return this.command("CANCELKEY", "CANCELKEY");
+  }
+
   async close(): Promise<void> {
     if (this.closing) return this.closing;
     this.closing = (async () => {
       clearTimeout(this.readyTimer);
       if (this.child.exitCode !== null || this.child.signalCode !== null) return;
-      // EOF is part of the helper protocol: if Button1 is armed, the helper performs its bounded
-      // cleanup move/release and XSync before exiting. This is also the fallback when an ACK path
-      // fails; never continue the same gesture through xdotool or a replacement helper.
+      // EOF is part of the helper protocol: if Button1 or one admitted special key is armed, the
+      // helper performs its bounded release and XSync before exiting. Never fall back to xdotool.
       this.child.stdin.end();
       const closed = once(this.child, "close").then(() => true, () => true);
       const ended = await Promise.race([
@@ -408,22 +419,25 @@ class LinuxXTestPointerHelper {
     return this.closing;
   }
 
-  private command(line: string, expected: "MOVE" | "DOWN" | "UP" | "CANCEL"): Promise<void> {
+  private command(
+    line: string,
+    expected: "MOVE" | "DOWN" | "UP" | "CANCEL" | "KEYDOWN" | "KEYUP" | "CANCELKEY"
+  ): Promise<void> {
     if (this.readyState !== "ready" || this.closing || this.child.exitCode !== null || this.child.signalCode !== null) {
-      return Promise.reject(new Error("Linux XTEST pointer helper is unavailable"));
+      return Promise.reject(new Error("Linux XTEST input helper is unavailable"));
     }
-    if (this.pending) return Promise.reject(new Error("Linux XTEST pointer helper is busy"));
-    if (!/^[A-Z0-9 -]{2,96}$/.test(line)) return Promise.reject(new Error("Linux XTEST pointer helper command is invalid"));
+    if (this.pending) return Promise.reject(new Error("Linux XTEST input helper is busy"));
+    if (!/^[A-Z0-9 -]{2,96}$/.test(line)) return Promise.reject(new Error("Linux XTEST input helper command is invalid"));
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (!this.pending || this.pending.expected !== expected) return;
         this.pending = undefined;
-        reject(new Error("Linux XTEST pointer helper acknowledgement timed out"));
+        reject(new Error("Linux XTEST input helper acknowledgement timed out"));
         void this.close();
       }, XTEST_HELPER_ACK_TIMEOUT_MS);
       this.pending = { expected, resolve, reject, timer };
       this.child.stdin.write(`${line}\n`, (error) => {
-        if (error) this.fail("Linux XTEST pointer helper write failed");
+        if (error) this.fail("Linux XTEST input helper write failed");
       });
     });
   }
@@ -431,7 +445,7 @@ class LinuxXTestPointerHelper {
   private consume(chunk: Buffer): void {
     this.output += chunk.toString("utf8");
     if (this.output.length > XTEST_HELPER_MAX_OUTPUT_BYTES) {
-      this.fail("Linux XTEST pointer helper output exceeded limit");
+      this.fail("Linux XTEST input helper output exceeded limit");
       void this.close();
       return;
     }
@@ -441,8 +455,8 @@ class LinuxXTestPointerHelper {
       const line = this.output.slice(0, newline).trim();
       this.output = this.output.slice(newline + 1);
       if (this.readyState === "waiting") {
-        if (line !== "READY 1") {
-          this.fail("Linux XTEST pointer helper protocol mismatch");
+        if (line !== "READY 2") {
+          this.fail("Linux XTEST input helper protocol mismatch");
           void this.close();
           return;
         }
@@ -453,7 +467,7 @@ class LinuxXTestPointerHelper {
       }
       const pending = this.pending;
       if (!pending) {
-        this.fail("Linux XTEST pointer helper emitted an unexpected response");
+        this.fail("Linux XTEST input helper emitted an unexpected response");
         void this.close();
         return;
       }
@@ -463,7 +477,7 @@ class LinuxXTestPointerHelper {
         pending.resolve();
         continue;
       }
-      pending.reject(new Error("Linux XTEST pointer helper rejected a command"));
+      pending.reject(new Error("Linux XTEST input helper rejected a command"));
       void this.close();
       return;
     }
@@ -666,7 +680,6 @@ function packagedLinuxXTestHelper(moduleUrl: string): string {
   return fileURLToPath(new URL("../native/mcp-handoff-linux-xtest-helper", moduleUrl));
 }
 
-
 export function parseOptionalTargetWindowId(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   if (!/^[1-9]\d*$/.test(value)) throw new Error("TAKEOVER_WEBRTC_TARGET_WINDOW_ID is invalid");
@@ -779,6 +792,7 @@ function parseHostInput(value: unknown): LinuxHostInput | { kind: "stop" } | { k
 class LinuxWindowInput {
   private primaryPressed = false;
   private primaryPoint: { x: number; y: number } | undefined;
+  private pressedKey: "Backspace" | "Enter" | undefined;
 
   constructor(
     private geometry: LinuxWindowGeometry,
@@ -855,13 +869,48 @@ class LinuxWindowInput {
       return;
     }
     if (input.kind === "key") {
-      const key = input.key === "Backspace" ? "BackSpace" : "Return";
-      await runCommand(this.xdotool, ["key", "--clearmodifiers", key], this.display);
+      await this.pressSpecialKey(input.key!);
       return;
     }
     await this.typeText(input.text!);
   }
 
+  private async pressSpecialKey(key: "Backspace" | "Enter"): Promise<void> {
+    if (this.pressedKey) throw new Error("Linux WebRTC special key is already pressed");
+    const expected = { ...this.geometry };
+    try {
+      await this.pointer.keyDown(key);
+      this.pressedKey = key;
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_key_down_sent\n");
+
+      // KEYUP is a second Human mutation. Revalidate the exact target after the X server ACK for
+      // KEYDOWN and before releasing it. If authority changed, cleanup releases only the key this
+      // helper owns; it never clears modifiers or unrelated local keyboard state.
+      const current = await this.currentOwnedGeometry();
+      if (
+        current.windowId !== expected.windowId
+        || current.x !== expected.x
+        || current.y !== expected.y
+        || current.width !== expected.width
+        || current.height !== expected.height
+      ) {
+        throw new Error("Linux WebRTC target geometry changed during special key press");
+      }
+      this.geometry = current;
+      await this.confirmActiveTarget();
+      await this.confirmInputFocusOwnedByTarget();
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_key_authority_ready\n");
+      await this.pointer.keyUp(key);
+      this.pressedKey = undefined;
+      process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_key_up_sent\n");
+    } catch (error) {
+      if (this.pressedKey) {
+        await this.pointer.cancelKey().catch(() => undefined);
+        this.pressedKey = undefined;
+      }
+      throw error;
+    }
+  }
 
   private async postPrimaryButton(state: "down" | "up", x: number, y: number): Promise<void> {
     if (state === "down") {
@@ -923,6 +972,10 @@ class LinuxWindowInput {
   }
 
   async releaseAll(): Promise<void> {
+    if (this.pressedKey) {
+      await this.pointer.cancelKey().catch(() => undefined);
+      this.pressedKey = undefined;
+    }
     if (!this.primaryPressed) return;
     // The helper was armed with a Node-computed safe cleanup point before DOWN. CANCEL performs
     // move-away + Button1 release + XSync on the same connection. Never fall back to xdotool.
@@ -935,7 +988,6 @@ class LinuxWindowInput {
     await this.releaseAll();
     await this.pointer.close();
   }
-
 
   private async confirmPostDownAuthority(expected: LinuxWindowGeometry): Promise<void> {
     const current = await this.currentOwnedGeometry();
@@ -1231,6 +1283,8 @@ export async function linuxWebRtcHostMain(): Promise<void> {
   let pointer: LinuxXTestPointerHelper;
   try {
     pointer = await LinuxXTestPointerHelper.start(xtestHelperExecutable, display);
+    // Keep the existing bounded diagnostic stage name for operator compatibility. The helper now
+    // owns pointer mutations plus the narrowly admitted Return/Backspace XTEST press/release pair.
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_ready\n");
   } catch (error) {
     process.stderr.write("MCP_HANDOFF_DIAGNOSTIC linux_stage=input_pointer_helper_failure\n");
@@ -1299,8 +1353,8 @@ export async function linuxWebRtcHostMain(): Promise<void> {
     if (stopPromise) return stopPromise;
     stopped = true;
     // Serialize lifecycle cleanup after every already-admitted Human mutation. If shutdown races
-    // an in-flight primary-down command, releasing outside the chain can observe primaryPressed
-    // before mousedown completes and leave the X11 button stuck after helper exit.
+    // an in-flight XTEST press, releasing outside the chain can observe stale helper-owned state
+    // and leave a Button1 or special key pressed after helper exit.
     clearInterval(accessibilityPoll);
     inputChain = inputChain
       .then(() => input.shutdown())
