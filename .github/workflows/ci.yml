@@ -23,6 +23,14 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm run check
       - run: npm run build
+      - name: Upload generated dist for synchronization
+        if: matrix.node == 24
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-node24
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
       - name: Verify committed dist is current
         if: matrix.node == 24
         run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
@@ -142,21 +150,9 @@ jobs:
         id: wss_acceptance
         continue-on-error: true
         run: npm run accept:websocket:cloud-run-container
-      - name: WSS XRecord arm failed
-        if: always()
-        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-xrecord-arm"
-      - name: WSS X11 delivery missing
-        if: always()
-        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-xrecord-delivery-missing"
-      - name: WSS DOM keydown missing after XRecord
-        if: always()
-        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-dom-keydown-missing-after-xrecord"
-      - name: WSS DOM keyup missing after XRecord
-        if: always()
-        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-dom-keyup-missing-after-xrecord"
-      - name: WSS submit event missing after XRecord
-        if: always()
-        run: test "$(cat /tmp/handoff-wss-stage 2>/dev/null || true)" != "submit-event-missing-after-xrecord"
+      - name: Report bounded WSS failure stage
+        if: always() && steps.wss_acceptance.outcome != 'success'
+        run: echo "::notice::WSS acceptance stage=$(cat /tmp/handoff-wss-stage 2>/dev/null || echo unavailable)"
       - name: Require WSS container acceptance
         if: always()
         run: test "${{ steps.wss_acceptance.outcome }}" = success
