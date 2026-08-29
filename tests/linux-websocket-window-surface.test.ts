@@ -190,6 +190,13 @@ done
   }
 });
 
+test("Linux WSS serializes frame and Human-input authority queries without weakening revalidation", async () => {
+  const source = readFileSync("src/browser-takeover/linux-websocket-window-surface.ts", "utf8");
+  assert.match(source, /#queryChain: Promise<void> = Promise\.resolve\(\)/);
+  assert.match(source, /this\.#queryChain = this\.#queryChain/);
+  assert.doesNotMatch(source, /authority helper is busy/);
+});
+
 test("Linux WSS capture failure classification fails closed only for exact authority boundaries", () => {
   const surface = new ExperimentalLinuxWebSocketWindowSurface({
     hostScript: process.execPath,

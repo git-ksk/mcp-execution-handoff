@@ -672,6 +672,7 @@ class LinuxWindowAuthorityHelper {
   #output = "";
   #ready = false;
   #pending: { resolve: (value: LinuxWindowAuthorityResult) => void; reject: (error: Error) => void; timer: NodeJS.Timeout } | undefined;
+  #queryChain: Promise<void> = Promise.resolve();
   #closing = false;
 
   private constructor(executable: string, target: Readonly<TakeoverHostTarget>, displayName: string) {
@@ -695,10 +696,25 @@ class LinuxWindowAuthorityHelper {
   }
 
   query(): Promise<LinuxWindowAuthorityResult> {
+    let resolveResult!: (value: LinuxWindowAuthorityResult) => void;
+    let rejectResult!: (error: Error) => void;
+    const result = new Promise<LinuxWindowAuthorityResult>((resolve, reject) => {
+      resolveResult = resolve;
+      rejectResult = reject;
+    });
+    this.#queryChain = this.#queryChain
+      .catch(() => undefined)
+      .then(async () => {
+        try { resolveResult(await this.#queryOnce()); }
+        catch (error) { rejectResult(error instanceof Error ? error : new Error("Linux WSS authority helper query failed")); }
+      });
+    return result;
+  }
+
+  #queryOnce(): Promise<LinuxWindowAuthorityResult> {
     if (!this.#ready || this.#closing || this.#child.exitCode !== null || this.#child.signalCode !== null) {
       return Promise.reject(new Error("Linux WSS authority helper is unavailable"));
     }
-    if (this.#pending) return Promise.reject(new Error("Linux WSS authority helper is busy"));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.#pending?.timer !== timer) return;
@@ -922,8 +938,10 @@ function failActive(active: ActiveLinuxSurface, message: string): void {
 async function stopActive(active: ActiveLinuxSurface): Promise<void> {
   try {
     if (active.child.exitCode === null && active.child.signalCode === null) {
-      try { active.child.stdin.write('{"kind":"stop"}\n'); } catch {}
-      active.child.stdin.end();
+      active.child.stdin.on("error", () => undefined);
+      if (!active.child.stdin.destroyed && !active.child.stdin.writableEnded) {
+        active.child.stdin.end('{"kind":"stop"}\n');
+      }
       const ended = await Promise.race([
         once(active.child, "close").then(() => true, () => true),
         new Promise<boolean>((resolve) => setTimeout(() => resolve(false), HELPER_STOP_TIMEOUT_MS))
