@@ -213,6 +213,38 @@ test("Generic Window WSS captures and inputs only through the exact trusted proc
   assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), false);
 });
 
+test("Generic Window WSS refreshes unchanged editable geometry before browser freshness expires", async (t) => {
+  const { handoff, surface } = fixture();
+  surface.editableRegionsSnapshot = () => [[1000, 2000, 3000, 1000]];
+  const locator = handoff.start({
+    intervention: { id: "window-editable-refresh", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: TARGET,
+    inputPolicy: POLICY
+  });
+  const sessionId = sessionIdFrom(locator);
+  const protocols = await bootstrapProtocols(handoff, sessionId);
+  const server = await startServer(handoff);
+  t.after(async () => closeServer(server));
+  const socket = new WebSocket(socketUrl(server, sessionId), protocols, { origin: ORIGIN });
+  assert.deepEqual(JSON.parse((await nextMessage(socket)).data.toString()), { kind: "ready" });
+
+  const observedAt: number[] = [];
+  const deadline = Date.now() + 1_500;
+  while (observedAt.length < 2 && Date.now() < deadline) {
+    const message = await nextMessage(socket);
+    if (message.isBinary) continue;
+    const control = JSON.parse(message.data.toString()) as { kind?: string; regions?: unknown };
+    if (control.kind !== "editableRegions") continue;
+    assert.deepEqual(control.regions, [[1000, 2000, 3000, 1000]]);
+    observedAt.push(Date.now());
+  }
+
+  assert.equal(observedAt.length, 2);
+  assert.ok(observedAt[1]! - observedAt[0]! < 1_000);
+  handoff.revoke("window-editable-refresh");
+});
+
 test("Generic Window WSS revokes the session when exact-window capture cannot be revalidated", async (t) => {
   const { handoff, calls, releases, diagnosticEvents } = fixture({ captureFails: true });
   const locator = handoff.start({

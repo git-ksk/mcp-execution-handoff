@@ -24,6 +24,8 @@ import type {
 
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 
+const EDITABLE_REGIONS_REFRESH_MS = 500;
+
 export interface ExperimentalWebSocketWindowSurface {
   /**
    * Capture only the supplied exact process/window boundary. Implementations must fail closed when
@@ -85,6 +87,7 @@ interface ActiveWindowSession {
   readonly timer: NodeJS.Timeout;
   captureInFlight: boolean;
   editableRegionsFingerprint: string;
+  editableRegionsLastSentAt: number;
 }
 
 /**
@@ -209,7 +212,8 @@ export class ExperimentalWebSocketWindowHandoff {
       inputPolicy,
       timer,
       captureInFlight: false,
-      editableRegionsFingerprint: ""
+      editableRegionsFingerprint: "",
+      editableRegionsLastSentAt: 0
     };
     this.#sessionsByIntervention.set(state.interventionId, state);
     this.#sessionsById.set(state.sessionId, state);
@@ -272,12 +276,18 @@ export class ExperimentalWebSocketWindowHandoff {
     if (this.#sessionsById.get(state.sessionId) !== state) return;
     const editableRegions = this.#surface.editableRegionsSnapshot?.() ?? [];
     const editableFingerprint = editableRegions.map((region) => region.join(",")).join(";");
-    if (editableFingerprint !== state.editableRegionsFingerprint) {
-      state.editableRegionsFingerprint = editableFingerprint;
+    const now = Date.now();
+    const editableRegionsChanged = editableFingerprint !== state.editableRegionsFingerprint;
+    const editableRegionsRefreshDue = editableRegions.length > 0
+      && state.editableRegionsLastSentAt > 0
+      && now - state.editableRegionsLastSentAt >= EDITABLE_REGIONS_REFRESH_MS;
+    if (editableRegionsChanged || editableRegionsRefreshDue) {
       try {
         await this.#binding.pushControl(state.sessionId, { kind: "editableRegions", regions: editableRegions });
+        state.editableRegionsFingerprint = editableFingerprint;
+        state.editableRegionsLastSentAt = now;
       } catch {
-        // The channel owns transport failure handling; metadata never changes authority semantics.
+        // Retry on the next frame; stale editable geometry must not be extended after a failed send.
       }
     }
     try {
