@@ -25,6 +25,9 @@ export class WindowHandoffAdapter {
                     takeover: config.takeover,
                     runtime: config.runtime,
                     managedFallback: config.managedFallback,
+                    ...(config.onManagedOperatorDiagnosticEvent
+                        ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
+                        : {}),
                     mediaProfile: "window_text",
                     ...(config.successorWindowPolicy ? { successorWindowPolicy: config.successorWindowPolicy } : {}),
                     ...(config.initialSecureWindowPolicy ? { initialSecureWindowPolicy: config.initialSecureWindowPolicy } : {}),

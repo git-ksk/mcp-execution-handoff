@@ -205,7 +205,7 @@ managed snapshotに入るのはboundedなcontrol-plane factだけです。curren
 
 `parseManagedOperatorDiagnosticsSnapshot()` はclosed-worldです。unknown field、free-form reason、上限超過counter、unknown enumはrejectします。credential、MFA/OTP/passkey、cookie/token/capability、Human input text、framebuffer/browser content、PID/window identity、principal/intervention/session identity、IP/ICE/SDP/TURN credential、account identity、timestamp、arbitrary messageを格納するfieldはありません。diagnostics eventはprocess-memory evidenceに限定し、authorityの復元・拡張には使いません。exact-window ownership / visibility / geometry / target lossは引き続きfail-closeで、failed Human inputをdiagnostics経由でreplayすることもありません。
 
-physical acceptanceでは同じsnapshotを takeover開始前、managed fallback後、failure直後、completion後の4点で取得します。`Session unavailable` という症状だけからinput recoveryを推定せず、failure snapshotを修正判断の根拠にします。
+physical acceptanceでは同じsnapshotを takeover開始前、managed fallback後、failure直後、completion後の4点で取得します。`Session unavailable` という症状だけからinput recoveryを推定せず、failure snapshotを修正判断の根拠にします。 productionへの自動exportが必要なconsumerは `onManagedOperatorDiagnosticEvent` を指定できます。callbackが受け取るのは同じbounded `{ kind }` eventだけで、callback exceptionはcontainされるobserve-only contractです。authorityのgrant / revoke / restore / widenには影響しません。consumerはこの通知をtriggerに `managedOperatorDiagnosticsSnapshot()` を読み、strict snapshotだけをoperator log / telemetryへexportできます。
 
 ### Privacy / boundedness / compatibility
 

@@ -8,7 +8,7 @@ import { type WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import { LinuxWebSocketWindowSurface, WebSocketBrowserHandoff } from "./websocket-relay.js";
 import type { BrowserHandoffTransportAttempt } from "./transport-fallback-policy.js";
-import { type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
+import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 export interface BrowserHandoffManagedFallbackConfig {
     /** Built Handoff Linux exact-window host script used by the managed Cloud/container fallback. */
     linuxHostScript: string;
@@ -24,6 +24,8 @@ export interface ManagedWindowHandoffRuntimeConfig {
     mediaProfile?: "window_text";
     successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
     initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;
+    /** Observe-only bounded managed diagnostic events. Callback failures are contained. */
+    onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
 /**

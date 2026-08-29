@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
-import { type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
+import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "./broker.js";
@@ -13,6 +13,8 @@ export interface BrowserHandoffAdapterConfig {
     runtime: SpawnedWebRtcRuntimeProviderConfig;
     /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
     managedFallback?: BrowserHandoffManagedFallbackConfig;
+    /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
+    onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }

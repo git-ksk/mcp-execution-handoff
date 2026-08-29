@@ -155,11 +155,20 @@ export function parseManagedOperatorDiagnosticsSnapshot(value) {
 }
 export class ManagedOperatorDiagnosticEvents {
     #events = [];
+    #observer;
+    constructor(observer) {
+        this.#observer = observer;
+    }
     record(kind) {
-        this.#events.push({ kind });
+        const event = { kind };
+        this.#events.push(event);
         if (this.#events.length > MANAGED_OPERATOR_DIAGNOSTIC_EVENT_LIMIT) {
             this.#events.splice(0, this.#events.length - MANAGED_OPERATOR_DIAGNOSTIC_EVENT_LIMIT);
         }
+        try {
+            this.#observer?.({ ...event });
+        }
+        catch { /* diagnostics are observe-only */ }
     }
     snapshot() { return this.#events.map((event) => ({ ...event })); }
 }
