@@ -6,6 +6,8 @@ import test from "node:test";
 import { MacOSWebSocketWindowSurface } from "../src/browser-takeover/macos-websocket-window-surface.js";
 import { WindowWebSocketHandoffAdapter } from "../src/window-takeover/window-websocket-handoff-adapter.js";
 
+const macOSExecutionTest = process.platform === "darwin" ? test : test.skip;
+
 function fakeHost(authorityLoss = false) {
   const dir = mkdtempSync(join(tmpdir(), "handoff-macos-wss-"));
   const executable = join(dir, "fake-host");
@@ -16,7 +18,7 @@ function fakeHost(authorityLoss = false) {
   return { dir, executable, stateFile, inputsFile, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-test("macOS WSS exact-window surface is JPEG-only without ICE STUN or TURN", async () => {
+macOSExecutionTest("macOS WSS exact-window surface is JPEG-only without ICE STUN or TURN", async () => {
   const host = fakeHost();
   const surface = new MacOSWebSocketWindowSurface({ hostExecutable: host.executable, helperTtlMs: 30_000 });
   try {
@@ -44,7 +46,7 @@ test("macOS WSS exact-window surface is JPEG-only without ICE STUN or TURN", asy
   }
 });
 
-test("macOS LocalAuthentication WSS is PID-only and rejects scroll or Enter locally", async () => {
+macOSExecutionTest("macOS LocalAuthentication WSS is PID-only and rejects scroll or Enter locally", async () => {
   const host = fakeHost();
   const surface = new MacOSWebSocketWindowSurface({
     hostExecutable: host.executable,
@@ -69,7 +71,7 @@ test("macOS LocalAuthentication WSS is PID-only and rejects scroll or Enter loca
   }
 });
 
-test("macOS WSS classifies exact-window disappearance as authority loss", async () => {
+macOSExecutionTest("macOS WSS classifies exact-window disappearance as authority loss", async () => {
   const host = fakeHost(true);
   const surface = new MacOSWebSocketWindowSurface({ hostExecutable: host.executable, helperTtlMs: 30_000 });
   try {
