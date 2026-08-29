@@ -146,7 +146,8 @@ test("native macOS text acceptance verifies focus and resulting AppKit content",
   );
   assert.match(fixture, /NSTextView/);
   assert.match(fixture, /window\.firstResponder === textView/);
-  assert.match(fixture, /textView\.accessibilityFrame\(\)/);
+  assert.match(fixture, /scrollView\.accessibilityFrame\(\)/);
+  assert.doesNotMatch(fixture, /let textFrame = textView\.accessibilityFrame\(\)/);
   assert.match(acceptance, /initial\.tapX/);
   assert.match(acceptance, /initial\.tapY/);
   assert.match(acceptance, /kind: "tap"/);

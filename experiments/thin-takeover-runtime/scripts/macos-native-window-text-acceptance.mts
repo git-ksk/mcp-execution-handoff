@@ -97,7 +97,7 @@ try {
     return initial !== undefined;
   }, 5_000, "fixture state");
   assert(initial);
-  assert.equal(initial.text, "AUTO_BASELINE\n");
+  assert.equal(initial.text.startsWith("AUTO_BASELINE\n"), true);
   assert.equal(initial.focused, false, "fixture must require the Human tap to establish focus");
 
   provider = new SpawnedWebRtcRuntimeProvider({ hostExecutable: helper });

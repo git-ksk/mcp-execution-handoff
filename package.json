@@ -51,7 +51,7 @@
     "accept:window:macos-media-quality": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-window-media-quality-acceptance.mts",
     "accept:window:macos-local-auth": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-local-auth-window-acceptance.mts",
     "build:linux-window-authority-helper": "sh scripts/build-linux-window-authority-helper.sh",
-    "accept:window:macos-wss": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-wss-window-acceptance.mts",
+    "accept:window:macos-wss": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-macos-text-input-fixture && tsx experiments/thin-takeover-runtime/scripts/macos-wss-window-acceptance.mts",
     "accept:window:macos-local-auth-wss": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-local-auth-wss-acceptance.mts"
   },
   "dependencies": {

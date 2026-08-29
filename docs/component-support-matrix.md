@@ -130,4 +130,6 @@ npm run accept:window:macos-wss
 npm run accept:window:macos-local-auth-wss
 ```
 
-They intentionally construct the WSS-only Window component and no WebRTC/ICE/STUN/TURN runtime.
+They intentionally construct the WSS-only Window component and no WebRTC/ICE/STUN/TURN runtime. The ordinary command is consumer-independent: it builds and launches a harmless AppKit scroll/text fixture, discovers its exact PID/window id from a local state file, and creates a temporary Cloudflare quick tunnel when `HANDOFF_WSS_PUBLIC_BASE_URL` is not supplied. The acceptance server itself listens only on loopback, while the Human locator uses one exact HTTPS/WSS origin. Its local verifier checks only the fixed harmless marker `WSS_ACCEPT_OK`; framebuffer and Human-input payloads remain outside diagnostics.
+
+The LocalAuthentication command shares the same loopback + exact-HTTPS ingress helper but deliberately does **not** create the secure prompt. A benign already-displayed Apple LocalAuthentication prompt remains the platform precondition, because prompt generation/authorization semantics are outside the transport component.

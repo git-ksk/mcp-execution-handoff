@@ -16,6 +16,7 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
     private let stateURL: URL
     private var window: NSWindow?
     private var textView: NSTextView?
+    private var scrollView: NSScrollView?
     private var timer: Timer?
 
     init(statePath: String) {
@@ -42,7 +43,7 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = false
-        textView.string = "AUTO_BASELINE\n"
+        textView.string = "AUTO_BASELINE\n" + (1...40).map { "SCROLL_BASELINE_\($0)\n" }.joined()
         textView.delegate = self
         scroll.documentView = textView
 
@@ -53,6 +54,7 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
 
         self.window = window
         self.textView = textView
+        self.scrollView = scroll
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         _ = window.makeFirstResponder(focusSink)
@@ -81,11 +83,15 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
     }
 
     private func persistState() {
-        guard let window, let textView else { return }
+        guard let window, let textView, let scrollView else { return }
         let windowFrame = window.accessibilityFrame()
-        let textFrame = textView.accessibilityFrame()
-        let tapX = windowFrame.width > 0 ? (textFrame.midX - windowFrame.minX) / windowFrame.width : -1
-        let tapY = windowFrame.height > 0 ? (textFrame.midY - windowFrame.minY) / windowFrame.height : -1
+        // Use the visible scroll container rather than the document view's potentially much taller
+        // accessibility frame. This keeps the physical-Human tap hint stable as fixture content grows.
+        let visibleTextFrame = scrollView.accessibilityFrame()
+        let tapX = windowFrame.width > 0
+            ? (visibleTextFrame.midX - windowFrame.minX) / windowFrame.width : -1
+        let tapY = windowFrame.height > 0
+            ? (visibleTextFrame.midY - windowFrame.minY) / windowFrame.height : -1
         let state = FixtureState(
             pid: getpid(),
             windowId: window.windowNumber,

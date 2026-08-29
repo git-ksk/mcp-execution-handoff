@@ -1,21 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WindowWebSocketHandoffAdapter } from "../../../src/window-takeover/window-websocket-handoff-adapter.ts";
+import { resolveWssAcceptanceIngress, stopWssAcceptanceTunnel } from "./wss-public-ingress.mts";
 
-function defaultLanHost(): string {
-  for (const entries of Object.values(os.networkInterfaces())) {
-    for (const entry of entries ?? []) {
-      if (entry.family !== "IPv4" || entry.internal) continue;
-      if (/^10\./.test(entry.address) || /^192\.168\./.test(entry.address)
-        || /^172\.(1[6-9]|2\d|3[01])\./.test(entry.address)) return entry.address;
-    }
-  }
-  throw new Error("No private IPv4 LAN address found; set HANDOFF_LAN_HOST explicitly");
-}
 
 function localAuthenticationPid(): number {
   const override = process.env.HANDOFF_LOCAL_AUTH_PID;
@@ -30,34 +20,50 @@ function localAuthenticationPid(): number {
   return pids[0];
 }
 
-const LAN_HOST = process.env.HANDOFF_LAN_HOST || defaultLanHost();
 const PORT = Number(process.env.HANDOFF_LOCAL_AUTH_PORT || "8894");
 if (!Number.isSafeInteger(PORT) || PORT < 1024 || PORT > 65535) throw new Error("invalid acceptance port");
-const PUBLIC_ORIGIN = process.env.HANDOFF_WSS_PUBLIC_BASE_URL || `http://${LAN_HOST}:${PORT}`;
-const ALLOWED_ORIGIN = new URL(PUBLIC_ORIGIN).origin;
 const HOST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.build/release/takeover-webrtc-host");
 const PRINCIPAL = "macos-local-auth-physical-acceptance";
 const TARGET_PID = localAuthenticationPid();
-if (process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID || process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN) {
-  throw new Error("Refusing LocalAuthentication LAN acceptance while TURN credentials are present");
+const RELAY_ENV = [
+  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
+  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
+  "MCP_HANDOFF_COTURN_SHARED_SECRET",
+  "MCP_HANDOFF_COTURN_TURN_URLS",
+  "MCP_HANDOFF_COTURN_STUN_URLS"
+] as const;
+if (RELAY_ENV.some((name) => Boolean(process.env[name]))) {
+  throw new Error("Refusing LocalAuthentication WSS-only acceptance while relay configuration is present");
 }
 
-const handoff = new WindowWebSocketHandoffAdapter({
-  takeover: { enabled: true, publicBaseUrl: PUBLIC_ORIGIN, ttlMs: 300_000, reconnectIdleMs: 2_000 },
-  allowedOrigins: [ALLOWED_ORIGIN],
-  host: {
-    platform: "macos",
-    hostExecutable: HOST,
-    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
-  }
-});
-const interventionId = `local-auth-${randomBytes(6).toString("hex")}`;
-const locator = handoff.start({
-  intervention: { id: interventionId, epoch: 1 },
-  principalBinding: PRINCIPAL,
-  target: { processId: TARGET_PID },
-  inputPolicy: { tap: true, scroll: false, text: true, key: true }
-});
+const ingress = await resolveWssAcceptanceIngress(PORT);
+const PUBLIC_ORIGIN = ingress.publicOrigin;
+const ALLOWED_ORIGIN = PUBLIC_ORIGIN;
+
+let handoff: WindowWebSocketHandoffAdapter;
+let interventionId: string;
+let locator: string;
+try {
+  handoff = new WindowWebSocketHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: PUBLIC_ORIGIN, ttlMs: 300_000, reconnectIdleMs: 2_000 },
+    allowedOrigins: [ALLOWED_ORIGIN],
+    host: {
+      platform: "macos",
+      hostExecutable: HOST,
+      initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+    }
+  });
+  interventionId = `local-auth-${randomBytes(6).toString("hex")}`;
+  locator = handoff.start({
+    intervention: { id: interventionId, epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: TARGET_PID },
+    inputPolicy: { tap: true, scroll: false, text: true, key: true }
+  });
+} catch (error) {
+  await stopWssAcceptanceTunnel(ingress.tunnelProcess);
+  throw error;
+}
 
 function localOnly(req: import("node:http").IncomingMessage): boolean {
   const address = req.socket.remoteAddress || "";
@@ -73,7 +79,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/__diag") {
       if (!localOnly(req)) { res.writeHead(404, { "cache-control": "no-store" }); res.end("Not Found"); return; }
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-      res.end(JSON.stringify({ diagnostics: handoff.diagnosticsSnapshot(), latency: handoff.latencySnapshot() }));
+      res.end(JSON.stringify({ diagnostics: handoff.diagnosticsSnapshot() }));
       return;
     }
     if (url.pathname === "/__verified_complete") {
@@ -110,10 +116,17 @@ const server = createServer(async (req, res) => {
     res.end("Internal Error");
   }
 });
-await new Promise<void>((resolve, reject) => {
-  server.once("error", reject);
-  server.listen(PORT, "0.0.0.0", resolve);
-});
+try {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(PORT, "127.0.0.1", resolve);
+  });
+} catch (error) {
+  handoff.revoke(interventionId);
+  await handoff.close().catch(() => undefined);
+  await stopWssAcceptanceTunnel(ingress.tunnelProcess);
+  throw error;
+}
 
 console.log(`LocalAuthentication Window WSS-only acceptance ready: target_pid=${TARGET_PID}`);
 console.log(`Transport proof: explicit WSS-only adapter; no WebRTC runtime, ICE, STUN, or TURN is constructed`);
@@ -130,6 +143,7 @@ async function shutdown() {
   handoff.revoke(interventionId);
   await handoff.close().catch(() => undefined);
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  await stopWssAcceptanceTunnel(ingress.tunnelProcess);
 }
 process.on("SIGTERM", () => { void shutdown().finally(() => process.exit(0)); });
 process.on("SIGINT", () => { void shutdown().finally(() => process.exit(0)); });
