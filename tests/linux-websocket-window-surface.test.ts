@@ -21,12 +21,17 @@ test("Linux WSS surface parser accepts bounded JPEG and editable-focus helper re
   const jpeg = Buffer.from([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]);
   const record = jpegFrameRecord(jpeg, 640, 480);
   const frames: Array<{ data: Buffer; width: number; height: number }> = [];
-  const parser = new LinuxWebSocketHostRecordParser((frame) => frames.push(frame));
+  const focus: boolean[] = [];
+  const parser = new LinuxWebSocketHostRecordParser(
+    (frame) => frames.push(frame),
+    (editable) => focus.push(editable)
+  );
   parser.push(editableFocusRecord(true));
   parser.push(record.subarray(0, 3));
   parser.push(record.subarray(3, 11));
   parser.push(record.subarray(11));
   parser.push(editableFocusRecord(false));
+  assert.deepEqual(focus, [true, false]);
   assert.equal(frames.length, 1);
   assert.equal(frames[0]!.width, 640);
   assert.equal(frames[0]!.height, 480);

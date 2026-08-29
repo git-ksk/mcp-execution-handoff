@@ -166,6 +166,36 @@ test("WSS ingress authenticates a Handoff ticket before exposing trusted binding
   }
 });
 
+test("WSS ingress forwards only bounded client keyboard diagnostics to the operator observer", async () => {
+  const { locator, authority } = makeSession();
+  const ticket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
+  const diagnosticEvents: string[] = [];
+  const { server, inputs, connect } = await startIngress(ticket, authority, false, diagnosticEvents);
+  try {
+    const socket = connect();
+    await openAndFirstMessage(socket);
+    socket.send(JSON.stringify({
+      kind: "diagnostic",
+      event: "client_tap_editable_not_predicted"
+    }));
+    socket.send(JSON.stringify({
+      kind: "diagnostic",
+      event: "client_keyboard_focus_inactive"
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(inputs, []);
+    assert.deepEqual(diagnosticEvents, [
+      "wss_open",
+      "client_tap_editable_not_predicted",
+      "client_keyboard_focus_inactive"
+    ]);
+    socket.close();
+    await onceClose(socket);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("WSS ingress rejects missing or disallowed Origin before claim", async () => {
   const { locator, authority, sessions } = makeSession();
   const ticket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);

@@ -110,6 +110,24 @@ function parseHumanMessage(raw, maxInboundBytes, inputPolicy) {
                 throw new WebSocketTakeoverError("invalid_message", "Key input is out of bounds");
             }
             return { kind: "key", key: record.key };
+        case "diagnostic": {
+            if (!hasOnlyKeys(record, ["kind", "event"])) {
+                throw new WebSocketTakeoverError("invalid_message", "Diagnostic message has extra fields");
+            }
+            const events = new Set([
+                "client_editable_regions_available",
+                "client_editable_regions_empty",
+                "client_tap_editable_predicted",
+                "client_tap_editable_not_predicted",
+                "client_keyboard_focus_requested",
+                "client_keyboard_focus_active",
+                "client_keyboard_focus_inactive"
+            ]);
+            if (!events.has(record.event)) {
+                throw new WebSocketTakeoverError("invalid_message", "Diagnostic event is invalid");
+            }
+            return { kind: "diagnostic", event: record.event };
+        }
         case "done":
             if (!hasOnlyKeys(record, ["kind"])) {
                 throw new WebSocketTakeoverError("invalid_message", "Done message has extra fields");
@@ -136,6 +154,7 @@ export class ExperimentalWebSocketTakeoverChannel {
     peer;
     lease;
     onInput;
+    onClientDiagnostic;
     maxInboundBytes;
     maxFrameBytes;
     maxBufferedBytes;
@@ -157,6 +176,7 @@ export class ExperimentalWebSocketTakeoverChannel {
         this.peer = options.peer;
         this.lease = options.lease;
         this.onInput = options.onInput;
+        this.onClientDiagnostic = options.onClientDiagnostic;
         this.maxInboundBytes = boundedLimit(options.maxInboundBytes, DEFAULT_MAX_INBOUND_BYTES, ABSOLUTE_MAX_INBOUND_BYTES, "maxInboundBytes");
         this.maxFrameBytes = boundedLimit(options.maxFrameBytes, DEFAULT_MAX_FRAME_BYTES, ABSOLUTE_MAX_FRAME_BYTES, "maxFrameBytes");
         this.maxBufferedBytes = boundedLimit(options.maxBufferedBytes, DEFAULT_MAX_BUFFERED_BYTES, ABSOLUTE_MAX_BUFFERED_BYTES, "maxBufferedBytes");
@@ -191,6 +211,13 @@ export class ExperimentalWebSocketTakeoverChannel {
             catch (error) {
                 await this.failClosed(error);
                 throw error;
+            }
+            if (message.kind === "diagnostic") {
+                try {
+                    this.onClientDiagnostic?.(message.event);
+                }
+                catch { /* diagnostics are observe-only */ }
+                return;
             }
             if (message.kind === "ping") {
                 await this.runBoundUse(async () => {

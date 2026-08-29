@@ -31,6 +31,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
   const frames: number[] = [];
   const closes: Array<{ code: number; reason: string }> = [];
   const inputs: object[] = [];
+  const diagnostics: string[] = [];
   const calls = { begin: 0, end: 0, complete: 0, release: 0 };
   let buffered = 0;
   let frameGate: ReturnType<typeof deferred> | undefined;
@@ -89,6 +90,9 @@ function createHarness(overrides: HarnessOverrides = {}) {
     onInput(input) {
       inputs.push(input);
       if (overrides.failInput) throw new Error("input failed");
+    },
+    onClientDiagnostic(kind) {
+      diagnostics.push(kind);
     }
   });
 
@@ -98,6 +102,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
     frames,
     closes,
     inputs,
+    diagnostics,
     calls,
     setBuffered(value: number) {
       buffered = value;
@@ -142,6 +147,43 @@ test("WebSocket takeover bounds input with explicit policy", async () => {
   assert.equal(h.channel.state, "failed");
   assert.equal(h.calls.release, 1);
   assert.deepEqual(h.closes.at(-1), { code: 1008, reason: "input_not_allowed" });
+});
+
+
+test("WebSocket client diagnostics are finite, content-free, and authority-neutral", async () => {
+  const h = createHarness();
+  await h.channel.start();
+  const beginBefore = h.calls.begin;
+  const endBefore = h.calls.end;
+
+  await h.channel.receiveText(JSON.stringify({
+    kind: "diagnostic",
+    event: "client_tap_editable_not_predicted"
+  }));
+  await h.channel.receiveText(JSON.stringify({
+    kind: "diagnostic",
+    event: "client_keyboard_focus_inactive"
+  }));
+
+  assert.deepEqual(h.diagnostics, [
+    "client_tap_editable_not_predicted",
+    "client_keyboard_focus_inactive"
+  ]);
+  assert.deepEqual(h.inputs, []);
+  assert.equal(h.calls.begin, beginBefore);
+  assert.equal(h.calls.end, endBefore);
+  assert.equal(h.channel.state, "open");
+
+  const invalid = createHarness();
+  await assert.rejects(
+    invalid.channel.receiveText(JSON.stringify({
+      kind: "diagnostic",
+      event: "client_keyboard_focus_active",
+      text: "forbidden"
+    })),
+    (error) => error instanceof WebSocketTakeoverError && error.code === "invalid_message"
+  );
+  assert.deepEqual(invalid.diagnostics, []);
 });
 
 test("WebSocket input diagnostics distinguish authority, dispatch, and applied stages", async () => {

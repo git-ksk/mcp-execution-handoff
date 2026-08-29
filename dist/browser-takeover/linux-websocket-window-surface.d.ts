@@ -31,7 +31,8 @@ export interface LinuxWebSocketJpegFrame {
 export declare class LinuxWebSocketHostRecordParser {
     #private;
     private readonly onFrame;
-    constructor(onFrame: (frame: LinuxWebSocketJpegFrame) => void);
+    private readonly onEditableFocus;
+    constructor(onFrame: (frame: LinuxWebSocketJpegFrame) => void, onEditableFocus?: (editable: boolean) => void);
     push(chunk: Buffer): void;
 }
 /**

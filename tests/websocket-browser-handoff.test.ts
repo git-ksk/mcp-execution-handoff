@@ -77,7 +77,15 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /applyEditableRegions/);
   assert.match(html, /pointIsEditable/);
   assert.match(html, /editable:pointIsEditable\(point\)/);
-  assert.match(html, /active\.editable\|\|keyboardMode\)focusKeyboard\(\)/);
+  assert.match(html, /active\.editable\|\|keyboardMode/);
+  assert.match(html, /client_tap_editable_predicted/);
+  assert.match(html, /client_tap_editable_not_predicted/);
+  assert.match(html, /client_keyboard_focus_requested/);
+  assert.match(html, /client_keyboard_focus_active/);
+  assert.match(html, /client_keyboard_focus_inactive/);
+  assert.match(html, /client_editable_regions_available/);
+  assert.match(html, /document\.activeElement===keyboard/);
+  assert.doesNotMatch(html, /diagnostic\([^)]*(?:text|value|processId|windowId)/);
   assert.match(html, /setKeyboardMode\(!keyboardMode\)/);
   assert.match(html, /send\(\{kind:'done'\}\)/);
   assert.match(html, /Done\. Return for verification\./);

@@ -32,6 +32,8 @@ export type WebSocketTakeoverHumanInput = {
     kind: "key";
     key: string;
 };
+/** Content-free browser-side milestones used only for bounded physical-acceptance diagnostics. */
+export type WebSocketTakeoverClientDiagnosticKind = "client_editable_regions_available" | "client_editable_regions_empty" | "client_tap_editable_predicted" | "client_tap_editable_not_predicted" | "client_keyboard_focus_requested" | "client_keyboard_focus_active" | "client_keyboard_focus_inactive";
 export type WebSocketTakeoverEditableRegion = [number, number, number, number];
 export interface WebSocketTakeoverFrame {
     data: Uint8Array;
@@ -73,6 +75,8 @@ export interface ExperimentalWebSocketTakeoverOptions {
     peer: WebSocketTakeoverPeer;
     lease: WebSocketTakeoverLease;
     onInput(input: WebSocketTakeoverHumanInput): void | Promise<void>;
+    /** Observe-only finite enum. It never carries coordinates, text, identity, or browser content. */
+    onClientDiagnostic?(kind: WebSocketTakeoverClientDiagnosticKind): void;
     maxInboundBytes?: number;
     maxFrameBytes?: number;
     maxBufferedBytes?: number;
@@ -88,6 +92,7 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private readonly peer;
     private readonly lease;
     private readonly onInput;
+    private readonly onClientDiagnostic;
     private readonly maxInboundBytes;
     private readonly maxFrameBytes;
     private readonly maxBufferedBytes;

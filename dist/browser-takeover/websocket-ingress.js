@@ -273,6 +273,7 @@ export class ExperimentalWebSocketTakeoverIngress {
                         peer,
                         lease: accepted.lease,
                         onInput: (input) => this.options.onInput(accepted.binding, input),
+                        onClientDiagnostic: (kind) => this.options.onDiagnosticEvent?.(kind),
                         maxInboundBytes: this.#maxInboundBytes
                     });
                     const previous = this.#active.get(parsed.sessionId);

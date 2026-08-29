@@ -189,7 +189,10 @@ export interface LinuxWebSocketJpegFrame {
 export class LinuxWebSocketHostRecordParser {
   #pending = Buffer.alloc(0);
 
-  constructor(private readonly onFrame: (frame: LinuxWebSocketJpegFrame) => void) {}
+  constructor(
+    private readonly onFrame: (frame: LinuxWebSocketJpegFrame) => void,
+    private readonly onEditableFocus: (editable: boolean) => void = () => undefined
+  ) {}
 
   push(chunk: Buffer): void {
     if (chunk.byteLength === 0) return;
@@ -211,6 +214,7 @@ export class LinuxWebSocketHostRecordParser {
         if (payload[0] !== 0 && payload[0] !== 1) {
           throw new Error("Linux WSS host emitted an invalid editable-focus record");
         }
+        this.onEditableFocus(payload[0] === 1);
         continue;
       }
       if (length < 8) throw new Error("Linux WSS host emitted an invalid record");
@@ -275,6 +279,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   #failure: LinuxWebSocketSurfaceFailure = "none";
   #framesObserved = 0;
   #editableRegions: WebSocketTakeoverEditableRegion[] = [];
+  #editableRegionPresence: "unknown" | "available" | "empty" = "unknown";
   #lastInputStage: LinuxWebSocketInputStage = "none";
   #lastInputBoundaryStage: LinuxWebSocketInputBoundaryStage = "none";
   #failureInputStage: LinuxWebSocketInputStage = "none";
@@ -549,18 +554,22 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       inputChain: Promise.resolve(),
       authority
     };
-    const parser = new LinuxWebSocketHostRecordParser((frame) => {
-      if (state.failed) return;
-      state.latest = frame;
-      state.sequence += 1;
-      this.#framesObserved += 1;
-      const ready = state.frameWaiters.filter((waiter) => state.sequence > waiter.afterSequence);
-      state.frameWaiters = state.frameWaiters.filter((waiter) => state.sequence <= waiter.afterSequence);
-      for (const waiter of ready) {
-        clearTimeout(waiter.timer);
-        waiter.resolve(frame);
-      }
-    });
+    this.#editableRegionPresence = "unknown";
+    const parser = new LinuxWebSocketHostRecordParser(
+      (frame) => {
+        if (state.failed) return;
+        state.latest = frame;
+        state.sequence += 1;
+        this.#framesObserved += 1;
+        const ready = state.frameWaiters.filter((waiter) => state.sequence > waiter.afterSequence);
+        state.frameWaiters = state.frameWaiters.filter((waiter) => state.sequence <= waiter.afterSequence);
+        for (const waiter of ready) {
+          clearTimeout(waiter.timer);
+          waiter.resolve(frame);
+        }
+      },
+      (editable) => this.#onDiagnosticEvent?.(editable ? "host_focus_editable" : "host_focus_not_editable")
+    );
     child.stdout.on("data", (chunk: Buffer) => {
       try { parser.push(chunk); } catch {
         this.#recordFailure("frame_protocol");
@@ -570,7 +579,16 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     child.stderr.on("data", (chunk: Buffer) => consumeDiagnostics(
       state,
       chunk,
-      (regions) => { this.#editableRegions = regions; },
+      (regions) => {
+        this.#editableRegions = regions;
+        const presence = regions.length > 0 ? "available" : "empty";
+        if (presence !== this.#editableRegionPresence) {
+          this.#editableRegionPresence = presence;
+          this.#onDiagnosticEvent?.(
+            presence === "available" ? "host_editable_regions_available" : "host_editable_regions_empty"
+          );
+        }
+      },
       (stage) => {
       const category = captureFailureCategory(stage);
       if (category) this.#recordFailure(category);
