@@ -3,6 +3,7 @@ import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagn
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import {
   TakeoverBroker,
+  type TakeoverAuthorityReleaseEvent,
   type TakeoverBrokerConfig,
   type TakeoverBrowserAdapter,
   type TakeoverCompletionEvent,
@@ -32,6 +33,7 @@ export interface WindowHandoffCoreConfig {
   successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
   initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+  onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 
 export interface WindowHandoffCoreStartRequest {
@@ -104,7 +106,14 @@ export class WindowHandoffCore {
       config.takeover,
       undefined,
       this.#runtime,
-      config.onComplete ? { completed: config.onComplete } : {}
+      config.onComplete || config.onAuthorityReleased
+        ? {
+            completed: async (event) => {
+              await config.onAuthorityReleased?.({ ...event, disposition: "completed", reason: "human_completed" });
+              await config.onComplete?.(event);
+            }
+          }
+        : {}
     );
   }
 

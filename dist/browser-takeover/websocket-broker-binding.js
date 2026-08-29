@@ -96,6 +96,9 @@ export class ExperimentalWebSocketBrokerBinding {
     pushFrame(sessionId, frame) {
         return this.#ingress.pushFrame(sessionId, frame);
     }
+    pushControl(sessionId, message) {
+        return this.#ingress.pushControl(sessionId, message);
+    }
     revoke(sessionId) {
         this.#port.revokeSession(sessionId);
     }

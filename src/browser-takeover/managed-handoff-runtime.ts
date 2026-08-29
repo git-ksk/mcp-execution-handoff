@@ -10,6 +10,7 @@ import {
   type WindowHandoffCoreSuccessorPolicy
 } from "../window-takeover/window-handoff-core.js";
 import type {
+  TakeoverAuthorityReleaseEvent,
   TakeoverBrokerConfig,
   TakeoverCompletionEvent,
   TakeoverInterventionRef
@@ -52,8 +53,10 @@ export interface BrowserHandoffManagedFallbackConfig {
   linuxHostScript: string;
   /** Local X11 display. Defaults to `runtime.displayName` when present. */
   displayName?: string;
-  /** Optional absolute xdotool path for the exact-window revalidation boundary. */
+  /** Optional absolute xdotool path used by the exact-window input host. */
   xdotoolExecutable?: string;
+  /** Optional absolute persistent X11 exact-window authority helper. */
+  authorityHelperExecutable?: string;
 }
 
 export interface ManagedWindowHandoffRuntimeConfig {
@@ -66,6 +69,7 @@ export interface ManagedWindowHandoffRuntimeConfig {
   /** Observe-only bounded managed diagnostic events. Callback failures are contained. */
   onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+  onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 
 type WebRtcManagedTransport = {
@@ -190,29 +194,36 @@ export class ManagedWindowHandoffRuntime {
         diagnosticEvents.record("session_retained");
       }
     };
-    const completion = async (event: TakeoverCompletionEvent): Promise<void> => {
+    const authorityReleased = async (event: TakeoverAuthorityReleaseEvent): Promise<void> => {
       const session = sessionRef;
-      if (!session || session.intervention.id !== event.interventionId) return;
-      await this.#config.onComplete?.(event);
-      session.completed = true;
+      if (!session || session.intervention.id !== event.interventionId || session.intervention.epoch !== event.epoch) return;
       if (session.sessionDisposition !== "revoked") {
         session.sessionDisposition = "revoked";
         diagnosticEvents.record("session_revoked");
       }
+      await this.#config.onAuthorityReleased?.(event);
+    };
+    const completion = async (event: TakeoverCompletionEvent): Promise<void> => {
+      const session = sessionRef;
+      if (!session || session.intervention.id !== event.interventionId) return;
+      session.completed = true;
+      await this.#config.onComplete?.(event);
     };
 
     const directCore = withDirectOnlyWebRtcEnvironment(() => new WindowHandoffCore({
       takeover: this.#config.takeover,
       runtime: this.#config.runtime,
       ...(this.#config.mediaProfile ? { mediaProfile: this.#config.mediaProfile } : {}),
-      onComplete: completion
+      onComplete: completion,
+      onAuthorityReleased: authorityReleased
     }));
     const relayCore = webRtcRelayEnvironmentConfigured()
       ? new WindowHandoffCore({
           takeover: this.#config.takeover,
           runtime: this.#config.runtime,
           ...(this.#config.mediaProfile ? { mediaProfile: this.#config.mediaProfile } : {}),
-          onComplete: completion
+          onComplete: completion,
+          onAuthorityReleased: authorityReleased
         })
       : undefined;
     const surfaceConfig: LinuxWebSocketWindowSurfaceConfig = {
@@ -222,6 +233,9 @@ export class ManagedWindowHandoffRuntime {
       ...(this.#config.managedFallback.xdotoolExecutable
         ? { xdotoolExecutable: this.#config.managedFallback.xdotoolExecutable }
         : {}),
+      ...(this.#config.managedFallback.authorityHelperExecutable
+        ? { authorityHelperExecutable: this.#config.managedFallback.authorityHelperExecutable }
+        : {}),
       onDiagnosticEvent: noteDiagnosticEvent
     };
     const surface = new LinuxWebSocketWindowSurface(surfaceConfig);
@@ -230,7 +244,8 @@ export class ManagedWindowHandoffRuntime {
       allowedOrigins: [this.#publicOrigin],
       surface,
       onDiagnosticEvent: noteDiagnosticEvent,
-      onComplete: completion
+      onComplete: completion,
+      onAuthorityReleased: authorityReleased
     });
 
     const drivers: ManagedBrowserHandoffTransportDriver[] = [

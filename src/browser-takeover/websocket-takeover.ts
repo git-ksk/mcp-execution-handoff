@@ -35,6 +35,8 @@ export type WebSocketTakeoverHumanInput =
   | { kind: "text"; text: string }
   | { kind: "key"; key: string };
 
+export type WebSocketTakeoverEditableRegion = [number, number, number, number];
+
 export interface WebSocketTakeoverFrame {
   data: Uint8Array;
   width: number;
@@ -46,6 +48,7 @@ export type WebSocketTakeoverServerMessage =
   | { kind: "ready" }
   | { kind: "closing" }
   | { kind: "closed" }
+  | { kind: "editableRegions"; regions: WebSocketTakeoverEditableRegion[] }
   | { kind: "pong"; nonce?: string }
   | { kind: "error"; code: WebSocketTakeoverFailureCode };
 

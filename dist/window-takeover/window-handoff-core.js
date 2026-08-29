@@ -37,7 +37,14 @@ export class WindowHandoffCore {
         // that bounded maximum lifetime; broker/session state remains authoritative for actual access.
         this.#routeTtlMs = config.takeover.ttlMs + (2 * completionGraceMs);
         this.#runtime = new SpawnedWebRtcRuntimeProvider(runtimeConfigForHandoff(config.runtime, config.mediaProfile, successorPolicy, initialSecureWindowPolicy));
-        this.#broker = new TakeoverBroker(webRtcOnlySurfaceAdapter(), config.takeover, undefined, this.#runtime, config.onComplete ? { completed: config.onComplete } : {});
+        this.#broker = new TakeoverBroker(webRtcOnlySurfaceAdapter(), config.takeover, undefined, this.#runtime, config.onComplete || config.onAuthorityReleased
+            ? {
+                completed: async (event) => {
+                    await config.onAuthorityReleased?.({ ...event, disposition: "completed", reason: "human_completed" });
+                    await config.onComplete?.(event);
+                }
+            }
+            : {});
     }
     isEnabled() {
         return this.#broker.isEnabled();

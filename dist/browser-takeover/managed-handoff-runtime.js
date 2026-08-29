@@ -80,29 +80,37 @@ export class ManagedWindowHandoffRuntime {
                 diagnosticEvents.record("session_retained");
             }
         };
-        const completion = async (event) => {
+        const authorityReleased = async (event) => {
             const session = sessionRef;
-            if (!session || session.intervention.id !== event.interventionId)
+            if (!session || session.intervention.id !== event.interventionId || session.intervention.epoch !== event.epoch)
                 return;
-            await this.#config.onComplete?.(event);
-            session.completed = true;
             if (session.sessionDisposition !== "revoked") {
                 session.sessionDisposition = "revoked";
                 diagnosticEvents.record("session_revoked");
             }
+            await this.#config.onAuthorityReleased?.(event);
+        };
+        const completion = async (event) => {
+            const session = sessionRef;
+            if (!session || session.intervention.id !== event.interventionId)
+                return;
+            session.completed = true;
+            await this.#config.onComplete?.(event);
         };
         const directCore = withDirectOnlyWebRtcEnvironment(() => new WindowHandoffCore({
             takeover: this.#config.takeover,
             runtime: this.#config.runtime,
             ...(this.#config.mediaProfile ? { mediaProfile: this.#config.mediaProfile } : {}),
-            onComplete: completion
+            onComplete: completion,
+            onAuthorityReleased: authorityReleased
         }));
         const relayCore = webRtcRelayEnvironmentConfigured()
             ? new WindowHandoffCore({
                 takeover: this.#config.takeover,
                 runtime: this.#config.runtime,
                 ...(this.#config.mediaProfile ? { mediaProfile: this.#config.mediaProfile } : {}),
-                onComplete: completion
+                onComplete: completion,
+                onAuthorityReleased: authorityReleased
             })
             : undefined;
         const surfaceConfig = {
@@ -112,6 +120,9 @@ export class ManagedWindowHandoffRuntime {
             ...(this.#config.managedFallback.xdotoolExecutable
                 ? { xdotoolExecutable: this.#config.managedFallback.xdotoolExecutable }
                 : {}),
+            ...(this.#config.managedFallback.authorityHelperExecutable
+                ? { authorityHelperExecutable: this.#config.managedFallback.authorityHelperExecutable }
+                : {}),
             onDiagnosticEvent: noteDiagnosticEvent
         };
         const surface = new LinuxWebSocketWindowSurface(surfaceConfig);
@@ -120,7 +131,8 @@ export class ManagedWindowHandoffRuntime {
             allowedOrigins: [this.#publicOrigin],
             surface,
             onDiagnosticEvent: noteDiagnosticEvent,
-            onComplete: completion
+            onComplete: completion,
+            onAuthorityReleased: authorityReleased
         });
         const drivers = [
             {

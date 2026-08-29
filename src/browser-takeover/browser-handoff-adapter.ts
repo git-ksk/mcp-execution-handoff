@@ -9,6 +9,7 @@ import {
 import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type {
+  TakeoverAuthorityReleaseEvent,
   TakeoverBrokerConfig,
   TakeoverCompletionEvent,
   TakeoverHostTarget,
@@ -33,8 +34,10 @@ export interface BrowserHandoffAdapterConfig {
   managedFallback?: BrowserHandoffManagedFallbackConfig;
   /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
   onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
-  /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
+  /** Called only after explicit Human completion; consumer performs fresh verification. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+  /** Called after Human authority is fenced, with completion vs fail-closed loss distinguished. */
+  onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 
 export type BrowserHandoffInputPolicy = WebRtcHumanInputPolicy;
@@ -79,7 +82,8 @@ export class BrowserHandoffAdapter {
             ...(config.onManagedOperatorDiagnosticEvent
               ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
               : {}),
-            ...(config.onComplete ? { onComplete: config.onComplete } : {})
+            ...(config.onComplete ? { onComplete: config.onComplete } : {}),
+            ...(config.onAuthorityReleased ? { onAuthorityReleased: config.onAuthorityReleased } : {})
           })
         : new WindowHandoffCore(config);
     } catch (error) {

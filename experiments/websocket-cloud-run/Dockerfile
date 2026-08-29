@@ -24,8 +24,10 @@ COPY native ./native
 COPY scripts ./scripts
 RUN npm run build \
  && npm run build:linux-xtest-helper \
+ && npm run build:linux-window-authority-helper \
  && npm prune --omit=dev \
- && test -x dist/native/mcp-handoff-linux-xtest-helper
+ && test -x dist/native/mcp-handoff-linux-xtest-helper \
+ && test -x dist/native/mcp-handoff-linux-window-authority-helper
 
 ENV NODE_ENV=production
 ENV PORT=8080

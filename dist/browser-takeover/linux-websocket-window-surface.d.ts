@@ -1,6 +1,6 @@
 import type { TakeoverHostTarget } from "../browser-takeover/broker.js";
 import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
-import type { WebSocketTakeoverFrame } from "./websocket-takeover.js";
+import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 export type LinuxWebSocketSurfaceFailure = "none" | "frame_timeout" | "helper_closed" | "helper_error" | "frame_protocol" | "diagnostics_bounds" | "input_failure" | "input_timeout" | "input_revalidation_failure" | "revalidation_failure" | "capture_x11" | "capture_encoder" | "capture_option" | "capture_other";
 export type LinuxWebSocketInputStage = "none" | "focus_ready" | "pointer_move_ready" | "pointer_authority_ready" | "pointer_down_sent" | "pointer_post_authority_ready" | "tap_sent" | "key_down_sent" | "key_authority_ready" | "key_up_sent" | "applied";
@@ -17,6 +17,7 @@ export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
     hostScript: string;
     displayName: string;
     xdotoolExecutable?: string;
+    authorityHelperExecutable?: string;
     helperTtlMs?: number;
     /** Content-free bounded event hook owned by managed Handoff diagnostics. */
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
@@ -72,6 +73,7 @@ export declare class ExperimentalLinuxWebSocketWindowSurface implements Experime
         authorityBoundary: "valid" | "lost";
     };
     captureFailureDisposition(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
+    editableRegionsSnapshot(): WebSocketTakeoverEditableRegion[];
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;

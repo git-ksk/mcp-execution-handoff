@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
-import { parseWindowGeometry, parseWindowIds } from "../browser-takeover/linux-webrtc-host-cli.js";
+import { fileURLToPath } from "node:url";
 const MAX_HOST_RECORD_BYTES = 8 * 1024 * 1024;
 const MAX_DIAGNOSTIC_BUFFER_BYTES = 8 * 1024;
 const FRAME_WAIT_TIMEOUT_MS = 4_000;
@@ -10,6 +10,7 @@ const CAPTURE_RECOVERY_DELAY_MS = 120;
 const INPUT_ACK_TIMEOUT_MS = 4_000;
 const HELPER_STOP_TIMEOUT_MS = 1_000;
 const QUERY_TIMEOUT_MS = 2_000;
+const AUTHORITY_HELPER_READY_TIMEOUT_MS = 2_000;
 /** Parses private JPEG records while accepting the helper's bounded editable-focus control record. */
 export class LinuxWebSocketHostRecordParser {
     onFrame;
@@ -72,12 +73,14 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     #hostScript;
     #displayName;
     #xdotoolExecutable;
+    #authorityHelperExecutable;
     #helperTtlMs;
     #active;
     #transition;
     #lastFailure = "none";
     #failure = "none";
     #framesObserved = 0;
+    #editableRegions = [];
     #lastInputStage = "none";
     #lastInputBoundaryStage = "none";
     #failureInputStage = "none";
@@ -111,6 +114,9 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         const xdotoolExecutable = config.xdotoolExecutable ?? "/usr/bin/xdotool";
         if (!isAbsolute(xdotoolExecutable))
             throw new Error("Linux WSS xdotool executable must be absolute");
+        const authorityHelperExecutable = config.authorityHelperExecutable ?? packagedLinuxWindowAuthorityHelper(import.meta.url);
+        if (!isAbsolute(authorityHelperExecutable))
+            throw new Error("Linux WSS authority helper executable must be absolute");
         const helperTtlMs = config.helperTtlMs ?? 15 * 60_000;
         if (!Number.isSafeInteger(helperTtlMs) || helperTtlMs < 30_000 || helperTtlMs > 60 * 60_000) {
             throw new Error("Linux WSS helper ttl is invalid");
@@ -118,6 +124,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#hostScript = config.hostScript;
         this.#displayName = config.displayName;
         this.#xdotoolExecutable = xdotoolExecutable;
+        this.#authorityHelperExecutable = authorityHelperExecutable;
         this.#helperTtlMs = helperTtlMs;
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
     }
@@ -153,6 +160,9 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     captureFailureDisposition(error) {
         return isExactWindowBoundaryError(error) ? "authority_lost" : "recoverable";
     }
+    editableRegionsSnapshot() {
+        return this.#editableRegions.map((region) => [...region]);
+    }
     async captureExactWindow(target) {
         let lastError;
         for (let attempt = 0; attempt < CAPTURE_RECOVERY_ATTEMPTS; attempt += 1) {
@@ -174,7 +184,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             }
             const before = active.sequence;
             try {
-                await this.#revalidate(target);
+                await this.#revalidate(target, active);
             }
             catch (error) {
                 this.#recordFailure("revalidation_failure");
@@ -244,7 +254,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             if (active.failed || this.#active !== active)
                 throw new Error("Linux WSS exact-window helper is unavailable");
             try {
-                await this.#revalidate(target);
+                await this.#revalidate(target, active);
                 this.#lastInputBoundaryStage = "revalidation_ready";
             }
             catch (error) {
@@ -303,7 +313,14 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#active = undefined;
         if (previous)
             await stopActive(previous);
-        await this.#revalidate(target);
+        const authority = await LinuxWindowAuthorityHelper.start(this.#authorityHelperExecutable, target, this.#displayName);
+        try {
+            await this.#revalidate(target, authority);
+        }
+        catch (error) {
+            await authority.close();
+            throw error;
+        }
         const child = spawn(process.execPath, [this.#hostScript], {
             env: {
                 LANG: "C.UTF-8",
@@ -312,7 +329,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
                 TAKEOVER_WEBRTC_TARGET_WINDOW_ID: String(target.windowId),
                 TAKEOVER_WEBRTC_EXPIRES_AT_UNIX_MS: String(Date.now() + this.#helperTtlMs),
                 TAKEOVER_WEBRTC_DISPLAY_NAME: this.#displayName,
-                TAKEOVER_WEBRTC_FRAME_FORMAT: "jpeg"
+                TAKEOVER_WEBRTC_FRAME_FORMAT: "jpeg",
+                TAKEOVER_LINUX_XDOTOOL: this.#xdotoolExecutable
             },
             stdio: ["pipe", "pipe", "pipe"]
         });
@@ -324,7 +342,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             frameWaiters: [],
             stderrBuffer: "",
             pendingInputAck: undefined,
-            inputChain: Promise.resolve()
+            inputChain: Promise.resolve(),
+            authority
         };
         const parser = new LinuxWebSocketHostRecordParser((frame) => {
             if (state.failed)
@@ -348,7 +367,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
                 failActive(state, "Linux WSS exact-window helper frame protocol failed");
             }
         });
-        child.stderr.on("data", (chunk) => consumeDiagnostics(state, chunk, (stage) => {
+        child.stderr.on("data", (chunk) => consumeDiagnostics(state, chunk, (regions) => { this.#editableRegions = regions; }, (stage) => {
             const category = captureFailureCategory(stage);
             if (category)
                 this.#recordFailure(category);
@@ -431,7 +450,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#authorityBoundary = "lost";
         this.#onDiagnosticEvent?.("authority_boundary_lost");
     }
-    async #revalidate(target) {
+    async #revalidate(target, activeOrAuthority) {
         validateExactTarget(target);
         try {
             process.kill(target.processId, 0);
@@ -439,24 +458,156 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         catch {
             throw new Error("Linux WSS target process is unavailable");
         }
-        const env = { DISPLAY: this.#displayName, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
-        const visible = parseWindowIds(await runBounded(this.#xdotoolExecutable, [
-            "search", "--onlyvisible", "--pid", String(target.processId)
-        ], env).catch(() => ""));
-        if (!visible.includes(target.windowId))
+        const authority = activeOrAuthority instanceof LinuxWindowAuthorityHelper
+            ? activeOrAuthority
+            : activeOrAuthority.authority;
+        const result = await authority.query();
+        if (result === "visible_owner_geometry_valid") {
+            this.#authorityBoundary = "valid";
+            return;
+        }
+        if (result === "window_not_visible")
             throw new Error("Linux WSS target window is no longer visible");
-        const owner = Number((await runBounded(this.#xdotoolExecutable, [
-            "getwindowpid", String(target.windowId)
-        ], env).catch(() => "")).trim());
-        if (owner !== target.processId)
+        if (result === "owner_changed")
             throw new Error("Linux WSS target window ownership changed");
-        const geometry = parseWindowGeometry(await runBounded(this.#xdotoolExecutable, [
-            "getwindowgeometry", "--shell", String(target.windowId)
-        ], env).catch(() => ""), target.windowId);
-        if (!geometry)
-            throw new Error("Linux WSS target window geometry is unavailable");
-        this.#authorityBoundary = "valid";
+        throw new Error("Linux WSS target window geometry is unavailable");
     }
+}
+class LinuxWindowAuthorityHelper {
+    #child;
+    #output = "";
+    #ready = false;
+    #pending;
+    #queryChain = Promise.resolve();
+    #closing = false;
+    constructor(executable, target, displayName) {
+        this.#child = spawn(executable, ["--pid", String(target.processId), "--window", String(target.windowId)], {
+            env: { DISPLAY: displayName, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
+            stdio: ["pipe", "pipe", "ignore"]
+        });
+        this.#child.stdout.on("data", (chunk) => this.#consume(chunk));
+        this.#child.once("error", () => this.#fail(new Error("Linux WSS authority helper failed")));
+        this.#child.once("close", () => this.#fail(new Error("Linux WSS authority helper closed")));
+    }
+    static async start(executable, target, displayName) {
+        const helper = new LinuxWindowAuthorityHelper(executable, target, displayName);
+        const deadline = Date.now() + AUTHORITY_HELPER_READY_TIMEOUT_MS;
+        while (!helper.#ready && helper.#child.exitCode === null && helper.#child.signalCode === null && Date.now() < deadline) {
+            await delay(10);
+        }
+        if (!helper.#ready) {
+            await helper.close();
+            throw new Error("Linux WSS authority helper readiness failed");
+        }
+        return helper;
+    }
+    query() {
+        let resolveResult;
+        let rejectResult;
+        const result = new Promise((resolve, reject) => {
+            resolveResult = resolve;
+            rejectResult = reject;
+        });
+        this.#queryChain = this.#queryChain
+            .catch(() => undefined)
+            .then(async () => {
+            try {
+                resolveResult(await this.#queryOnce());
+            }
+            catch (error) {
+                rejectResult(error instanceof Error ? error : new Error("Linux WSS authority helper query failed"));
+            }
+        });
+        return result;
+    }
+    #queryOnce() {
+        if (!this.#ready || this.#closing || this.#child.exitCode !== null || this.#child.signalCode !== null) {
+            return Promise.reject(new Error("Linux WSS authority helper is unavailable"));
+        }
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                if (this.#pending?.timer !== timer)
+                    return;
+                this.#pending = undefined;
+                reject(new Error("Linux WSS authority helper query timed out"));
+            }, QUERY_TIMEOUT_MS);
+            timer.unref();
+            this.#pending = { resolve, reject, timer };
+            this.#child.stdin.write("QUERY\n", (error) => { if (error)
+                this.#fail(error); });
+        });
+    }
+    async close() {
+        if (this.#closing)
+            return;
+        this.#closing = true;
+        const pending = this.#pending;
+        this.#pending = undefined;
+        if (pending) {
+            clearTimeout(pending.timer);
+            pending.reject(new Error("Linux WSS authority helper closed"));
+        }
+        if (this.#child.exitCode !== null || this.#child.signalCode !== null)
+            return;
+        try {
+            this.#child.stdin.end("CLOSE\n");
+        }
+        catch { }
+        const closed = await Promise.race([
+            once(this.#child, "close").then(() => true, () => true),
+            delay(250).then(() => false)
+        ]);
+        if (!closed && this.#child.exitCode === null && this.#child.signalCode === null)
+            this.#child.kill("SIGTERM");
+    }
+    #consume(chunk) {
+        this.#output += chunk.toString("utf8");
+        if (this.#output.length > 1024) {
+            this.#fail(new Error("Linux WSS authority helper output exceeded bounds"));
+            return;
+        }
+        for (;;) {
+            const newline = this.#output.indexOf("\n");
+            if (newline < 0)
+                return;
+            const line = this.#output.slice(0, newline).trim();
+            this.#output = this.#output.slice(newline + 1);
+            if (!this.#ready) {
+                if (line === "READY 1") {
+                    this.#ready = true;
+                    continue;
+                }
+                this.#fail(new Error("Linux WSS authority helper protocol mismatch"));
+                return;
+            }
+            const pending = this.#pending;
+            if (!pending)
+                continue;
+            this.#pending = undefined;
+            clearTimeout(pending.timer);
+            if (line === "OK")
+                pending.resolve("visible_owner_geometry_valid");
+            else if (line === "ERR VISIBILITY")
+                pending.resolve("window_not_visible");
+            else if (line === "ERR OWNER")
+                pending.resolve("owner_changed");
+            else if (line === "ERR GEOMETRY")
+                pending.resolve("geometry_unavailable");
+            else
+                pending.reject(new Error("Linux WSS authority helper protocol mismatch"));
+        }
+    }
+    #fail(error) {
+        const pending = this.#pending;
+        this.#pending = undefined;
+        if (pending) {
+            clearTimeout(pending.timer);
+            pending.reject(error);
+        }
+    }
+}
+function packagedLinuxWindowAuthorityHelper(moduleUrl) {
+    return fileURLToPath(new URL("../native/mcp-handoff-linux-window-authority-helper", moduleUrl));
 }
 function isExactWindowBoundaryError(error) {
     if (!(error instanceof Error))
@@ -480,7 +631,7 @@ function validateExactTarget(target) {
 function sameTarget(left, right) {
     return left.processId === right.processId && left.windowId === right.windowId;
 }
-function consumeDiagnostics(active, chunk, onStage) {
+function consumeDiagnostics(active, chunk, onEditableRegions, onStage) {
     if (active.failed)
         return;
     active.stderrBuffer += chunk.toString("utf8");
@@ -495,6 +646,18 @@ function consumeDiagnostics(active, chunk, onStage) {
             return;
         const line = active.stderrBuffer.slice(0, newline).trim();
         active.stderrBuffer = active.stderrBuffer.slice(newline + 1);
+        const editable = /^MCP_HANDOFF_CONTROL editable_regions=(.*)$/.exec(line);
+        if (editable) {
+            try {
+                onEditableRegions(parseEditableRegions(editable[1] ?? ""));
+            }
+            catch {
+                onStage("diagnostics_bounds");
+                failActive(active, "Linux WSS editable-region metadata exceeded bounds");
+                return;
+            }
+            continue;
+        }
         const match = /^MCP_HANDOFF_DIAGNOSTIC linux_stage=([a-z0-9_]{1,64})$/.exec(line);
         if (!match)
             continue;
@@ -511,6 +674,26 @@ function consumeDiagnostics(active, chunk, onStage) {
             failActive(active, "Linux WSS exact-window helper input failed");
         }
     }
+}
+function parseEditableRegions(payload) {
+    if (payload.length > 1_024)
+        throw new Error("Linux WSS editable-region metadata is too large");
+    if (!payload)
+        return [];
+    const items = payload.split(";");
+    if (items.length > 32)
+        throw new Error("Linux WSS editable-region metadata has too many regions");
+    return items.map((item) => {
+        const match = /^(\d{1,5}),(\d{1,5}),(\d{1,5}),(\d{1,5})$/.exec(item);
+        if (!match)
+            throw new Error("Linux WSS editable-region metadata is invalid");
+        const values = match.slice(1).map(Number);
+        const [x, y, width, height] = values;
+        if (!values.every(Number.isSafeInteger) || x < 0 || y < 0 || width < 1 || height < 1 || x + width > 10_000 || y + height > 10_000) {
+            throw new Error("Linux WSS editable-region metadata is out of bounds");
+        }
+        return values;
+    });
 }
 function boundedInputStage(stage) {
     if (stage === "input_focus_ready")
@@ -598,63 +781,29 @@ function failActive(active, message) {
         active.child.kill("SIGTERM");
 }
 async function stopActive(active) {
-    if (active.child.exitCode !== null || active.child.signalCode !== null)
-        return;
     try {
-        active.child.stdin.write('{"kind":"stop"}\n');
+        if (active.child.exitCode === null && active.child.signalCode === null) {
+            active.child.stdin.on("error", () => undefined);
+            if (!active.child.stdin.destroyed && !active.child.stdin.writableEnded) {
+                active.child.stdin.end('{"kind":"stop"}\n');
+            }
+            const ended = await Promise.race([
+                once(active.child, "close").then(() => true, () => true),
+                new Promise((resolve) => setTimeout(() => resolve(false), HELPER_STOP_TIMEOUT_MS))
+            ]);
+            if (!ended && active.child.exitCode === null && active.child.signalCode === null) {
+                active.child.kill("SIGTERM");
+                await Promise.race([
+                    once(active.child, "close").catch(() => undefined),
+                    new Promise((resolve) => setTimeout(resolve, 250))
+                ]);
+                if (active.child.exitCode === null && active.child.signalCode === null)
+                    active.child.kill("SIGKILL");
+            }
+        }
     }
-    catch { }
-    active.child.stdin.end();
-    const ended = await Promise.race([
-        once(active.child, "close").then(() => true, () => true),
-        new Promise((resolve) => setTimeout(() => resolve(false), HELPER_STOP_TIMEOUT_MS))
-    ]);
-    if (ended || active.child.exitCode !== null || active.child.signalCode !== null)
-        return;
-    active.child.kill("SIGTERM");
-    await Promise.race([
-        once(active.child, "close").catch(() => undefined),
-        new Promise((resolve) => setTimeout(resolve, 250))
-    ]);
-    if (active.child.exitCode === null && active.child.signalCode === null)
-        active.child.kill("SIGKILL");
-}
-async function runBounded(executable, args, env) {
-    const child = spawn(executable, args, { env, stdio: ["ignore", "pipe", "ignore"] });
-    const chunks = [];
-    let bytes = 0;
-    child.stdout.on("data", (chunk) => {
-        bytes += chunk.byteLength;
-        if (bytes <= 64 * 1024)
-            chunks.push(chunk);
-    });
-    const [code] = await new Promise((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-            if (settled)
-                return;
-            settled = true;
-            child.kill("SIGKILL");
-            reject(new Error("Linux WSS exact-window query timed out"));
-        }, QUERY_TIMEOUT_MS);
-        timer.unref();
-        child.once("error", (error) => {
-            if (settled)
-                return;
-            settled = true;
-            clearTimeout(timer);
-            reject(error);
-        });
-        child.once("close", (code, signal) => {
-            if (settled)
-                return;
-            settled = true;
-            clearTimeout(timer);
-            resolve([code, signal]);
-        });
-    });
-    if (code !== 0 || bytes > 64 * 1024)
-        throw new Error("Linux WSS exact-window query failed");
-    return Buffer.concat(chunks).toString("utf8");
+    finally {
+        await active.authority.close();
+    }
 }
 //# sourceMappingURL=linux-websocket-window-surface.js.map

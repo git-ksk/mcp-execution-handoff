@@ -49,7 +49,8 @@
     "accept:window:macos-secure-ui": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-secure-ui-window-acceptance.mts",
     "accept:window:macos-lineage": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-window-lineage-acceptance.mts",
     "accept:window:macos-media-quality": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-window-media-quality-acceptance.mts",
-    "accept:window:macos-local-auth": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-local-auth-window-acceptance.mts"
+    "accept:window:macos-local-auth": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/macos-local-auth-window-acceptance.mts",
+    "build:linux-window-authority-helper": "sh scripts/build-linux-window-authority-helper.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

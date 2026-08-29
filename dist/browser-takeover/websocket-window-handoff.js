@@ -24,15 +24,18 @@ export class ExperimentalWebSocketWindowHandoff {
     #sessionsByIntervention = new Map();
     #sessionsById = new Map();
     #onDiagnosticEvent;
+    #onAuthorityReleased;
     constructor(config) {
         this.#surface = config.surface;
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
+        this.#onAuthorityReleased = config.onAuthorityReleased;
         this.#frameIntervalMs = boundedFrameInterval(config.frameIntervalMs);
-        this.#broker = new TakeoverBroker(unavailableHttpSurface(), config.takeover, undefined, undefined, config.onComplete
+        this.#broker = new TakeoverBroker(unavailableHttpSurface(), config.takeover, undefined, undefined, config.onComplete || config.onAuthorityReleased
             ? {
                 completed: async (event) => {
                     this.#forgetMatchingSession(event.interventionId, event.epoch);
-                    await config.onComplete(event);
+                    await config.onAuthorityReleased?.({ ...event, disposition: "completed", reason: "human_completed" });
+                    await config.onComplete?.(event);
                 }
             }
             : {
@@ -92,7 +95,8 @@ export class ExperimentalWebSocketWindowHandoff {
             target,
             inputPolicy,
             timer,
-            captureInFlight: false
+            captureInFlight: false,
+            editableRegionsFingerprint: ""
         };
         this.#sessionsByIntervention.set(state.interventionId, state);
         this.#sessionsById.set(state.sessionId, state);
@@ -139,6 +143,12 @@ export class ExperimentalWebSocketWindowHandoff {
                 return;
             }
             this.revoke(state.interventionId);
+            void Promise.resolve(this.#onAuthorityReleased?.({
+                interventionId: state.interventionId,
+                epoch: state.epoch,
+                disposition: "revoked",
+                reason: "authority_lost"
+            })).catch(() => undefined);
             return;
         }
         finally {
@@ -146,6 +156,17 @@ export class ExperimentalWebSocketWindowHandoff {
         }
         if (this.#sessionsById.get(state.sessionId) !== state)
             return;
+        const editableRegions = this.#surface.editableRegionsSnapshot?.() ?? [];
+        const editableFingerprint = editableRegions.map((region) => region.join(",")).join(";");
+        if (editableFingerprint !== state.editableRegionsFingerprint) {
+            state.editableRegionsFingerprint = editableFingerprint;
+            try {
+                await this.#binding.pushControl(state.sessionId, { kind: "editableRegions", regions: editableRegions });
+            }
+            catch {
+                // The channel owns transport failure handling; metadata never changes authority semantics.
+            }
+        }
         try {
             await this.#binding.pushFrame(state.sessionId, frame);
         }
@@ -206,7 +227,7 @@ function unavailableHttpSurface() {
     };
 }
 function boundedFrameInterval(value) {
-    const resolved = value ?? 150;
+    const resolved = value ?? 75;
     if (!Number.isInteger(resolved) || resolved < 50 || resolved > 2_000) {
         throw new Error("Window WSS frame interval must be an integer between 50ms and 2000ms");
     }

@@ -79,6 +79,7 @@ export declare class ExperimentalWebSocketTakeoverIngress {
     /** @internal Content-free WebSocket transport diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ExperimentalWebSocketIngressDiagnostics;
     pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean>;
+    pushControl(sessionId: string, message: WebSocketTakeoverServerMessage): Promise<boolean>;
     revoke(sessionId: string): Promise<void>;
 }
 export declare class NodeWebSocketTakeoverPeer implements WebSocketTakeoverPeer {

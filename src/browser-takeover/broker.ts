@@ -65,6 +65,11 @@ export interface TakeoverCompletionEvent {
   epoch: number;
 }
 
+export interface TakeoverAuthorityReleaseEvent extends TakeoverCompletionEvent {
+  disposition: "completed" | "revoked";
+  reason: "human_completed" | "authority_lost";
+}
+
 export interface TakeoverBrokerHooks {
   completed?(event: TakeoverCompletionEvent): void | Promise<void>;
 }

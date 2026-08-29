@@ -49,9 +49,9 @@ test("Linux WSS physical surface reuses exact helper without transport or target
   assert.match(surface, /TAKEOVER_WEBRTC_FRAME_FORMAT: "jpeg"/);
   assert.match(surface, /TAKEOVER_WEBRTC_TARGET_PID: String\(target\.processId\)/);
   assert.match(surface, /TAKEOVER_WEBRTC_TARGET_WINDOW_ID: String\(target\.windowId\)/);
-  assert.match(surface, /search", "--onlyvisible", "--pid"/);
-  assert.match(surface, /getwindowpid/);
-  assert.match(surface, /parseWindowGeometry/);
+  assert.match(surface, /mcp-handoff-linux-window-authority-helper/);
+  assert.match(surface, /authority\.query\(\)/);
+  assert.match(surface, /TAKEOVER_LINUX_XDOTOOL: this\.#xdotoolExecutable/);
   assert.match(surface, /match\[1\] === "input_applied"/);
   assert.match(surface, /mimeType: "image\/jpeg"/);
   assert.match(surface, /CAPTURE_RECOVERY_ATTEMPTS = 2/);
@@ -69,6 +69,7 @@ test("Linux WSS capture restarts one failed helper for the same exact PID/window
   const countFile = join(dir, "count");
   const hostScript = join(dir, "host.mjs");
   const xdotool = join(dir, "xdotool");
+  const authorityHelper = join(dir, "authority-helper");
   const targetPid = process.pid;
   const targetWindowId = 7331;
   writeFileSync(countFile, "0");
@@ -94,6 +95,17 @@ case "$1" in
   *) exit 1 ;;
 esac
 `);
+  writeFileSync(authorityHelper, `#!/bin/sh
+printf 'READY 1\n'
+while IFS= read -r line; do
+  case "$line" in
+    QUERY) printf 'OK\n' ;;
+    CLOSE) printf 'OK CLOSE\n'; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+`);
+  chmodSync(authorityHelper, 0o755);
   chmodSync(xdotool, 0o755);
 
   const diagnosticEvents: string[] = [];
@@ -101,6 +113,7 @@ esac
     hostScript,
     displayName: ":99",
     xdotoolExecutable: xdotool,
+    authorityHelperExecutable: authorityHelper,
     helperTtlMs: 30_000,
     onDiagnosticEvent: (kind) => diagnosticEvents.push(kind)
   });
@@ -123,6 +136,7 @@ test("Linux WSS capture does not retry an exact-window ownership failure", { ski
   const countFile = join(dir, "count");
   const hostScript = join(dir, "host.mjs");
   const xdotool = join(dir, "xdotool");
+  const authorityHelper = join(dir, "authority-helper");
   const targetPid = process.pid;
   const targetWindowId = 7331;
   writeFileSync(countFile, "0");
@@ -140,6 +154,17 @@ case "$1" in
   *) exit 1 ;;
 esac
 `);
+  writeFileSync(authorityHelper, `#!/bin/sh
+printf 'READY 1\n'
+while IFS= read -r line; do
+  case "$line" in
+    QUERY) printf 'ERR OWNER\n' ;;
+    CLOSE) printf 'OK CLOSE\n'; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+`);
+  chmodSync(authorityHelper, 0o755);
   chmodSync(xdotool, 0o755);
 
   const diagnosticEvents: string[] = [];
@@ -147,6 +172,7 @@ esac
     hostScript,
     displayName: ":99",
     xdotoolExecutable: xdotool,
+    authorityHelperExecutable: authorityHelper,
     helperTtlMs: 30_000,
     onDiagnosticEvent: (kind) => diagnosticEvents.push(kind)
   });
@@ -162,6 +188,13 @@ esac
     await surface.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("Linux WSS serializes frame and Human-input authority queries without weakening revalidation", async () => {
+  const source = readFileSync("src/browser-takeover/linux-websocket-window-surface.ts", "utf8");
+  assert.match(source, /#queryChain: Promise<void> = Promise\.resolve\(\)/);
+  assert.match(source, /this\.#queryChain = this\.#queryChain/);
+  assert.doesNotMatch(source, /authority helper is busy/);
 });
 
 test("Linux WSS capture failure classification fails closed only for exact authority boundaries", () => {
@@ -183,6 +216,7 @@ test("Linux WSS input failure diagnostics classify helper/ACK stage without Huma
   const dir = mkdtempSync(join(tmpdir(), "handoff-wss-input-diagnostics-"));
   const hostScript = join(dir, "host.mjs");
   const xdotool = join(dir, "xdotool");
+  const authorityHelper = join(dir, "authority-helper");
   const targetPid = process.pid;
   const targetWindowId = 7331;
   writeFileSync(hostScript, `
@@ -209,6 +243,17 @@ case "$1" in
   *) exit 1 ;;
 esac
 `);
+  writeFileSync(authorityHelper, `#!/bin/sh
+printf 'READY 1\n'
+while IFS= read -r line; do
+  case "$line" in
+    QUERY) printf 'OK\n' ;;
+    CLOSE) printf 'OK CLOSE\n'; exit 0 ;;
+    *) exit 2 ;;
+  esac
+done
+`);
+  chmodSync(authorityHelper, 0o755);
   chmodSync(xdotool, 0o755);
 
   const diagnosticEvents: string[] = [];
@@ -216,6 +261,7 @@ esac
     hostScript,
     displayName: ":99",
     xdotoolExecutable: xdotool,
+    authorityHelperExecutable: authorityHelper,
     helperTtlMs: 30_000,
     onDiagnosticEvent: (kind) => diagnosticEvents.push(kind)
   });
