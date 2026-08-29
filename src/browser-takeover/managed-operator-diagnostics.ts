@@ -40,6 +40,9 @@ export interface ManagedOperatorDiagnosticEvent {
   kind: ManagedOperatorDiagnosticEventKind;
 }
 
+/** Observe-only callback. Exceptions are contained and never affect Human/Agent authority. */
+export type ManagedOperatorDiagnosticEventObserver = (event: ManagedOperatorDiagnosticEvent) => void;
+
 export type ManagedOperatorAuthorityBoundary = "valid" | "lost";
 export type ManagedOperatorSessionDisposition = "none" | "retained" | "revoked";
 export type ManagedOperatorTransport = BrowserHandoffTransportAttempt | "none";
@@ -241,12 +244,21 @@ export function parseManagedOperatorDiagnosticsSnapshot(value: unknown): Managed
 
 export class ManagedOperatorDiagnosticEvents {
   readonly #events: ManagedOperatorDiagnosticEvent[] = [];
+  readonly #observer: ManagedOperatorDiagnosticEventObserver | undefined;
+
+  constructor(observer?: ManagedOperatorDiagnosticEventObserver) {
+    this.#observer = observer;
+  }
+
   record(kind: ManagedOperatorDiagnosticEventKind): void {
-    this.#events.push({ kind });
+    const event: ManagedOperatorDiagnosticEvent = { kind };
+    this.#events.push(event);
     if (this.#events.length > MANAGED_OPERATOR_DIAGNOSTIC_EVENT_LIMIT) {
       this.#events.splice(0, this.#events.length - MANAGED_OPERATOR_DIAGNOSTIC_EVENT_LIMIT);
     }
+    try { this.#observer?.({ ...event }); } catch { /* diagnostics are observe-only */ }
   }
+
   snapshot(): ManagedOperatorDiagnosticEvent[] { return this.#events.map((event) => ({ ...event })); }
 }
 

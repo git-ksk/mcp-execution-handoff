@@ -38,6 +38,7 @@ import {
   emptyManagedOperatorDiagnosticsSnapshot,
   parseManagedOperatorDiagnosticsSnapshot,
   type ManagedOperatorDiagnosticEventKind,
+  type ManagedOperatorDiagnosticEventObserver,
   type ManagedOperatorDiagnosticsSnapshot,
   type ManagedOperatorSessionDisposition
 } from "./managed-operator-diagnostics.js";
@@ -62,6 +63,8 @@ export interface ManagedWindowHandoffRuntimeConfig {
   mediaProfile?: "window_text";
   successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
   initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;
+  /** Observe-only bounded managed diagnostic events. Callback failures are contained. */
+  onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
 
@@ -173,17 +176,19 @@ export class ManagedWindowHandoffRuntime {
 
     let sessionRef: ManagedHandoffSession | undefined;
     const state: ManagedDriverState = { current: undefined };
-    const diagnosticEvents = new ManagedOperatorDiagnosticEvents();
+    const diagnosticEvents = new ManagedOperatorDiagnosticEvents(this.#config.onManagedOperatorDiagnosticEvent);
     let pendingSessionDisposition: ManagedOperatorSessionDisposition = "none";
     const noteDiagnosticEvent = (kind: ManagedOperatorDiagnosticEventKind): void => {
-      diagnosticEvents.record(kind);
       if (kind === "session_retained") pendingSessionDisposition = "retained";
       if (kind === "session_revoked") pendingSessionDisposition = "revoked";
       if (kind === "wss_failed" && pendingSessionDisposition !== "revoked") {
         pendingSessionDisposition = "retained";
-        diagnosticEvents.record("session_retained");
       }
       if (sessionRef) sessionRef.sessionDisposition = pendingSessionDisposition;
+      diagnosticEvents.record(kind);
+      if (kind === "wss_failed" && pendingSessionDisposition === "retained") {
+        diagnosticEvents.record("session_retained");
+      }
     };
     const completion = async (event: TakeoverCompletionEvent): Promise<void> => {
       const session = sessionRef;

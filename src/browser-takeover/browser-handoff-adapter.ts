@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
 import {
   emptyManagedOperatorDiagnosticsSnapshot,
+  type ManagedOperatorDiagnosticEventObserver,
   type ManagedOperatorDiagnosticsSnapshot
 } from "./managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
@@ -30,6 +31,8 @@ export interface BrowserHandoffAdapterConfig {
   runtime: SpawnedWebRtcRuntimeProviderConfig;
   /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
   managedFallback?: BrowserHandoffManagedFallbackConfig;
+  /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
+  onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
   /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -73,6 +76,9 @@ export class BrowserHandoffAdapter {
             takeover: config.takeover,
             runtime: config.runtime,
             managedFallback: config.managedFallback,
+            ...(config.onManagedOperatorDiagnosticEvent
+              ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
+              : {}),
             ...(config.onComplete ? { onComplete: config.onComplete } : {})
           })
         : new WindowHandoffCore(config);

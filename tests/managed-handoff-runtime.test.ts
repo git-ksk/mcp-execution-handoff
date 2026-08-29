@@ -12,11 +12,12 @@ const RELAY_ENV = [
   "MCP_HANDOFF_COTURN_STUN_URLS"
 ] as const;
 
-function fixture() {
+function fixture(onManagedOperatorDiagnosticEvent?: (event: { kind: string }) => void) {
   return new ManagedWindowHandoffRuntime({
     takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
     runtime: { hostExecutable: process.execPath },
-    managedFallback: { linuxHostScript: process.execPath, displayName: ":99" }
+    managedFallback: { linuxHostScript: process.execPath, displayName: ":99" },
+    ...(onManagedOperatorDiagnosticEvent ? { onManagedOperatorDiagnosticEvent } : {})
   });
 }
 
@@ -66,7 +67,8 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
   const saved = saveRelayEnv();
   try {
     clearRelayEnv();
-    const runtime = fixture();
+    const observed: Array<{ kind: string }> = [];
+    const runtime = fixture((event) => observed.push(event));
     const direct = runtime.start(request());
     const directId = sessionId(direct);
     const capability = await fallbackCapability(runtime, direct);
@@ -137,6 +139,7 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     assert.equal(managed.wss.authorityBoundary, "valid");
     assert.equal(managed.wss.sessionDisposition, "none");
     assert.deepEqual(managed.events, [{ kind: "transport_transition" }]);
+    assert.deepEqual(observed, [{ kind: "transport_transition" }]);
     assert.doesNotMatch(JSON.stringify(managed), /managed-int|managed-principal|4242|7331/);
     await runtime.revoke("managed-int");
   } finally {

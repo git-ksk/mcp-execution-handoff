@@ -63,20 +63,22 @@ export class ManagedWindowHandoffRuntime {
         }
         let sessionRef;
         const state = { current: undefined };
-        const diagnosticEvents = new ManagedOperatorDiagnosticEvents();
+        const diagnosticEvents = new ManagedOperatorDiagnosticEvents(this.#config.onManagedOperatorDiagnosticEvent);
         let pendingSessionDisposition = "none";
         const noteDiagnosticEvent = (kind) => {
-            diagnosticEvents.record(kind);
             if (kind === "session_retained")
                 pendingSessionDisposition = "retained";
             if (kind === "session_revoked")
                 pendingSessionDisposition = "revoked";
             if (kind === "wss_failed" && pendingSessionDisposition !== "revoked") {
                 pendingSessionDisposition = "retained";
-                diagnosticEvents.record("session_retained");
             }
             if (sessionRef)
                 sessionRef.sessionDisposition = pendingSessionDisposition;
+            diagnosticEvents.record(kind);
+            if (kind === "wss_failed" && pendingSessionDisposition === "retained") {
+                diagnosticEvents.record("session_retained");
+            }
         };
         const completion = async (event) => {
             const session = sessionRef;

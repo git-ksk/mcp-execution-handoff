@@ -10,6 +10,8 @@ export type ManagedOperatorDiagnosticEventKind = "transport_transition" | "wss_o
 export interface ManagedOperatorDiagnosticEvent {
     kind: ManagedOperatorDiagnosticEventKind;
 }
+/** Observe-only callback. Exceptions are contained and never affect Human/Agent authority. */
+export type ManagedOperatorDiagnosticEventObserver = (event: ManagedOperatorDiagnosticEvent) => void;
 export type ManagedOperatorAuthorityBoundary = "valid" | "lost";
 export type ManagedOperatorSessionDisposition = "none" | "retained" | "revoked";
 export type ManagedOperatorTransport = BrowserHandoffTransportAttempt | "none";
@@ -56,6 +58,7 @@ export interface ManagedOperatorDiagnosticsSnapshot {
 export declare function parseManagedOperatorDiagnosticsSnapshot(value: unknown): ManagedOperatorDiagnosticsSnapshot;
 export declare class ManagedOperatorDiagnosticEvents {
     #private;
+    constructor(observer?: ManagedOperatorDiagnosticEventObserver);
     record(kind: ManagedOperatorDiagnosticEventKind): void;
     snapshot(): ManagedOperatorDiagnosticEvent[];
 }

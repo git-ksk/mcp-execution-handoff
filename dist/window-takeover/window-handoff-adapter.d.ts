@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
-import { type ManagedOperatorDiagnosticsSnapshot } from "../browser-takeover/managed-operator-diagnostics.js";
+import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "../browser-takeover/managed-operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
@@ -24,6 +24,8 @@ export interface WindowHandoffAdapterConfig {
     runtime: SpawnedWebRtcRuntimeProviderConfig;
     /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
     managedFallback?: BrowserHandoffManagedFallbackConfig;
+    /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
+    onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
     successorWindowPolicy?: WindowHandoffSuccessorPolicy;
     /** Optional, default-off admission for Apple's exact LocalAuthentication user-presence dialog. */

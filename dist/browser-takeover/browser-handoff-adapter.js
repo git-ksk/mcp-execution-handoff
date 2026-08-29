@@ -26,6 +26,9 @@ export class BrowserHandoffAdapter {
                     takeover: config.takeover,
                     runtime: config.runtime,
                     managedFallback: config.managedFallback,
+                    ...(config.onManagedOperatorDiagnosticEvent
+                        ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
+                        : {}),
                     ...(config.onComplete ? { onComplete: config.onComplete } : {})
                 })
                 : new WindowHandoffCore(config);

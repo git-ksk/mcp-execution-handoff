@@ -111,3 +111,17 @@ test("empty managed operator diagnostics gives Browser and Window one source-com
     assert.deepEqual(value.events, []);
   }
 });
+
+test("managed diagnostic observer is bounded and observe-only", () => {
+  const observed: unknown[] = [];
+  const events = new ManagedOperatorDiagnosticEvents((event) => {
+    observed.push(event);
+    if (event.kind === "wss_failed") throw new Error("operator sink unavailable");
+  });
+
+  assert.doesNotThrow(() => events.record("wss_open"));
+  assert.doesNotThrow(() => events.record("wss_failed"));
+  assert.deepEqual(observed, [{ kind: "wss_open" }, { kind: "wss_failed" }]);
+  assert.deepEqual(events.snapshot(), [{ kind: "wss_open" }, { kind: "wss_failed" }]);
+  assert.deepEqual(observed.map((event) => Object.keys(event as object)), [["kind"], ["kind"]]);
+});
