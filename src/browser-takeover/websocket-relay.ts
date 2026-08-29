@@ -45,6 +45,7 @@ export {
 } from "./websocket-window-handoff.js";
 export type {
   ExperimentalWebSocketWindowHandoffConfig as WebSocketWindowHandoffConfig,
+  ExperimentalWebSocketWindowCaptureFailureDisposition as WebSocketWindowCaptureFailureDisposition,
   ExperimentalWebSocketWindowStartRequest as WebSocketWindowStartRequest,
   ExperimentalWebSocketWindowSurface as WebSocketWindowSurface
 } from "./websocket-window-handoff.js";

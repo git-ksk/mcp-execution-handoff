@@ -4,7 +4,10 @@ import { isAbsolute } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { TakeoverHostTarget } from "../browser-takeover/broker.js";
 import { parseWindowGeometry, parseWindowIds } from "../browser-takeover/linux-webrtc-host-cli.js";
-import type { ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
+import type {
+  ExperimentalWebSocketWindowCaptureFailureDisposition,
+  ExperimentalWebSocketWindowSurface
+} from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverFrame } from "./websocket-takeover.js";
 
 const MAX_HOST_RECORD_BYTES = 8 * 1024 * 1024;
@@ -357,6 +360,10 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       lastHelperCrashMessageClass: this.#lastHelperCrashMessageClass,
       failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass
     };
+  }
+
+  captureFailureDisposition(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition {
+    return isExactWindowBoundaryError(error) ? "authority_lost" : "recoverable";
   }
 
   async captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame> {
