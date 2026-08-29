@@ -1,6 +1,7 @@
 import type { TakeoverHostTarget } from "../browser-takeover/broker.js";
 import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverFrame } from "./websocket-takeover.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 export type LinuxWebSocketSurfaceFailure = "none" | "frame_timeout" | "helper_closed" | "helper_error" | "frame_protocol" | "diagnostics_bounds" | "input_failure" | "input_timeout" | "input_revalidation_failure" | "revalidation_failure" | "capture_x11" | "capture_encoder" | "capture_option" | "capture_other";
 export type LinuxWebSocketInputStage = "none" | "focus_ready" | "pointer_move_ready" | "pointer_authority_ready" | "pointer_down_sent" | "pointer_post_authority_ready" | "tap_sent" | "key_down_sent" | "key_authority_ready" | "key_up_sent" | "applied";
 export type LinuxWebSocketInputBoundaryStage = "none" | "requested" | "helper_ready" | "revalidation_ready" | "command_sent" | "acknowledged";
@@ -17,6 +18,8 @@ export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
     displayName: string;
     xdotoolExecutable?: string;
     helperTtlMs?: number;
+    /** Content-free bounded event hook owned by managed Handoff diagnostics. */
+    onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
 }
 export interface LinuxWebSocketJpegFrame {
     data: Buffer;
@@ -66,6 +69,7 @@ export declare class ExperimentalLinuxWebSocketWindowSurface implements Experime
         failureHelperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind;
         lastHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
         failureHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
+        authorityBoundary: "valid" | "lost";
     };
     captureFailureDisposition(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;

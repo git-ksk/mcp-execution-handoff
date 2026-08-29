@@ -99,6 +99,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     #lastHelperCrashMessageClass = "none";
     #failureHelperCrashMessageClass = "none";
     #inputAttempts = 0;
+    #authorityBoundary = "valid";
+    #onDiagnosticEvent;
     constructor(config) {
         if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
             throw new Error("Linux WSS host script must be an absolute path");
@@ -117,6 +119,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#displayName = config.displayName;
         this.#xdotoolExecutable = xdotoolExecutable;
         this.#helperTtlMs = helperTtlMs;
+        this.#onDiagnosticEvent = config.onDiagnosticEvent;
     }
     diagnosticsSnapshot() {
         return {
@@ -143,7 +146,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             lastHelperCrashErrorKind: this.#lastHelperCrashErrorKind,
             failureHelperCrashErrorKind: this.#failureHelperCrashErrorKind,
             lastHelperCrashMessageClass: this.#lastHelperCrashMessageClass,
-            failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass
+            failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass,
+            authorityBoundary: this.#authorityBoundary
         };
     }
     captureFailureDisposition(error) {
@@ -157,8 +161,13 @@ export class ExperimentalLinuxWebSocketWindowSurface {
                 active = await this.#ensure(target);
             }
             catch (error) {
-                if (isExactWindowBoundaryError(error) || attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS)
+                if (isExactWindowBoundaryError(error)) {
+                    this.#noteAuthorityLoss();
                     throw error;
+                }
+                if (attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS)
+                    throw error;
+                this.#onDiagnosticEvent?.("capture_recovery_attempt");
                 lastError = error;
                 await delay(CAPTURE_RECOVERY_DELAY_MS);
                 continue;
@@ -169,6 +178,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             }
             catch (error) {
                 this.#recordFailure("revalidation_failure");
+                if (isExactWindowBoundaryError(error))
+                    this.#noteAuthorityLoss();
                 throw error;
             }
             try {
@@ -182,13 +193,16 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             }
             catch (error) {
                 lastError = error;
-                if (isExactWindowBoundaryError(error))
+                if (isExactWindowBoundaryError(error)) {
+                    this.#noteAuthorityLoss();
                     throw error;
+                }
                 if (error instanceof Error && error.message.includes("frame timed out")) {
                     this.#recordFailure("frame_timeout");
                 }
                 if (attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS)
                     throw error;
+                this.#onDiagnosticEvent?.("capture_recovery_attempt");
                 // Keep the authority boundary exact: fence only the failed helper process, then recreate it
                 // for the same PID/window after the next mandatory ownership revalidation.
                 failActive(active, "Linux WSS exact-window helper capture stalled");
@@ -235,6 +249,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             }
             catch (error) {
                 this.#recordFailure("input_revalidation_failure");
+                if (isExactWindowBoundaryError(error))
+                    this.#noteAuthorityLoss();
                 throw error;
             }
             if (active.pendingInputAck)
@@ -282,6 +298,8 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     }
     async #replace(target) {
         const previous = this.#active;
+        if (previous)
+            this.#onDiagnosticEvent?.("helper_restart");
         this.#active = undefined;
         if (previous)
             await stopActive(previous);
@@ -390,6 +408,9 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     }
     #recordFailure(failure) {
         this.#lastFailure = failure;
+        if (failure === "input_failure" || failure === "input_timeout" || failure === "input_revalidation_failure") {
+            this.#onDiagnosticEvent?.("input_dispatch_failure");
+        }
         if (this.#failure !== "none")
             return;
         this.#failure = failure;
@@ -403,6 +424,12 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#failureHelperCrashOrigin = this.#lastHelperCrashOrigin;
         this.#failureHelperCrashErrorKind = this.#lastHelperCrashErrorKind;
         this.#failureHelperCrashMessageClass = this.#lastHelperCrashMessageClass;
+    }
+    #noteAuthorityLoss() {
+        if (this.#authorityBoundary === "lost")
+            return;
+        this.#authorityBoundary = "lost";
+        this.#onDiagnosticEvent?.("authority_boundary_lost");
     }
     async #revalidate(target) {
         validateExactTarget(target);
@@ -428,6 +455,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         ], env).catch(() => ""), target.windowId);
         if (!geometry)
             throw new Error("Linux WSS target window geometry is unavailable");
+        this.#authorityBoundary = "valid";
     }
 }
 function isExactWindowBoundaryError(error) {

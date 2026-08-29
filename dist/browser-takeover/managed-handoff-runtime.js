@@ -4,6 +4,7 @@ import { ManagedBrowserHandoffTransportCoordinator, ManagedBrowserHandoffTranspo
 import { WebRtcLatencyTracker } from "./webrtc-latency.js";
 import { webRtcRelayEnvironmentConfigured, withDirectOnlyWebRtcEnvironment } from "./webrtc-runtime-attempt.js";
 import { LinuxWebSocketWindowSurface, WebSocketBrowserHandoff } from "./websocket-relay.js";
+import { ManagedOperatorDiagnosticEvents, emptyManagedOperatorDiagnosticsSnapshot, parseManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 const FALLBACK_CAPABILITY_BYTES = 32;
 const FALLBACK_HEADER = "x-mcp-handoff-fallback";
 const FALLBACK_ROUTE = /^\/takeover\/api\/transport-fallback\/([A-Za-z0-9-]{8,100})$/;
@@ -62,12 +63,31 @@ export class ManagedWindowHandoffRuntime {
         }
         let sessionRef;
         const state = { current: undefined };
+        const diagnosticEvents = new ManagedOperatorDiagnosticEvents();
+        let pendingSessionDisposition = "none";
+        const noteDiagnosticEvent = (kind) => {
+            diagnosticEvents.record(kind);
+            if (kind === "session_retained")
+                pendingSessionDisposition = "retained";
+            if (kind === "session_revoked")
+                pendingSessionDisposition = "revoked";
+            if (kind === "wss_failed" && pendingSessionDisposition !== "revoked") {
+                pendingSessionDisposition = "retained";
+                diagnosticEvents.record("session_retained");
+            }
+            if (sessionRef)
+                sessionRef.sessionDisposition = pendingSessionDisposition;
+        };
         const completion = async (event) => {
             const session = sessionRef;
             if (!session || session.intervention.id !== event.interventionId)
                 return;
             await this.#config.onComplete?.(event);
             session.completed = true;
+            if (session.sessionDisposition !== "revoked") {
+                session.sessionDisposition = "revoked";
+                diagnosticEvents.record("session_revoked");
+            }
         };
         const directCore = withDirectOnlyWebRtcEnvironment(() => new WindowHandoffCore({
             takeover: this.#config.takeover,
@@ -89,13 +109,15 @@ export class ManagedWindowHandoffRuntime {
             helperTtlMs: this.#config.takeover.ttlMs,
             ...(this.#config.managedFallback.xdotoolExecutable
                 ? { xdotoolExecutable: this.#config.managedFallback.xdotoolExecutable }
-                : {})
+                : {}),
+            onDiagnosticEvent: noteDiagnosticEvent
         };
         const surface = new LinuxWebSocketWindowSurface(surfaceConfig);
         const wss = new WebSocketBrowserHandoff({
             takeover: this.#config.takeover,
             allowedOrigins: [this.#publicOrigin],
             surface,
+            onDiagnosticEvent: noteDiagnosticEvent,
             onComplete: completion
         });
         const drivers = [
@@ -165,7 +187,9 @@ export class ManagedWindowHandoffRuntime {
             lease,
             activeSessionId: sessionId,
             fallbackCapability: freshFallbackCapability(),
-            completed: false
+            completed: false,
+            diagnosticEvents,
+            sessionDisposition: pendingSessionDisposition
         };
         sessionRef = session;
         this.#sessionsByIntervention.set(session.intervention.id, session);
@@ -199,7 +223,8 @@ export class ManagedWindowHandoffRuntime {
             lastHelperCrashErrorKind: "none",
             failureHelperCrashErrorKind: "none",
             lastHelperCrashMessageClass: "none",
-            failureHelperCrashMessageClass: "none"
+            failureHelperCrashMessageClass: "none",
+            authorityBoundary: "valid"
         };
     }
     /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
@@ -301,6 +326,76 @@ export class ManagedWindowHandoffRuntime {
             ? current.core.diagnosticsSnapshot()
             : { events: [] };
     }
+    /** Stable, strict, content-free managed takeover diagnostics for production troubleshooting. */
+    managedOperatorDiagnosticsSnapshot(source) {
+        const session = this.#lastSession;
+        if (!session)
+            return emptyManagedOperatorDiagnosticsSnapshot(source);
+        const transport = session.coordinator.diagnosticsSnapshot();
+        const surface = session.surface.diagnosticsSnapshot();
+        const channel = session.webSocketHandoff.diagnosticsSnapshot();
+        const channelFailure = channel.failureCode !== "none" ? channel.failureCode : channel.lastFailure;
+        const channelState = channel.failureCode !== "none" ? channel.failureChannelState : channel.channelState;
+        const disconnectKind = channel.failureCode !== "none"
+            ? channel.failureDisconnectKind
+            : channel.disconnectKind;
+        const surfaceFailure = surface.failure !== "none" ? surface.failure : surface.lastFailure;
+        const helperStopReason = surface.failureHelperStopReason !== "none"
+            ? surface.failureHelperStopReason : surface.lastHelperStopReason;
+        const helperCrashReason = surface.failureHelperCrashReason !== "none"
+            ? surface.failureHelperCrashReason : surface.lastHelperCrashReason;
+        const helperExitKind = surface.failureHelperExitKind !== "none"
+            ? surface.failureHelperExitKind : surface.lastHelperExitKind;
+        const helperCrashClass = surface.failureHelperCrashClass !== "none"
+            ? surface.failureHelperCrashClass : surface.lastHelperCrashClass;
+        const helperCrashOrigin = surface.failureHelperCrashOrigin !== "none"
+            ? surface.failureHelperCrashOrigin : surface.lastHelperCrashOrigin;
+        const helperCrashErrorKind = surface.failureHelperCrashErrorKind !== "none"
+            ? surface.failureHelperCrashErrorKind : surface.lastHelperCrashErrorKind;
+        const helperCrashMessageClass = surface.failureHelperCrashMessageClass !== "none"
+            ? surface.failureHelperCrashMessageClass : surface.lastHelperCrashMessageClass;
+        const wssCurrent = transport.currentTransport === "websocket_relay";
+        const failed = surface.authorityBoundary === "lost"
+            || (wssCurrent && (session.sessionDisposition === "revoked" || channelFailure !== "none"))
+            || (transport.currentTransport === "none" && !session.completed);
+        const degraded = !failed && wssCurrent && (disconnectKind !== "none"
+            || surfaceFailure !== "none"
+            || session.sessionDisposition === "retained");
+        return parseManagedOperatorDiagnosticsSnapshot({
+            version: 1,
+            source,
+            namespace: "managed_handoff",
+            health: session.completed ? "idle" : failed ? "failed" : degraded ? "degraded" : "available",
+            currentTransport: transport.currentTransport,
+            previousTransport: transport.previousTransport,
+            generation: transport.generation,
+            transitionCount: transport.transitionCount,
+            fallbackReason: transport.lastFallbackReason ?? "none",
+            wss: {
+                namespace: "managed_wss",
+                channelState,
+                channelFailure,
+                disconnectKind,
+                framesObserved: surface.framesObserved,
+                framesSent: channel.sentFrames,
+                framesDropped: channel.droppedFrames,
+                surfaceFailure,
+                inputAttempts: surface.inputAttempts,
+                lastInputStage: surface.lastInputStage,
+                lastInputBoundaryStage: surface.lastInputBoundaryStage,
+                helperStopReason,
+                helperCrashReason,
+                helperExitKind,
+                helperCrashClass,
+                helperCrashOrigin,
+                helperCrashErrorKind,
+                helperCrashMessageClass,
+                authorityBoundary: surface.authorityBoundary,
+                sessionDisposition: session.sessionDisposition
+            },
+            events: session.diagnosticEvents.snapshot()
+        });
+    }
     latencySnapshot() {
         const current = this.#lastSession?.state.current;
         return current && current.kind !== "websocket_relay"
@@ -312,8 +407,10 @@ export class ManagedWindowHandoffRuntime {
         const snapshot = session?.coordinator.diagnosticsSnapshot() ?? {
             currentTransport: "none",
             lastTransport: "none",
+            previousTransport: "none",
             generation: 0,
-            transitionCount: 0
+            transitionCount: 0,
+            lastFallbackReason: undefined
         };
         const surface = session?.surface.diagnosticsSnapshot();
         const channel = session?.webSocketHandoff.diagnosticsSnapshot();
@@ -397,6 +494,7 @@ export class ManagedWindowHandoffRuntime {
         }
         session.lease = next;
         session.activeSessionId = nextSessionId;
+        session.diagnosticEvents.record("transport_transition");
         this.#sessionsByTransportSession.set(nextSessionId, session);
         return json(200, { path: new URL(next.locator).pathname });
     }

@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 export interface ExperimentalWebSocketWindowSurface {
@@ -24,6 +25,7 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
     surface: ExperimentalWebSocketWindowSurface;
     frameIntervalMs?: number;
     maxInboundBytes?: number;
+    onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     /** Called only after the shared Human generation has been fenced. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }

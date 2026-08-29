@@ -13,6 +13,7 @@ import {
   validWindowHandoffTarget
 } from "../window-takeover/window-handoff-core.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type {
   WebSocketTakeoverFrame,
   WebSocketTakeoverHumanInput,
@@ -42,6 +43,7 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
   surface: ExperimentalWebSocketWindowSurface;
   frameIntervalMs?: number;
   maxInboundBytes?: number;
+  onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
   /** Called only after the shared Human generation has been fenced. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
@@ -92,9 +94,11 @@ export class ExperimentalWebSocketWindowHandoff {
   readonly #frameIntervalMs: number;
   readonly #sessionsByIntervention = new Map<string, ActiveWindowSession>();
   readonly #sessionsById = new Map<string, ActiveWindowSession>();
+  readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
 
   constructor(config: ExperimentalWebSocketWindowHandoffConfig) {
     this.#surface = config.surface;
+    this.#onDiagnosticEvent = config.onDiagnosticEvent;
     this.#frameIntervalMs = boundedFrameInterval(config.frameIntervalMs);
     this.#broker = new TakeoverBroker(
       unavailableHttpSurface(),
@@ -117,7 +121,8 @@ export class ExperimentalWebSocketWindowHandoff {
     this.#binding = new ExperimentalWebSocketBrokerBinding(this.#broker, {
       allowedOrigins: config.allowedOrigins,
       onInput: (binding, input) => this.#dispatchInput(binding.interventionId, binding.epoch, input),
-      ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes })
+      ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+      ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
     });
   }
 
@@ -224,6 +229,7 @@ export class ExperimentalWebSocketWindowHandoff {
   }
 
   revoke(interventionId: string): void {
+    if (this.#sessionsByIntervention.has(interventionId)) this.#onDiagnosticEvent?.("session_revoked");
     this.#forgetIntervention(interventionId);
     this.#broker.revokeForIntervention(interventionId);
   }
@@ -237,7 +243,10 @@ export class ExperimentalWebSocketWindowHandoff {
       frame = await this.#surface.captureExactWindow(state.target);
     } catch (error) {
       const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
-      if (disposition === "recoverable") return;
+      if (disposition === "recoverable") {
+        this.#onDiagnosticEvent?.("session_retained");
+        return;
+      }
       this.revoke(state.interventionId);
       return;
     } finally {

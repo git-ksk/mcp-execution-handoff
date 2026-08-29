@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
+import { type ManagedOperatorDiagnosticsSnapshot } from "../browser-takeover/managed-operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
@@ -65,6 +66,8 @@ export declare class WindowHandoffAdapter {
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot;
+    /** Stable content-free managed transport diagnostics; empty when managed fallback is disabled. */
+    managedOperatorDiagnosticsSnapshot(): ManagedOperatorDiagnosticsSnapshot;
     latencySnapshot(): WebRtcLatencyComparison;
 }
 //# sourceMappingURL=window-handoff-adapter.d.ts.map

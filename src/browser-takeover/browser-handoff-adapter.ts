@@ -1,6 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
+import {
+  emptyManagedOperatorDiagnosticsSnapshot,
+  type ManagedOperatorDiagnosticsSnapshot
+} from "./managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type {
@@ -105,6 +109,12 @@ export class BrowserHandoffAdapter {
     return this.#core instanceof ManagedWindowHandoffRuntime
       ? this.#core.operatorDiagnosticsSnapshot("browser_handoff")
       : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
+  }
+  /** Stable content-free managed transport diagnostics; empty when managed fallback is disabled. */
+  managedOperatorDiagnosticsSnapshot(): ManagedOperatorDiagnosticsSnapshot {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedOperatorDiagnosticsSnapshot("browser_handoff")
+      : emptyManagedOperatorDiagnosticsSnapshot("browser_handoff");
   }
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
   managedSurfaceDiagnosticsSnapshot(): {

@@ -61,7 +61,8 @@ function nextMessage(socket: WebSocket): Promise<{ data: WebSocket.RawData; isBi
 async function startIngress(
   ticket: string,
   authority: ExperimentalWebSocketTakeoverSessionAuthority,
-  failInput = false
+  failInput = false,
+  diagnosticEvents?: string[]
 ) {
   const inputs: Array<{ generation: number; input: object }> = [];
   const ingress = new ExperimentalWebSocketTakeoverIngress({
@@ -70,7 +71,8 @@ async function startIngress(
     onInput(binding, input) {
       inputs.push({ generation: binding.clientGeneration, input });
       if (failInput) throw new Error("input failed");
-    }
+    },
+    ...(diagnosticEvents ? { onDiagnosticEvent: (kind: string) => diagnosticEvents.push(kind) } : {})
   });
   const server = createServer((_request, response) => {
     response.statusCode = 404;
@@ -261,7 +263,8 @@ test("WSS clean disconnect reconnects with a fresh server-derived generation", a
 test("WSS diagnostics keep the first input failure across close and fresh reconnect", async () => {
   const { locator, authority } = makeSession();
   const firstTicket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
-  const { ingress, server, connect } = await startIngress(firstTicket, authority, true);
+  const diagnosticEvents: string[] = [];
+  const { ingress, server, connect } = await startIngress(firstTicket, authority, true, diagnosticEvents);
   try {
     const first = connect();
     await openAndFirstMessage(first);
@@ -272,6 +275,8 @@ test("WSS diagnostics keep the first input failure across close and fresh reconn
     assert.equal(ingress.diagnosticsSnapshot().failureChannelState, "failed");
     assert.equal(ingress.diagnosticsSnapshot().failureCode, "transport_failure");
     assert.equal(ingress.diagnosticsSnapshot().failureInputStage, "dispatch_started");
+    assert.ok(diagnosticEvents.includes("wss_open"));
+    assert.ok(diagnosticEvents.includes("wss_failed"));
 
     const secondTicket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
     const second = connect(ORIGIN, secondTicket);

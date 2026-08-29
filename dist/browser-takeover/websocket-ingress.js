@@ -373,6 +373,7 @@ export class ExperimentalWebSocketTakeoverIngress {
         });
     }
     #recordDiagnostics(active, kind) {
+        const previous = this.#lastDiagnostics;
         const channel = active.channel.diagnostics;
         const disconnectKind = channel.lastFailure ? "channel_failure" : kind;
         const captureFailure = this.#lastDiagnostics.failureDisconnectKind === "none"
@@ -397,6 +398,17 @@ export class ExperimentalWebSocketTakeoverIngress {
                 ? channel.lastInputStage
                 : this.#lastDiagnostics.failureInputStage
         };
+        if (channel.state === "open" && previous.channelState !== "open") {
+            this.options.onDiagnosticEvent?.("wss_open");
+        }
+        else if (channel.state === "failed" || channel.lastFailure !== undefined || kind === "peer_error") {
+            if (previous.channelState !== "failed" || previous.failureCode === "none") {
+                this.options.onDiagnosticEvent?.("wss_failed");
+            }
+        }
+        else if (kind !== "none" && previous.disconnectKind === "none") {
+            this.options.onDiagnosticEvent?.("wss_degraded");
+        }
     }
     #parseHandshake(request) {
         const host = request.headers.host;

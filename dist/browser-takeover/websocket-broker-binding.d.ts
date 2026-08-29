@@ -2,11 +2,13 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { TakeoverBroker, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketTakeoverIngress } from "./websocket-ingress.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { WebSocketTakeoverBinding, WebSocketTakeoverFrame, WebSocketTakeoverHumanInput, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export interface ExperimentalWebSocketBrokerBindingOptions {
     allowedOrigins: readonly string[];
     onInput(binding: Readonly<WebSocketTakeoverBinding>, input: WebSocketTakeoverHumanInput): void | Promise<void>;
     maxInboundBytes?: number;
+    onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
 }
 /**
  * Experimental bridge that binds WSS to the exact TakeoverBroker session authority.

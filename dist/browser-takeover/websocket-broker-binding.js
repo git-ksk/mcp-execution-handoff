@@ -25,7 +25,8 @@ export class ExperimentalWebSocketBrokerBinding {
             authority: this.#authority,
             allowedOrigins: options.allowedOrigins,
             onInput: options.onInput,
-            ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes })
+            ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes }),
+            ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {})
         });
     }
     createLink(intervention, principalBinding, inputPolicy) {

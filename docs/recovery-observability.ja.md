@@ -197,6 +197,16 @@ Terminalは2つのtarget-specific namespaceを使います。
 
 Terminalの `sessionId`、session generation、intervention epoch/id、principal binding、PTY byte、client generationはexportしません。Browser / Window operator summaryにはexecution authority / lifecycle fieldを捏造しません。これらfacadeはgeneric execution state machineを所有していないためです。
 
+### Managed Browser / Window takeover diagnostics
+
+managed direct WebRTC -> WebSocket relay -> optional WebRTC relay のtroubleshootingは、generic operator v1とは別のstable / strict schema `ManagedOperatorDiagnosticsSnapshot` で扱います。Browser / Windowはいずれも同じ `managedOperatorDiagnosticsSnapshot()` を公開します。これによりclosed-worldなgeneric operator v1へtransport固有fieldを無理に追加せず、consumerごとの独自diagnostics contractも不要にします。managed fallback無効時も同じschemaで `idle` / `none` のempty snapshotを返します。
+
+managed snapshotに入るのはboundedなcontrol-plane factだけです。current / previous transport、generation / transition count、fallback reason、WSS channel state / failure / disconnect class、frames observed / sent / dropped、exact-window surface failure、input attempt / stage / boundary stage、helper stop / crash / exit classification、exact-window authority boundary（`valid` / `lost`）、WSS session disposition（`none` / `retained` / `revoked`）を扱います。event historyは最大64件で、transport transition、WSS open/degraded/failed、capture recovery、input dispatch failure、helper restart、authority loss、session retained/revokedのbounded enumだけを保持します。
+
+`parseManagedOperatorDiagnosticsSnapshot()` はclosed-worldです。unknown field、free-form reason、上限超過counter、unknown enumはrejectします。credential、MFA/OTP/passkey、cookie/token/capability、Human input text、framebuffer/browser content、PID/window identity、principal/intervention/session identity、IP/ICE/SDP/TURN credential、account identity、timestamp、arbitrary messageを格納するfieldはありません。diagnostics eventはprocess-memory evidenceに限定し、authorityの復元・拡張には使いません。exact-window ownership / visibility / geometry / target lossは引き続きfail-closeで、failed Human inputをdiagnostics経由でreplayすることもありません。
+
+physical acceptanceでは同じsnapshotを takeover開始前、managed fallback後、failure直後、completion後の4点で取得します。`Session unavailable` という症状だけからinput recoveryを推定せず、failure snapshotを修正判断の根拠にします。
+
 ### Privacy / boundedness / compatibility
 
 `parseOperatorDiagnosticsSnapshot()` をstrict v1 validatorとします。extra field、false-parity field、上限超過count、session/intervention/principal id、PID/window identity、credential/token、SDP/candidate/IP、framebuffer/media、Human input、PTY/browser/page content、account identity、capability、timestamp、free-form message payloadを入れる経路は拒否します。

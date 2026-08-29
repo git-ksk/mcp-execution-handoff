@@ -1,6 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
+import {
+  emptyManagedOperatorDiagnosticsSnapshot,
+  type ManagedOperatorDiagnosticsSnapshot
+} from "../browser-takeover/managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
@@ -124,6 +128,12 @@ export class WindowHandoffAdapter {
     return this.#core instanceof ManagedWindowHandoffRuntime
       ? this.#core.operatorDiagnosticsSnapshot("window_handoff")
       : webRtcOperatorDiagnosticsSnapshot("window_handoff", this.#core.diagnosticsSnapshot());
+  }
+  /** Stable content-free managed transport diagnostics; empty when managed fallback is disabled. */
+  managedOperatorDiagnosticsSnapshot(): ManagedOperatorDiagnosticsSnapshot {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedOperatorDiagnosticsSnapshot("window_handoff")
+      : emptyManagedOperatorDiagnosticsSnapshot("window_handoff");
   }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }

@@ -127,6 +127,17 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
         inputBoundaryStage: "none"
       }
     });
+    const managed = runtime.managedOperatorDiagnosticsSnapshot("browser_handoff");
+    assert.equal(managed.health, "available");
+    assert.equal(managed.currentTransport, "websocket_relay");
+    assert.equal(managed.previousTransport, "webrtc_direct");
+    assert.equal(managed.generation, 2);
+    assert.equal(managed.transitionCount, 1);
+    assert.equal(managed.fallbackReason, "transport_unavailable");
+    assert.equal(managed.wss.authorityBoundary, "valid");
+    assert.equal(managed.wss.sessionDisposition, "none");
+    assert.deepEqual(managed.events, [{ kind: "transport_transition" }]);
+    assert.doesNotMatch(JSON.stringify(managed), /managed-int|managed-principal|4242|7331/);
     await runtime.revoke("managed-int");
   } finally {
     restoreRelayEnv(saved);
