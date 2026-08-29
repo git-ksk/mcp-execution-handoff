@@ -13,6 +13,7 @@ export interface ManagedBrowserHandoffTransportLease {
 export interface ManagedBrowserHandoffTransportSnapshot {
     readonly currentTransport: BrowserHandoffTransportAttempt | "none";
     readonly lastTransport: BrowserHandoffTransportAttempt | "none";
+    readonly previousTransport: BrowserHandoffTransportAttempt | "none";
     readonly generation: number;
     readonly transitionCount: number;
     readonly lastFallbackReason?: ManagedBrowserHandoffFallbackReason;

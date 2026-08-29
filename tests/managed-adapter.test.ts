@@ -29,6 +29,9 @@ test("Browser facade keeps synchronous start while managed fallback stays Handof
   assert.match(await page.text(), /data-fallback=/);
   const diagnostics = adapter.operatorDiagnosticsSnapshot();
   assert.equal(diagnostics.transport.namespace, "managed_handoff");
+  const managedDiagnostics = adapter.managedOperatorDiagnosticsSnapshot();
+  assert.equal(managedDiagnostics.namespace, "managed_handoff");
+  assert.equal(managedDiagnostics.currentTransport, "webrtc_direct");
   await adapter.revoke("managed-browser");
 });
 
@@ -74,4 +77,6 @@ test("managed Window facade requires one exact window without changing the defau
     target: { processId: 4242 },
     inputPolicy: ALL_INPUT
   }));
+  assert.deepEqual(direct.managedOperatorDiagnosticsSnapshot().events, []);
+  assert.equal(direct.managedOperatorDiagnosticsSnapshot().currentTransport, "none");
 });

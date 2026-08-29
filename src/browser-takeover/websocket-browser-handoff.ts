@@ -12,6 +12,7 @@ import {
   type ExperimentalWebSocketWindowSurface
 } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 
 export interface ExperimentalWebSocketBrowserHandoffConfig {
   takeover: ExperimentalWebSocketWindowHandoffConfig["takeover"];
@@ -19,6 +20,7 @@ export interface ExperimentalWebSocketBrowserHandoffConfig {
   surface: ExperimentalWebSocketWindowSurface;
   frameIntervalMs?: number;
   maxInboundBytes?: number;
+  onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
 
@@ -58,6 +60,7 @@ export class ExperimentalWebSocketBrowserHandoff {
       surface: config.surface,
       ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
       ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+      ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
       onComplete: async (event) => {
         this.#forgetMatching(event.interventionId, event.epoch);
         await config.onComplete?.(event);

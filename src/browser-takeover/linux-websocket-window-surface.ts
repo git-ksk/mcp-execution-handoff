@@ -9,6 +9,7 @@ import type {
   ExperimentalWebSocketWindowSurface
 } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverFrame } from "./websocket-takeover.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 
 const MAX_HOST_RECORD_BYTES = 8 * 1024 * 1024;
 const MAX_DIAGNOSTIC_BUFFER_BYTES = 8 * 1024;
@@ -172,6 +173,8 @@ export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
   displayName: string;
   xdotoolExecutable?: string;
   helperTtlMs?: number;
+  /** Content-free bounded event hook owned by managed Handoff diagnostics. */
+  onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
 }
 
 export interface LinuxWebSocketJpegFrame {
@@ -288,6 +291,8 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   #lastHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass = "none";
   #failureHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass = "none";
   #inputAttempts = 0;
+  #authorityBoundary: "valid" | "lost" = "valid";
+  readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
 
   constructor(config: ExperimentalLinuxWebSocketWindowSurfaceConfig) {
     if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
@@ -306,6 +311,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     this.#displayName = config.displayName;
     this.#xdotoolExecutable = xdotoolExecutable;
     this.#helperTtlMs = helperTtlMs;
+    this.#onDiagnosticEvent = config.onDiagnosticEvent;
   }
 
   diagnosticsSnapshot(): {
@@ -333,6 +339,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     failureHelperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind;
     lastHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
     failureHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
+    authorityBoundary: "valid" | "lost";
   } {
     return {
       lastFailure: this.#lastFailure,
@@ -358,7 +365,8 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       lastHelperCrashErrorKind: this.#lastHelperCrashErrorKind,
       failureHelperCrashErrorKind: this.#failureHelperCrashErrorKind,
       lastHelperCrashMessageClass: this.#lastHelperCrashMessageClass,
-      failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass
+      failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass,
+      authorityBoundary: this.#authorityBoundary
     };
   }
 
@@ -373,7 +381,9 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       try {
         active = await this.#ensure(target);
       } catch (error) {
-        if (isExactWindowBoundaryError(error) || attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS) throw error;
+        if (isExactWindowBoundaryError(error)) { this.#noteAuthorityLoss(); throw error; }
+        if (attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS) throw error;
+        this.#onDiagnosticEvent?.("capture_recovery_attempt");
         lastError = error;
         await delay(CAPTURE_RECOVERY_DELAY_MS);
         continue;
@@ -383,6 +393,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
         await this.#revalidate(target);
       } catch (error) {
         this.#recordFailure("revalidation_failure");
+        if (isExactWindowBoundaryError(error)) this.#noteAuthorityLoss();
         throw error;
       }
       try {
@@ -395,11 +406,12 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
         };
       } catch (error) {
         lastError = error;
-        if (isExactWindowBoundaryError(error)) throw error;
+        if (isExactWindowBoundaryError(error)) { this.#noteAuthorityLoss(); throw error; }
         if (error instanceof Error && error.message.includes("frame timed out")) {
           this.#recordFailure("frame_timeout");
         }
         if (attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS) throw error;
+        this.#onDiagnosticEvent?.("capture_recovery_attempt");
         // Keep the authority boundary exact: fence only the failed helper process, then recreate it
         // for the same PID/window after the next mandatory ownership revalidation.
         failActive(active, "Linux WSS exact-window helper capture stalled");
@@ -447,6 +459,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
         this.#lastInputBoundaryStage = "revalidation_ready";
       } catch (error) {
         this.#recordFailure("input_revalidation_failure");
+        if (isExactWindowBoundaryError(error)) this.#noteAuthorityLoss();
         throw error;
       }
       if (active.pendingInputAck) throw new Error("Linux WSS exact-window helper input is busy");
@@ -493,6 +506,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
 
   async #replace(target: Readonly<TakeoverHostTarget>): Promise<void> {
     const previous = this.#active;
+    if (previous) this.#onDiagnosticEvent?.("helper_restart");
     this.#active = undefined;
     if (previous) await stopActive(previous);
     await this.#revalidate(target);
@@ -584,6 +598,9 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
 
   #recordFailure(failure: LinuxWebSocketSurfaceFailure): void {
     this.#lastFailure = failure;
+    if (failure === "input_failure" || failure === "input_timeout" || failure === "input_revalidation_failure") {
+      this.#onDiagnosticEvent?.("input_dispatch_failure");
+    }
     if (this.#failure !== "none") return;
     this.#failure = failure;
     this.#failureInputStage = this.#lastInputStage;
@@ -596,6 +613,12 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     this.#failureHelperCrashOrigin = this.#lastHelperCrashOrigin;
     this.#failureHelperCrashErrorKind = this.#lastHelperCrashErrorKind;
     this.#failureHelperCrashMessageClass = this.#lastHelperCrashMessageClass;
+  }
+
+  #noteAuthorityLoss(): void {
+    if (this.#authorityBoundary === "lost") return;
+    this.#authorityBoundary = "lost";
+    this.#onDiagnosticEvent?.("authority_boundary_lost");
   }
 
   async #revalidate(target: Readonly<TakeoverHostTarget>): Promise<void> {
@@ -614,6 +637,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       "getwindowgeometry", "--shell", String(target.windowId)
     ], env).catch(() => ""), target.windowId!);
     if (!geometry) throw new Error("Linux WSS target window geometry is unavailable");
+    this.#authorityBoundary = "valid";
   }
 }
 

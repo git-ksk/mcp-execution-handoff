@@ -6,6 +6,7 @@ import {
   ExperimentalWebSocketTakeoverIngress,
   ExperimentalWebSocketTakeoverSessionAuthority
 } from "./websocket-ingress.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type {
   WebSocketTakeoverBinding,
   WebSocketTakeoverFrame,
@@ -22,6 +23,7 @@ export interface ExperimentalWebSocketBrokerBindingOptions {
     input: WebSocketTakeoverHumanInput
   ): void | Promise<void>;
   maxInboundBytes?: number;
+  onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
 }
 
 /**
@@ -58,7 +60,8 @@ export class ExperimentalWebSocketBrokerBinding {
       authority: this.#authority,
       allowedOrigins: options.allowedOrigins,
       onInput: options.onInput,
-      ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes })
+      ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes }),
+      ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {})
     });
   }
 

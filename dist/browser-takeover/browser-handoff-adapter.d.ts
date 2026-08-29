@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
+import { type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "./broker.js";
@@ -47,6 +48,8 @@ export declare class BrowserHandoffAdapter {
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     operatorDiagnosticsSnapshot(): OperatorDiagnosticsSnapshot;
+    /** Stable content-free managed transport diagnostics; empty when managed fallback is disabled. */
+    managedOperatorDiagnosticsSnapshot(): ManagedOperatorDiagnosticsSnapshot;
     /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
     managedSurfaceDiagnosticsSnapshot(): {
         lastFailure: string;

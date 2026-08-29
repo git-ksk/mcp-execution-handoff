@@ -197,6 +197,16 @@ Terminal uses two target-specific namespaces:
 
 Terminal `sessionId`, session generation, intervention epoch/id, principal binding, PTY bytes, and client generation are not exported. Browser/Window operator summaries intentionally do not invent execution-authority or lifecycle fields because those facades do not own the generic execution state machine.
 
+### Managed Browser/Window takeover diagnostics
+
+Managed direct WebRTC -> WebSocket relay -> optional WebRTC relay troubleshooting has a separate stable, strict schema: `ManagedOperatorDiagnosticsSnapshot`. Browser and Window expose it through the same `managedOperatorDiagnosticsSnapshot()` method. This keeps managed transport detail out of the closed-world generic operator v1 envelope while avoiding consumer-specific diagnostic contracts. When managed fallback is disabled, the method returns the same schema with `idle` / `none` values.
+
+The managed snapshot contains only bounded control-plane facts: current and previous transport, generation and transition count, fallback reason, WSS channel state/failure/disconnect class, observed/sent/dropped frame counts, exact-window surface failure, input attempt/stage/boundary stage, helper stop/crash/exit classifications, exact-window authority boundary (`valid` or `lost`), and WSS session disposition (`none`, `retained`, or `revoked`). A bounded 64-event history may contain only enumerated events for transport transition, WSS open/degraded/failed, capture recovery, input dispatch failure, helper restart, authority loss, and session retained/revoked.
+
+`parseManagedOperatorDiagnosticsSnapshot()` is closed-world: unknown fields, free-form reasons, oversized counters, or unrecognized enum values fail validation. The schema has no field for credentials, MFA/OTP/passkey material, cookies/tokens/capabilities, Human input text, framebuffer/browser content, PID/window identity, principal/intervention/session identity, IP/ICE/SDP/TURN credentials, account identity, timestamps, or arbitrary messages. Diagnostic events are process-memory evidence only and cannot restore or widen authority. Exact-window ownership/visibility/geometry/target loss remains fail-closed, and failed Human input is never replayed by diagnostics.
+
+For physical acceptance, capture this same snapshot at four boundaries: before takeover, after managed fallback, immediately after failure, and after completion. The failure snapshot is the decision point for recovery work: do not infer an input-recovery fix from `Session unavailable` alone.
+
 ### Privacy, boundedness, and compatibility
 
 `parseOperatorDiagnosticsSnapshot()` is the strict v1 validator. It rejects extra fields, false-parity fields, oversized counts, and any attempted path for session/intervention/principal ids, PID/window identity, credentials/tokens, SDP/candidates/IPs, framebuffer/media, Human input, PTY/browser/page content, account identity, capability, timestamp, or free-form message payloads.

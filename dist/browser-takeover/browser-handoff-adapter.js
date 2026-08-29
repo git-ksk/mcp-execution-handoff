@@ -1,3 +1,4 @@
+import { emptyManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { ManagedWindowHandoffRuntime } from "./managed-handoff-runtime.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "../window-takeover/window-handoff-core.js";
@@ -60,6 +61,12 @@ export class BrowserHandoffAdapter {
         return this.#core instanceof ManagedWindowHandoffRuntime
             ? this.#core.operatorDiagnosticsSnapshot("browser_handoff")
             : webRtcOperatorDiagnosticsSnapshot("browser_handoff", this.#core.diagnosticsSnapshot());
+    }
+    /** Stable content-free managed transport diagnostics; empty when managed fallback is disabled. */
+    managedOperatorDiagnosticsSnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.managedOperatorDiagnosticsSnapshot("browser_handoff")
+            : emptyManagedOperatorDiagnosticsSnapshot("browser_handoff");
     }
     /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
     managedSurfaceDiagnosticsSnapshot() {

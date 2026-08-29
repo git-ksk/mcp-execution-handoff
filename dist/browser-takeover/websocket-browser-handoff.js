@@ -22,6 +22,7 @@ export class ExperimentalWebSocketBrowserHandoff {
             surface: config.surface,
             ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
             ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+            ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
             onComplete: async (event) => {
                 this.#forgetMatching(event.interventionId, event.epoch);
                 await config.onComplete?.(event);

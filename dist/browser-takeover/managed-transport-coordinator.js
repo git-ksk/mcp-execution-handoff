@@ -23,6 +23,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
     #generation = 0;
     #transitionCount = 0;
     #lastTransport = "none";
+    #previousTransport = "none";
     #lastFallbackReason;
     #serial = Promise.resolve();
     constructor(policy, drivers) {
@@ -58,6 +59,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
         return this.#enqueue(async () => {
             const active = this.#assertActive(lease);
             await active.driver.revoke();
+            this.#previousTransport = active.lease.transport;
             this.#active = undefined;
             const nextIndex = active.index + 1;
             if (nextIndex >= this.#drivers.length) {
@@ -76,6 +78,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
         return this.#enqueue(async () => {
             const active = this.#assertActive(lease);
             await active.driver.revoke();
+            this.#previousTransport = active.lease.transport;
             this.#active = undefined;
             this.#lastFallbackReason = reason;
             const firstNextIndex = active.index + 1;
@@ -104,6 +107,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
             if (lease)
                 this.#assertActive(lease);
             await active.driver.revoke();
+            this.#previousTransport = active.lease.transport;
             this.#active = undefined;
             this.#generation += 1;
         });
@@ -115,6 +119,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
         return {
             currentTransport: this.#active?.lease.transport ?? "none",
             lastTransport: this.#lastTransport,
+            previousTransport: this.#previousTransport,
             generation: this.#generation,
             transitionCount: this.#transitionCount,
             ...(this.#lastFallbackReason === undefined

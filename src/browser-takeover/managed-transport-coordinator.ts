@@ -21,6 +21,7 @@ export interface ManagedBrowserHandoffTransportLease {
 export interface ManagedBrowserHandoffTransportSnapshot {
   readonly currentTransport: BrowserHandoffTransportAttempt | "none";
   readonly lastTransport: BrowserHandoffTransportAttempt | "none";
+  readonly previousTransport: BrowserHandoffTransportAttempt | "none";
   readonly generation: number;
   readonly transitionCount: number;
   readonly lastFallbackReason?: ManagedBrowserHandoffFallbackReason;
@@ -62,6 +63,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
   #generation = 0;
   #transitionCount = 0;
   #lastTransport: BrowserHandoffTransportAttempt | "none" = "none";
+  #previousTransport: BrowserHandoffTransportAttempt | "none" = "none";
   #lastFallbackReason: ManagedBrowserHandoffFallbackReason | undefined;
   #serial: Promise<void> = Promise.resolve();
 
@@ -117,6 +119,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
     return this.#enqueue(async () => {
       const active = this.#assertActive(lease);
       await active.driver.revoke();
+      this.#previousTransport = active.lease.transport;
       this.#active = undefined;
 
       const nextIndex = active.index + 1;
@@ -140,6 +143,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
     return this.#enqueue(async () => {
       const active = this.#assertActive(lease);
       await active.driver.revoke();
+      this.#previousTransport = active.lease.transport;
       this.#active = undefined;
       this.#lastFallbackReason = reason;
 
@@ -170,6 +174,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
       if (!active) return;
       if (lease) this.#assertActive(lease);
       await active.driver.revoke();
+      this.#previousTransport = active.lease.transport;
       this.#active = undefined;
       this.#generation += 1;
     });
@@ -183,6 +188,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
     return {
       currentTransport: this.#active?.lease.transport ?? "none",
       lastTransport: this.#lastTransport,
+      previousTransport: this.#previousTransport,
       generation: this.#generation,
       transitionCount: this.#transitionCount,
       ...(this.#lastFallbackReason === undefined

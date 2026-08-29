@@ -25,6 +25,7 @@ function fixture(options: {
   recoverableCaptureFailures?: number;
 } = {}) {
   const calls: SurfaceCall[] = [];
+  const diagnosticEvents: string[] = [];
   let recoverableCaptureFailures = options.recoverableCaptureFailures ?? 0;
   const completed: Array<{ interventionId: string; epoch: number }> = [];
   const surface: ExperimentalWebSocketWindowSurface = {
@@ -68,11 +69,12 @@ function fixture(options: {
     allowedOrigins: [ORIGIN],
     surface,
     frameIntervalMs: 50,
+    onDiagnosticEvent(kind) { diagnosticEvents.push(kind); },
     onComplete(event) {
       completed.push(event);
     }
   });
-  return { handoff, surface, calls, completed };
+  return { handoff, surface, calls, completed, diagnosticEvents };
 }
 
 function sessionIdFrom(link: string): string {
@@ -202,7 +204,7 @@ test("Generic Window WSS captures and inputs only through the exact trusted proc
 });
 
 test("Generic Window WSS revokes the session when exact-window capture cannot be revalidated", async (t) => {
-  const { handoff, calls } = fixture({ captureFails: true });
+  const { handoff, calls, diagnosticEvents } = fixture({ captureFails: true });
   const locator = handoff.start({
     intervention: { id: "window-capture-failure", epoch: 1 },
     principalBinding: PRINCIPAL,
@@ -229,10 +231,11 @@ test("Generic Window WSS revokes the session when exact-window capture cannot be
     { method: "POST", headers: { origin: ORIGIN } }
   ), PRINCIPAL);
   assert.equal(stale.status, 404);
+  assert.deepEqual(diagnosticEvents.filter((event) => event === "session_revoked"), ["session_revoked"]);
 });
 
 test("Generic Window WSS keeps the same session across explicitly recoverable capture failures", async (t) => {
-  const { handoff, calls } = fixture({ recoverableCaptureFailures: 2 });
+  const { handoff, calls, diagnosticEvents } = fixture({ recoverableCaptureFailures: 2 });
   const locator = handoff.start({
     intervention: { id: "window-recoverable-capture", epoch: 1 },
     principalBinding: PRINCIPAL,
@@ -251,6 +254,8 @@ test("Generic Window WSS keeps the same session across explicitly recoverable ca
   assert.ok(calls.filter((call) => call.kind === "capture").length >= 3);
   assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), true);
   assert.equal(socket.readyState, WebSocket.OPEN);
+  assert.ok(diagnosticEvents.includes("session_retained"));
+  assert.equal(diagnosticEvents.includes("session_revoked"), false);
 
   socket.send(JSON.stringify({ kind: "text", text: "still-active" }));
   await waitFor(() => calls.some((call) => call.kind === "text"));

@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import WebSocket from "ws";
 import { TakeoverSessionManager, type TakeoverCompletionResult } from "../browser-takeover/session.js";
 import { type WebSocketTakeoverBinding, type WebSocketTakeoverFrame, type WebSocketTakeoverHumanInput, type WebSocketTakeoverInputPolicy, type WebSocketTakeoverLease, type WebSocketTakeoverPeer, type WebSocketTakeoverServerMessage, type WebSocketTakeoverState, type WebSocketTakeoverFailureCode, type WebSocketTakeoverInputStage } from "./websocket-takeover.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 export interface ExperimentalWebSocketAcceptedSession {
     readonly binding: WebSocketTakeoverBinding;
     readonly inputPolicy: WebSocketTakeoverInputPolicy;
@@ -41,6 +42,8 @@ export interface ExperimentalWebSocketTakeoverIngressOptions {
     allowedOrigins: readonly string[];
     onInput(binding: Readonly<WebSocketTakeoverBinding>, input: WebSocketTakeoverHumanInput): void | Promise<void>;
     maxInboundBytes?: number;
+    /** Content-free bounded event hook for first-class managed operator diagnostics. */
+    onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
 }
 export type ExperimentalWebSocketIngressDisconnectKind = "none" | "peer_close" | "peer_error" | "policy_close" | "channel_failure";
 export interface ExperimentalWebSocketIngressDiagnostics {

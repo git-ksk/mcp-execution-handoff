@@ -8,6 +8,7 @@ import { type WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import { LinuxWebSocketWindowSurface, WebSocketBrowserHandoff } from "./websocket-relay.js";
 import type { BrowserHandoffTransportAttempt } from "./transport-fallback-policy.js";
+import { type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 export interface BrowserHandoffManagedFallbackConfig {
     /** Built Handoff Linux exact-window host script used by the managed Cloud/container fallback. */
     linuxHostScript: string;
@@ -50,6 +51,8 @@ export declare class ManagedWindowHandoffRuntime {
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
+    /** Stable, strict, content-free managed takeover diagnostics for production troubleshooting. */
+    managedOperatorDiagnosticsSnapshot(source: Extract<OperatorDiagnosticsSource, "browser_handoff" | "window_handoff">): ManagedOperatorDiagnosticsSnapshot;
     latencySnapshot(): WebRtcLatencyComparison;
     operatorDiagnosticsSnapshot(source: Extract<OperatorDiagnosticsSource, "browser_handoff" | "window_handoff">): OperatorDiagnosticsSnapshot;
 }

@@ -3,12 +3,14 @@ import type { Duplex } from "node:stream";
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketWindowHandoff, type ExperimentalWebSocketWindowHandoffConfig, type ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
+import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 export interface ExperimentalWebSocketBrowserHandoffConfig {
     takeover: ExperimentalWebSocketWindowHandoffConfig["takeover"];
     allowedOrigins: readonly string[];
     surface: ExperimentalWebSocketWindowSurface;
     frameIntervalMs?: number;
     maxInboundBytes?: number;
+    onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
 }
 export interface ExperimentalWebSocketBrowserStartRequest {

@@ -23,8 +23,10 @@ export class ExperimentalWebSocketWindowHandoff {
     #frameIntervalMs;
     #sessionsByIntervention = new Map();
     #sessionsById = new Map();
+    #onDiagnosticEvent;
     constructor(config) {
         this.#surface = config.surface;
+        this.#onDiagnosticEvent = config.onDiagnosticEvent;
         this.#frameIntervalMs = boundedFrameInterval(config.frameIntervalMs);
         this.#broker = new TakeoverBroker(unavailableHttpSurface(), config.takeover, undefined, undefined, config.onComplete
             ? {
@@ -41,7 +43,8 @@ export class ExperimentalWebSocketWindowHandoff {
         this.#binding = new ExperimentalWebSocketBrokerBinding(this.#broker, {
             allowedOrigins: config.allowedOrigins,
             onInput: (binding, input) => this.#dispatchInput(binding.interventionId, binding.epoch, input),
-            ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes })
+            ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+            ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
         });
     }
     start(request) {
@@ -114,6 +117,8 @@ export class ExperimentalWebSocketWindowHandoff {
         return sessionId !== undefined && this.#sessionsById.has(sessionId);
     }
     revoke(interventionId) {
+        if (this.#sessionsByIntervention.has(interventionId))
+            this.#onDiagnosticEvent?.("session_revoked");
         this.#forgetIntervention(interventionId);
         this.#broker.revokeForIntervention(interventionId);
     }
@@ -129,8 +134,10 @@ export class ExperimentalWebSocketWindowHandoff {
         }
         catch (error) {
             const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
-            if (disposition === "recoverable")
+            if (disposition === "recoverable") {
+                this.#onDiagnosticEvent?.("session_retained");
                 return;
+            }
             this.revoke(state.interventionId);
             return;
         }
