@@ -37,7 +37,7 @@ function deferred(): { promise: Promise<void>; resolve(): void } {
 test("managed coordinator enforces direct -> WSS -> optional TURN plan", async () => {
   const events: string[] = [];
   const coordinator = new ManagedBrowserHandoffTransportCoordinator(
-    { websocketRelayEnabled: true, webrtcRelayEnabled: true },
+    { order: ["webrtc_direct", "websocket_relay", "webrtc_relay"] },
     [
       driver("webrtc_direct", events),
       driver("websocket_relay", events),
@@ -76,7 +76,7 @@ test("managed coordinator never starts the next transport before revoke resolves
   const events: string[] = [];
   const gate = deferred();
   const coordinator = new ManagedBrowserHandoffTransportCoordinator(
-    { websocketRelayEnabled: true, webrtcRelayEnabled: false },
+    { order: ["webrtc_direct", "websocket_relay"] },
     [
       driver("webrtc_direct", events, { revoke: () => gate.promise }),
       driver("websocket_relay", events)
@@ -102,7 +102,7 @@ test("managed coordinator never starts the next transport before revoke resolves
 test("concurrent fallback requests have one winner and stale generation fails closed", async () => {
   const events: string[] = [];
   const coordinator = new ManagedBrowserHandoffTransportCoordinator(
-    { websocketRelayEnabled: true, webrtcRelayEnabled: true },
+    { order: ["webrtc_direct", "websocket_relay", "webrtc_relay"] },
     [
       driver("webrtc_direct", events),
       driver("websocket_relay", events),
@@ -130,7 +130,7 @@ test("concurrent fallback requests have one winner and stale generation fails cl
 test("TURN is unreachable when the managed policy disables WebRTC relay", async () => {
   const events: string[] = [];
   const coordinator = new ManagedBrowserHandoffTransportCoordinator(
-    { websocketRelayEnabled: true, webrtcRelayEnabled: false },
+    { order: ["webrtc_direct", "websocket_relay"] },
     [driver("webrtc_direct", events), driver("websocket_relay", events)]
   );
 
@@ -151,7 +151,7 @@ test("invalid provider order is rejected before any transport can claim authorit
   const events: string[] = [];
   assert.throws(
     () => new ManagedBrowserHandoffTransportCoordinator(
-      { websocketRelayEnabled: true, webrtcRelayEnabled: true },
+      { order: ["webrtc_direct", "websocket_relay", "webrtc_relay"] },
       [
         driver("webrtc_direct", events),
         driver("webrtc_relay", events),
@@ -170,7 +170,7 @@ test("invalid provider order is rejected before any transport can claim authorit
 test("failed next transport is cleaned up and never becomes active", async () => {
   const events: string[] = [];
   const coordinator = new ManagedBrowserHandoffTransportCoordinator(
-    { websocketRelayEnabled: true, webrtcRelayEnabled: false },
+    { order: ["webrtc_direct", "websocket_relay"] },
     [
       driver("webrtc_direct", events),
       driver("websocket_relay", events, {

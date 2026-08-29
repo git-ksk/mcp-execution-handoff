@@ -1,4 +1,4 @@
-import { type BrowserHandoffTransportAttempt, type BrowserHandoffTransportFallbackPolicy } from "./transport-fallback-policy.js";
+import { type BrowserHandoffTransportAttempt, type ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 export type ManagedBrowserHandoffFallbackReason = "transport_unavailable";
 export interface ManagedBrowserHandoffTransportDriver {
     readonly kind: BrowserHandoffTransportAttempt;
@@ -33,7 +33,7 @@ export declare class ManagedBrowserHandoffTransportCoordinatorError extends Erro
  */
 export declare class ManagedBrowserHandoffTransportCoordinator {
     #private;
-    constructor(policy: BrowserHandoffTransportFallbackPolicy, drivers: readonly ManagedBrowserHandoffTransportDriver[]);
+    constructor(policy: ManagedHandoffTransportPolicy, drivers: readonly ManagedBrowserHandoffTransportDriver[]);
     start(): Promise<ManagedBrowserHandoffTransportLease>;
     /**
      * Synchronous first-attempt entry used by the existing synchronous Browser/Window `start()` API.

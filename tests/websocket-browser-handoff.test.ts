@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import vm from "node:vm";
 import type { ExperimentalWebSocketWindowSurface } from "../src/experimental/websocket-window-handoff.js";
 import { ExperimentalWebSocketBrowserHandoff } from "../src/experimental/websocket-browser-handoff.js";
 
@@ -71,13 +72,25 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /image\/png/);
   assert.match(html, /kind:'tap'/);
   assert.match(html, /kind:'scroll'/);
+  assert.match(html, /Math\.round\(dy\*3\)/);
+  assert.doesNotMatch(html, /Math\.round\(-dy\*3\)/);
   assert.match(html, /kind:'text'/);
   assert.match(html, /kind:'key'/);
+  assert.match(html, /maxlength="512"/);
+  assert.match(html, /let keyboardMirror=''/);
+  assert.match(html, /function syncKeyboardValue\(\)/);
+  assert.match(html, /function focusKeyboard\(\)\{if\(document\.activeElement===keyboard\)return/);
+  assert.match(html, /const remove=mirrored\.length-prefix,insert=current\.slice\(prefix\)\.join\(''\)/);
+  assert.match(html, /for\(let i=0;i<remove;i\+=1\).*Backspace/);
+  assert.match(html, /compositionend.*queueMicrotask/);
+  assert.match(html, /keyboard\.addEventListener\('input'/);
+  assert.doesNotMatch(html, /compositionend',event=>.*event\.data.*kind:'text'/);
+  assert.doesNotMatch(html, /insertReplacementText'.*kind:'text'/);
   assert.match(html, /kind==='editableRegions'/);
   assert.match(html, /applyEditableRegions/);
   assert.match(html, /pointIsEditable/);
-  assert.match(html, /editable:pointIsEditable\(point\)/);
-  assert.match(html, /active\.editable\|\|keyboardMode/);
+  assert.match(html, /if\(keyboardMode\)\{focusRequested=true;focusKeyboard\(\);focusActive=document\.activeElement===keyboard\}/);
+  assert.doesNotMatch(html, /if\(active\.editable\).*focusKeyboard/);
   assert.match(html, /client_tap_editable_predicted/);
   assert.match(html, /client_tap_editable_not_predicted/);
   assert.match(html, /client_keyboard_focus_requested/);
@@ -99,6 +112,16 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.equal(missingPrincipal.status, 404);
   const wrongPrincipal = await handoff.handle(new Request(`${ORIGIN}${path}`), "wrong-principal");
   assert.equal(wrongPrincipal.status, 404);
+  handoff.revoke("generic-browser-wss");
+});
+
+test("Generic Browser WSS emits syntactically valid client JavaScript", async () => {
+  const handoff = fixture();
+  const locator = start(handoff);
+  const html = await (await handoff.handle(new Request(locator), PRINCIPAL)).text();
+  const match = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
+  assert.ok(match?.[1]);
+  assert.doesNotThrow(() => new vm.Script(match[1]));
   handoff.revoke("generic-browser-wss");
 });
 

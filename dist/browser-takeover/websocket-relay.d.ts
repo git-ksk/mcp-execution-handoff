@@ -17,4 +17,6 @@ export type { ExperimentalLinuxWebSocketWindowSurfaceConfig as LinuxWebSocketWin
  * `src/experimental` remain implementation-compatible while #155 completes the ownership move;
  * #156 can therefore integrate WSS without exposing transport/provider selection to consumers.
  */
+export { MacOSWebSocketWindowSurface } from "./macos-websocket-window-surface.js";
+export type { MacOSWebSocketWindowSurfaceConfig, MacOSWebSocketSurfaceFailure, MacOSWebSocketInputStage } from "./macos-websocket-window-surface.js";
 //# sourceMappingURL=websocket-relay.d.ts.map

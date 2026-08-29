@@ -2,46 +2,60 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   browserHandoffTransportAttemptOrder,
+  ManagedHandoffTransportPolicyError,
   nextBrowserHandoffTransportAttempt
 } from "../src/browser-takeover/transport-fallback-policy.js";
 
-test("managed runtime fallback prefers direct WebRTC then WSS then optional TURN", () => {
+test("managed transport policy preserves the requested default-shaped order", () => {
   assert.deepEqual(
-    browserHandoffTransportAttemptOrder({ websocketRelayEnabled: true, webrtcRelayEnabled: true }),
+    browserHandoffTransportAttemptOrder({
+      order: ["webrtc_direct", "websocket_relay", "webrtc_relay"]
+    }),
     ["webrtc_direct", "websocket_relay", "webrtc_relay"]
   );
 });
 
-test("TURN is never placed ahead of the Cloud Run WebSocket fallback", () => {
+test("managed transport policy permits arbitrary reviewed order without implicit insertion", () => {
   assert.deepEqual(
-    browserHandoffTransportAttemptOrder({ websocketRelayEnabled: true, webrtcRelayEnabled: false }),
-    ["webrtc_direct", "websocket_relay"]
+    browserHandoffTransportAttemptOrder({
+      order: ["websocket_relay", "webrtc_direct", "webrtc_relay"]
+    }),
+    ["websocket_relay", "webrtc_direct", "webrtc_relay"]
   );
   assert.deepEqual(
-    browserHandoffTransportAttemptOrder({ websocketRelayEnabled: false, webrtcRelayEnabled: true }),
-    ["webrtc_direct", "webrtc_relay"]
+    browserHandoffTransportAttemptOrder({ order: ["webrtc_relay", "websocket_relay"] }),
+    ["webrtc_relay", "websocket_relay"]
   );
 });
 
-test("direct WebRTC remains the only attempt when no fallback is configured", () => {
-  assert.deepEqual(
-    browserHandoffTransportAttemptOrder({ websocketRelayEnabled: false, webrtcRelayEnabled: false }),
-    ["webrtc_direct"]
-  );
+test("one-attempt plans are explicit transport-only modes", () => {
+  assert.deepEqual(browserHandoffTransportAttemptOrder({ order: ["webrtc_direct"] }), ["webrtc_direct"]);
+  assert.deepEqual(browserHandoffTransportAttemptOrder({ order: ["websocket_relay"] }), ["websocket_relay"]);
+  assert.deepEqual(browserHandoffTransportAttemptOrder({ order: ["webrtc_relay"] }), ["webrtc_relay"]);
+});
+
+test("managed transport policy rejects empty duplicate unknown and extra-field plans", () => {
+  for (const policy of [
+    { order: [] },
+    { order: ["webrtc_direct", "webrtc_direct"] },
+    { order: ["unknown"] },
+    { order: ["webrtc_direct"], provider: "cloudflare" }
+  ]) {
+    assert.throws(
+      () => browserHandoffTransportAttemptOrder(policy as never),
+      (error: unknown) => error instanceof ManagedHandoffTransportPolicyError
+    );
+  }
 });
 
 test("the staged policy advances only from an attempt that belongs to the plan", () => {
   const order = browserHandoffTransportAttemptOrder({
-    websocketRelayEnabled: true,
-    webrtcRelayEnabled: true
+    order: ["websocket_relay", "webrtc_direct", "webrtc_relay"]
   });
-  assert.equal(nextBrowserHandoffTransportAttempt(order, "webrtc_direct"), "websocket_relay");
-  assert.equal(nextBrowserHandoffTransportAttempt(order, "websocket_relay"), "webrtc_relay");
+  assert.equal(nextBrowserHandoffTransportAttempt(order, "websocket_relay"), "webrtc_direct");
+  assert.equal(nextBrowserHandoffTransportAttempt(order, "webrtc_direct"), "webrtc_relay");
   assert.equal(nextBrowserHandoffTransportAttempt(order, "webrtc_relay"), undefined);
 
-  const noWebSocket = browserHandoffTransportAttemptOrder({
-    websocketRelayEnabled: false,
-    webrtcRelayEnabled: true
-  });
-  assert.equal(nextBrowserHandoffTransportAttempt(noWebSocket, "websocket_relay"), undefined);
+  const directOnly = browserHandoffTransportAttemptOrder({ order: ["webrtc_direct"] });
+  assert.equal(nextBrowserHandoffTransportAttempt(directOnly, "websocket_relay"), undefined);
 });

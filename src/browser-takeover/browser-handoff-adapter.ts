@@ -19,19 +19,23 @@ import type {
   SpawnedWebRtcRuntimeProviderConfig,
   WebRtcHumanInputPolicy
 } from "./webrtc-runtime-diagnostics.js";
+import type { ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 import {
   ManagedWindowHandoffRuntime,
   type BrowserHandoffManagedFallbackConfig
 } from "./managed-handoff-runtime.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "../window-takeover/window-handoff-core.js";
 
+export type { ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 export type { BrowserHandoffManagedFallbackConfig } from "./managed-handoff-runtime.js";
 
 export interface BrowserHandoffAdapterConfig {
   takeover: TakeoverBrokerConfig;
   runtime: SpawnedWebRtcRuntimeProviderConfig;
-  /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
+  /** Optional Handoff-owned managed WSS host configuration. Provider secrets remain deployment-owned. */
   managedFallback?: BrowserHandoffManagedFallbackConfig;
+  /** Optional exact transport order. One item is an explicit transport-only mode. */
+  transportPolicy?: ManagedHandoffTransportPolicy;
   /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
   onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
   /** Called only after explicit Human completion; consumer performs fresh verification. */
@@ -65,20 +69,21 @@ export class BrowserHandoffAdapterError extends Error {
 /**
  * First-class Browser Handoff composition for standalone MCP consumers.
  *
- * Direct WebRTC remains unchanged by default. When managed fallback is configured, Handoff owns
- * the strict direct WebRTC -> WSS -> optional TURN transition while the consumer keeps one locator
- * and the same Browser lifecycle API.
+ * Direct WebRTC remains unchanged by default. An explicit transport policy may select one attempt
+ * or any reviewed order of direct WebRTC, WSS, and relay-capable WebRTC. Handoff fences the active
+ * generation before every transition and the consumer keeps one Browser lifecycle API.
  */
 export class BrowserHandoffAdapter {
   readonly #core: WindowHandoffCore | ManagedWindowHandoffRuntime;
 
   constructor(config: BrowserHandoffAdapterConfig) {
     try {
-      this.#core = config.managedFallback
+      this.#core = config.managedFallback || config.transportPolicy
         ? new ManagedWindowHandoffRuntime({
             takeover: config.takeover,
             runtime: config.runtime,
-            managedFallback: config.managedFallback,
+            ...(config.managedFallback ? { managedFallback: config.managedFallback } : {}),
+            ...(config.transportPolicy ? { transportPolicy: config.transportPolicy } : {}),
             ...(config.onManagedOperatorDiagnosticEvent
               ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
               : {}),

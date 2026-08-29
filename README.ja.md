@@ -154,7 +154,9 @@ const locator = browserHandoff.start({
 
 Authenticatedな `/takeover/*` HTTP requestは `browserHandoff.handle(...)` へrouteします。`inputPolicy` はtakeover sessionへbindingされ、OS inputの前にserver側で強制されます。browser UI側でも許可されていないkeyboard/input controlを隠してdefense in depthにします。optionalな `onComplete` callbackはHuman transport authorityをfenceした後にだけ呼ばれ、consumer-ownedなfresh verification開始のsignalに限定します。認証成功や重大操作の成功・承認を意味しません。ICE / STUN / TURN provider選択やrelay credentialは `start()` に渡さず、Handoff deployment/runtime側の責務に留めます。
 
-`BrowserHandoffAdapter` と `WindowHandoffAdapter` は同じinternal bounded-window WebRTC/session coreを共有します。Browserはbrowser-policy facadeのままで、shared coreが所有するのはexact target binding、WebRTC/session/reconnect/revoke、bounded diagnosticsだけです。
+Browser / Windowのmanaged transport選択は固定fallback列ではなく、有限で明示的なdeployment policyです。`transportPolicy.order` は指定した配列そのものが正本で、省略したattemptをHandoffが勝手に挿入しません。1要素ならtransport-only modeになり、`["websocket_relay"]` はWSS-only、`["webrtc_direct"]` はdirect-only、`["websocket_relay", "webrtc_direct"]` ならWSS→directの順です。transition時は必ず旧generationをfence/revokeしてから次を開始し、Human inputをtransport間でreplayしません。`webrtc_relay` は既存のrelay-capable WebRTCを意味し、TURNを利用可能にしますがrelay-only ICEを意味しません。provider名・endpoint・credentialはsemantic `start()` requestへ入れず、Handoff deployment責務のままです。 `managedFallback.platform` はdefaultで `auto` になり、macOSではreview済みの `runtime.hostExecutable` をWSS helperにも再利用します。Linuxではexact-window host scriptと必要なX11 displayをdeployment configとして渡しますが、どちらもconsumerのsemantic `start()` requestやOS別surface class選択には露出しません。
+
+`BrowserHandoffAdapter` と `WindowHandoffAdapter` は同じinternal bounded-window authority/session coreとmanaged transport coordinatorを共有します。WSS surface constructionもこの層でOS-neutral化され、macOS/Linuxのconcrete exact-window hostはHandoff-owned factoryの背後に隠れます。Browserはbrowser-policy facadeのままです。
 
 ## Window handoff
 
@@ -184,7 +186,7 @@ const locator = windowHandoff.start({
 });
 ```
 
-interventionが必要な理由、application/process lifecycle、semantic verification、replay/resume policyはconsumer責務のままです。Handoffはshort-lived locator、one-client session、exact bounded windowのmedia/input transport、direct-first WebRTC/TURN、reconnect generation fence、revokeを所有します。Human `Done`はHuman transport stepの終了だけを意味し、application successやapprovalではありません。
+interventionが必要な理由、application/process lifecycle、semantic verification、replay/resume policyはconsumer責務のままです。Handoffはshort-lived locator、one-client session、exact bounded windowのmedia/input transport、設定済みtransport planのsequencing、reconnect generation fence、revokeを所有します。Human `Done`はHuman transport stepの終了だけを意味し、application successやapprovalではありません。
 
 ## Terminal / PTY handoff
 

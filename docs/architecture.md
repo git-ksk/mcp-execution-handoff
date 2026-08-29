@@ -4,7 +4,7 @@
 
 ## Boundary
 
-`mcp-execution-handoff` is a control-plane library, not an execution engine. Native browser, desktop, terminal, device, or provider operations remain inside consumer adapters.
+`mcp-execution-handoff` is an authority/control-plane library, not an application execution engine. Business actions, target-service semantics, browser/profile lifecycle, and consumer-owned PTY/process execution remain in consumers. For first-class Browser/Window components, however, Handoff also owns the narrow reusable Human capture/input host mechanics needed to enforce exact-surface authority consistently across transports; consumers must not rebuild those mechanics merely because the OS or transport differs.
 
 ```text
 MCP / Agent
@@ -25,6 +25,14 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
 ```
 
 Consumer integration is **optional, but authoritative when enabled**. A consumer such as CUMG may run without Handoff at all; Handoff is not a mandatory execution dependency. Once a consumer elects to attach Handoff to a bounded operation or Target Surface, however, the consumer must treat Handoff authority as part of its execution boundary: Agent and Human authority must remain mutually exclusive, stale/unknown Handoff state must fail closed, and runtime/transport unavailability must not be converted into a bypass that silently restores Agent control. Domain authorization, operation ledgers, quarantine, and postcondition verification remain consumer-owned; Handoff owns only its canonical authority/epoch/ownership/replay/recovery semantics and must not be duplicated inside the consumer.
+
+### Component ownership boundary
+
+The reusable component boundary is intentionally wider than the invariant authority state machine but narrower than consumer semantics. Handoff owns authority/epoch/lease/generation, exact-surface admission and revalidation, supported Browser/Window capture/input mechanics, transport composition/revoke/reconnect sequencing, privacy-bounded readiness/diagnostics, and Handoff-local deterministic/physical acceptance. Consumers own intervention authorization/quarantine, application/profile/process lifecycle where documented, PTY allocation/containment, target-service identity, fresh semantic verification, consequential approval, and semantic replay/reissue policy.
+
+Human `Done` closes/fences the mutable Human transport step and moves the lifecycle toward consumer verification. It does not attest authentication success, approve a later action, or authorize stale replay. Transport or OS differences must not force consumers to duplicate this lifecycle. Unsupported Target Surface / OS / transport combinations fail closed explicitly rather than silently widening authority.
+
+The checked support/ownership inventory is [Component ownership and support matrix](component-support-matrix.md), tracked by #151 and #184.
 
 ## Four-axis handoff taxonomy
 
@@ -92,7 +100,9 @@ Target Surface remains descriptive/documentation-first unless a concrete runtime
 
 ### 4. Transport
 
-This describes how Human control/media is delivered. Current and planned transport families include Native, WebRTC, and future WebSocket/HTTP-streaming/WebTransport siblings. Within WebRTC, direct ICE is preferred when viable and TURN is fallback connectivity infrastructure. `WebRTC direct` and `WebRTC + TURN` are therefore transport/connectivity outcomes, not Target Surface kinds.
+This describes how Human control/media is delivered. Current transport families include Native, WebRTC and WebSocket/WSS, with HTTP-streaming/WebTransport remaining future siblings. Within WebRTC, direct ICE and relay-capable ICE are distinct managed attempts; TURN remains connectivity infrastructure rather than a Target Surface. `WebRTC direct`, `WebSocket/WSS`, and relay-capable `WebRTC + TURN` are therefore transport/connectivity choices, not Target Surface kinds.
+
+Browser/Window managed composition uses a closed-world ordered transport policy. The configured array is exact and may contain one, two, or three unique attempts in any reviewed order. A one-item array is an explicit transport-only mode; omitted attempts are never silently inserted. Transition safety is invariant across order: the active generation is fenced/revoked before a later attempt starts, stale generations cannot mutate, and Human input is never replayed. The transport plan is deployment/component configuration, not part of the consumer's semantic intervention request. Provider selection, ICE/TURN endpoints and credentials remain below this policy. `webrtc_relay` currently means relay-capable WebRTC with normal ICE `all`; it does not silently change production to relay-only ICE. Managed Window WSS construction is also host-neutral at this boundary: an internal factory selects the reviewed macOS or Linux exact-window surface from deployment/runtime facts, and managed operator diagnostics consume one OS-neutral bounded projection. Concrete helper diagnostics may remain richer internally, but normal consumers neither instantiate OS surface classes nor branch their lifecycle on the host OS.
 
 ```text
 Execution Handoff
@@ -111,10 +121,10 @@ Execution Handoff
 |
 +-- Transport
      Native
-     WebRTC
-       +-- direct
-       +-- TURN fallback
-     future: WebSocket / HTTP streaming / WebTransport
+     WebRTC direct
+     WebSocket / WSS
+     WebRTC relay-capable (TURN available)
+     future: HTTP streaming / WebTransport
 ```
 
 Current examples include `browser + automation_adjacent + WebRTC`, bounded `os_window + WebRTC`, and `terminal_pty + WebRTC DataChannel`. A combination is supported only when the relevant consumer/provider/host path has its own acceptance evidence; architectural composability does not imply blanket support. Direct ICE and TURN relay are transport outcomes, not additional Target Surface categories.

@@ -71,6 +71,12 @@ export declare class TakeoverBroker {
     revokeNativeForIntervention(interventionId: string): Promise<void>;
     revokeWebRtcForIntervention(interventionId: string): Promise<void>;
     completeWebRtcAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
+    /**
+     * Finalize a WSS Human completion only after the consumer has performed its own semantic
+     * verification. Human Done already fences transport authority; this method does not approve
+     * the consumer's consequential action and never restores a stale generation.
+     */
+    completeWebSocketAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
     private createExperimentalWebSocketSession;
     private attachExperimentalWebSocketRevokeHandler;

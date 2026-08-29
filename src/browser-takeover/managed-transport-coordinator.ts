@@ -1,7 +1,7 @@
 import {
   browserHandoffTransportAttemptOrder,
   type BrowserHandoffTransportAttempt,
-  type BrowserHandoffTransportFallbackPolicy
+  type ManagedHandoffTransportPolicy
 } from "./transport-fallback-policy.js";
 
 export type ManagedBrowserHandoffFallbackReason = "transport_unavailable";
@@ -68,7 +68,7 @@ export class ManagedBrowserHandoffTransportCoordinator {
   #serial: Promise<void> = Promise.resolve();
 
   constructor(
-    policy: BrowserHandoffTransportFallbackPolicy,
+    policy: ManagedHandoffTransportPolicy,
     drivers: readonly ManagedBrowserHandoffTransportDriver[]
   ) {
     const expected = browserHandoffTransportAttemptOrder(policy);

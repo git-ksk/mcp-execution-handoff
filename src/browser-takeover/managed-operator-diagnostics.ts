@@ -9,17 +9,18 @@ import type {
   WebSocketTakeoverState
 } from "./websocket-takeover.js";
 import type {
-  LinuxWebSocketHelperCrashClass,
-  LinuxWebSocketHelperCrashErrorKind,
-  LinuxWebSocketHelperCrashMessageClass,
-  LinuxWebSocketHelperCrashOrigin,
-  LinuxWebSocketHelperCrashReason,
-  LinuxWebSocketHelperExitKind,
-  LinuxWebSocketHelperStopReason,
-  LinuxWebSocketInputBoundaryStage,
-  LinuxWebSocketInputStage,
-  LinuxWebSocketSurfaceFailure
-} from "./linux-websocket-window-surface.js";
+  ManagedWindowWebSocketHelperCrashClass,
+  ManagedWindowWebSocketHelperCrashErrorKind,
+  ManagedWindowWebSocketHelperCrashMessageClass,
+  ManagedWindowWebSocketHelperCrashOrigin,
+  ManagedWindowWebSocketHelperCrashReason,
+  ManagedWindowWebSocketHelperExitKind,
+  ManagedWindowWebSocketHelperStopReason,
+  ManagedWindowWebSocketInputBoundaryStage,
+  ManagedWindowWebSocketInputFailureDetail,
+  ManagedWindowWebSocketInputStage,
+  ManagedWindowWebSocketSurfaceFailure
+} from "./websocket-window-surface-diagnostics.js";
 
 export const MANAGED_OPERATOR_DIAGNOSTICS_SCHEMA_VERSION = 1 as const;
 export const MANAGED_OPERATOR_DIAGNOSTIC_EVENT_LIMIT = 64 as const;
@@ -70,17 +71,17 @@ export interface ManagedOperatorWssDiagnostics {
   framesObserved: number;
   framesSent: number;
   framesDropped: number;
-  surfaceFailure: LinuxWebSocketSurfaceFailure;
+  surfaceFailure: ManagedWindowWebSocketSurfaceFailure;
   inputAttempts: number;
-  lastInputStage: LinuxWebSocketInputStage;
-  lastInputBoundaryStage: LinuxWebSocketInputBoundaryStage;
-  helperStopReason: LinuxWebSocketHelperStopReason;
-  helperCrashReason: LinuxWebSocketHelperCrashReason;
-  helperExitKind: LinuxWebSocketHelperExitKind;
-  helperCrashClass: LinuxWebSocketHelperCrashClass;
-  helperCrashOrigin: LinuxWebSocketHelperCrashOrigin;
-  helperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind;
-  helperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
+  lastInputStage: ManagedWindowWebSocketInputStage;
+  lastInputBoundaryStage: ManagedWindowWebSocketInputBoundaryStage;
+  helperStopReason: ManagedWindowWebSocketHelperStopReason;
+  helperCrashReason: ManagedWindowWebSocketHelperCrashReason;
+  helperExitKind: ManagedWindowWebSocketHelperExitKind;
+  helperCrashClass: ManagedWindowWebSocketHelperCrashClass;
+  helperCrashOrigin: ManagedWindowWebSocketHelperCrashOrigin;
+  helperCrashErrorKind: ManagedWindowWebSocketHelperCrashErrorKind;
+  helperCrashMessageClass: ManagedWindowWebSocketHelperCrashMessageClass;
   authorityBoundary: ManagedOperatorAuthorityBoundary;
   sessionDisposition: ManagedOperatorSessionDisposition;
 }
@@ -239,17 +240,17 @@ export function parseManagedOperatorDiagnosticsSnapshot(value: unknown): Managed
       framesObserved: wss.framesObserved as number,
       framesSent: wss.framesSent as number,
       framesDropped: wss.framesDropped as number,
-      surfaceFailure: wss.surfaceFailure as LinuxWebSocketSurfaceFailure,
+      surfaceFailure: wss.surfaceFailure as ManagedWindowWebSocketSurfaceFailure,
       inputAttempts: wss.inputAttempts as number,
-      lastInputStage: wss.lastInputStage as LinuxWebSocketInputStage,
-      lastInputBoundaryStage: wss.lastInputBoundaryStage as LinuxWebSocketInputBoundaryStage,
-      helperStopReason: wss.helperStopReason as LinuxWebSocketHelperStopReason,
-      helperCrashReason: wss.helperCrashReason as LinuxWebSocketHelperCrashReason,
-      helperExitKind: wss.helperExitKind as LinuxWebSocketHelperExitKind,
-      helperCrashClass: wss.helperCrashClass as LinuxWebSocketHelperCrashClass,
-      helperCrashOrigin: wss.helperCrashOrigin as LinuxWebSocketHelperCrashOrigin,
-      helperCrashErrorKind: wss.helperCrashErrorKind as LinuxWebSocketHelperCrashErrorKind,
-      helperCrashMessageClass: wss.helperCrashMessageClass as LinuxWebSocketHelperCrashMessageClass,
+      lastInputStage: wss.lastInputStage as ManagedWindowWebSocketInputStage,
+      lastInputBoundaryStage: wss.lastInputBoundaryStage as ManagedWindowWebSocketInputBoundaryStage,
+      helperStopReason: wss.helperStopReason as ManagedWindowWebSocketHelperStopReason,
+      helperCrashReason: wss.helperCrashReason as ManagedWindowWebSocketHelperCrashReason,
+      helperExitKind: wss.helperExitKind as ManagedWindowWebSocketHelperExitKind,
+      helperCrashClass: wss.helperCrashClass as ManagedWindowWebSocketHelperCrashClass,
+      helperCrashOrigin: wss.helperCrashOrigin as ManagedWindowWebSocketHelperCrashOrigin,
+      helperCrashErrorKind: wss.helperCrashErrorKind as ManagedWindowWebSocketHelperCrashErrorKind,
+      helperCrashMessageClass: wss.helperCrashMessageClass as ManagedWindowWebSocketHelperCrashMessageClass,
       authorityBoundary: wss.authorityBoundary as ManagedOperatorAuthorityBoundary,
       sessionDisposition: wss.sessionDisposition as ManagedOperatorSessionDisposition
     },

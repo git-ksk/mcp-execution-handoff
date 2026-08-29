@@ -359,6 +359,22 @@ export class TakeoverBroker {
         }
         return true;
     }
+    /**
+     * Finalize a WSS Human completion only after the consumer has performed its own semantic
+     * verification. Human Done already fences transport authority; this method does not approve
+     * the consumer's consequential action and never restores a stale generation.
+     */
+    async completeWebSocketAfterVerification(intervention) {
+        const completed = this.sessions.completeAfterVerification(intervention.id, intervention.epoch);
+        let matched = false;
+        for (const item of completed) {
+            if (this.webSocketOnlySessions.get(item.id) !== intervention.id)
+                continue;
+            matched = true;
+            this.forgetWebSocketOnlySession(item.id, false);
+        }
+        return matched;
+    }
     async handle(request, boundPrincipal) {
         if (!this.config.enabled || !boundPrincipal)
             return json(404, { error: "not_found" });
@@ -907,7 +923,7 @@ export class TakeoverBroker {
         this.webSocketOnlySessions.set(locator.id, intervention.id);
         const expiryCleanup = setTimeout(() => {
             this.forgetWebSocketOnlySession(locator.id, true);
-        }, this.config.ttlMs + 1_000);
+        }, this.config.ttlMs + this.completionGraceMs + 1_000);
         expiryCleanup.unref();
         return {
             locator,
@@ -925,7 +941,8 @@ export class TakeoverBroker {
         if (interventionId !== completion.interventionId) {
             throw new TakeoverSessionError("TAKEOVER_FORBIDDEN", "WebSocket takeover session is unavailable");
         }
-        this.forgetWebSocketOnlySession(completion.id, false);
+        // Human Done fences the WSS generation but retains only this bounded route marker until the
+        // consumer calls completeWebSocketAfterVerification(). No frame/input capability survives.
         if (this.completionDelivered.has(completion.id))
             return;
         await this.hooks.completed?.({

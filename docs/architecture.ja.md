@@ -6,7 +6,7 @@
 
 ## 境界
 
-`mcp-execution-handoff` は、実行そのものを行うengineではなく、実行権限の引き継ぎを管理するcontrol-plane libraryです。browser、desktop、terminal、device、provider固有の実処理は、それぞれのconsumer adapterに残します。
+`mcp-execution-handoff` はapplication execution engineではなく、authority / control-plane libraryです。business action、target-service semantics、browser/profile lifecycle、consumer-owned PTY/process executionはconsumerに残します。一方first-class Browser / Window componentでは、transport差分を越えてexact-surface authorityを一貫して守るために必要な、狭く再利用可能なHuman capture/input host mechanismもHandoffが所有します。OSやtransportが違うだけの理由でconsumerがこのmechanismを再実装してはいけません。
 
 ```text
 MCP / Agent
@@ -27,6 +27,14 @@ Execution Handoff core ---- authority / epoch / resume policy / checkpoint
 ```
 
 consumer integration は **optional ですが、有効化した場合は authoritative** です。CUMG のような consumer は Handoff なしでも通常動作でき、Handoff は必須の execution dependency ではありません。一方、consumer が bounded operation や Target Surface に Handoff を attach した後は、Handoff authority を execution boundary の一部として扱います。Agent/Human authority は常に排他的で、stale/unknown な Handoff state は fail closed とし、runtime/transport unavailable を理由に Handoff を迂回して Agent control を暗黙復帰させてはいけません。domain authorization、operation ledger、quarantine、postcondition verification は consumer が所有し、Handoff は canonical な authority/epoch/ownership/replay/recovery semantics のみを所有します。同じ Handoff state machine を consumer 内へ複製しません。
+
+### Component ownership boundary
+
+再利用可能componentの境界はinvariant authority state machineより広く、consumer semanticsより狭く取ります。Handoffはauthority / epoch / lease / generation、exact-surface admission / revalidation、support済みBrowser / Windowのcapture/input mechanism、transport composition / revoke / reconnect sequencing、privacy-bounded readiness / diagnostics、Handoff単独のdeterministic / physical acceptanceを所有します。consumerはintervention authorization / quarantine、documentされたapplication/profile/process lifecycle、PTY allocation / containment、target-service identity、fresh semantic verification、consequential approval、semantic replay / reissue policyを所有します。
+
+Human `Done` はmutable Human transport stepを閉じてfenceし、consumer verificationへ進めるためのlifecycle evidenceです。authentication成功のattestationでも、後続actionのapprovalでも、stale replayの許可でもありません。OS / transport差分のためにconsumerへこのlifecycle再実装を漏らしません。unsupportedなTarget Surface / OS / transport組み合わせはauthorityを暗黙拡張せず、明示的にfail closedします。
+
+現在のsupport / ownership inventoryは英語正本の [Component ownership and support matrix](component-support-matrix.md) を参照してください。#151 / #184で継続追跡します。
 
 ## 4軸のHandoff taxonomy
 
@@ -76,7 +84,7 @@ v0.2.0のpublic vocabularyはadditiveに収束させます。docsの用語へ合
 | Human `Done` | Handoff Semantics | completion evidenceだけを意味する。semantic success、authentication success、target-service identity proof、approvalではない。 |
 | MCP principal と target-service account/session | Handoff Semantics / consumer authorization boundary | 分離を維持する。HandoffはMCP principal/invocation/epochへbindingし、必要なtarget-service identity/contextはconsumerがfreshに検証する。 |
 
-上記compatibility aliasがv0.2.0で行うpublic renameの全てです。このterminology convergenceではauthority、replay、completion、principal binding、transport selection、exact-window、PTY semanticsを変更しません。consumerのtransport選択もgeneric public Handoff policy APIへ持ち込みません。
+上記compatibility aliasがv0.2.0で行うpublic renameの全てです。このterminology convergenceではauthority、replay、completion、principal binding、exact-window、PTY semanticsを変更しません。transport planは別軸のcomponent/deployment policyとして明示設定できますが、semantic intervention requestやprovider credentialへは持ち込みません。
 
 ### 3. Target Surface
 
@@ -94,7 +102,9 @@ Target Surfaceは、具体的なruntime compatibility/diagnostics上の必要性
 
 ### 4. Transport
 
-「Human control/media pathをどう届けるか」を表す軸です。現在および将来のfamilyにはNative、WebRTC、将来のWebSocket / HTTP streaming / WebTransportなどがあります。WebRTCの中ではdirect ICEを優先し、TURNは必要時だけ使うfallback connectivity infrastructureです。そのため `WebRTC direct` と `WebRTC + TURN` はTarget Surfaceの種類ではなく、transport/connectivity上の結果です。
+「Human control/media pathをどう届けるか」を表す軸です。現在のfamilyにはNative、WebRTC、WebSocket/WSSがあり、HTTP streaming / WebTransportは将来候補です。WebRTCではdirect attemptとrelay-capable attemptをmanaged transportとして区別し、TURNはTarget Surfaceではなくconnectivity infrastructureとして扱います。
+
+Browser / Windowのmanaged compositionはclosed-worldなordered transport policyを使います。1〜3個のunique attemptを任意のreview済み順序で指定でき、1個ならtransport-only modeです。省略attemptは自動挿入せず、transitionは必ず旧generationのfence/revoke完了後に次を開始します。stale generationはmutateできず、Human inputをtransport間でreplayしません。transport planはdeployment/component configであり、consumerのsemantic intervention requestではありません。provider / ICE / TURN endpoint / credentialはこのpolicyより下層に留めます。`webrtc_relay` は現在のrelay-capable WebRTC（通常ICE `all`）を意味し、relay-only ICEへ暗黙変更しません。 Managed Window WSSのconstructionもこの境界でhost-neutralにし、internal factoryがdeployment/runtime factからreview済みmacOS/Linux exact-window surfaceを選択します。managed operator diagnosticsはOS-neutralなbounded projectionだけをconsumeし、platform固有のより詳細なhelper diagnosticsは内部に残せます。normal consumerはOS別surface classをinstantiateせず、host OSでlifecycle分岐もしません。
 
 ```text
 Execution Handoff
@@ -113,10 +123,10 @@ Execution Handoff
 |
 +-- Transport
      Native
-     WebRTC
-       +-- direct
-       +-- TURN fallback
-     future: WebSocket / HTTP streaming / WebTransport
+     WebRTC direct
+     WebSocket / WSS
+     WebRTC relay-capable (TURN利用可能)
+     future: HTTP streaming / WebTransport
 ```
 
 現在の実例には `browser + automation_adjacent + WebRTC`、bounded `os_window + WebRTC`、`terminal_pty + WebRTC DataChannel` があります。architecture上で組み合わせ可能でも、それだけでsupport済みとはみなしません。各consumer/provider/host pathでacceptance evidenceがある場合だけsupport済みと扱います。direct ICE / TURN relayはtransport outcomeであり、別Target Surface categoryではありません。

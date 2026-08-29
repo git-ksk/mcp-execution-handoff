@@ -125,6 +125,45 @@ private let display = MacOSDisplayCandidate(
     }
 }
 
+@Test func exactWindowAuthorityRequiresSameWindowOwnerVisibilityLayerAndBounds() {
+    let expected = CGRect(x: 300, y: 150, width: 900, height: 600)
+    let exact = MacOSWindowCandidate(
+        processID: 42, windowID: 99, frame: expected, isOnScreen: true, layer: 0
+    )
+    #expect(MacOSExactWindowAuthority.matches(
+        candidates: [exact], targetProcessID: 42, targetWindowID: 99, inputBounds: expected
+    ))
+    #expect(!MacOSExactWindowAuthority.matches(
+        candidates: [MacOSWindowCandidate(processID: 43, windowID: 99, frame: expected, isOnScreen: true, layer: 0)],
+        targetProcessID: 42, targetWindowID: 99, inputBounds: expected
+    ))
+    #expect(!MacOSExactWindowAuthority.matches(
+        candidates: [MacOSWindowCandidate(processID: 42, windowID: 99, frame: expected, isOnScreen: false, layer: 0)],
+        targetProcessID: 42, targetWindowID: 99, inputBounds: expected
+    ))
+    #expect(!MacOSExactWindowAuthority.matches(
+        candidates: [MacOSWindowCandidate(processID: 42, windowID: 99, frame: expected, isOnScreen: true, layer: 8)],
+        targetProcessID: 42, targetWindowID: 99, inputBounds: expected
+    ))
+    #expect(!MacOSExactWindowAuthority.matches(
+        candidates: [MacOSWindowCandidate(processID: 42, windowID: 99, frame: expected.offsetBy(dx: 8, dy: 0), isOnScreen: true, layer: 0)],
+        targetProcessID: 42, targetWindowID: 99, inputBounds: expected
+    ))
+}
+
+@Test func exactWindowAuthorityAllowsReviewedNonZeroLayerOnlyWhenExplicit() {
+    let expected = CGRect(x: 300, y: 150, width: 900, height: 600)
+    let secure = MacOSWindowCandidate(
+        processID: 42, windowID: 99, frame: expected, isOnScreen: true, layer: 8
+    )
+    #expect(!MacOSExactWindowAuthority.matches(
+        candidates: [secure], targetProcessID: 42, targetWindowID: 99, inputBounds: expected
+    ))
+    #expect(MacOSExactWindowAuthority.matches(
+        candidates: [secure], targetProcessID: 42, targetWindowID: 99, inputBounds: expected, allowNonZeroLayer: true
+    ))
+}
+
 @Test func exactWindowInputFrameMatchingIsBoundedAndToleranceAware() {
     let expected = CGRect(x: 100, y: 200, width: 800, height: 600)
     #expect(MacOSExactWindowGeometry.framesMatch(

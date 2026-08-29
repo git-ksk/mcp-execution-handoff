@@ -13,19 +13,20 @@ export class BrowserHandoffAdapterError extends Error {
 /**
  * First-class Browser Handoff composition for standalone MCP consumers.
  *
- * Direct WebRTC remains unchanged by default. When managed fallback is configured, Handoff owns
- * the strict direct WebRTC -> WSS -> optional TURN transition while the consumer keeps one locator
- * and the same Browser lifecycle API.
+ * Direct WebRTC remains unchanged by default. An explicit transport policy may select one attempt
+ * or any reviewed order of direct WebRTC, WSS, and relay-capable WebRTC. Handoff fences the active
+ * generation before every transition and the consumer keeps one Browser lifecycle API.
  */
 export class BrowserHandoffAdapter {
     #core;
     constructor(config) {
         try {
-            this.#core = config.managedFallback
+            this.#core = config.managedFallback || config.transportPolicy
                 ? new ManagedWindowHandoffRuntime({
                     takeover: config.takeover,
                     runtime: config.runtime,
-                    managedFallback: config.managedFallback,
+                    ...(config.managedFallback ? { managedFallback: config.managedFallback } : {}),
+                    ...(config.transportPolicy ? { transportPolicy: config.transportPolicy } : {}),
                     ...(config.onManagedOperatorDiagnosticEvent
                         ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
                         : {}),
