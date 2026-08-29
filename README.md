@@ -154,12 +154,17 @@ Managed Browser/Window transport selection is an explicit finite deployment poli
 const handoff = new BrowserHandoffAdapter({
   takeover,
   runtime,
-  managedFallback: linuxWssHost, // required only when the selected plan contains WSS
+  managedFallback: {
+    // `platform` defaults to auto. macOS reuses runtime.hostExecutable; Linux additionally needs
+    // the packaged exact-window host script (and an X11 display when runtime.displayName is absent).
+    platform: "auto",
+    ...(linuxHostScript ? { linuxHostScript } : {})
+  },
   transportPolicy: { order: ["websocket_relay", "webrtc_direct"] }
 });
 ```
 
-`BrowserHandoffAdapter` and `WindowHandoffAdapter` share the same internal bounded-window WebRTC/session core. Browser remains a browser-policy facade; the shared core owns only exact target binding, WebRTC/session/reconnect/revoke and bounded diagnostics.
+`BrowserHandoffAdapter` and `WindowHandoffAdapter` share the same internal bounded-window authority/session core and managed transport coordinator. WSS surface construction is OS-neutral at that layer: macOS and Linux concrete exact-window hosts stay behind a Handoff-owned factory, while the semantic `start()` request is unchanged. Browser remains a browser-policy facade.
 
 ## Window handoff
 

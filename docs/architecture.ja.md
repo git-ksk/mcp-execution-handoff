@@ -104,7 +104,7 @@ Target Surfaceは、具体的なruntime compatibility/diagnostics上の必要性
 
 「Human control/media pathをどう届けるか」を表す軸です。現在のfamilyにはNative、WebRTC、WebSocket/WSSがあり、HTTP streaming / WebTransportは将来候補です。WebRTCではdirect attemptとrelay-capable attemptをmanaged transportとして区別し、TURNはTarget Surfaceではなくconnectivity infrastructureとして扱います。
 
-Browser / Windowのmanaged compositionはclosed-worldなordered transport policyを使います。1〜3個のunique attemptを任意のreview済み順序で指定でき、1個ならtransport-only modeです。省略attemptは自動挿入せず、transitionは必ず旧generationのfence/revoke完了後に次を開始します。stale generationはmutateできず、Human inputをtransport間でreplayしません。transport planはdeployment/component configであり、consumerのsemantic intervention requestではありません。provider / ICE / TURN endpoint / credentialはこのpolicyより下層に留めます。`webrtc_relay` は現在のrelay-capable WebRTC（通常ICE `all`）を意味し、relay-only ICEへ暗黙変更しません。
+Browser / Windowのmanaged compositionはclosed-worldなordered transport policyを使います。1〜3個のunique attemptを任意のreview済み順序で指定でき、1個ならtransport-only modeです。省略attemptは自動挿入せず、transitionは必ず旧generationのfence/revoke完了後に次を開始します。stale generationはmutateできず、Human inputをtransport間でreplayしません。transport planはdeployment/component configであり、consumerのsemantic intervention requestではありません。provider / ICE / TURN endpoint / credentialはこのpolicyより下層に留めます。`webrtc_relay` は現在のrelay-capable WebRTC（通常ICE `all`）を意味し、relay-only ICEへ暗黙変更しません。 Managed Window WSSのconstructionもこの境界でhost-neutralにし、internal factoryがdeployment/runtime factからreview済みmacOS/Linux exact-window surfaceを選択します。managed operator diagnosticsはOS-neutralなbounded projectionだけをconsumeし、platform固有のより詳細なhelper diagnosticsは内部に残せます。normal consumerはOS別surface classをinstantiateせず、host OSでlifecycle分岐もしません。
 
 ```text
 Execution Handoff

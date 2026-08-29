@@ -28,11 +28,14 @@ import {
   webRtcRelayEnvironmentConfigured,
   withDirectOnlyWebRtcEnvironment
 } from "./webrtc-runtime-attempt.js";
+import { WebSocketBrowserHandoff } from "./websocket-relay.js";
 import {
-  LinuxWebSocketWindowSurface,
-  WebSocketBrowserHandoff,
-  type LinuxWebSocketWindowSurfaceConfig
-} from "./websocket-relay.js";
+  createManagedWindowWebSocketSurface,
+  resolveManagedWindowWebSocketPlatform,
+  type ManagedWindowWebSocketHostConfig,
+  type ManagedWindowWebSocketSurface
+} from "./managed-window-websocket-surface.js";
+import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
 import {
   browserHandoffTransportAttemptOrder,
   type BrowserHandoffTransportAttempt,
@@ -52,16 +55,8 @@ const FALLBACK_CAPABILITY_BYTES = 32;
 const FALLBACK_HEADER = "x-mcp-handoff-fallback";
 const FALLBACK_ROUTE = /^\/takeover\/api\/transport-fallback\/([A-Za-z0-9-]{8,100})$/;
 
-export interface BrowserHandoffManagedFallbackConfig {
-  /** Built Handoff Linux exact-window host script. Required only when the plan includes WSS. */
-  linuxHostScript?: string;
-  /** Local X11 display. Defaults to `runtime.displayName` when present. */
-  displayName?: string;
-  /** Optional absolute xdotool path used by the exact-window input host. */
-  xdotoolExecutable?: string;
-  /** Optional absolute persistent X11 exact-window authority helper. */
-  authorityHelperExecutable?: string;
-}
+/** Deployment-owned exact-window WSS host configuration. */
+export type BrowserHandoffManagedFallbackConfig = ManagedWindowWebSocketHostConfig;
 
 export interface ManagedWindowHandoffRuntimeConfig {
   takeover: TakeoverBrokerConfig;
@@ -86,7 +81,7 @@ type WebRtcManagedTransport = {
 type WebSocketManagedTransport = {
   readonly kind: "websocket_relay";
   readonly handoff: WebSocketBrowserHandoff;
-  readonly surface: LinuxWebSocketWindowSurface;
+  readonly surface: ManagedWindowWebSocketSurface;
 };
 
 type ActiveManagedTransport = WebRtcManagedTransport | WebSocketManagedTransport;
@@ -100,7 +95,7 @@ interface ManagedHandoffSession {
   readonly principalBinding: string;
   readonly coordinator: ManagedBrowserHandoffTransportCoordinator;
   readonly state: ManagedDriverState;
-  readonly surface?: LinuxWebSocketWindowSurface;
+  readonly surface?: ManagedWindowWebSocketSurface;
   readonly webSocketHandoff?: WebSocketBrowserHandoff;
   readonly cleanupTimer: NodeJS.Timeout;
   lease: ManagedBrowserHandoffTransportLease;
@@ -122,7 +117,6 @@ interface ManagedHandoffSession {
 export class ManagedWindowHandoffRuntime {
   readonly #config: ManagedWindowHandoffRuntimeConfig;
   readonly #publicOrigin: string;
-  readonly #displayName: string | undefined;
   readonly #transportOrder: readonly BrowserHandoffTransportAttempt[];
   readonly #sessionsByIntervention = new Map<string, ManagedHandoffSession>();
   readonly #sessionsByTransportSession = new Map<string, ManagedHandoffSession>();
@@ -144,23 +138,19 @@ export class ManagedWindowHandoffRuntime {
       config.transportPolicy ?? { order: defaultOrder }
     );
     const needsWebSocket = this.#transportOrder.includes("websocket_relay");
+    const webSocketPlatform = needsWebSocket
+      ? resolveManagedWindowWebSocketPlatform(config.managedFallback ?? {})
+      : undefined;
     if (needsWebSocket && config.successorWindowPolicy) {
       throw new WindowHandoffCoreError(
         "SUCCESSOR_POLICY_INVALID",
         "The configured WSS backend does not yet support successor-window lineage"
       );
     }
-    if (needsWebSocket && config.initialSecureWindowPolicy) {
+    if (needsWebSocket && config.initialSecureWindowPolicy && webSocketPlatform !== "macos") {
       throw new WindowHandoffCoreError(
         "INITIAL_SECURE_WINDOW_POLICY_INVALID",
-        "The configured managed WSS backend does not yet support initial secure-window authority"
-      );
-    }
-    const displayName = config.managedFallback?.displayName ?? config.runtime.displayName;
-    if (needsWebSocket && (!config.managedFallback?.linuxHostScript || !displayName)) {
-      throw new WindowHandoffCoreError(
-        "UNAVAILABLE",
-        "Managed Browser Handoff WSS requires a Linux exact-window host script and local X11 display"
+        "LocalAuthentication managed WSS requires the macOS exact-window backend"
       );
     }
     if (this.#transportOrder.includes("webrtc_relay") && !webRtcRelayEnvironmentConfigured()) {
@@ -171,7 +161,6 @@ export class ManagedWindowHandoffRuntime {
     }
     this.#config = config;
     this.#publicOrigin = new URL(config.takeover.publicBaseUrl).origin;
-    this.#displayName = displayName;
   }
 
   isEnabled(): boolean { return this.#config.takeover.enabled; }
@@ -189,11 +178,28 @@ export class ManagedWindowHandoffRuntime {
   }
 
   start(request: WindowHandoffCoreStartRequest): string {
-    if (this.#transportOrder.includes("websocket_relay") && request.target.windowId === undefined) {
-      throw new WindowHandoffCoreError(
-        "TARGET_INVALID",
-        "The configured managed WSS transport requires one exact target window id"
-      );
+    if (this.#transportOrder.includes("websocket_relay")) {
+      const webSocketPlatform = resolveManagedWindowWebSocketPlatform(this.#config.managedFallback ?? {});
+      const secureLocalAuthentication = webSocketPlatform === "macos" && Boolean(this.#config.initialSecureWindowPolicy);
+      if (secureLocalAuthentication) {
+        if (request.target.windowId !== undefined) {
+          throw new WindowHandoffCoreError(
+            "TARGET_INVALID",
+            "LocalAuthentication managed WSS resolves the exact secure Window from PID only"
+          );
+        }
+        if (!localAuthenticationInputPolicy(request.inputPolicy)) {
+          throw new WindowHandoffCoreError(
+            "INPUT_POLICY_INVALID",
+            "LocalAuthentication managed WSS permits Human tap plus secure text/backspace only"
+          );
+        }
+      } else if (request.target.windowId === undefined) {
+        throw new WindowHandoffCoreError(
+          "TARGET_INVALID",
+          "The configured managed WSS transport requires one exact target window id"
+        );
+      }
     }
     if (this.#sessionsByIntervention.has(request.intervention.id)) {
       throw new ManagedBrowserHandoffTransportCoordinatorError(
@@ -265,28 +271,25 @@ export class ManagedWindowHandoffRuntime {
         })
       : undefined;
 
-    let surface: LinuxWebSocketWindowSurface | undefined;
+    let surface: ManagedWindowWebSocketSurface | undefined;
     let wss: WebSocketBrowserHandoff | undefined;
     if (this.#transportOrder.includes("websocket_relay")) {
-      const managedFallback = this.#config.managedFallback;
-      const hostScript = managedFallback?.linuxHostScript;
-      const displayName = this.#displayName;
-      if (!managedFallback || !hostScript || !displayName) {
-        throw new WindowHandoffCoreError("UNAVAILABLE", "Managed Browser Handoff WSS backend is unavailable");
+      try {
+        surface = createManagedWindowWebSocketSurface({
+          host: this.#config.managedFallback ?? {},
+          runtime: this.#config.runtime,
+          helperTtlMs: this.#config.takeover.ttlMs,
+          ...(this.#config.initialSecureWindowPolicy
+            ? { initialSecureWindowPolicy: this.#config.initialSecureWindowPolicy }
+            : {}),
+          onDiagnosticEvent: noteDiagnosticEvent
+        });
+      } catch (error) {
+        throw new WindowHandoffCoreError(
+          "UNAVAILABLE",
+          error instanceof Error ? error.message : "Managed Window WSS backend is unavailable"
+        );
       }
-      const surfaceConfig: LinuxWebSocketWindowSurfaceConfig = {
-        hostScript,
-        displayName,
-        helperTtlMs: this.#config.takeover.ttlMs,
-        ...(managedFallback.xdotoolExecutable
-          ? { xdotoolExecutable: managedFallback.xdotoolExecutable }
-          : {}),
-        ...(managedFallback.authorityHelperExecutable
-          ? { authorityHelperExecutable: managedFallback.authorityHelperExecutable }
-          : {}),
-        onDiagnosticEvent: noteDiagnosticEvent
-      };
-      surface = new LinuxWebSocketWindowSurface(surfaceConfig);
       wss = new WebSocketBrowserHandoff({
         takeover: this.#config.takeover,
         allowedOrigins: [this.#publicOrigin],
@@ -386,8 +389,8 @@ export class ManagedWindowHandoffRuntime {
   }
 
   /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
-  managedSurfaceDiagnosticsSnapshot(): ReturnType<LinuxWebSocketWindowSurface["diagnosticsSnapshot"]> {
-    return this.#lastSession?.surface?.diagnosticsSnapshot() ?? {
+  managedSurfaceDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics {
+    return this.#lastSession?.surface?.managedDiagnosticsSnapshot() ?? {
       lastFailure: "none",
       framesObserved: 0,
       lastInputStage: "none",
@@ -526,7 +529,7 @@ export class ManagedWindowHandoffRuntime {
     const session = this.#lastSession;
     if (!session) return emptyManagedOperatorDiagnosticsSnapshot(source);
     const transport = session.coordinator.diagnosticsSnapshot();
-    const surface = session.surface?.diagnosticsSnapshot() ?? this.managedSurfaceDiagnosticsSnapshot();
+    const surface = session.surface?.managedDiagnosticsSnapshot() ?? this.managedSurfaceDiagnosticsSnapshot();
     const channel = session.webSocketHandoff?.diagnosticsSnapshot() ?? this.managedWebSocketDiagnosticsSnapshot();
     const channelFailure = channel.failureCode !== "none" ? channel.failureCode : channel.lastFailure;
     const channelState = channel.failureCode !== "none" ? channel.failureChannelState : channel.channelState;
@@ -610,7 +613,7 @@ export class ManagedWindowHandoffRuntime {
       transitionCount: 0,
       lastFallbackReason: undefined
     };
-    const surface = session?.surface?.diagnosticsSnapshot();
+    const surface = session?.surface?.managedDiagnosticsSnapshot();
     const channel = session?.webSocketHandoff?.diagnosticsSnapshot();
     const hasWssEvidence = snapshot.currentTransport === "websocket_relay"
       || (surface !== undefined && (
@@ -793,6 +796,23 @@ export class ManagedWindowHandoffRuntime {
       this.#sessionsByTransportSession.delete(session.activeSessionId);
     }
   }
+}
+
+function localAuthenticationInputPolicy(policy: WindowHandoffCoreStartRequest["inputPolicy"]): boolean {
+  return policy.tap === true && policy.scroll === false && policy.text === true && policy.key === true;
+}
+
+function emptyManagedWindowWebSocketSurfaceDiagnostics(): ManagedWindowWebSocketSurfaceDiagnostics {
+  return {
+    lastFailure: "none", framesObserved: 0, lastInputStage: "none", lastInputBoundaryStage: "none",
+    inputAttempts: 0, failure: "none", failureInputStage: "none", failureInputBoundaryStage: "none",
+    lastInputFailureDetail: "none", failureInputFailureDetail: "none", lastHelperStopReason: "none",
+    failureHelperStopReason: "none", lastHelperCrashReason: "none", failureHelperCrashReason: "none",
+    lastHelperExitKind: "none", failureHelperExitKind: "none", lastHelperCrashClass: "none",
+    failureHelperCrashClass: "none", lastHelperCrashOrigin: "none", failureHelperCrashOrigin: "none",
+    lastHelperCrashErrorKind: "none", failureHelperCrashErrorKind: "none",
+    lastHelperCrashMessageClass: "none", failureHelperCrashMessageClass: "none", authorityBoundary: "valid"
+  };
 }
 
 function isWebRtc(value: ActiveManagedTransport | undefined): value is WebRtcManagedTransport {

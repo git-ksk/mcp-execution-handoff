@@ -81,7 +81,7 @@ Browser/Window managed transport sequencing is no longer hard-coded to one fallb
 
 `webrtc_relay` is intentionally named as the existing relay-capable WebRTC attempt: TURN credentials/candidates are available, but normal ICE remains `all` and may still select a direct pair. A future true relay-only mode must be a separate explicit policy/capability rather than changing this meaning silently. Provider selection and secrets remain deployment-owned below the plan.
 
-The plan never changes Target Surface authority. If a selected attempt cannot support the requested OS/surface policy, construction fails closed before Human mutation; Handoff does not remove that attempt and improvise another order.
+The plan never changes Target Surface authority. If a selected attempt cannot support the requested OS/surface policy, construction fails closed before Human mutation; Handoff does not remove that attempt and improvise another order. The WSS host factory defaults to platform auto-detection: macOS reuses the reviewed runtime host executable, while Linux requires its exact-window host script/X11 deployment inputs. An explicit platform override exists for deployment/testing, but consumers never select concrete surface classes.
 
 ## Cross-transport invariants
 
@@ -110,7 +110,7 @@ P0/P1 work that most directly reduces future consumer-to-Handoff backtracking:
   implementation/harness exists, physical iPhone Safari acceptance is still required.
 - **P0 #184** — turn this matrix into a durable failure-injection/conformance gate rather than a
   prose-only inventory.
-- **P0 #185** — transport order / transport-only selection is now explicit and Handoff-owned on the current managed runtime; finish OS-neutral Window surface construction so normal consumers also stop branching on macOS/Linux WSS backend details.
+- **P0 #185** — deterministic implementation is present: transport order/transport-only selection is exact, managed Window WSS construction uses one OS-neutral macOS/Linux surface factory, and managed diagnostics consume one bounded OS-neutral projection. Merge/CI closeout remains; successor/modal WSS lineage stays separately tracked by #186.
 - **P1 #186** — reuse the existing macOS same-process successor authority under WSS.
 - **P1 #160** — reduce WSS interaction jank only after correctness/authority gates remain green.
 - **P2 #151/#159** — product/package/clean-checkout delivery maturity; do not confuse packaging with

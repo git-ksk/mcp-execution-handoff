@@ -16,7 +16,7 @@ function fixture(onManagedOperatorDiagnosticEvent?: (event: { kind: string }) =>
   return new ManagedWindowHandoffRuntime({
     takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
     runtime: { hostExecutable: process.execPath },
-    managedFallback: { linuxHostScript: process.execPath, displayName: ":99" },
+    managedFallback: { platform: "linux", linuxHostScript: process.execPath, displayName: ":99" },
     ...(onManagedOperatorDiagnosticEvent ? { onManagedOperatorDiagnosticEvent } : {})
   });
 }
@@ -248,7 +248,7 @@ test("managed runtime honors WSS-first -> direct order exactly", async () => {
     const runtime = new ManagedWindowHandoffRuntime({
       takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
       runtime: { hostExecutable: process.execPath },
-      managedFallback: { linuxHostScript: process.execPath, displayName: ":99" },
+      managedFallback: { platform: "linux", linuxHostScript: process.execPath, displayName: ":99" },
       transportPolicy: { order: ["websocket_relay", "webrtc_direct"] }
     });
     const wss = runtime.start(request());

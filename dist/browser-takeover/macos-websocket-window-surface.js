@@ -60,6 +60,36 @@ export class MacOSWebSocketWindowSurface {
             authorityBoundary: this.#authorityBoundary
         };
     }
+    /** OS-neutral projection used by managed Browser/Window composition. */
+    managedDiagnosticsSnapshot() {
+        return {
+            lastFailure: managedFailure(this.#lastFailure, this.#authorityBoundary),
+            framesObserved: Math.min(this.#framesObserved, 1_000_000),
+            lastInputStage: this.#lastInputStage === "applied" ? "applied" : "none",
+            lastInputBoundaryStage: managedInputBoundary(this.#lastInputStage),
+            inputAttempts: Math.min(this.#inputAttempts, 1_000_000),
+            failure: managedFailure(this.#failure, this.#authorityBoundary),
+            failureInputStage: this.#lastInputStage === "applied" ? "applied" : "none",
+            failureInputBoundaryStage: managedInputBoundary(this.#lastInputStage),
+            lastInputFailureDetail: "none",
+            failureInputFailureDetail: "none",
+            lastHelperStopReason: "none",
+            failureHelperStopReason: "none",
+            lastHelperCrashReason: "none",
+            failureHelperCrashReason: "none",
+            lastHelperExitKind: "none",
+            failureHelperExitKind: "none",
+            lastHelperCrashClass: "none",
+            failureHelperCrashClass: "none",
+            lastHelperCrashOrigin: "none",
+            failureHelperCrashOrigin: "none",
+            lastHelperCrashErrorKind: "none",
+            failureHelperCrashErrorKind: "none",
+            lastHelperCrashMessageClass: "none",
+            failureHelperCrashMessageClass: "none",
+            authorityBoundary: this.#authorityBoundary
+        };
+    }
     captureFailureDisposition(_error) {
         return this.#authorityBoundary === "lost" ? "authority_lost" : "recoverable";
     }
@@ -358,6 +388,24 @@ function parseEditableRegions(line) {
         regions.push(values);
     }
     return regions;
+}
+function managedFailure(failure, authorityBoundary) {
+    if (authorityBoundary === "lost" || failure === "authority_lost")
+        return "revalidation_failure";
+    if (failure === "input_rejected")
+        return "input_failure";
+    return failure;
+}
+function managedInputBoundary(stage) {
+    if (stage === "requested")
+        return "requested";
+    if (stage === "command_sent")
+        return "command_sent";
+    if (stage === "applied")
+        return "acknowledged";
+    if (stage === "rejected")
+        return "command_sent";
+    return "none";
 }
 function authorityLostError() {
     return new MacOSWebSocketWindowSurfaceError("AUTHORITY_LOST", "macOS WSS exact-window authority was lost");

@@ -11,7 +11,7 @@ function managedConfig() {
   return {
     takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
     runtime: { hostExecutable: process.execPath, displayName: ":99" },
-    managedFallback: { linuxHostScript: process.execPath }
+    managedFallback: { platform: "linux", linuxHostScript: process.execPath }
   } as const;
 }
 
@@ -118,14 +118,72 @@ test("direct-only transport policy needs no WSS backend and retains process-only
   await adapter.revoke("managed-direct-only");
 });
 
-test("WSS in an explicit plan fails closed before Human authority when its backend is absent", () => {
+test("Linux WSS in an explicit plan fails closed before Human authority when its backend is absent", () => {
+  const adapter = new BrowserHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath },
+    managedFallback: { platform: "linux" },
+    transportPolicy: { order: ["websocket_relay"] }
+  });
   assert.throws(
-    () => new BrowserHandoffAdapter({
+    () => adapter.start({
+      intervention: { id: "managed-linux-wss-missing", epoch: 1 },
+      principalBinding: PRINCIPAL,
+      target: { processId: 4242, windowId: 7331 },
+      inputPolicy: ALL_INPUT
+    }),
+    /Managed Linux WSS requires an exact-window host script and local X11 display/
+  );
+  assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "none");
+});
+
+test("managed macOS WSS-only reuses the runtime host without consumer surface-class selection", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath },
+    managedFallback: { platform: "macos" },
+    transportPolicy: { order: ["websocket_relay"] }
+  });
+  const locator = adapter.start({
+    intervention: { id: "managed-macos-wss-only", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: ALL_INPUT
+  });
+  assert.equal((await adapter.handle(new Request(locator), PRINCIPAL)).status, 200);
+  assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "websocket_relay");
+  await adapter.revoke("managed-macos-wss-only");
+});
+
+test("managed macOS LocalAuthentication WSS stays PID-only and policy-bounded", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath },
+    managedFallback: { platform: "macos" },
+    transportPolicy: { order: ["websocket_relay"] },
+    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+  });
+  const locator = adapter.start({
+    intervention: { id: "managed-macos-local-auth", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: { tap: true, scroll: false, text: true, key: true }
+  });
+  assert.equal((await adapter.handle(new Request(locator), PRINCIPAL)).status, 200);
+  assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "websocket_relay");
+  await adapter.revoke("managed-macos-local-auth");
+});
+
+
+test("managed WSS rejects unknown host platforms before any Human authority", () => {
+  assert.throws(
+    () => new WindowHandoffAdapter({
       takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
       runtime: { hostExecutable: process.execPath },
+      managedFallback: { platform: "windows" as never },
       transportPolicy: { order: ["websocket_relay"] }
     }),
-    /WSS requires a Linux exact-window host script and local X11 display/
+    /Managed Window WSS platform is invalid/
   );
 });
 

@@ -109,6 +109,10 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             authorityBoundary: this.#authorityBoundary
         };
     }
+    /** OS-neutral projection used by managed Browser/Window composition. */
+    managedDiagnosticsSnapshot() {
+        return this.diagnosticsSnapshot();
+    }
     captureFailureDisposition(error) {
         return isExactWindowBoundaryError(error) ? "authority_lost" : "recoverable";
     }

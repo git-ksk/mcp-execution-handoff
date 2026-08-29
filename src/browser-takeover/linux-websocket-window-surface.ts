@@ -10,6 +10,7 @@ import type {
 } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
 import {
   WebSocketWindowHostRecordParser as LinuxWebSocketHostRecordParser,
   type WebSocketWindowJpegFrame as LinuxWebSocketJpegFrame
@@ -332,6 +333,11 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass,
       authorityBoundary: this.#authorityBoundary
     };
+  }
+
+  /** OS-neutral projection used by managed Browser/Window composition. */
+  managedDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics {
+    return this.diagnosticsSnapshot();
   }
 
   captureFailureDisposition(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition {

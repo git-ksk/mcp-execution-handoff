@@ -6,19 +6,13 @@ import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompl
 import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { type WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
-import { LinuxWebSocketWindowSurface, WebSocketBrowserHandoff } from "./websocket-relay.js";
+import { WebSocketBrowserHandoff } from "./websocket-relay.js";
+import { type ManagedWindowWebSocketHostConfig } from "./managed-window-websocket-surface.js";
+import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
 import { type BrowserHandoffTransportAttempt, type ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
-export interface BrowserHandoffManagedFallbackConfig {
-    /** Built Handoff Linux exact-window host script. Required only when the plan includes WSS. */
-    linuxHostScript?: string;
-    /** Local X11 display. Defaults to `runtime.displayName` when present. */
-    displayName?: string;
-    /** Optional absolute xdotool path used by the exact-window input host. */
-    xdotoolExecutable?: string;
-    /** Optional absolute persistent X11 exact-window authority helper. */
-    authorityHelperExecutable?: string;
-}
+/** Deployment-owned exact-window WSS host configuration. */
+export type BrowserHandoffManagedFallbackConfig = ManagedWindowWebSocketHostConfig;
 export interface ManagedWindowHandoffRuntimeConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
@@ -49,7 +43,7 @@ export declare class ManagedWindowHandoffRuntime {
     ownsPath(pathname: string): boolean;
     start(request: WindowHandoffCoreStartRequest): string;
     /** @internal Content-free managed WSS surface diagnostics for physical acceptance. */
-    managedSurfaceDiagnosticsSnapshot(): ReturnType<LinuxWebSocketWindowSurface["diagnosticsSnapshot"]>;
+    managedSurfaceDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics;
     /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
     managedWebSocketDiagnosticsSnapshot(): ReturnType<WebSocketBrowserHandoff["diagnosticsSnapshot"]>;
     revoke(interventionId: string): Promise<void>;

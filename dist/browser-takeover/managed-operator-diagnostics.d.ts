@@ -3,7 +3,7 @@ import type { ManagedBrowserHandoffFallbackReason } from "./managed-transport-co
 import type { BrowserHandoffTransportAttempt } from "./transport-fallback-policy.js";
 import type { ExperimentalWebSocketIngressDisconnectKind } from "./websocket-ingress.js";
 import type { WebSocketTakeoverFailureCode, WebSocketTakeoverState } from "./websocket-takeover.js";
-import type { LinuxWebSocketHelperCrashClass, LinuxWebSocketHelperCrashErrorKind, LinuxWebSocketHelperCrashMessageClass, LinuxWebSocketHelperCrashOrigin, LinuxWebSocketHelperCrashReason, LinuxWebSocketHelperExitKind, LinuxWebSocketHelperStopReason, LinuxWebSocketInputBoundaryStage, LinuxWebSocketInputStage, LinuxWebSocketSurfaceFailure } from "./linux-websocket-window-surface.js";
+import type { ManagedWindowWebSocketHelperCrashClass, ManagedWindowWebSocketHelperCrashErrorKind, ManagedWindowWebSocketHelperCrashMessageClass, ManagedWindowWebSocketHelperCrashOrigin, ManagedWindowWebSocketHelperCrashReason, ManagedWindowWebSocketHelperExitKind, ManagedWindowWebSocketHelperStopReason, ManagedWindowWebSocketInputBoundaryStage, ManagedWindowWebSocketInputStage, ManagedWindowWebSocketSurfaceFailure } from "./websocket-window-surface-diagnostics.js";
 export declare const MANAGED_OPERATOR_DIAGNOSTICS_SCHEMA_VERSION: 1;
 export declare const MANAGED_OPERATOR_DIAGNOSTIC_EVENT_LIMIT: 64;
 export type ManagedOperatorDiagnosticEventKind = "transport_transition" | "wss_open" | "wss_degraded" | "wss_failed" | "capture_recovery_attempt" | "input_dispatch_failure" | "helper_restart" | "authority_boundary_lost" | "session_retained" | "session_revoked" | "host_editable_regions_available" | "host_editable_regions_empty" | "host_focus_editable" | "host_focus_not_editable" | "client_editable_regions_available" | "client_editable_regions_empty" | "client_tap_editable_predicted" | "client_tap_editable_not_predicted" | "client_keyboard_focus_requested" | "client_keyboard_focus_active" | "client_keyboard_focus_inactive";
@@ -27,17 +27,17 @@ export interface ManagedOperatorWssDiagnostics {
     framesObserved: number;
     framesSent: number;
     framesDropped: number;
-    surfaceFailure: LinuxWebSocketSurfaceFailure;
+    surfaceFailure: ManagedWindowWebSocketSurfaceFailure;
     inputAttempts: number;
-    lastInputStage: LinuxWebSocketInputStage;
-    lastInputBoundaryStage: LinuxWebSocketInputBoundaryStage;
-    helperStopReason: LinuxWebSocketHelperStopReason;
-    helperCrashReason: LinuxWebSocketHelperCrashReason;
-    helperExitKind: LinuxWebSocketHelperExitKind;
-    helperCrashClass: LinuxWebSocketHelperCrashClass;
-    helperCrashOrigin: LinuxWebSocketHelperCrashOrigin;
-    helperCrashErrorKind: LinuxWebSocketHelperCrashErrorKind;
-    helperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
+    lastInputStage: ManagedWindowWebSocketInputStage;
+    lastInputBoundaryStage: ManagedWindowWebSocketInputBoundaryStage;
+    helperStopReason: ManagedWindowWebSocketHelperStopReason;
+    helperCrashReason: ManagedWindowWebSocketHelperCrashReason;
+    helperExitKind: ManagedWindowWebSocketHelperExitKind;
+    helperCrashClass: ManagedWindowWebSocketHelperCrashClass;
+    helperCrashOrigin: ManagedWindowWebSocketHelperCrashOrigin;
+    helperCrashErrorKind: ManagedWindowWebSocketHelperCrashErrorKind;
+    helperCrashMessageClass: ManagedWindowWebSocketHelperCrashMessageClass;
     authorityBoundary: ManagedOperatorAuthorityBoundary;
     sessionDisposition: ManagedOperatorSessionDisposition;
 }

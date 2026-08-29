@@ -4,6 +4,7 @@ import { isAbsolute } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { TakeoverHostTarget } from "./broker.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { ManagedWindowWebSocketSurfaceDiagnostics, ManagedWindowWebSocketSurfaceFailure } from "./websocket-window-surface-diagnostics.js";
 import type {
   ExperimentalWebSocketWindowCaptureFailureDisposition,
   ExperimentalWebSocketWindowInputFailureDisposition,
@@ -134,6 +135,37 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
       framesObserved: Math.min(this.#framesObserved, 1_000_000),
       inputAttempts: Math.min(this.#inputAttempts, 1_000_000),
       lastInputStage: this.#lastInputStage,
+      authorityBoundary: this.#authorityBoundary
+    };
+  }
+
+  /** OS-neutral projection used by managed Browser/Window composition. */
+  managedDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics {
+    return {
+      lastFailure: managedFailure(this.#lastFailure, this.#authorityBoundary),
+      framesObserved: Math.min(this.#framesObserved, 1_000_000),
+      lastInputStage: this.#lastInputStage === "applied" ? "applied" : "none",
+      lastInputBoundaryStage: managedInputBoundary(this.#lastInputStage),
+      inputAttempts: Math.min(this.#inputAttempts, 1_000_000),
+      failure: managedFailure(this.#failure, this.#authorityBoundary),
+      failureInputStage: this.#lastInputStage === "applied" ? "applied" : "none",
+      failureInputBoundaryStage: managedInputBoundary(this.#lastInputStage),
+      lastInputFailureDetail: "none",
+      failureInputFailureDetail: "none",
+      lastHelperStopReason: "none",
+      failureHelperStopReason: "none",
+      lastHelperCrashReason: "none",
+      failureHelperCrashReason: "none",
+      lastHelperExitKind: "none",
+      failureHelperExitKind: "none",
+      lastHelperCrashClass: "none",
+      failureHelperCrashClass: "none",
+      lastHelperCrashOrigin: "none",
+      failureHelperCrashOrigin: "none",
+      lastHelperCrashErrorKind: "none",
+      failureHelperCrashErrorKind: "none",
+      lastHelperCrashMessageClass: "none",
+      failureHelperCrashMessageClass: "none",
       authorityBoundary: this.#authorityBoundary
     };
   }
@@ -439,6 +471,25 @@ function parseEditableRegions(line: string): WebSocketTakeoverEditableRegion[] |
     regions.push(values as WebSocketTakeoverEditableRegion);
   }
   return regions;
+}
+
+function managedFailure(
+  failure: MacOSWebSocketSurfaceFailure,
+  authorityBoundary: "valid" | "lost"
+): ManagedWindowWebSocketSurfaceFailure {
+  if (authorityBoundary === "lost" || failure === "authority_lost") return "revalidation_failure";
+  if (failure === "input_rejected") return "input_failure";
+  return failure;
+}
+
+function managedInputBoundary(
+  stage: MacOSWebSocketInputStage
+): ManagedWindowWebSocketSurfaceDiagnostics["lastInputBoundaryStage"] {
+  if (stage === "requested") return "requested";
+  if (stage === "command_sent") return "command_sent";
+  if (stage === "applied") return "acknowledged";
+  if (stage === "rejected") return "command_sent";
+  return "none";
 }
 
 function authorityLostError(): MacOSWebSocketWindowSurfaceError {

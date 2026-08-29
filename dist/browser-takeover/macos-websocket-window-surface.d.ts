@@ -1,5 +1,6 @@
 import type { TakeoverHostTarget } from "./broker.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
 import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowInputFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
 export interface MacOSWebSocketWindowSurfaceConfig {
@@ -31,6 +32,8 @@ export declare class MacOSWebSocketWindowSurface implements ExperimentalWebSocke
         lastInputStage: MacOSWebSocketInputStage;
         authorityBoundary: "valid" | "lost";
     };
+    /** OS-neutral projection used by managed Browser/Window composition. */
+    managedDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics;
     captureFailureDisposition(_error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     inputFailureDisposition(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition;
     editableRegionsSnapshot(): WebSocketTakeoverEditableRegion[];
