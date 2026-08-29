@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot, OperatorDiagnosticsSource } from "../core/operator-diagnostics.js";
 import { type WindowHandoffCoreInitialSecureWindowPolicy, type WindowHandoffCoreStartRequest, type WindowHandoffCoreSuccessorPolicy } from "../window-takeover/window-handoff-core.js";
-import type { TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverInterventionRef } from "./broker.js";
+import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverInterventionRef } from "./broker.js";
 import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { type WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
@@ -14,8 +14,10 @@ export interface BrowserHandoffManagedFallbackConfig {
     linuxHostScript: string;
     /** Local X11 display. Defaults to `runtime.displayName` when present. */
     displayName?: string;
-    /** Optional absolute xdotool path for the exact-window revalidation boundary. */
+    /** Optional absolute xdotool path used by the exact-window input host. */
     xdotoolExecutable?: string;
+    /** Optional absolute persistent X11 exact-window authority helper. */
+    authorityHelperExecutable?: string;
 }
 export interface ManagedWindowHandoffRuntimeConfig {
     takeover: TakeoverBrokerConfig;
@@ -27,6 +29,7 @@ export interface ManagedWindowHandoffRuntimeConfig {
     /** Observe-only bounded managed diagnostic events. Callback failures are contained. */
     onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+    onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 /**
  * Internal first-class Browser/Window transport composition.

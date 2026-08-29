@@ -1,9 +1,9 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
+import { type TakeoverAuthorityReleaseEvent, type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
-import type { WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
+import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 export interface ExperimentalWebSocketWindowSurface {
     /**
@@ -14,6 +14,8 @@ export interface ExperimentalWebSocketWindowSurface {
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
     captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
+    /** Content-free normalized editable rectangles, never text/value/DOM content. */
+    editableRegionsSnapshot?(): WebSocketTakeoverEditableRegion[];
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;
     insertExactWindowText(target: Readonly<TakeoverHostTarget>, text: string): Promise<void>;
@@ -28,6 +30,8 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     /** Called only after the shared Human generation has been fenced. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+    /** Distinguishes explicit Human completion from fail-closed authority loss. */
+    onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 export interface ExperimentalWebSocketWindowStartRequest {
     intervention: TakeoverInterventionRef;

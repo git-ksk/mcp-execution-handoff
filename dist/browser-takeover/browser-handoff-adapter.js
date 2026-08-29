@@ -29,7 +29,8 @@ export class BrowserHandoffAdapter {
                     ...(config.onManagedOperatorDiagnosticEvent
                         ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
                         : {}),
-                    ...(config.onComplete ? { onComplete: config.onComplete } : {})
+                    ...(config.onComplete ? { onComplete: config.onComplete } : {}),
+                    ...(config.onAuthorityReleased ? { onAuthorityReleased: config.onAuthorityReleased } : {})
                 })
                 : new WindowHandoffCore(config);
         }

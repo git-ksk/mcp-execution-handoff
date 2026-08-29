@@ -351,6 +351,18 @@ test("Linux X11 pointer query probe remains query-only and non-invasive", () => 
   assert.doesNotMatch(probe, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer/);
 });
 
+test("Linux exact-window authority helper is persistent query-only and cannot inject or read content", () => {
+  const helper = readFileSync("native/linux-window-authority-helper.c", "utf8");
+  assert.match(helper, /XGetWindowAttributes/);
+  assert.match(helper, /XGetWindowProperty/);
+  assert.match(helper, /_NET_WM_PID/);
+  assert.match(helper, /XTranslateCoordinates/);
+  assert.match(helper, /IsViewable/);
+  assert.match(helper, /QUERY/);
+  assert.doesNotMatch(helper, /XSelectInput|XGrabPointer|XGrabButton|XAllowEvents|XSendEvent|XTestFake|XWarpPointer/);
+  assert.doesNotMatch(helper, /XGetImage|XFetchName|XGetWMName|clipboard|selection|credential|password|cookie/i);
+});
+
 test("Node WebRTC runtime passes an explicit Linux display without widening the child environment", () => {
   const runtime = readFileSync("src/browser-takeover/webrtc-runtime.ts", "utf8");
   assert.match(runtime, /displayName\?: string/);

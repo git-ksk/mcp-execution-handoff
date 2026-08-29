@@ -447,6 +447,13 @@ export class ExperimentalWebSocketTakeoverIngress {
     return true;
   }
 
+  async pushControl(sessionId: string, message: WebSocketTakeoverServerMessage): Promise<boolean> {
+    const active = this.#active.get(sessionId);
+    if (!active || active.channel.state !== "open") return false;
+    await active.peer.sendControl(message);
+    return true;
+  }
+
   async revoke(sessionId: string): Promise<void> {
     const active = this.#active.get(sessionId);
     if (active) {

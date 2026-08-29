@@ -1,6 +1,6 @@
 import type { WebRtcDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency.js";
-import { type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
+import { type TakeoverAuthorityReleaseEvent, type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { type SpawnedWebRtcRuntimeProviderConfig, type WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
 export interface WindowHandoffCoreSuccessorPolicy {
     mode: "same_process";
@@ -17,6 +17,7 @@ export interface WindowHandoffCoreConfig {
     successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
     initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+    onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 export interface WindowHandoffCoreStartRequest {
     intervention: TakeoverInterventionRef;

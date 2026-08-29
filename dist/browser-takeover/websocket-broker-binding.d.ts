@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 import type { TakeoverBroker, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketTakeoverIngress } from "./websocket-ingress.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
-import type { WebSocketTakeoverBinding, WebSocketTakeoverFrame, WebSocketTakeoverHumanInput, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
+import type { WebSocketTakeoverBinding, WebSocketTakeoverFrame, WebSocketTakeoverHumanInput, WebSocketTakeoverInputPolicy, WebSocketTakeoverServerMessage } from "./websocket-takeover.js";
 export interface ExperimentalWebSocketBrokerBindingOptions {
     allowedOrigins: readonly string[];
     onInput(binding: Readonly<WebSocketTakeoverBinding>, input: WebSocketTakeoverHumanInput): void | Promise<void>;
@@ -28,6 +28,7 @@ export declare class ExperimentalWebSocketBrokerBinding {
     /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketTakeoverIngress["diagnosticsSnapshot"]>;
     pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean>;
+    pushControl(sessionId: string, message: WebSocketTakeoverServerMessage): Promise<boolean>;
     revoke(sessionId: string): void;
 }
 //# sourceMappingURL=websocket-broker-binding.d.ts.map

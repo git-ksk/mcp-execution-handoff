@@ -32,6 +32,7 @@ export type WebSocketTakeoverHumanInput = {
     kind: "key";
     key: string;
 };
+export type WebSocketTakeoverEditableRegion = [number, number, number, number];
 export interface WebSocketTakeoverFrame {
     data: Uint8Array;
     width: number;
@@ -44,6 +45,9 @@ export type WebSocketTakeoverServerMessage = {
     kind: "closing";
 } | {
     kind: "closed";
+} | {
+    kind: "editableRegions";
+    regions: WebSocketTakeoverEditableRegion[];
 } | {
     kind: "pong";
     nonce?: string;

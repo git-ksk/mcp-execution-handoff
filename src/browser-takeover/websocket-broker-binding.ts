@@ -11,7 +11,8 @@ import type {
   WebSocketTakeoverBinding,
   WebSocketTakeoverFrame,
   WebSocketTakeoverHumanInput,
-  WebSocketTakeoverInputPolicy
+  WebSocketTakeoverInputPolicy,
+  WebSocketTakeoverServerMessage
 } from "./websocket-takeover.js";
 
 const BOOTSTRAP_PATH = /^\/takeover\/api\/websocket-bootstrap\/([A-Za-z0-9-]{8,100})$/;
@@ -139,6 +140,10 @@ export class ExperimentalWebSocketBrokerBinding {
 
   pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean> {
     return this.#ingress.pushFrame(sessionId, frame);
+  }
+
+  pushControl(sessionId: string, message: WebSocketTakeoverServerMessage): Promise<boolean> {
+    return this.#ingress.pushControl(sessionId, message);
   }
 
   revoke(sessionId: string): void {

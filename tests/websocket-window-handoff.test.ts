@@ -28,6 +28,7 @@ function fixture(options: {
   const diagnosticEvents: string[] = [];
   let recoverableCaptureFailures = options.recoverableCaptureFailures ?? 0;
   const completed: Array<{ interventionId: string; epoch: number }> = [];
+  const releases: Array<{ interventionId: string; epoch: number; disposition: string; reason: string }> = [];
   const surface: ExperimentalWebSocketWindowSurface = {
     ...(options.recoverableCaptureFailures === undefined
       ? {}
@@ -72,9 +73,12 @@ function fixture(options: {
     onDiagnosticEvent(kind) { diagnosticEvents.push(kind); },
     onComplete(event) {
       completed.push(event);
+    },
+    onAuthorityReleased(event) {
+      releases.push(event);
     }
   });
-  return { handoff, surface, calls, completed, diagnosticEvents };
+  return { handoff, surface, calls, completed, releases, diagnosticEvents };
 }
 
 function sessionIdFrom(link: string): string {
@@ -145,7 +149,7 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 test("Generic Window WSS captures and inputs only through the exact trusted process/window", async (t) => {
-  const { handoff, calls, completed } = fixture();
+  const { handoff, calls, completed, releases } = fixture();
   const intervention = { id: "generic-window-wss", epoch: 7 };
   const locator = handoff.start({
     intervention,
@@ -200,11 +204,17 @@ test("Generic Window WSS captures and inputs only through the exact trusted proc
   socket.send(JSON.stringify({ kind: "done" }));
   await closed;
   assert.deepEqual(completed, [{ interventionId: intervention.id, epoch: intervention.epoch }]);
+  assert.deepEqual(releases, [{
+    interventionId: intervention.id,
+    epoch: intervention.epoch,
+    disposition: "completed",
+    reason: "human_completed"
+  }]);
   assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), false);
 });
 
 test("Generic Window WSS revokes the session when exact-window capture cannot be revalidated", async (t) => {
-  const { handoff, calls, diagnosticEvents } = fixture({ captureFails: true });
+  const { handoff, calls, releases, diagnosticEvents } = fixture({ captureFails: true });
   const locator = handoff.start({
     intervention: { id: "window-capture-failure", epoch: 1 },
     principalBinding: PRINCIPAL,
@@ -232,6 +242,12 @@ test("Generic Window WSS revokes the session when exact-window capture cannot be
   ), PRINCIPAL);
   assert.equal(stale.status, 404);
   assert.deepEqual(diagnosticEvents.filter((event) => event === "session_revoked"), ["session_revoked"]);
+  assert.deepEqual(releases, [{
+    interventionId: "window-capture-failure",
+    epoch: 1,
+    disposition: "revoked",
+    reason: "authority_lost"
+  }]);
 });
 
 test("Generic Window WSS keeps the same session across explicitly recoverable capture failures", async (t) => {
@@ -260,6 +276,18 @@ test("Generic Window WSS keeps the same session across explicitly recoverable ca
   socket.send(JSON.stringify({ kind: "text", text: "still-active" }));
   await waitFor(() => calls.some((call) => call.kind === "text"));
   handoff.revoke("window-recoverable-capture");
+});
+
+test("Generic Window WSS consumer revoke does not masquerade as Human completion or authority loss", () => {
+  const { handoff, releases } = fixture();
+  handoff.start({
+    intervention: { id: "window-consumer-revoke", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: TARGET,
+    inputPolicy: POLICY
+  });
+  handoff.revoke("window-consumer-revoke");
+  assert.deepEqual(releases, []);
 });
 
 test("Generic Window WSS start is idempotent only for the exact authority/target/policy tuple", () => {

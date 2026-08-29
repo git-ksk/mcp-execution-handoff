@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import {
   TakeoverBroker,
+  type TakeoverAuthorityReleaseEvent,
   type TakeoverBrokerConfig,
   type TakeoverBrowserAdapter,
   type TakeoverCompletionEvent,
@@ -15,6 +16,7 @@ import {
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type {
+  WebSocketTakeoverEditableRegion,
   WebSocketTakeoverFrame,
   WebSocketTakeoverHumanInput,
   WebSocketTakeoverInputPolicy
@@ -31,6 +33,8 @@ export interface ExperimentalWebSocketWindowSurface {
   captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
   /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
   captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
+  /** Content-free normalized editable rectangles, never text/value/DOM content. */
+  editableRegionsSnapshot?(): WebSocketTakeoverEditableRegion[];
   tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
   scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;
   insertExactWindowText(target: Readonly<TakeoverHostTarget>, text: string): Promise<void>;
@@ -46,6 +50,8 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
   /** Called only after the shared Human generation has been fenced. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+  /** Distinguishes explicit Human completion from fail-closed authority loss. */
+  onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 
 export interface ExperimentalWebSocketWindowStartRequest {
@@ -78,6 +84,7 @@ interface ActiveWindowSession {
   readonly inputPolicy: WebSocketTakeoverInputPolicy;
   readonly timer: NodeJS.Timeout;
   captureInFlight: boolean;
+  editableRegionsFingerprint: string;
 }
 
 /**
@@ -95,21 +102,24 @@ export class ExperimentalWebSocketWindowHandoff {
   readonly #sessionsByIntervention = new Map<string, ActiveWindowSession>();
   readonly #sessionsById = new Map<string, ActiveWindowSession>();
   readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
+  readonly #onAuthorityReleased: ((event: TakeoverAuthorityReleaseEvent) => void | Promise<void>) | undefined;
 
   constructor(config: ExperimentalWebSocketWindowHandoffConfig) {
     this.#surface = config.surface;
     this.#onDiagnosticEvent = config.onDiagnosticEvent;
+    this.#onAuthorityReleased = config.onAuthorityReleased;
     this.#frameIntervalMs = boundedFrameInterval(config.frameIntervalMs);
     this.#broker = new TakeoverBroker(
       unavailableHttpSurface(),
       config.takeover,
       undefined,
       undefined,
-      config.onComplete
+      config.onComplete || config.onAuthorityReleased
         ? {
             completed: async (event) => {
               this.#forgetMatchingSession(event.interventionId, event.epoch);
-              await config.onComplete!(event);
+              await config.onAuthorityReleased?.({ ...event, disposition: "completed", reason: "human_completed" });
+              await config.onComplete?.(event);
             }
           }
         : {
@@ -198,7 +208,8 @@ export class ExperimentalWebSocketWindowHandoff {
       target,
       inputPolicy,
       timer,
-      captureInFlight: false
+      captureInFlight: false,
+      editableRegionsFingerprint: ""
     };
     this.#sessionsByIntervention.set(state.interventionId, state);
     this.#sessionsById.set(state.sessionId, state);
@@ -248,11 +259,27 @@ export class ExperimentalWebSocketWindowHandoff {
         return;
       }
       this.revoke(state.interventionId);
+      void Promise.resolve(this.#onAuthorityReleased?.({
+        interventionId: state.interventionId,
+        epoch: state.epoch,
+        disposition: "revoked",
+        reason: "authority_lost"
+      })).catch(() => undefined);
       return;
     } finally {
       state.captureInFlight = false;
     }
     if (this.#sessionsById.get(state.sessionId) !== state) return;
+    const editableRegions = this.#surface.editableRegionsSnapshot?.() ?? [];
+    const editableFingerprint = editableRegions.map((region) => region.join(",")).join(";");
+    if (editableFingerprint !== state.editableRegionsFingerprint) {
+      state.editableRegionsFingerprint = editableFingerprint;
+      try {
+        await this.#binding.pushControl(state.sessionId, { kind: "editableRegions", regions: editableRegions });
+      } catch {
+        // The channel owns transport failure handling; metadata never changes authority semantics.
+      }
+    }
     try {
       await this.#binding.pushFrame(state.sessionId, frame);
     } catch {
@@ -325,7 +352,7 @@ function unavailableHttpSurface(): TakeoverBrowserAdapter {
 }
 
 function boundedFrameInterval(value: number | undefined): number {
-  const resolved = value ?? 150;
+  const resolved = value ?? 75;
   if (!Number.isInteger(resolved) || resolved < 50 || resolved > 2_000) {
     throw new Error("Window WSS frame interval must be an integer between 50ms and 2000ms");
   }

@@ -4,7 +4,7 @@ import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.j
 import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
-import type { TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "./broker.js";
+import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "./broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "./webrtc-runtime-diagnostics.js";
 import { type BrowserHandoffManagedFallbackConfig } from "./managed-handoff-runtime.js";
 export type { BrowserHandoffManagedFallbackConfig } from "./managed-handoff-runtime.js";
@@ -15,8 +15,10 @@ export interface BrowserHandoffAdapterConfig {
     managedFallback?: BrowserHandoffManagedFallbackConfig;
     /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
     onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
-    /** Called only after Human transport authority is fenced. Consumer performs fresh verification. */
+    /** Called only after explicit Human completion; consumer performs fresh verification. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
+    /** Called after Human authority is fenced, with completion vs fail-closed loss distinguished. */
+    onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
 export type BrowserHandoffInputPolicy = WebRtcHumanInputPolicy;
 export interface BrowserHandoffStartRequest {
