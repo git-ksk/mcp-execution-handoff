@@ -135,6 +135,10 @@ export class ExperimentalWebSocketBrowserHandoff {
     this.#window.revoke(interventionId);
   }
 
+  async completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean> {
+    return await this.#window.completeAfterVerification(intervention);
+  }
+
   #forgetMatching(interventionId: string, epoch: number): void {
     const state = this.#sessionsByIntervention.get(interventionId);
     if (state?.epoch === epoch) this.#forget(state);

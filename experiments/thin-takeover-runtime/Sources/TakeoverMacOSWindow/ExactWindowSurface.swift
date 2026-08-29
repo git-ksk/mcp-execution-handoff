@@ -42,6 +42,63 @@ public enum MacOSExactWindowResolutionError: Error, Equatable {
     case cropOutsideDisplay
 }
 
+/// Revalidation for an already-authorized exact Window identity. Unlike initial resolution this
+/// never resolves a replacement window: the exact WindowServer id, owner PID, visibility, layer,
+/// and captured bounds must still match immediately before a Human mutation.
+public enum MacOSExactWindowAuthority {
+    public static func matches(
+        candidates: [MacOSWindowCandidate],
+        targetProcessID: pid_t,
+        targetWindowID: CGWindowID,
+        inputBounds: CGRect,
+        allowNonZeroLayer: Bool = false
+    ) -> Bool {
+        let exact = candidates.filter { candidate in
+            candidate.windowID == targetWindowID
+                && candidate.processID == targetProcessID
+                && candidate.isOnScreen
+                && (allowNonZeroLayer || candidate.layer == 0)
+                && MacOSExactWindowGeometry.framesMatch(candidate.frame, inputBounds)
+        }
+        return exact.count == 1
+    }
+
+    public static func revalidate(
+        processID: pid_t,
+        windowID: CGWindowID,
+        inputBounds: CGRect,
+        allowNonZeroLayer: Bool = false
+    ) -> Bool {
+        guard processID > 0, windowID > 0, inputBounds.width > 0, inputBounds.height > 0,
+              let raw = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]]
+        else { return false }
+        let candidates = raw.compactMap { info -> MacOSWindowCandidate? in
+            guard let number = info[kCGWindowNumber as String] as? NSNumber,
+                  number.uint32Value == windowID,
+                  let owner = info[kCGWindowOwnerPID as String] as? NSNumber,
+                  let layer = info[kCGWindowLayer as String] as? NSNumber,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds)
+            else { return nil }
+            let onScreen = (info[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false
+            return MacOSWindowCandidate(
+                processID: pid_t(owner.int32Value),
+                windowID: CGWindowID(number.uint32Value),
+                frame: frame,
+                isOnScreen: onScreen,
+                layer: layer.intValue
+            )
+        }
+        return matches(
+            candidates: candidates,
+            targetProcessID: processID,
+            targetWindowID: windowID,
+            inputBounds: inputBounds,
+            allowNonZeroLayer: allowNonZeroLayer
+        )
+    }
+}
+
 public struct MacOSExactWindowResolution: Sendable, Equatable {
     public let windowIndex: Int
     public let displayIndex: Int

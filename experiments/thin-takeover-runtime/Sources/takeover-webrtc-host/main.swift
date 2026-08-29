@@ -6,6 +6,8 @@ import TakeoverMacOSWindow
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import CoreImage
+import ImageIO
 import Darwin
 import CoreMedia
 import CoreVideo
@@ -81,6 +83,19 @@ private func loadTargetWindowID(targetProcessID: pid_t?) throws -> CGWindowID? {
     guard let text = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_TARGET_WINDOW_ID"] else { return nil }
     guard targetProcessID != nil, let value = UInt32(text), value > 0 else { throw WebRtcHostError.configuration }
     return CGWindowID(value)
+}
+
+private enum HostFrameFormat: String {
+    case h264
+    case jpeg
+}
+
+private func loadHostFrameFormat() throws -> HostFrameFormat {
+    guard let raw = ProcessInfo.processInfo.environment["TAKEOVER_WEBRTC_FRAME_FORMAT"] else {
+        return .h264
+    }
+    guard let format = HostFrameFormat(rawValue: raw) else { throw WebRtcHostError.configuration }
+    return format
 }
 
 private enum InitialSecureWindowPolicy: String {
@@ -372,7 +387,8 @@ private func makeStreamConfiguration(
     surface: CaptureSurface,
     width: Int,
     height: Int,
-    preserveAspectRatio: Bool
+    preserveAspectRatio: Bool,
+    frameFormat: HostFrameFormat = .h264
 ) -> SCStreamConfiguration {
     let configuration = SCStreamConfiguration()
     if let sourceRect = surface.sourceRect { configuration.sourceRect = sourceRect }
@@ -382,7 +398,9 @@ private func makeStreamConfiguration(
     configuration.preservesAspectRatio = preserveAspectRatio
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
     configuration.queueDepth = 2
-    configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+    configuration.pixelFormat = frameFormat == .jpeg
+        ? kCVPixelFormatType_32BGRA
+        : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     configuration.capturesAudio = false
     configuration.showsCursor = false
     return configuration
@@ -566,6 +584,94 @@ private final class LatestOutputWriter: @unchecked Sendable {
             else if let frame = latestFrame { latestFrame = nil; current = frame }
             else { writing = false; current = nil }
             lock.unlock()
+        }
+    }
+}
+
+private func jpegFrameRecord(jpeg: Data, width: Int, height: Int) -> Data? {
+    guard width > 0, width <= Int(UInt16.max), height > 0, height <= Int(UInt16.max),
+          jpeg.count >= 4, jpeg.count <= 8 * 1024 * 1024 - 9,
+          jpeg.starts(with: [0xff, 0xd8]), jpeg.suffix(2).elementsEqual([0xff, 0xd9])
+    else { return nil }
+    var payload = Data()
+    payload.reserveCapacity(4 + jpeg.count)
+    var widthBE = UInt16(width).bigEndian
+    var heightBE = UInt16(height).bigEndian
+    withUnsafeBytes(of: &widthBE) { payload.append(contentsOf: $0) }
+    withUnsafeBytes(of: &heightBE) { payload.append(contentsOf: $0) }
+    payload.append(jpeg)
+    var record = Data([2])
+    var length = UInt32(payload.count).bigEndian
+    withUnsafeBytes(of: &length) { record.append(contentsOf: $0) }
+    record.append(payload)
+    return record
+}
+
+private final class JPEGFrameOutput: NSObject, SCStreamOutput, @unchecked Sendable {
+    private let context = CIContext(options: [.cacheIntermediates: false])
+    private let colorSpace = CGColorSpaceCreateDeviceRGB()
+    private let admission = FrameAdmissionGate(maxInFlight: 1)
+    private let lease: EphemeralSessionLease
+    private let writer: LatestOutputWriter
+    private let width: Int
+    private let height: Int
+    private let targetProcessID: pid_t
+    private let targetWindowID: CGWindowID
+    private let inputBounds: CGRect
+    private let secureWindow: Bool
+    private let authorityLost: @Sendable () -> Void
+
+    init(
+        lease: EphemeralSessionLease,
+        writer: LatestOutputWriter,
+        width: Int,
+        height: Int,
+        targetProcessID: pid_t,
+        targetWindowID: CGWindowID,
+        inputBounds: CGRect,
+        secureWindow: Bool,
+        authorityLost: @escaping @Sendable () -> Void
+    ) {
+        self.lease = lease
+        self.writer = writer
+        self.width = width
+        self.height = height
+        self.targetProcessID = targetProcessID
+        self.targetWindowID = targetWindowID
+        self.inputBounds = inputBounds
+        self.secureWindow = secureWindow
+        self.authorityLost = authorityLost
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard lease.isActive(), type == .screen, let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        if let array = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+           let info = array.first, let raw = info[.status] as? Int,
+           let status = SCFrameStatus(rawValue: raw), status != .complete { return }
+        guard admission.tryAcquire() else { return }
+        defer { admission.release() }
+        let exactWindowValid = MacOSExactWindowAuthority.revalidate(
+            processID: targetProcessID,
+            windowID: targetWindowID,
+            inputBounds: inputBounds,
+            allowNonZeroLayer: secureWindow
+        )
+        let secureIdentityValid = !secureWindow || MacOSLocalAuthenticationWindowInput.verifyFocused(
+            processID: targetProcessID, inputBounds: inputBounds
+        )
+        guard exactWindowValid, secureIdentityValid else {
+            FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC capture_stage=authority_lost\n".utf8))
+            authorityLost()
+            return
+        }
+        autoreleasepool {
+            let image = CIImage(cvPixelBuffer: pixel)
+            guard let jpeg = context.jpegRepresentation(
+                of: image,
+                colorSpace: colorSpace,
+                options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.72]
+            ), let record = jpegFrameRecord(jpeg: jpeg, width: width, height: height) else { return }
+            writer.submitFrame(record)
         }
     }
 }
@@ -897,6 +1003,7 @@ private final class HumanInputInjector: @unchecked Sendable {
     private let source = CGEventSource(stateID: .combinedSessionState)
     private let inputBounds: CGRect
     private let targetProcessID: pid_t?
+    private let targetWindowID: CGWindowID?
     private let targetAuthority: WindowTargetAuthority?
     private let initialSecureWindowPolicy: InitialSecureWindowPolicy?
     private let afterPrimaryRelease: @Sendable () -> Void
@@ -909,6 +1016,7 @@ private final class HumanInputInjector: @unchecked Sendable {
     init(
         inputBounds: CGRect,
         targetProcessID: pid_t?,
+        targetWindowID: CGWindowID? = nil,
         targetAuthority: WindowTargetAuthority? = nil,
         initialSecureWindowPolicy: InitialSecureWindowPolicy? = nil,
         afterPrimaryRelease: @escaping @Sendable () -> Void = {},
@@ -917,6 +1025,7 @@ private final class HumanInputInjector: @unchecked Sendable {
     ) {
         self.inputBounds = inputBounds
         self.targetProcessID = targetProcessID
+        self.targetWindowID = targetWindowID
         self.targetAuthority = targetAuthority
         self.initialSecureWindowPolicy = initialSecureWindowPolicy
         self.afterPrimaryRelease = afterPrimaryRelease
@@ -924,60 +1033,82 @@ private final class HumanInputInjector: @unchecked Sendable {
         self.controlWriter = controlWriter
     }
 
-    func apply(_ object: [String: Any]) {
-        guard let kind = object["kind"] as? String else { return }
+    @discardableResult
+    func apply(_ object: [String: Any]) -> Bool {
+        guard let kind = object["kind"] as? String else { return false }
         let activeTarget: WindowTargetSnapshot?
         if let targetAuthority {
             guard let snapshot = targetAuthority.snapshotForInput() else {
                 if kind == "text" { controlWriter.submitInputTextRoute(.activationRejected) }
                 FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=activation_failed\n".utf8))
-                return
+                return false
             }
             activeTarget = snapshot
         } else {
             activeTarget = nil
         }
         let activeProcessID = activeTarget?.processID ?? targetProcessID
+        let activeWindowID = activeTarget?.windowID ?? targetWindowID
         let activeInputBounds = activeTarget?.inputBounds ?? inputBounds
+        if let activeProcessID, let activeWindowID {
+            let exactWindowValid = MacOSExactWindowAuthority.revalidate(
+                processID: activeProcessID,
+                windowID: activeWindowID,
+                inputBounds: activeInputBounds,
+                allowNonZeroLayer: initialSecureWindowPolicy == .macosLocalAuthentication
+            )
+            guard exactWindowValid else {
+                if kind == "text" { controlWriter.submitInputTextRoute(.nativeBoundaryRejected) }
+                FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=authority_lost\n".utf8))
+                return false
+            }
+        }
         guard activateTargetWindowForInput(processID: activeProcessID, inputBounds: activeInputBounds) else {
             if kind == "text", activeProcessID != nil {
                 controlWriter.submitInputTextRoute(.activationRejected)
             }
             FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=activation_failed\n".utf8))
-            return
+            return false
         }
         switch kind {
         case "tap":
-            guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return }
+            guard let x = number(object["x"]), let y = number(object["y"]), (0...1).contains(x), (0...1).contains(y) else { return false }
             let point = screenPoint(x: x, y: y, inputBounds: activeInputBounds)
             let editableAtPoint = editableElement(at: point)
-            guard postPrimaryButton(state: "down", at: point) else { return }
+            guard postPrimaryButton(state: "down", at: point) else { return false }
             usleep(20_000)
-            guard postPrimaryButton(state: "up", at: point) else { releaseAll(); return }
+            guard postPrimaryButton(state: "up", at: point) else { releaseAll(); return false }
             afterPrimaryRelease()
             writer.submitEditable(editableAtPoint || editableAfterTap())
+            return true
         case "pointer_button":
             guard object["button"] as? String == "primary",
                   let state = object["state"] as? String, state == "down" || state == "up",
                   let x = number(object["x"]), let y = number(object["y"]),
-                  (0...1).contains(x), (0...1).contains(y) else { return }
+                  (0...1).contains(x), (0...1).contains(y) else { return false }
             let point = screenPoint(x: x, y: y, inputBounds: activeInputBounds)
             let editableAtPoint = state == "up" ? editableElement(at: point) : false
             guard postPrimaryButton(state: state, at: point) else {
                 FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_\(state)_rejected\n".utf8))
-                return
+                return false
             }
             FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=primary_\(state)_sent\n".utf8))
             if state == "up" {
                 afterPrimaryRelease()
                 writer.submitEditable(editableAtPoint || editableAfterTap())
             }
+            return true
         case "scroll":
-            guard let dx = number(object["deltaX"]), let dy = number(object["deltaY"]), abs(dx) <= 2_000, abs(dy) <= 2_000 else { return }
-            guard let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0) else { return }
+            guard let dx = number(object["deltaX"]), let dy = number(object["deltaY"]),
+                  abs(dx) <= 2_000, abs(dy) <= 2_000,
+                  let event = CGEvent(
+                    scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2,
+                    wheel1: Int32(dy.rounded()), wheel2: Int32(dx.rounded()), wheel3: 0
+                  ) else { return false }
             event.post(tap: .cghidEventTap)
+            return true
         case "text":
-            guard let text = object["text"] as? String, !text.isEmpty, text.utf8.count <= 4_096 else { return }
+            guard let text = object["text"] as? String, !text.isEmpty, text.utf8.count <= 4_096 else { return false }
             if initialSecureWindowPolicy == .macosLocalAuthentication {
                 guard let activeProcessID,
                       text.utf8.count <= 256,
@@ -986,14 +1117,14 @@ private final class HumanInputInjector: @unchecked Sendable {
                           inputBounds: activeInputBounds
                       ) else {
                     controlWriter.submitInputTextRoute(.nativeBoundaryRejected)
-                    return
+                    return false
                 }
                 guard postUnicodeKeyboardText(text, targetProcessID: activeProcessID) else {
                     controlWriter.submitInputTextRoute(.eventCreationFailure)
-                    return
+                    return false
                 }
                 controlWriter.submitInputTextRoute(.pidKeyboard)
-                return
+                return true
             }
             if let activeProcessID {
                 switch MacOSExactWindowTextInput.commitFocusedText(
@@ -1003,38 +1134,43 @@ private final class HumanInputInjector: @unchecked Sendable {
                 ) {
                 case .committed:
                     controlWriter.submitInputTextRoute(.nativeAX)
-                    return
+                    return true
                 case .rejected:
                     controlWriter.submitInputTextRoute(.nativeBoundaryRejected)
-                    return
+                    return false
                 case .unsupported:
                     break
                 }
             }
             guard postUnicodeKeyboardText(text, targetProcessID: activeProcessID) else {
                 if activeProcessID != nil { controlWriter.submitInputTextRoute(.eventCreationFailure) }
-                return
+                return false
             }
             if activeProcessID != nil { controlWriter.submitInputTextRoute(.pidKeyboard) }
+            return true
         case "key":
-            guard let key = object["key"] as? String else { return }
+            guard let key = object["key"] as? String else { return false }
             if initialSecureWindowPolicy == .macosLocalAuthentication {
                 guard key == "Backspace", let activeProcessID,
                       MacOSLocalAuthenticationWindowInput.verifyFocusedSecureTextField(
                           processID: activeProcessID,
                           inputBounds: activeInputBounds
-                      ) else { return }
+                      ) else { return false }
                 guard let down = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true),
-                      let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else { return }
-                postKeyboard(down, targetProcessID: activeProcessID); postKeyboard(up, targetProcessID: activeProcessID)
-                return
+                      let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else { return false }
+                postKeyboard(down, targetProcessID: activeProcessID)
+                postKeyboard(up, targetProcessID: activeProcessID)
+                return true
             }
             let code: CGKeyCode
-            switch key { case "Backspace": code = 51; case "Enter": code = 36; default: return }
+            switch key { case "Backspace": code = 51; case "Enter": code = 36; default: return false }
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) else { return }
-            postKeyboard(down, targetProcessID: activeProcessID); postKeyboard(up, targetProcessID: activeProcessID)
-        default: return
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false) else { return false }
+            postKeyboard(down, targetProcessID: activeProcessID)
+            postKeyboard(up, targetProcessID: activeProcessID)
+            return true
+        default:
+            return false
         }
     }
 
@@ -1265,7 +1401,9 @@ private final class InputReader: @unchecked Sendable {
                           let object = value as? [String: Any], let kind = object["kind"] as? String else { continue }
                     if kind == "stop" { stop.stop(.explicitStop); return }
                     if kind == "requestIDR" { requestIDR(); continue }
-                    injector.apply(object)
+                    let applied = injector.apply(object)
+                    let stage = applied ? "applied" : "rejected"
+                    FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC input_stage=\(stage)\n".utf8))
                 }
             }
         }
@@ -1319,6 +1457,7 @@ struct WebRtcMacHost {
         )
         let nativeWidth = surface.pixelWidth, nativeHeight = surface.pixelHeight
         guard nativeWidth > 0, nativeHeight > 0 else { throw WebRtcHostError.display }
+        let frameFormat = try loadHostFrameFormat()
         let mediaProfile = try loadMediaProfile()
         let mediaPolicy: MacOSWindowMediaPolicy
         do {
@@ -1336,17 +1475,39 @@ struct WebRtcMacHost {
         let writer = LatestOutputWriter()
         let metricWriter = HostMetricWriter()
         let controlWriter = HostControlWriter()
-        let encoder = try H264PipeEncoder(
-            width: Int32(width),
-            height: Int32(height),
-            averageBitrate: mediaPolicy.averageBitrate,
-            prioritizeEncodingSpeedOverQuality: mediaPolicy.prioritizeEncodingSpeedOverQuality
-        ) { avcc, timestamp, keyframe, encodeMs in
-            metricWriter.submitEncodeMs(encodeMs)
-            if lease.isActive(), !stop.isStopped,
-               let record = frameRecord(avcc: avcc, timestamp: timestamp, keyframe: keyframe, width: width, height: height) {
-                writer.submitFrame(record)
+        let streamOutput: any SCStreamOutput
+        let requestIDR: @Sendable () -> Void
+        if frameFormat == .jpeg {
+            guard let targetProcessID, let exactWindowID = surface.targetWindowID else {
+                throw WebRtcHostError.configuration
             }
+            streamOutput = JPEGFrameOutput(
+                lease: lease,
+                writer: writer,
+                width: width,
+                height: height,
+                targetProcessID: targetProcessID,
+                targetWindowID: exactWindowID,
+                inputBounds: surface.inputBounds,
+                secureWindow: initialSecureWindowPolicy == .macosLocalAuthentication,
+                authorityLost: { stop.stop(.windowResolution) }
+            )
+            requestIDR = {}
+        } else {
+            let encoder = try H264PipeEncoder(
+                width: Int32(width),
+                height: Int32(height),
+                averageBitrate: mediaPolicy.averageBitrate,
+                prioritizeEncodingSpeedOverQuality: mediaPolicy.prioritizeEncodingSpeedOverQuality
+            ) { avcc, timestamp, keyframe, encodeMs in
+                metricWriter.submitEncodeMs(encodeMs)
+                if lease.isActive(), !stop.isStopped,
+                   let record = frameRecord(avcc: avcc, timestamp: timestamp, keyframe: keyframe, width: width, height: height) {
+                    writer.submitFrame(record)
+                }
+            }
+            streamOutput = CaptureOutput(encoder: encoder, lease: lease)
+            requestIDR = { encoder.requestIDR() }
         }
         let targetAuthority: WindowTargetAuthority?
         if lineageConfig != nil {
@@ -1364,12 +1525,12 @@ struct WebRtcMacHost {
             surface: surface,
             width: width,
             height: height,
-            preserveAspectRatio: lineageConfig == nil
+            preserveAspectRatio: lineageConfig == nil,
+            frameFormat: frameFormat
         )
-        let output = CaptureOutput(encoder: encoder, lease: lease)
         let stream = SCStream(filter: surface.filter, configuration: configuration, delegate: nil)
         do {
-            try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "takeover.webrtc.capture", qos: .userInteractive))
+            try stream.addStreamOutput(streamOutput, type: .screen, sampleHandlerQueue: DispatchQueue(label: "takeover.webrtc.capture", qos: .userInteractive))
             try await stream.startCapture()
         } catch {
             throw WebRtcHostError.captureStart
@@ -1389,7 +1550,7 @@ struct WebRtcMacHost {
                 height: height,
                 transitionWindowMs: lineageConfig.transitionWindowMs,
                 initialKnownWindowIDs: sameProcessWindowIDs(from: lineageInventory, targetProcessID: targetProcessID),
-                requestIDR: { encoder.requestIDR() },
+                requestIDR: requestIDR,
                 stop: stop
             )
         } else {
@@ -1399,6 +1560,7 @@ struct WebRtcMacHost {
         let injector = HumanInputInjector(
             inputBounds: surface.inputBounds,
             targetProcessID: targetProcessID,
+            targetWindowID: surface.targetWindowID,
             targetAuthority: targetAuthority,
             initialSecureWindowPolicy: initialSecureWindowPolicy,
             afterPrimaryRelease: { lineageController?.afterPrimaryRelease() },
@@ -1420,7 +1582,7 @@ struct WebRtcMacHost {
             terminateSource.cancel(); interruptSource.cancel()
             injector.releaseAll()
         }
-        InputReader(stop: stop, injector: injector, requestIDR: { encoder.requestIDR() }).start()
+        InputReader(stop: stop, injector: injector, requestIDR: requestIDR).start()
         if let targetProcessID {
             EditableRegionPublisher(
                 targetProcessID: targetProcessID,

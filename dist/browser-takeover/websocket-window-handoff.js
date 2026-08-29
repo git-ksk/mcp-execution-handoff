@@ -128,6 +128,9 @@ export class ExperimentalWebSocketWindowHandoff {
         this.#forgetIntervention(interventionId);
         this.#broker.revokeForIntervention(interventionId);
     }
+    async completeAfterVerification(intervention) {
+        return await this.#broker.completeWebSocketAfterVerification(intervention);
+    }
     async #pumpFrame(state) {
         if (state.captureInFlight || this.#sessionsById.get(state.sessionId) !== state)
             return;
@@ -188,19 +191,37 @@ export class ExperimentalWebSocketWindowHandoff {
         if (!state || state.epoch !== epoch || this.#sessionsById.get(state.sessionId) !== state) {
             throw new ExperimentalWebSocketWindowHandoffError("WINDOW_HANDOFF_UNAVAILABLE", "bounded Window WSS target binding is stale");
         }
-        switch (input.kind) {
-            case "tap":
-                await this.#surface.tapExactWindow(state.target, input.x, input.y);
+        try {
+            switch (input.kind) {
+                case "tap":
+                    await this.#surface.tapExactWindow(state.target, input.x, input.y);
+                    return;
+                case "scroll":
+                    await this.#surface.scrollExactWindow(state.target, input.deltaY);
+                    return;
+                case "text":
+                    await this.#surface.insertExactWindowText(state.target, input.text);
+                    return;
+                case "key":
+                    await this.#surface.pressExactWindowKey(state.target, input.key);
+                    return;
+            }
+        }
+        catch (error) {
+            const disposition = this.#surface.inputFailureDisposition?.(error) ?? "authority_lost";
+            this.#onDiagnosticEvent?.("input_dispatch_failure");
+            if (disposition === "recoverable") {
+                this.#onDiagnosticEvent?.("session_retained");
                 return;
-            case "scroll":
-                await this.#surface.scrollExactWindow(state.target, input.deltaY);
-                return;
-            case "text":
-                await this.#surface.insertExactWindowText(state.target, input.text);
-                return;
-            case "key":
-                await this.#surface.pressExactWindowKey(state.target, input.key);
-                return;
+            }
+            this.revoke(state.interventionId);
+            void Promise.resolve(this.#onAuthorityReleased?.({
+                interventionId: state.interventionId,
+                epoch: state.epoch,
+                disposition: "revoked",
+                reason: "authority_lost"
+            })).catch(() => undefined);
+            throw error;
         }
     }
     #forgetMatchingSession(interventionId, epoch) {

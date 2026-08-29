@@ -23,6 +23,7 @@ import type {
 } from "./websocket-takeover.js";
 
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
+export type ExperimentalWebSocketWindowInputFailureDisposition = "recoverable" | "authority_lost";
 
 const EDITABLE_REGIONS_REFRESH_MS = 500;
 
@@ -35,12 +36,16 @@ export interface ExperimentalWebSocketWindowSurface {
   captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
   /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
   captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
+  /** Unknown input failures default to authority_lost so generic surfaces remain fail closed. */
+  inputFailureDisposition?(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition;
   /** Content-free normalized editable rectangles, never text/value/DOM content. */
   editableRegionsSnapshot?(): WebSocketTakeoverEditableRegion[];
   tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
   scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;
   insertExactWindowText(target: Readonly<TakeoverHostTarget>, text: string): Promise<void>;
   pressExactWindowKey(target: Readonly<TakeoverHostTarget>, key: string): Promise<void>;
+  /** Release local capture/input helper resources owned by this surface. */
+  close?(): Promise<void>;
 }
 
 export interface ExperimentalWebSocketWindowHandoffConfig {
@@ -249,6 +254,10 @@ export class ExperimentalWebSocketWindowHandoff {
     this.#broker.revokeForIntervention(interventionId);
   }
 
+  async completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean> {
+    return await this.#broker.completeWebSocketAfterVerification(intervention);
+  }
+
   async #pumpFrame(state: ActiveWindowSession): Promise<void> {
     if (state.captureInFlight || this.#sessionsById.get(state.sessionId) !== state) return;
     if (!this.#binding.hasActiveConnection(state.sessionId)) return;
@@ -310,19 +319,36 @@ export class ExperimentalWebSocketWindowHandoff {
         "bounded Window WSS target binding is stale"
       );
     }
-    switch (input.kind) {
-      case "tap":
-        await this.#surface.tapExactWindow(state.target, input.x, input.y);
+    try {
+      switch (input.kind) {
+        case "tap":
+          await this.#surface.tapExactWindow(state.target, input.x, input.y);
+          return;
+        case "scroll":
+          await this.#surface.scrollExactWindow(state.target, input.deltaY);
+          return;
+        case "text":
+          await this.#surface.insertExactWindowText(state.target, input.text);
+          return;
+        case "key":
+          await this.#surface.pressExactWindowKey(state.target, input.key);
+          return;
+      }
+    } catch (error) {
+      const disposition = this.#surface.inputFailureDisposition?.(error) ?? "authority_lost";
+      this.#onDiagnosticEvent?.("input_dispatch_failure");
+      if (disposition === "recoverable") {
+        this.#onDiagnosticEvent?.("session_retained");
         return;
-      case "scroll":
-        await this.#surface.scrollExactWindow(state.target, input.deltaY);
-        return;
-      case "text":
-        await this.#surface.insertExactWindowText(state.target, input.text);
-        return;
-      case "key":
-        await this.#surface.pressExactWindowKey(state.target, input.key);
-        return;
+      }
+      this.revoke(state.interventionId);
+      void Promise.resolve(this.#onAuthorityReleased?.({
+        interventionId: state.interventionId,
+        epoch: state.epoch,
+        disposition: "revoked",
+        reason: "authority_lost"
+      })).catch(() => undefined);
+      throw error;
     }
   }
 

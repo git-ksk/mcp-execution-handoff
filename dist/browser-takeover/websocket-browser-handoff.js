@@ -84,6 +84,9 @@ export class ExperimentalWebSocketBrowserHandoff {
             this.#forget(state);
         this.#window.revoke(interventionId);
     }
+    async completeAfterVerification(intervention) {
+        return await this.#window.completeAfterVerification(intervention);
+    }
     #forgetMatching(interventionId, epoch) {
         const state = this.#sessionsByIntervention.get(interventionId);
         if (state?.epoch === epoch)

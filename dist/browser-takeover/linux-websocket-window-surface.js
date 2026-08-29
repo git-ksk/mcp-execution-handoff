@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-const MAX_HOST_RECORD_BYTES = 8 * 1024 * 1024;
+import { WebSocketWindowHostRecordParser as LinuxWebSocketHostRecordParser } from "./websocket-window-host-record.js";
+export { WebSocketWindowHostRecordParser as LinuxWebSocketHostRecordParser } from "./websocket-window-host-record.js";
 const MAX_DIAGNOSTIC_BUFFER_BYTES = 8 * 1024;
 const FRAME_WAIT_TIMEOUT_MS = 4_000;
 const CAPTURE_RECOVERY_ATTEMPTS = 2;
@@ -11,59 +12,6 @@ const INPUT_ACK_TIMEOUT_MS = 4_000;
 const HELPER_STOP_TIMEOUT_MS = 1_000;
 const QUERY_TIMEOUT_MS = 2_000;
 const AUTHORITY_HELPER_READY_TIMEOUT_MS = 2_000;
-/** Parses private JPEG records while accepting the helper's bounded editable-focus control record. */
-export class LinuxWebSocketHostRecordParser {
-    onFrame;
-    onEditableFocus;
-    #pending = Buffer.alloc(0);
-    constructor(onFrame, onEditableFocus = () => undefined) {
-        this.onFrame = onFrame;
-        this.onEditableFocus = onEditableFocus;
-    }
-    push(chunk) {
-        if (chunk.byteLength === 0)
-            return;
-        this.#pending = this.#pending.byteLength === 0 ? Buffer.from(chunk) : Buffer.concat([this.#pending, chunk]);
-        if (this.#pending.byteLength > MAX_HOST_RECORD_BYTES + 5) {
-            throw new Error("Linux WSS host record buffer exceeded bounds");
-        }
-        for (;;) {
-            if (this.#pending.byteLength < 5)
-                return;
-            const type = this.#pending[0];
-            const length = this.#pending.readUInt32BE(1);
-            if (type !== 2 || length < 1 || length > MAX_HOST_RECORD_BYTES) {
-                throw new Error("Linux WSS host emitted an invalid record");
-            }
-            if (this.#pending.byteLength < 5 + length)
-                return;
-            const payload = this.#pending.subarray(5, 5 + length);
-            this.#pending = this.#pending.subarray(5 + length);
-            if (length === 1) {
-                if (payload[0] !== 0 && payload[0] !== 1) {
-                    throw new Error("Linux WSS host emitted an invalid editable-focus record");
-                }
-                this.onEditableFocus(payload[0] === 1);
-                continue;
-            }
-            if (length < 8)
-                throw new Error("Linux WSS host emitted an invalid record");
-            const width = payload.readUInt16BE(0);
-            const height = payload.readUInt16BE(2);
-            const data = payload.subarray(4);
-            if (width < 1
-                || height < 1
-                || data.byteLength < 4
-                || data[0] !== 0xff
-                || data[1] !== 0xd8
-                || data[data.byteLength - 2] !== 0xff
-                || data[data.byteLength - 1] !== 0xd9) {
-                throw new Error("Linux WSS host emitted an invalid JPEG frame");
-            }
-            this.onFrame({ data: Buffer.from(data), width, height });
-        }
-    }
-}
 /**
  * Private Linux physical-Acceptance surface for the #40 WSS experiment.
  *

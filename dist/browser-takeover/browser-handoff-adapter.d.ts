@@ -6,13 +6,17 @@ import { type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "./broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "./webrtc-runtime-diagnostics.js";
+import type { ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 import { type BrowserHandoffManagedFallbackConfig } from "./managed-handoff-runtime.js";
+export type { ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 export type { BrowserHandoffManagedFallbackConfig } from "./managed-handoff-runtime.js";
 export interface BrowserHandoffAdapterConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
-    /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
+    /** Optional Handoff-owned managed WSS host configuration. Provider secrets remain deployment-owned. */
     managedFallback?: BrowserHandoffManagedFallbackConfig;
+    /** Optional exact transport order. One item is an explicit transport-only mode. */
+    transportPolicy?: ManagedHandoffTransportPolicy;
     /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
     onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     /** Called only after explicit Human completion; consumer performs fresh verification. */
@@ -34,9 +38,9 @@ export declare class BrowserHandoffAdapterError extends Error {
 /**
  * First-class Browser Handoff composition for standalone MCP consumers.
  *
- * Direct WebRTC remains unchanged by default. When managed fallback is configured, Handoff owns
- * the strict direct WebRTC -> WSS -> optional TURN transition while the consumer keeps one locator
- * and the same Browser lifecycle API.
+ * Direct WebRTC remains unchanged by default. An explicit transport policy may select one attempt
+ * or any reviewed order of direct WebRTC, WSS, and relay-capable WebRTC. Handoff fences the active
+ * generation before every transition and the consumer keeps one Browser lifecycle API.
  */
 export declare class BrowserHandoffAdapter {
     #private;

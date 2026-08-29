@@ -240,3 +240,36 @@ test("racing fallback requests cannot both claim a later Human transport", async
     restoreRelayEnv(saved);
   }
 });
+
+test("managed runtime honors WSS-first -> direct order exactly", async () => {
+  const saved = saveRelayEnv();
+  try {
+    clearRelayEnv();
+    const runtime = new ManagedWindowHandoffRuntime({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
+      runtime: { hostExecutable: process.execPath },
+      managedFallback: { linuxHostScript: process.execPath, displayName: ":99" },
+      transportPolicy: { order: ["websocket_relay", "webrtc_direct"] }
+    });
+    const wss = runtime.start(request());
+    assert.equal(runtime.managedOperatorDiagnosticsSnapshot("browser_handoff").currentTransport, "websocket_relay");
+    const capability = await fallbackCapability(runtime, wss);
+
+    const moved = await runtime.handle(fallbackRequest(sessionId(wss), capability), PRINCIPAL);
+    assert.equal(moved.status, 200);
+    const directPath = (await moved.json() as { path: string }).path;
+    const directPage = await runtime.handle(new Request(`${ORIGIN}${directPath}`), PRINCIPAL);
+    assert.equal(directPage.status, 200);
+    assert.match(await directPage.text(), /<video id="video"/);
+
+    const managed = runtime.managedOperatorDiagnosticsSnapshot("browser_handoff");
+    assert.equal(managed.currentTransport, "webrtc_direct");
+    assert.equal(managed.previousTransport, "websocket_relay");
+    assert.equal(managed.generation, 2);
+    assert.equal(managed.transitionCount, 1);
+    assert.equal((await runtime.handle(new Request(wss), PRINCIPAL)).status, 404);
+    await runtime.revoke("managed-int");
+  } finally {
+    restoreRelayEnv(saved);
+  }
+});

@@ -80,3 +80,60 @@ test("managed Window facade requires one exact window without changing the defau
   assert.deepEqual(direct.managedOperatorDiagnosticsSnapshot().events, []);
   assert.equal(direct.managedOperatorDiagnosticsSnapshot().currentTransport, "none");
 });
+
+test("managed transport policy supports explicit WSS-only without constructing WebRTC authority", async () => {
+  const adapter = new BrowserHandoffAdapter({
+    ...managedConfig(),
+    transportPolicy: { order: ["websocket_relay"] }
+  });
+  const locator = adapter.start({
+    intervention: { id: "managed-wss-only", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: ALL_INPUT
+  });
+  const page = await adapter.handle(new Request(locator), PRINCIPAL);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Remote bounded browser surface/);
+  assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "websocket_relay");
+  assert.deepEqual(adapter.diagnosticsSnapshot().events, []);
+  await adapter.revoke("managed-wss-only");
+});
+
+test("direct-only transport policy needs no WSS backend and retains process-only Window admission", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
+    runtime: { hostExecutable: process.execPath },
+    transportPolicy: { order: ["webrtc_direct"] },
+    successorWindowPolicy: { mode: "same_process" }
+  });
+  const locator = adapter.start({
+    intervention: { id: "managed-direct-only", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242 },
+    inputPolicy: ALL_INPUT
+  });
+  assert.equal(new URL(locator).origin, ORIGIN);
+  assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "webrtc_direct");
+  await adapter.revoke("managed-direct-only");
+});
+
+test("WSS in an explicit plan fails closed before Human authority when its backend is absent", () => {
+  assert.throws(
+    () => new BrowserHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      transportPolicy: { order: ["websocket_relay"] }
+    }),
+    /WSS requires a Linux exact-window host script and local X11 display/
+  );
+});
+
+test("WSS-specific surface limitations do not block WebRTC-only secure policy", () => {
+  assert.doesNotThrow(() => new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath },
+    transportPolicy: { order: ["webrtc_direct"] },
+    initialSecureWindowPolicy: { mode: "macos_local_authentication" }
+  }));
+});

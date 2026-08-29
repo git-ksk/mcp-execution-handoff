@@ -23,16 +23,21 @@ interface SurfaceCall {
 function fixture(options: {
   captureFails?: boolean;
   recoverableCaptureFailures?: number;
+  recoverableInputFailures?: number;
 } = {}) {
   const calls: SurfaceCall[] = [];
   const diagnosticEvents: string[] = [];
   let recoverableCaptureFailures = options.recoverableCaptureFailures ?? 0;
+  let recoverableInputFailures = options.recoverableInputFailures ?? 0;
   const completed: Array<{ interventionId: string; epoch: number }> = [];
   const releases: Array<{ interventionId: string; epoch: number; disposition: string; reason: string }> = [];
   const surface: ExperimentalWebSocketWindowSurface = {
     ...(options.recoverableCaptureFailures === undefined
       ? {}
       : { captureFailureDisposition: () => "recoverable" as const }),
+    ...(options.recoverableInputFailures === undefined
+      ? {}
+      : { inputFailureDisposition: () => "recoverable" as const }),
     async captureExactWindow(target) {
       calls.push({ kind: "capture", target: { ...target }, args: [] });
       if (options.captureFails) throw new Error("exact target unavailable");
@@ -49,6 +54,10 @@ function fixture(options: {
     },
     async tapExactWindow(target, x, y) {
       calls.push({ kind: "tap", target: { ...target }, args: [x, y] });
+      if (recoverableInputFailures > 0) {
+        recoverableInputFailures -= 1;
+        throw new Error("transient exact-window input helper failed");
+      }
     },
     async scrollExactWindow(target, deltaY) {
       calls.push({ kind: "scroll", target: { ...target }, args: [deltaY] });
@@ -122,15 +131,23 @@ function socketUrl(server: Server, sessionId: string): string {
 
 function nextMessage(socket: WebSocket): Promise<{ data: WebSocket.RawData; isBinary: boolean }> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("WebSocket message timeout")), 2_000);
-    socket.once("message", (data, isBinary) => {
+    const onError = (error: Error) => {
       clearTimeout(timer);
-      resolve({ data, isBinary });
-    });
-    socket.once("error", (error) => {
-      clearTimeout(timer);
+      socket.off("message", onMessage);
       reject(error);
-    });
+    };
+    const onMessage = (data: WebSocket.RawData, isBinary: boolean) => {
+      clearTimeout(timer);
+      socket.off("error", onError);
+      resolve({ data, isBinary });
+    };
+    const timer = setTimeout(() => {
+      socket.off("message", onMessage);
+      socket.off("error", onError);
+      reject(new Error("WebSocket message timeout"));
+    }, 2_000);
+    socket.once("message", onMessage);
+    socket.once("error", onError);
   });
 }
 
@@ -211,6 +228,32 @@ test("Generic Window WSS captures and inputs only through the exact trusted proc
     reason: "human_completed"
   }]);
   assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), false);
+  assert.equal(await handoff.completeAfterVerification(intervention), true);
+  assert.equal(await handoff.completeAfterVerification(intervention), false);
+});
+
+test("Generic Window WSS retains the generation after a recoverable input helper failure", async (t) => {
+  const { handoff, calls, completed, diagnosticEvents } = fixture({ recoverableInputFailures: 1 });
+  const intervention = { id: "window-recoverable-input", epoch: 1 };
+  const locator = handoff.start({ intervention, principalBinding: PRINCIPAL, target: TARGET, inputPolicy: POLICY });
+  const sessionId = sessionIdFrom(locator);
+  const protocols = await bootstrapProtocols(handoff, sessionId);
+  const server = await startServer(handoff);
+  t.after(async () => closeServer(server));
+  const socket = new WebSocket(socketUrl(server, sessionId), protocols, { origin: ORIGIN });
+  assert.deepEqual(JSON.parse((await nextMessage(socket)).data.toString()), { kind: "ready" });
+  await nextMessage(socket);
+  socket.send(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
+  await waitFor(() => calls.some((call) => call.kind === "tap"));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(socket.readyState, WebSocket.OPEN);
+  assert.ok(diagnosticEvents.includes("input_dispatch_failure"));
+  assert.ok(diagnosticEvents.includes("session_retained"));
+  const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+  socket.send(JSON.stringify({ kind: "done" }));
+  await closed;
+  assert.deepEqual(completed, [{ interventionId: intervention.id, epoch: intervention.epoch }]);
+  assert.equal(await handoff.completeAfterVerification(intervention), true);
 });
 
 test("Generic Window WSS refreshes unchanged editable geometry before browser freshness expires", async (t) => {

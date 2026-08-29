@@ -7,11 +7,11 @@ import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { type WebRtcLatencyComparison } from "./webrtc-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import { LinuxWebSocketWindowSurface, WebSocketBrowserHandoff } from "./websocket-relay.js";
-import type { BrowserHandoffTransportAttempt } from "./transport-fallback-policy.js";
+import { type BrowserHandoffTransportAttempt, type ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
 import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 export interface BrowserHandoffManagedFallbackConfig {
-    /** Built Handoff Linux exact-window host script used by the managed Cloud/container fallback. */
-    linuxHostScript: string;
+    /** Built Handoff Linux exact-window host script. Required only when the plan includes WSS. */
+    linuxHostScript?: string;
     /** Local X11 display. Defaults to `runtime.displayName` when present. */
     displayName?: string;
     /** Optional absolute xdotool path used by the exact-window input host. */
@@ -22,7 +22,9 @@ export interface BrowserHandoffManagedFallbackConfig {
 export interface ManagedWindowHandoffRuntimeConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
-    managedFallback: BrowserHandoffManagedFallbackConfig;
+    managedFallback?: BrowserHandoffManagedFallbackConfig;
+    /** Optional exact transport plan. One entry is an explicit transport-only mode. */
+    transportPolicy?: ManagedHandoffTransportPolicy;
     mediaProfile?: "window_text";
     successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
     initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;

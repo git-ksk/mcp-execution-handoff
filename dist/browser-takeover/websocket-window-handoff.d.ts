@@ -5,6 +5,7 @@ import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.j
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
+export type ExperimentalWebSocketWindowInputFailureDisposition = "recoverable" | "authority_lost";
 export interface ExperimentalWebSocketWindowSurface {
     /**
      * Capture only the supplied exact process/window boundary. Implementations must fail closed when
@@ -14,12 +15,16 @@ export interface ExperimentalWebSocketWindowSurface {
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
     captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
+    /** Unknown input failures default to authority_lost so generic surfaces remain fail closed. */
+    inputFailureDisposition?(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition;
     /** Content-free normalized editable rectangles, never text/value/DOM content. */
     editableRegionsSnapshot?(): WebSocketTakeoverEditableRegion[];
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;
     insertExactWindowText(target: Readonly<TakeoverHostTarget>, text: string): Promise<void>;
     pressExactWindowKey(target: Readonly<TakeoverHostTarget>, key: string): Promise<void>;
+    /** Release local capture/input helper resources owned by this surface. */
+    close?(): Promise<void>;
 }
 export interface ExperimentalWebSocketWindowHandoffConfig {
     takeover: TakeoverBrokerConfig;
@@ -61,5 +66,6 @@ export declare class ExperimentalWebSocketWindowHandoff {
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     ownsPath(pathname: string): boolean;
     revoke(interventionId: string): void;
+    completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
 }
 //# sourceMappingURL=websocket-window-handoff.d.ts.map

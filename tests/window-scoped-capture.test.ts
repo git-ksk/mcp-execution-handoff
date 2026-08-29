@@ -64,6 +64,9 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.match(host, /CGEventSource\(stateID: \.combinedSessionState\)/);
   assert.doesNotMatch(host, /CGEventSource\(stateID: \.hidSystemState\)/);
   assert.match(host, /private let targetProcessID: pid_t\?/);
+  assert.match(host, /private let targetWindowID: CGWindowID\?/);
+  assert.match(host, /MacOSExactWindowAuthority\.revalidate\(/);
+  assert.match(host, /guard exactWindowValid else \{[\s\S]*input_stage=authority_lost[\s\S]*return false[\s\S]*\}/);
   assert.match(host, /event\.postToPid\(targetProcessID\)/);
   assert.match(host, /guard activateTargetWindowForInput\(processID: activeProcessID, inputBounds: activeInputBounds\) else \{[\s\S]*submitInputTextRoute\(\.activationRejected\)[\s\S]*input_stage=activation_failed[\s\S]*return[\s\S]*\}/);
   assert.match(host, /MacOSExactWindowInput\.activate\(processID: processID, inputBounds: inputBounds\)/);
@@ -74,7 +77,7 @@ test("browser WebRTC host reuses the same shared exact-window primitive without 
   assert.match(host, /case \.rejected:\s*controlWriter\.submitInputTextRoute\(\.nativeBoundaryRejected\)\s*return/);
   assert.match(
     host,
-    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*targetAuthority: targetAuthority,\s*initialSecureWindowPolicy: initialSecureWindowPolicy,\s*afterPrimaryRelease: \{ lineageController\?\.afterPrimaryRelease\(\) \},\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
+    /HumanInputInjector\(\s*inputBounds: surface\.inputBounds,\s*targetProcessID: targetProcessID,\s*targetWindowID: surface\.targetWindowID,\s*targetAuthority: targetAuthority,\s*initialSecureWindowPolicy: initialSecureWindowPolicy,\s*afterPrimaryRelease: \{ lineageController\?\.afterPrimaryRelease\(\) \},\s*writer: writer,\s*controlWriter: controlWriter\s*\)/
   );
   assert.match(host, /private var primaryPressed = false/);
   assert.match(host, /case \"pointer_button\"/);

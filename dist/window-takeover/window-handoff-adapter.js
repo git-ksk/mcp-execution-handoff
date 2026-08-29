@@ -13,18 +13,20 @@ export class WindowHandoffAdapterError extends Error {
 /**
  * First-class bounded OS-window Handoff composition for MCP consumers.
  *
- * Direct WebRTC remains the default. When managed fallback is configured, Handoff owns strict
- * direct WebRTC -> WSS -> optional TURN transitions and still never widens to display capture.
+ * Direct WebRTC remains the default. An explicit transport policy may select one attempt or any
+ * reviewed order of direct WebRTC, WSS, and relay-capable WebRTC. Handoff fences each abandoned
+ * generation before transition and still never widens Window authority to display capture.
  */
 export class WindowHandoffAdapter {
     #core;
     constructor(config) {
         try {
-            this.#core = config.managedFallback
+            this.#core = config.managedFallback || config.transportPolicy
                 ? new ManagedWindowHandoffRuntime({
                     takeover: config.takeover,
                     runtime: config.runtime,
-                    managedFallback: config.managedFallback,
+                    ...(config.managedFallback ? { managedFallback: config.managedFallback } : {}),
+                    ...(config.transportPolicy ? { transportPolicy: config.transportPolicy } : {}),
                     ...(config.onManagedOperatorDiagnosticEvent
                         ? { onManagedOperatorDiagnosticEvent: config.onManagedOperatorDiagnosticEvent }
                         : {}),

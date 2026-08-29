@@ -37,5 +37,6 @@ export declare class ExperimentalWebSocketBrowserHandoff {
     /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketWindowHandoff["diagnosticsSnapshot"]>;
     revoke(interventionId: string): void;
+    completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
 }
 //# sourceMappingURL=websocket-browser-handoff.d.ts.map

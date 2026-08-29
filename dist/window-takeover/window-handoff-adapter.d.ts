@@ -7,7 +7,9 @@ import type { WebRtcLatencyComparison } from "../browser-takeover/webrtc-latency
 import type { TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "../browser-takeover/webrtc-runtime-diagnostics.js";
 import type { TakeoverBrokerConfig } from "../browser-takeover/broker.js";
+import type { ManagedHandoffTransportPolicy } from "../browser-takeover/transport-fallback-policy.js";
 import { type BrowserHandoffManagedFallbackConfig } from "../browser-takeover/managed-handoff-runtime.js";
+export type { ManagedHandoffTransportPolicy } from "../browser-takeover/transport-fallback-policy.js";
 export type { BrowserHandoffManagedFallbackConfig } from "../browser-takeover/managed-handoff-runtime.js";
 export interface WindowHandoffSuccessorPolicy {
     /** Admit only one newly observed successor owned by the exact same process. */
@@ -22,8 +24,10 @@ export interface WindowHandoffInitialSecureWindowPolicy {
 export interface WindowHandoffAdapterConfig {
     takeover: TakeoverBrokerConfig;
     runtime: SpawnedWebRtcRuntimeProviderConfig;
-    /** Optional Handoff-owned managed fallback. Consumers do not select WSS/TURN providers. */
+    /** Optional Handoff-owned managed WSS host configuration. Provider secrets remain deployment-owned. */
     managedFallback?: BrowserHandoffManagedFallbackConfig;
+    /** Optional exact transport order. One item is an explicit transport-only mode. */
+    transportPolicy?: ManagedHandoffTransportPolicy;
     /** Observe-only bounded managed diagnostic events; callback failures cannot alter authority. */
     onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     /** Optional Human-only successor-window lineage. Exact-one-window behavior remains the default. */
@@ -47,8 +51,9 @@ export declare class WindowHandoffAdapterError extends Error {
 /**
  * First-class bounded OS-window Handoff composition for MCP consumers.
  *
- * Direct WebRTC remains the default. When managed fallback is configured, Handoff owns strict
- * direct WebRTC -> WSS -> optional TURN transitions and still never widens to display capture.
+ * Direct WebRTC remains the default. An explicit transport policy may select one attempt or any
+ * reviewed order of direct WebRTC, WSS, and relay-capable WebRTC. Handoff fences each abandoned
+ * generation before transition and still never widens Window authority to display capture.
  */
 export declare class WindowHandoffAdapter {
     #private;

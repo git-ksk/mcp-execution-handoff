@@ -148,6 +148,17 @@ const locator = browserHandoff.start({
 
 Route authenticated `/takeover/*` HTTP requests to `browserHandoff.handle(...)`. `inputPolicy` is bound to the takeover session and enforced server-side before OS input; the browser UI also suppresses disallowed keyboard/input controls as defense in depth. The optional `onComplete` callback runs only after Human transport authority is fenced and is a signal to begin consumer-owned fresh verification, never evidence that authentication or a consequential action succeeded. ICE/STUN/TURN provider selection and relay credentials are not part of `start()`; they remain Handoff deployment/runtime concerns.
 
+Managed Browser/Window transport selection is an explicit finite deployment policy rather than a fixed fallback chain. The `transportPolicy.order` array is exact: Handoff does not insert omitted attempts, and a one-item array is a transport-only mode. For example, `['websocket_relay']` is WSS-only, `['webrtc_direct']` is direct-only, and `['websocket_relay', 'webrtc_direct']` tries WSS before direct WebRTC. Every transition fully fences/revokes the abandoned generation before the next attempt can mutate, and Human input is never replayed across attempts. `webrtc_relay` means the existing relay-capable WebRTC runtime: TURN is available to ICE, but relay-only ICE is not implied. Provider identity, endpoints and credentials remain Handoff deployment concerns and never enter the semantic `start()` request.
+
+```ts
+const handoff = new BrowserHandoffAdapter({
+  takeover,
+  runtime,
+  managedFallback: linuxWssHost, // required only when the selected plan contains WSS
+  transportPolicy: { order: ["websocket_relay", "webrtc_direct"] }
+});
+```
+
 `BrowserHandoffAdapter` and `WindowHandoffAdapter` share the same internal bounded-window WebRTC/session core. Browser remains a browser-policy facade; the shared core owns only exact target binding, WebRTC/session/reconnect/revoke and bounded diagnostics.
 
 ## Window handoff
@@ -178,7 +189,7 @@ const locator = windowHandoff.start({
 });
 ```
 
-The consumer still owns why the intervention is needed, application/process lifecycle, semantic verification and replay/resume policy. Handoff owns the short-lived locator, one-client session, exact bounded window media/input transport, direct-first WebRTC/TURN behavior, reconnect generation fencing and revoke. Human `Done` is only the end of the Human transport step; it is not application success or approval.
+The consumer still owns why the intervention is needed, application/process lifecycle, semantic verification and replay/resume policy. Handoff owns the short-lived locator, one-client session, exact bounded window media/input transport, configured transport-plan sequencing, reconnect generation fencing and revoke. Human `Done` is only the end of the Human transport step; it is not application success or approval.
 
 ## Terminal / PTY handoff
 
