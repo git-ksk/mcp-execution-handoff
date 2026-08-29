@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Keep managed Linux WSS takeover and keyboard authority alive across recoverable exact-window helper/frame capture faults (#170), while exact PID/window visibility, ownership, geometry, and process loss remain immediate fail-closed authority-boundary failures. Add bounded content-free managed WSS operator diagnostics for surface/channel failure class, frame count, and input progress.
+
 - Keep managed Linux WSS takeover alive across one transient exact-window helper/capture failure (#164): restart the failed helper once only for the same PID/window after mandatory ownership revalidation, while target disappearance, visibility loss, ownership change, and geometry loss remain immediate fail-closed authority-boundary failures. Regression coverage exercises both bounded recovery and no-retry ownership failure.
 
 - Extend the explicit macOS LocalAuthentication initial secure-Window policy (#147) with Human-only secure text entry: exact Apple passcode-dialog and focused `AXSecureTextField` revalidation precede each bounded PID keyboard mutation; Backspace is allowed, Enter cannot approve, and secret text is never logged, audited, checkpointed, or exposed to the Agent.

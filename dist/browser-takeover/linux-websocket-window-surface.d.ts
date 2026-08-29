@@ -1,5 +1,5 @@
 import type { TakeoverHostTarget } from "../browser-takeover/broker.js";
-import type { ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
+import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverFrame } from "./websocket-takeover.js";
 export type LinuxWebSocketSurfaceFailure = "none" | "frame_timeout" | "helper_closed" | "helper_error" | "frame_protocol" | "diagnostics_bounds" | "input_failure" | "input_timeout" | "input_revalidation_failure" | "revalidation_failure" | "capture_x11" | "capture_encoder" | "capture_option" | "capture_other";
 export type LinuxWebSocketInputStage = "none" | "focus_ready" | "pointer_move_ready" | "pointer_authority_ready" | "pointer_down_sent" | "pointer_post_authority_ready" | "tap_sent" | "key_down_sent" | "key_authority_ready" | "key_up_sent" | "applied";
@@ -67,6 +67,7 @@ export declare class ExperimentalLinuxWebSocketWindowSurface implements Experime
         lastHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
         failureHelperCrashMessageClass: LinuxWebSocketHelperCrashMessageClass;
     };
+    captureFailureDisposition(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;

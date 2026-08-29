@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
+export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 export interface ExperimentalWebSocketWindowSurface {
     /**
      * Capture only the supplied exact process/window boundary. Implementations must fail closed when
@@ -10,6 +11,8 @@ export interface ExperimentalWebSocketWindowSurface {
      * be revalidated. They must never widen to a display/desktop capture.
      */
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
+    /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
+    captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;
     insertExactWindowText(target: Readonly<TakeoverHostTarget>, text: string): Promise<void>;
