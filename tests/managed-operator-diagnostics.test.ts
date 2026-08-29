@@ -44,6 +44,8 @@ function snapshot(): ManagedOperatorDiagnosticsSnapshot {
       { kind: "transport_transition" },
       { kind: "wss_open" },
       { kind: "input_dispatch_failure" },
+      { kind: "client_tap_editable_not_predicted" },
+      { kind: "client_keyboard_focus_inactive" },
       { kind: "wss_failed" },
       { kind: "session_retained" }
     ]

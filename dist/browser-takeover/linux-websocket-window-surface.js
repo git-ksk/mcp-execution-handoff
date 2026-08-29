@@ -14,9 +14,11 @@ const AUTHORITY_HELPER_READY_TIMEOUT_MS = 2_000;
 /** Parses private JPEG records while accepting the helper's bounded editable-focus control record. */
 export class LinuxWebSocketHostRecordParser {
     onFrame;
+    onEditableFocus;
     #pending = Buffer.alloc(0);
-    constructor(onFrame) {
+    constructor(onFrame, onEditableFocus = () => undefined) {
         this.onFrame = onFrame;
+        this.onEditableFocus = onEditableFocus;
     }
     push(chunk) {
         if (chunk.byteLength === 0)
@@ -41,6 +43,7 @@ export class LinuxWebSocketHostRecordParser {
                 if (payload[0] !== 0 && payload[0] !== 1) {
                     throw new Error("Linux WSS host emitted an invalid editable-focus record");
                 }
+                this.onEditableFocus(payload[0] === 1);
                 continue;
             }
             if (length < 8)
@@ -81,6 +84,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     #failure = "none";
     #framesObserved = 0;
     #editableRegions = [];
+    #editableRegionPresence = "unknown";
     #lastInputStage = "none";
     #lastInputBoundaryStage = "none";
     #failureInputStage = "none";
@@ -345,6 +349,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             inputChain: Promise.resolve(),
             authority
         };
+        this.#editableRegionPresence = "unknown";
         const parser = new LinuxWebSocketHostRecordParser((frame) => {
             if (state.failed)
                 return;
@@ -357,7 +362,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
                 clearTimeout(waiter.timer);
                 waiter.resolve(frame);
             }
-        });
+        }, (editable) => this.#onDiagnosticEvent?.(editable ? "host_focus_editable" : "host_focus_not_editable"));
         child.stdout.on("data", (chunk) => {
             try {
                 parser.push(chunk);
@@ -367,7 +372,14 @@ export class ExperimentalLinuxWebSocketWindowSurface {
                 failActive(state, "Linux WSS exact-window helper frame protocol failed");
             }
         });
-        child.stderr.on("data", (chunk) => consumeDiagnostics(state, chunk, (regions) => { this.#editableRegions = regions; }, (stage) => {
+        child.stderr.on("data", (chunk) => consumeDiagnostics(state, chunk, (regions) => {
+            this.#editableRegions = regions;
+            const presence = regions.length > 0 ? "available" : "empty";
+            if (presence !== this.#editableRegionPresence) {
+                this.#editableRegionPresence = presence;
+                this.#onDiagnosticEvent?.(presence === "available" ? "host_editable_regions_available" : "host_editable_regions_empty");
+            }
+        }, (stage) => {
             const category = captureFailureCategory(stage);
             if (category)
                 this.#recordFailure(category);

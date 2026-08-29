@@ -35,6 +35,16 @@ export type WebSocketTakeoverHumanInput =
   | { kind: "text"; text: string }
   | { kind: "key"; key: string };
 
+/** Content-free browser-side milestones used only for bounded physical-acceptance diagnostics. */
+export type WebSocketTakeoverClientDiagnosticKind =
+  | "client_editable_regions_available"
+  | "client_editable_regions_empty"
+  | "client_tap_editable_predicted"
+  | "client_tap_editable_not_predicted"
+  | "client_keyboard_focus_requested"
+  | "client_keyboard_focus_active"
+  | "client_keyboard_focus_inactive";
+
 export type WebSocketTakeoverEditableRegion = [number, number, number, number];
 
 export interface WebSocketTakeoverFrame {
@@ -72,6 +82,8 @@ export interface ExperimentalWebSocketTakeoverOptions {
   peer: WebSocketTakeoverPeer;
   lease: WebSocketTakeoverLease;
   onInput(input: WebSocketTakeoverHumanInput): void | Promise<void>;
+  /** Observe-only finite enum. It never carries coordinates, text, identity, or browser content. */
+  onClientDiagnostic?(kind: WebSocketTakeoverClientDiagnosticKind): void;
   maxInboundBytes?: number;
   maxFrameBytes?: number;
   maxBufferedBytes?: number;
@@ -158,7 +170,10 @@ function parseHumanMessage(
   raw: string,
   maxInboundBytes: number,
   inputPolicy: WebSocketTakeoverInputPolicy
-): WebSocketTakeoverHumanInput | { kind: "done" } | { kind: "ping"; nonce?: string } {
+): WebSocketTakeoverHumanInput
+  | { kind: "diagnostic"; event: WebSocketTakeoverClientDiagnosticKind }
+  | { kind: "done" }
+  | { kind: "ping"; nonce?: string } {
   if (utf8Length(raw) > maxInboundBytes) {
     throw new WebSocketTakeoverError("invalid_message", "WebSocket takeover message is too large");
   }
@@ -225,6 +240,24 @@ function parseHumanMessage(
         throw new WebSocketTakeoverError("invalid_message", "Key input is out of bounds");
       }
       return { kind: "key", key: record.key };
+    case "diagnostic": {
+      if (!hasOnlyKeys(record, ["kind", "event"])) {
+        throw new WebSocketTakeoverError("invalid_message", "Diagnostic message has extra fields");
+      }
+      const events = new Set<WebSocketTakeoverClientDiagnosticKind>([
+        "client_editable_regions_available",
+        "client_editable_regions_empty",
+        "client_tap_editable_predicted",
+        "client_tap_editable_not_predicted",
+        "client_keyboard_focus_requested",
+        "client_keyboard_focus_active",
+        "client_keyboard_focus_inactive"
+      ]);
+      if (!events.has(record.event as WebSocketTakeoverClientDiagnosticKind)) {
+        throw new WebSocketTakeoverError("invalid_message", "Diagnostic event is invalid");
+      }
+      return { kind: "diagnostic", event: record.event as WebSocketTakeoverClientDiagnosticKind };
+    }
     case "done":
       if (!hasOnlyKeys(record, ["kind"])) {
         throw new WebSocketTakeoverError("invalid_message", "Done message has extra fields");
@@ -252,6 +285,7 @@ export class ExperimentalWebSocketTakeoverChannel {
   private readonly peer: WebSocketTakeoverPeer;
   private readonly lease: WebSocketTakeoverLease;
   private readonly onInput: ExperimentalWebSocketTakeoverOptions["onInput"];
+  private readonly onClientDiagnostic: ExperimentalWebSocketTakeoverOptions["onClientDiagnostic"];
   private readonly maxInboundBytes: number;
   private readonly maxFrameBytes: number;
   private readonly maxBufferedBytes: number;
@@ -274,6 +308,7 @@ export class ExperimentalWebSocketTakeoverChannel {
     this.peer = options.peer;
     this.lease = options.lease;
     this.onInput = options.onInput;
+    this.onClientDiagnostic = options.onClientDiagnostic;
     this.maxInboundBytes = boundedLimit(
       options.maxInboundBytes,
       DEFAULT_MAX_INBOUND_BYTES,
@@ -332,6 +367,10 @@ export class ExperimentalWebSocketTakeoverChannel {
         throw error;
       }
 
+      if (message.kind === "diagnostic") {
+        try { this.onClientDiagnostic?.(message.event); } catch { /* diagnostics are observe-only */ }
+        return;
+      }
       if (message.kind === "ping") {
         await this.runBoundUse(async () => {
           await this.peer.sendControl(
