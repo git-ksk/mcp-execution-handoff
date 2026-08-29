@@ -203,3 +203,40 @@ test("operator diagnostics parser bounds WebRTC counts and Terminal queues and r
     transport: { namespace: "terminal_webrtc", ready: true, disconnected: false, completed: false, faulted: false, queuedEvents: 65 }
   }), /Invalid/);
 });
+
+test("operator diagnostics parser accepts only bounded content-free managed WSS failure facts", () => {
+  const snapshot: OperatorDiagnosticsSnapshot = {
+    version: 1,
+    source: "browser_handoff",
+    health: "available",
+    transport: {
+      namespace: "managed_handoff",
+      currentTransport: "websocket_relay",
+      lastTransport: "websocket_relay",
+      generation: 2,
+      transitionCount: 1,
+      lastFallbackReason: "transport_unavailable",
+      wss: {
+        namespace: "managed_wss",
+        surfaceFailure: "frame_timeout",
+        channelFailure: "none",
+        framesObserved: 14,
+        inputAttempts: 2,
+        inputStage: "applied",
+        inputBoundaryStage: "acknowledged"
+      }
+    }
+  };
+  assert.deepEqual(parseOperatorDiagnosticsSnapshot(snapshot), snapshot);
+  assert.throws(() => parseOperatorDiagnosticsSnapshot({
+    ...snapshot,
+    transport: {
+      ...snapshot.transport,
+      wss: {
+        ...(snapshot.transport.namespace === "managed_handoff" ? snapshot.transport.wss : {}),
+        namespace: "managed_wss",
+        surfaceFailure: "secret free-form failure"
+      }
+    }
+  }), /Invalid/);
+});

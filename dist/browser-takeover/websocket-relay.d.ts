@@ -7,7 +7,7 @@ export type { ExperimentalWebSocketBrokerBindingOptions as WebSocketBrokerBindin
 export { ExperimentalWebSocketBrowserHandoff as WebSocketBrowserHandoff } from "./websocket-browser-handoff.js";
 export type { ExperimentalWebSocketBrowserHandoffConfig as WebSocketBrowserHandoffConfig, ExperimentalWebSocketBrowserStartRequest as WebSocketBrowserStartRequest } from "./websocket-browser-handoff.js";
 export { ExperimentalWebSocketWindowHandoff as WebSocketWindowHandoff, ExperimentalWebSocketWindowHandoffError as WebSocketWindowHandoffError } from "./websocket-window-handoff.js";
-export type { ExperimentalWebSocketWindowHandoffConfig as WebSocketWindowHandoffConfig, ExperimentalWebSocketWindowStartRequest as WebSocketWindowStartRequest, ExperimentalWebSocketWindowSurface as WebSocketWindowSurface } from "./websocket-window-handoff.js";
+export type { ExperimentalWebSocketWindowHandoffConfig as WebSocketWindowHandoffConfig, ExperimentalWebSocketWindowCaptureFailureDisposition as WebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowStartRequest as WebSocketWindowStartRequest, ExperimentalWebSocketWindowSurface as WebSocketWindowSurface } from "./websocket-window-handoff.js";
 export { ExperimentalLinuxWebSocketWindowSurface as LinuxWebSocketWindowSurface, LinuxWebSocketHostRecordParser } from "./linux-websocket-window-surface.js";
 export type { ExperimentalLinuxWebSocketWindowSurfaceConfig as LinuxWebSocketWindowSurfaceConfig, LinuxWebSocketJpegFrame } from "./linux-websocket-window-surface.js";
 /**

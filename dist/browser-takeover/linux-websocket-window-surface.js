@@ -146,6 +146,9 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             failureHelperCrashMessageClass: this.#failureHelperCrashMessageClass
         };
     }
+    captureFailureDisposition(error) {
+        return isExactWindowBoundaryError(error) ? "authority_lost" : "recoverable";
+    }
     async captureExactWindow(target) {
         let lastError;
         for (let attempt = 0; attempt < CAPTURE_RECOVERY_ATTEMPTS; attempt += 1) {

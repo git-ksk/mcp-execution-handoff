@@ -127,7 +127,10 @@ export class ExperimentalWebSocketWindowHandoff {
         try {
             frame = await this.#surface.captureExactWindow(state.target);
         }
-        catch {
+        catch (error) {
+            const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
+            if (disposition === "recoverable")
+                return;
             this.revoke(state.interventionId);
             return;
         }

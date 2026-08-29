@@ -116,7 +116,16 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
       lastTransport: "websocket_relay",
       generation: 2,
       transitionCount: 1,
-      lastFallbackReason: "transport_unavailable"
+      lastFallbackReason: "transport_unavailable",
+      wss: {
+        namespace: "managed_wss",
+        surfaceFailure: "none",
+        channelFailure: "none",
+        framesObserved: 0,
+        inputAttempts: 0,
+        inputStage: "none",
+        inputBoundaryStage: "none"
+      }
     });
     await runtime.revoke("managed-int");
   } finally {

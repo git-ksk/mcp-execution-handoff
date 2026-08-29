@@ -423,6 +423,27 @@ export class ManagedWindowHandoffRuntime {
       generation: 0,
       transitionCount: 0
     };
+    const surface = session?.surface.diagnosticsSnapshot();
+    const channel = session?.webSocketHandoff.diagnosticsSnapshot();
+    const hasWssEvidence = snapshot.currentTransport === "websocket_relay"
+      || (surface !== undefined && (
+        surface.framesObserved > 0
+        || surface.inputAttempts > 0
+        || surface.failure !== "none"
+        || surface.lastFailure !== "none"
+      ))
+      || (channel !== undefined && (channel.failureCode !== "none" || channel.lastFailure !== "none"));
+    const wss = hasWssEvidence && surface && channel
+      ? {
+          namespace: "managed_wss" as const,
+          surfaceFailure: surface.failure === "none" ? surface.lastFailure : surface.failure,
+          channelFailure: channel.failureCode === "none" ? channel.lastFailure : channel.failureCode,
+          framesObserved: surface.framesObserved,
+          inputAttempts: surface.inputAttempts,
+          inputStage: surface.lastInputStage,
+          inputBoundaryStage: surface.lastInputBoundaryStage
+        }
+      : undefined;
     return {
       version: 1,
       source,
@@ -439,7 +460,8 @@ export class ManagedWindowHandoffRuntime {
         transitionCount: snapshot.transitionCount,
         ...(snapshot.lastFallbackReason === undefined
           ? {}
-          : { lastFallbackReason: snapshot.lastFallbackReason })
+          : { lastFallbackReason: snapshot.lastFallbackReason }),
+        ...(wss ? { wss } : {})
       }
     };
   }

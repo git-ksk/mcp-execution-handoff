@@ -17,6 +17,59 @@ export type OperatorManagedTransportClass =
   | "none";
 export type OperatorManagedFallbackReason = "transport_unavailable";
 
+export type OperatorManagedWssSurfaceFailure =
+  | "none"
+  | "frame_timeout"
+  | "helper_closed"
+  | "helper_error"
+  | "frame_protocol"
+  | "diagnostics_bounds"
+  | "input_failure"
+  | "input_timeout"
+  | "input_revalidation_failure"
+  | "revalidation_failure"
+  | "capture_x11"
+  | "capture_encoder"
+  | "capture_option"
+  | "capture_other";
+export type OperatorManagedWssChannelFailure =
+  | "none"
+  | "invalid_message"
+  | "input_not_allowed"
+  | "stale_generation"
+  | "frame_too_large"
+  | "transport_failure"
+  | "authority_release_failed";
+export type OperatorManagedWssInputStage =
+  | "none"
+  | "focus_ready"
+  | "pointer_move_ready"
+  | "pointer_authority_ready"
+  | "pointer_down_sent"
+  | "pointer_post_authority_ready"
+  | "tap_sent"
+  | "key_down_sent"
+  | "key_authority_ready"
+  | "key_up_sent"
+  | "applied";
+export type OperatorManagedWssInputBoundaryStage =
+  | "none"
+  | "requested"
+  | "helper_ready"
+  | "revalidation_ready"
+  | "command_sent"
+  | "acknowledged";
+
+export interface OperatorManagedWssDiagnostics {
+  namespace: "managed_wss";
+  surfaceFailure: OperatorManagedWssSurfaceFailure;
+  channelFailure: OperatorManagedWssChannelFailure;
+  framesObserved: number;
+  inputAttempts: number;
+  inputStage: OperatorManagedWssInputStage;
+  inputBoundaryStage: OperatorManagedWssInputBoundaryStage;
+}
+
 export interface OperatorDiagnosticsCandidateCounts {
   host: number;
   srflx: number;
@@ -38,6 +91,7 @@ export interface OperatorManagedHandoffTransportDiagnostics {
   generation: number;
   transitionCount: number;
   lastFallbackReason?: OperatorManagedFallbackReason;
+  wss?: OperatorManagedWssDiagnostics;
 }
 
 export interface OperatorTerminalSessionDiagnostics {
@@ -84,7 +138,33 @@ const MANAGED_KEYS = new Set([
   "lastTransport",
   "generation",
   "transitionCount",
-  "lastFallbackReason"
+  "lastFallbackReason",
+  "wss"
+]);
+const MANAGED_WSS_KEYS = new Set([
+  "namespace",
+  "surfaceFailure",
+  "channelFailure",
+  "framesObserved",
+  "inputAttempts",
+  "inputStage",
+  "inputBoundaryStage"
+]);
+const MANAGED_WSS_SURFACE_FAILURE = new Set<OperatorManagedWssSurfaceFailure>([
+  "none", "frame_timeout", "helper_closed", "helper_error", "frame_protocol",
+  "diagnostics_bounds", "input_failure", "input_timeout", "input_revalidation_failure",
+  "revalidation_failure", "capture_x11", "capture_encoder", "capture_option", "capture_other"
+]);
+const MANAGED_WSS_CHANNEL_FAILURE = new Set<OperatorManagedWssChannelFailure>([
+  "none", "invalid_message", "input_not_allowed", "stale_generation", "frame_too_large",
+  "transport_failure", "authority_release_failed"
+]);
+const MANAGED_WSS_INPUT_STAGE = new Set<OperatorManagedWssInputStage>([
+  "none", "focus_ready", "pointer_move_ready", "pointer_authority_ready", "pointer_down_sent",
+  "pointer_post_authority_ready", "tap_sent", "key_down_sent", "key_authority_ready", "key_up_sent", "applied"
+]);
+const MANAGED_WSS_INPUT_BOUNDARY_STAGE = new Set<OperatorManagedWssInputBoundaryStage>([
+  "none", "requested", "helper_ready", "revalidation_ready", "command_sent", "acknowledged"
 ]);
 const TERMINAL_SESSION_KEYS = new Set(["namespace", "alive", "humanDisconnected", "synchronizationRequired"]);
 const TERMINAL_KEYS = new Set(["namespace", "ready", "disconnected", "completed", "faulted", "queuedEvents"]);
@@ -139,6 +219,33 @@ function parseWebRtcTransport(value: unknown): OperatorWebRtcTransportDiagnostic
   };
 }
 
+
+function parseManagedWss(value: unknown): OperatorManagedWssDiagnostics | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid operator diagnostics snapshot");
+  const record = value as Record<string, unknown>;
+  if (!exactKeys(record, MANAGED_WSS_KEYS)
+    || Object.keys(record).length !== MANAGED_WSS_KEYS.size
+    || record.namespace !== "managed_wss"
+    || !MANAGED_WSS_SURFACE_FAILURE.has(record.surfaceFailure as OperatorManagedWssSurfaceFailure)
+    || !MANAGED_WSS_CHANNEL_FAILURE.has(record.channelFailure as OperatorManagedWssChannelFailure)
+    || !boundedInteger(record.framesObserved, 1_000_000)
+    || !boundedInteger(record.inputAttempts, 1_000_000)
+    || !MANAGED_WSS_INPUT_STAGE.has(record.inputStage as OperatorManagedWssInputStage)
+    || !MANAGED_WSS_INPUT_BOUNDARY_STAGE.has(record.inputBoundaryStage as OperatorManagedWssInputBoundaryStage)) {
+    throw new Error("Invalid operator diagnostics snapshot");
+  }
+  return {
+    namespace: "managed_wss",
+    surfaceFailure: record.surfaceFailure as OperatorManagedWssSurfaceFailure,
+    channelFailure: record.channelFailure as OperatorManagedWssChannelFailure,
+    framesObserved: record.framesObserved as number,
+    inputAttempts: record.inputAttempts as number,
+    inputStage: record.inputStage as OperatorManagedWssInputStage,
+    inputBoundaryStage: record.inputBoundaryStage as OperatorManagedWssInputBoundaryStage
+  };
+}
+
 function parseManagedTransport(value: unknown): OperatorManagedHandoffTransportDiagnostics {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid operator diagnostics snapshot");
   const record = value as Record<string, unknown>;
@@ -152,6 +259,7 @@ function parseManagedTransport(value: unknown): OperatorManagedHandoffTransportD
       && !MANAGED_REASON.has(record.lastFallbackReason as OperatorManagedFallbackReason))) {
     throw new Error("Invalid operator diagnostics snapshot");
   }
+  const wss = parseManagedWss(record.wss);
   return {
     namespace: "managed_handoff",
     currentTransport: record.currentTransport as OperatorManagedTransportClass,
@@ -160,7 +268,8 @@ function parseManagedTransport(value: unknown): OperatorManagedHandoffTransportD
     transitionCount: record.transitionCount as number,
     ...(record.lastFallbackReason === undefined
       ? {}
-      : { lastFallbackReason: record.lastFallbackReason as OperatorManagedFallbackReason })
+      : { lastFallbackReason: record.lastFallbackReason as OperatorManagedFallbackReason }),
+    ...(wss ? { wss } : {})
   };
 }
 

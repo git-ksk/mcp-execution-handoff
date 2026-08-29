@@ -13,7 +13,33 @@ const MANAGED_KEYS = new Set([
     "lastTransport",
     "generation",
     "transitionCount",
-    "lastFallbackReason"
+    "lastFallbackReason",
+    "wss"
+]);
+const MANAGED_WSS_KEYS = new Set([
+    "namespace",
+    "surfaceFailure",
+    "channelFailure",
+    "framesObserved",
+    "inputAttempts",
+    "inputStage",
+    "inputBoundaryStage"
+]);
+const MANAGED_WSS_SURFACE_FAILURE = new Set([
+    "none", "frame_timeout", "helper_closed", "helper_error", "frame_protocol",
+    "diagnostics_bounds", "input_failure", "input_timeout", "input_revalidation_failure",
+    "revalidation_failure", "capture_x11", "capture_encoder", "capture_option", "capture_other"
+]);
+const MANAGED_WSS_CHANNEL_FAILURE = new Set([
+    "none", "invalid_message", "input_not_allowed", "stale_generation", "frame_too_large",
+    "transport_failure", "authority_release_failed"
+]);
+const MANAGED_WSS_INPUT_STAGE = new Set([
+    "none", "focus_ready", "pointer_move_ready", "pointer_authority_ready", "pointer_down_sent",
+    "pointer_post_authority_ready", "tap_sent", "key_down_sent", "key_authority_ready", "key_up_sent", "applied"
+]);
+const MANAGED_WSS_INPUT_BOUNDARY_STAGE = new Set([
+    "none", "requested", "helper_ready", "revalidation_ready", "command_sent", "acknowledged"
 ]);
 const TERMINAL_SESSION_KEYS = new Set(["namespace", "alive", "humanDisconnected", "synchronizationRequired"]);
 const TERMINAL_KEYS = new Set(["namespace", "ready", "disconnected", "completed", "faulted", "queuedEvents"]);
@@ -69,6 +95,33 @@ function parseWebRtcTransport(value) {
         ...(candidateCounts ? { candidateCounts } : {})
     };
 }
+function parseManagedWss(value) {
+    if (value === undefined)
+        return undefined;
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        throw new Error("Invalid operator diagnostics snapshot");
+    const record = value;
+    if (!exactKeys(record, MANAGED_WSS_KEYS)
+        || Object.keys(record).length !== MANAGED_WSS_KEYS.size
+        || record.namespace !== "managed_wss"
+        || !MANAGED_WSS_SURFACE_FAILURE.has(record.surfaceFailure)
+        || !MANAGED_WSS_CHANNEL_FAILURE.has(record.channelFailure)
+        || !boundedInteger(record.framesObserved, 1_000_000)
+        || !boundedInteger(record.inputAttempts, 1_000_000)
+        || !MANAGED_WSS_INPUT_STAGE.has(record.inputStage)
+        || !MANAGED_WSS_INPUT_BOUNDARY_STAGE.has(record.inputBoundaryStage)) {
+        throw new Error("Invalid operator diagnostics snapshot");
+    }
+    return {
+        namespace: "managed_wss",
+        surfaceFailure: record.surfaceFailure,
+        channelFailure: record.channelFailure,
+        framesObserved: record.framesObserved,
+        inputAttempts: record.inputAttempts,
+        inputStage: record.inputStage,
+        inputBoundaryStage: record.inputBoundaryStage
+    };
+}
 function parseManagedTransport(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
         throw new Error("Invalid operator diagnostics snapshot");
@@ -83,6 +136,7 @@ function parseManagedTransport(value) {
             && !MANAGED_REASON.has(record.lastFallbackReason))) {
         throw new Error("Invalid operator diagnostics snapshot");
     }
+    const wss = parseManagedWss(record.wss);
     return {
         namespace: "managed_handoff",
         currentTransport: record.currentTransport,
@@ -91,7 +145,8 @@ function parseManagedTransport(value) {
         transitionCount: record.transitionCount,
         ...(record.lastFallbackReason === undefined
             ? {}
-            : { lastFallbackReason: record.lastFallbackReason })
+            : { lastFallbackReason: record.lastFallbackReason }),
+        ...(wss ? { wss } : {})
     };
 }
 function parseTerminalSession(value) {

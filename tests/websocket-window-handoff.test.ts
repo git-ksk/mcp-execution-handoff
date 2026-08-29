@@ -20,13 +20,24 @@ interface SurfaceCall {
   args: unknown[];
 }
 
-function fixture(options: { captureFails?: boolean } = {}) {
+function fixture(options: {
+  captureFails?: boolean;
+  recoverableCaptureFailures?: number;
+} = {}) {
   const calls: SurfaceCall[] = [];
+  let recoverableCaptureFailures = options.recoverableCaptureFailures ?? 0;
   const completed: Array<{ interventionId: string; epoch: number }> = [];
   const surface: ExperimentalWebSocketWindowSurface = {
+    ...(options.recoverableCaptureFailures === undefined
+      ? {}
+      : { captureFailureDisposition: () => "recoverable" as const }),
     async captureExactWindow(target) {
       calls.push({ kind: "capture", target: { ...target }, args: [] });
       if (options.captureFails) throw new Error("exact target unavailable");
+      if (recoverableCaptureFailures > 0) {
+        recoverableCaptureFailures -= 1;
+        throw new Error("transient exact-window helper capture failed");
+      }
       return {
         data: Buffer.from("exact-window-frame"),
         width: 640,
@@ -218,6 +229,32 @@ test("Generic Window WSS revokes the session when exact-window capture cannot be
     { method: "POST", headers: { origin: ORIGIN } }
   ), PRINCIPAL);
   assert.equal(stale.status, 404);
+});
+
+test("Generic Window WSS keeps the same session across explicitly recoverable capture failures", async (t) => {
+  const { handoff, calls } = fixture({ recoverableCaptureFailures: 2 });
+  const locator = handoff.start({
+    intervention: { id: "window-recoverable-capture", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: TARGET,
+    inputPolicy: POLICY
+  });
+  const sessionId = sessionIdFrom(locator);
+  const protocols = await bootstrapProtocols(handoff, sessionId);
+  const server = await startServer(handoff);
+  t.after(async () => closeServer(server));
+  const socket = new WebSocket(socketUrl(server, sessionId), protocols, { origin: ORIGIN });
+  assert.deepEqual(JSON.parse((await nextMessage(socket)).data.toString()), { kind: "ready" });
+
+  const frame = await nextMessage(socket);
+  assert.equal(frame.isBinary, true);
+  assert.ok(calls.filter((call) => call.kind === "capture").length >= 3);
+  assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), true);
+  assert.equal(socket.readyState, WebSocket.OPEN);
+
+  socket.send(JSON.stringify({ kind: "text", text: "still-active" }));
+  await waitFor(() => calls.some((call) => call.kind === "text"));
+  handoff.revoke("window-recoverable-capture");
 });
 
 test("Generic Window WSS start is idempotent only for the exact authority/target/policy tuple", () => {

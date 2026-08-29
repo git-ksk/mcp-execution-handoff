@@ -154,3 +154,18 @@ esac
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("Linux WSS capture failure classification fails closed only for exact authority boundaries", () => {
+  const surface = new ExperimentalLinuxWebSocketWindowSurface({
+    hostScript: process.execPath,
+    displayName: ":99"
+  });
+  assert.equal(
+    surface.captureFailureDisposition(new Error("Linux WSS target window ownership changed")),
+    "authority_lost"
+  );
+  assert.equal(
+    surface.captureFailureDisposition(new Error("Linux WSS exact-window helper frame timed out")),
+    "recoverable"
+  );
+});
