@@ -9,6 +9,9 @@ const METRICS = [
     "frame_cadence",
     "client_frame_decode",
     "client_frame_cadence",
+    "client_first_frame",
+    "client_reconnect_frame",
+    "client_reconnect_ready",
     "input_apply",
     "input_prepare",
     "input_queue_wait",
@@ -38,6 +41,9 @@ export class WebSocketLatencyTracker {
         const frameCadence = distribution(this.#samples.get("frame_cadence"));
         const clientFrameDecode = distribution(this.#samples.get("client_frame_decode"));
         const clientFrameCadence = distribution(this.#samples.get("client_frame_cadence"));
+        const clientFirstFrame = distribution(this.#samples.get("client_first_frame"));
+        const clientReconnectFrame = distribution(this.#samples.get("client_reconnect_frame"));
+        const clientReconnectReady = distribution(this.#samples.get("client_reconnect_ready"));
         const inputApply = distribution(this.#samples.get("input_apply"));
         const inputPrepare = distribution(this.#samples.get("input_prepare"));
         const inputQueueWait = distribution(this.#samples.get("input_queue_wait"));
@@ -54,6 +60,9 @@ export class WebSocketLatencyTracker {
                 + frameCadence.count
                 + clientFrameDecode.count
                 + clientFrameCadence.count
+                + clientFirstFrame.count
+                + clientReconnectFrame.count
+                + clientReconnectReady.count
                 + inputApply.count
                 + inputPrepare.count
                 + inputQueueWait.count
@@ -69,6 +78,9 @@ export class WebSocketLatencyTracker {
             frameCadence,
             clientFrameDecode,
             clientFrameCadence,
+            clientFirstFrame,
+            clientReconnectFrame,
+            clientReconnectReady,
             inputApply,
             inputPrepare,
             inputQueueWait,
@@ -83,7 +95,11 @@ export function emptyWebSocketLatencySnapshot() {
     return new WebSocketLatencyTracker().snapshot();
 }
 export function isWebSocketClientLatencyMetric(value) {
-    return value === "client_frame_decode" || value === "client_frame_cadence";
+    return value === "client_frame_decode"
+        || value === "client_frame_cadence"
+        || value === "client_first_frame"
+        || value === "client_reconnect_frame"
+        || value === "client_reconnect_ready";
 }
 export function validWebSocketLatency(value) {
     return validLatency(value);

@@ -7,6 +7,9 @@ export type WebSocketLatencyMetric =
   | "frame_cadence"
   | "client_frame_decode"
   | "client_frame_cadence"
+  | "client_first_frame"
+  | "client_reconnect_frame"
+  | "client_reconnect_ready"
   | "input_apply"
   | "input_prepare"
   | "input_queue_wait"
@@ -34,8 +37,11 @@ export interface WebSocketLatencyDistribution {
  * is not a pure JPEG encode-duration measurement.
  *
  * `clientFrameDecode` is browser receive-to-`img.onload`, not compositor latency.
- * `clientFrameCadence` is spacing between those browser load completions. Neither field is a
- * cross-clock capture-to-display measurement.
+ * `clientFrameCadence` is spacing between those browser load completions. `clientFirstFrame` is
+ * initial client connect start-to-first-`img.onload`; `clientReconnectFrame` is managed WSS
+ * disconnect detection-to-first post-reconnect `img.onload`; `clientReconnectReady` is managed
+ * WSS disconnect detection-to-fresh-generation `ready`. All client metrics use only the
+ * browser clock and none are cross-clock capture-to-display or compositor measurements.
  */
 export interface WebSocketLatencySnapshot {
   samples: number;
@@ -47,6 +53,9 @@ export interface WebSocketLatencySnapshot {
   frameCadence: WebSocketLatencyDistribution;
   clientFrameDecode: WebSocketLatencyDistribution;
   clientFrameCadence: WebSocketLatencyDistribution;
+  clientFirstFrame: WebSocketLatencyDistribution;
+  clientReconnectFrame: WebSocketLatencyDistribution;
+  clientReconnectReady: WebSocketLatencyDistribution;
   inputApply: WebSocketLatencyDistribution;
   inputPrepare: WebSocketLatencyDistribution;
   inputQueueWait: WebSocketLatencyDistribution;
@@ -68,6 +77,9 @@ const METRICS = [
   "frame_cadence",
   "client_frame_decode",
   "client_frame_cadence",
+  "client_first_frame",
+  "client_reconnect_frame",
+  "client_reconnect_ready",
   "input_apply",
   "input_prepare",
   "input_queue_wait",
@@ -101,6 +113,9 @@ export class WebSocketLatencyTracker {
     const frameCadence = distribution(this.#samples.get("frame_cadence")!);
     const clientFrameDecode = distribution(this.#samples.get("client_frame_decode")!);
     const clientFrameCadence = distribution(this.#samples.get("client_frame_cadence")!);
+    const clientFirstFrame = distribution(this.#samples.get("client_first_frame")!);
+    const clientReconnectFrame = distribution(this.#samples.get("client_reconnect_frame")!);
+    const clientReconnectReady = distribution(this.#samples.get("client_reconnect_ready")!);
     const inputApply = distribution(this.#samples.get("input_apply")!);
     const inputPrepare = distribution(this.#samples.get("input_prepare")!);
     const inputQueueWait = distribution(this.#samples.get("input_queue_wait")!);
@@ -117,6 +132,9 @@ export class WebSocketLatencyTracker {
         + frameCadence.count
         + clientFrameDecode.count
         + clientFrameCadence.count
+        + clientFirstFrame.count
+        + clientReconnectFrame.count
+        + clientReconnectReady.count
         + inputApply.count
         + inputPrepare.count
         + inputQueueWait.count
@@ -132,6 +150,9 @@ export class WebSocketLatencyTracker {
       frameCadence,
       clientFrameDecode,
       clientFrameCadence,
+      clientFirstFrame,
+      clientReconnectFrame,
+      clientReconnectReady,
       inputApply,
       inputPrepare,
       inputQueueWait,
@@ -149,8 +170,12 @@ export function emptyWebSocketLatencySnapshot(): WebSocketLatencySnapshot {
 
 export function isWebSocketClientLatencyMetric(
   value: unknown
-): value is "client_frame_decode" | "client_frame_cadence" {
-  return value === "client_frame_decode" || value === "client_frame_cadence";
+): value is "client_frame_decode" | "client_frame_cadence" | "client_first_frame" | "client_reconnect_frame" | "client_reconnect_ready" {
+  return value === "client_frame_decode"
+    || value === "client_frame_cadence"
+    || value === "client_first_frame"
+    || value === "client_reconnect_frame"
+    || value === "client_reconnect_ready";
 }
 
 export function validWebSocketLatency(value: unknown): value is number {

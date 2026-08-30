@@ -97,6 +97,7 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /client_keyboard_focus_active/);
   assert.match(html, /client_keyboard_focus_inactive/);
   assert.match(html, /client_editable_regions_available/);
+  assert.match(html, /client_first_frame/);
   assert.match(html, /document\.activeElement===keyboard/);
   assert.doesNotMatch(html, /diagnostic\([^)]*(?:text|value|processId|windowId)/);
   assert.match(html, /setKeyboardMode\(!keyboardMode\)/);

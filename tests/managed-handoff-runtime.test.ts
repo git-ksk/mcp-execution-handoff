@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import vm from "node:vm";
 import { ManagedWindowHandoffRuntime } from "../src/browser-takeover/managed-handoff-runtime.js";
 
 const ORIGIN = "https://takeover.example";
@@ -105,6 +106,12 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     assert.match(wssHtml, /managedReconnectWindowMs=8000/);
     assert.match(wssHtml, /managedReconnectStableMs=1500/);
     assert.match(wssHtml, /managedWebSocketReady\(\)/);
+    assert.match(wssHtml, /client_reconnect_ready/);
+    assert.match(wssHtml, /client_reconnect_frame/);
+    assert.match(wssHtml, /managedWebSocketFrameLoaded/);
+    const wssScript = wssHtml.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/)?.[1];
+    assert.ok(wssScript);
+    assert.doesNotThrow(() => new vm.Script(wssScript));
     assert.match(wssHtml, /600\+200\*\(managedReconnectAttempts-1\)/);
     assert.match(wssHtml, /event\.code===1008\|\|event\.code===1011/);
     assert.match(wssHtml, /setStatus\('Reconnecting…'\)/);
