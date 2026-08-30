@@ -26,10 +26,10 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Apply latency instrumentation
         run: node scripts/apply-160-wss-latency.mjs
-      - name: Validate source
-        run: npm run check
       - name: Build committed dist
         run: npm run build
+      - name: Validate source and dist closure
+        run: npm run check
       - name: Validate patch whitespace
         run: git diff --check
       - name: Commit validated source and dist
