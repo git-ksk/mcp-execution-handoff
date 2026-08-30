@@ -268,6 +268,11 @@ const ALLOW_ALL_WEBRTC_INPUT: WebRtcHumanInputPolicy = Object.freeze({
   key: true
 });
 
+type CompletionFinalizationOutcome =
+  | "completed"
+  | "runtime_revoke_failed"
+  | "completion_handler_failed";
+
 export class TakeoverBroker {
   private readonly sessions: TakeoverSessionManager;
   private readonly publicOrigin: string | undefined;
@@ -283,6 +288,7 @@ export class TakeoverBroker {
   private readonly webRtcTargetWindowIds = new Map<string, number>();
   private readonly webRtcInputPolicies = new Map<string, WebRtcHumanInputPolicy>();
   private readonly completionDelivered = new Set<string>();
+  private readonly completionFinalizations = new Map<string, Promise<CompletionFinalizationOutcome>>();
   private readonly completionGraceMs: number;
   // A Safari page lifecycle suspend must never revoke the peer while its answer is still being built.
   private readonly webRtcConnectInFlight = new Map<string, Promise<void>>();
@@ -552,31 +558,26 @@ export class TakeoverBroker {
         if (error instanceof TakeoverSessionError) return json(404, { error: "takeover_unavailable" });
         throw error;
       }
-      this.nativeOnlySessions.delete(id);
-      this.webRtcOnlySessions.delete(id);
-      this.webSocketOnlySessions.delete(id);
-      this.webSocketRevokeHandlers.delete(id);
-      this.nativeTargetProcessIds.delete(id);
-      this.nativeTargetWindowIds.delete(id);
-      this.webRtcTargetProcessIds.delete(id);
-      this.webRtcTargetWindowIds.delete(id);
-      this.webRtcInputPolicies.delete(id);
-      try {
-        if (wasNative) await this.nativeRuntime?.revoke(id);
-        if (wasWebRtc) await this.webRtcRuntime?.revoke(id);
-      } catch {
+
+      let finalization = this.completionFinalizations.get(id);
+      if (!finalization) {
+        const started = this.finalizeCompletion(id, completion, wasNative, wasWebRtc);
+        let tracked!: Promise<CompletionFinalizationOutcome>;
+        tracked = started.finally(() => {
+          if (this.completionFinalizations.get(id) === tracked) {
+            this.completionFinalizations.delete(id);
+          }
+        });
+        this.completionFinalizations.set(id, tracked);
+        finalization = tracked;
+      }
+
+      const outcome = await finalization;
+      if (outcome === "runtime_revoke_failed") {
         return json(503, { error: "takeover_runtime_revoke_failed", revoked: true });
       }
-      if (!this.completionDelivered.has(id)) {
-        try {
-          await this.hooks.completed?.({
-            interventionId: completion.interventionId,
-            epoch: completion.epoch
-          });
-          this.completionDelivered.add(id);
-        } catch {
-          return json(503, { error: "takeover_completion_handler_failed", revoked: true });
-        }
+      if (outcome === "completion_handler_failed") {
+        return json(503, { error: "takeover_completion_handler_failed", revoked: true });
       }
       return json(200, { done: true, alreadyDone: completion.alreadyCompleted });
     }
@@ -960,6 +961,44 @@ export class TakeoverBroker {
     } finally {
       this.sessions.endUse(id, boundPrincipal, clientBinding, grant.clientGeneration);
     }
+  }
+
+  private async finalizeCompletion(
+    sessionId: string,
+    completion: TakeoverCompletionResult,
+    wasNative: boolean,
+    wasWebRtc: boolean
+  ): Promise<CompletionFinalizationOutcome> {
+    try {
+      if (wasNative) await this.nativeRuntime?.revoke(sessionId);
+      if (wasWebRtc) await this.webRtcRuntime?.revoke(sessionId);
+    } catch {
+      // Keep route ownership until an explicit retry confirms required runtime teardown.
+      return "runtime_revoke_failed";
+    }
+
+    this.nativeOnlySessions.delete(sessionId);
+    this.webRtcOnlySessions.delete(sessionId);
+    this.webSocketOnlySessions.delete(sessionId);
+    this.webSocketRevokeHandlers.delete(sessionId);
+    this.nativeTargetProcessIds.delete(sessionId);
+    this.nativeTargetWindowIds.delete(sessionId);
+    this.webRtcTargetProcessIds.delete(sessionId);
+    this.webRtcTargetWindowIds.delete(sessionId);
+    this.webRtcInputPolicies.delete(sessionId);
+
+    if (!this.completionDelivered.has(sessionId)) {
+      try {
+        await this.hooks.completed?.({
+          interventionId: completion.interventionId,
+          epoch: completion.epoch
+        });
+        this.completionDelivered.add(sessionId);
+      } catch {
+        return "completion_handler_failed";
+      }
+    }
+    return "completed";
   }
 
   private createExperimentalWebSocketSession(
