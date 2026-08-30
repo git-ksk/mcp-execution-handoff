@@ -134,6 +134,8 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private clearDrainTimer;
     private releaseOnce;
     private recordReleaseFailure;
+    /** Terminal messages are finite, best-effort hints; late outcomes cannot change authority. */
+    private notifyTerminal;
     private safeClose;
 }
 //# sourceMappingURL=websocket-takeover.d.ts.map
