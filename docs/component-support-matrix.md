@@ -96,6 +96,42 @@ Every supported or planned Human transport must preserve the same authority fact
 7. unsupported combinations fail closed instead of widening to desktop/display/frontmost-window;
 8. transport/provider details stay below the normal consumer lifecycle API.
 
+## Executable WSS lifecycle gate
+
+[`tests/websocket-lifecycle-conformance.test.ts`](../tests/websocket-lifecycle-conformance.test.ts)
+composes the real session manager, WSS session authority and channel. It controls only the clock,
+peer and consumer callbacks, so the following boundary checks run without ICE, a browser, platform
+helpers, credentials or wall-clock sleeps:
+
+| Boundary | Required result |
+| --- | --- |
+| Media lease deadline | New input, frames, ping and handshake claims fail closed at the exact deadline. |
+| Completion-only grace | A still-open claimed channel may submit Done within the bounded grace even after ticket pruning; Done fails at the grace deadline. |
+| Reconnect or resource epoch change | Old input, frames and Done fail; cleanup of the old channel cannot release or mutate the successor. |
+| Input in flight | Idle reconnect cannot overtake dispatched input; disconnect does not replay it or imply Done. |
+| Expiry with queued input | Already dispatched work may finish; queued input is revalidated and never dispatched after expiry. |
+| Explicit authority revoke | A locally open channel cannot send input, deliver frames or complete the revoked session. |
+| Completion observer failure | Mutable authority is fenced before the observer runs and stays fenced if it throws. |
+
+Run the focused gate with:
+
+```sh
+node --import tsx --test tests/websocket-lifecycle-conformance.test.ts
+```
+
+The file is also included automatically by `npm run check` in the existing Linux Node 20/22/24,
+macOS Node 22 and Windows Node 22 CI jobs. It complements
+[real-socket ingress coverage](../tests/websocket-ingress.test.ts),
+[broker completion/revoke coverage](../tests/websocket-broker-binding.test.ts) and
+[channel delivery/backpressure coverage](../tests/websocket-takeover.test.ts).
+
+This is a shared WSS authority gate, not proof of every Browser/Window host or of WebRTC/PTY parity.
+It does not exercise TLS/proxy delivery, exact-target capture/input helpers, consumer semantic
+verification, or physical iPhone Safari behavior. Completion grace is not permission to reconnect
+or resume input, and a channel already failed/closed by stale input does not reopen for Done.
+Platform support states and pending physical acceptance above remain unchanged; #184 remains open
+for the rest of the component/failure matrix.
+
 ## High-risk conformance gaps
 
 P0/P1 work that most directly reduces future consumer-to-Handoff backtracking:
