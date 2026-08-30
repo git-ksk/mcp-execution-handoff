@@ -1,3 +1,9 @@
+import {
+  WebSocketLatencyTracker,
+  isWebSocketClientLatencyMetric,
+  validWebSocketLatency
+} from "./websocket-latency.js";
+
 export type WebSocketTakeoverState = "open" | "closing" | "closed" | "revoked" | "failed";
 
 export type WebSocketTakeoverInputStage =
@@ -84,6 +90,8 @@ export interface ExperimentalWebSocketTakeoverOptions {
   onInput(input: WebSocketTakeoverHumanInput): void | Promise<void>;
   /** Observe-only finite enum. It never carries coordinates, text, identity, or browser content. */
   onClientDiagnostic?(kind: WebSocketTakeoverClientDiagnosticKind): void;
+  /** Shared content-free latency tracker for managed WSS acceptance. */
+  latencyTracker?: WebSocketLatencyTracker;
   maxInboundBytes?: number;
   maxFrameBytes?: number;
   maxBufferedBytes?: number;
@@ -172,6 +180,7 @@ function parseHumanMessage(
   inputPolicy: WebSocketTakeoverInputPolicy
 ): WebSocketTakeoverHumanInput
   | { kind: "diagnostic"; event: WebSocketTakeoverClientDiagnosticKind }
+  | { kind: "latency"; metric: "client_frame_decode" | "client_frame_cadence"; valueMs: number }
   | { kind: "done" }
   | { kind: "ping"; nonce?: string } {
   if (utf8Length(raw) > maxInboundBytes) {
@@ -258,6 +267,13 @@ function parseHumanMessage(
       }
       return { kind: "diagnostic", event: record.event as WebSocketTakeoverClientDiagnosticKind };
     }
+    case "latency":
+      if (!hasOnlyKeys(record, ["kind", "metric", "valueMs"])
+        || !isWebSocketClientLatencyMetric(record.metric)
+        || !validWebSocketLatency(record.valueMs)) {
+        throw new WebSocketTakeoverError("invalid_message", "Latency diagnostic is invalid");
+      }
+      return { kind: "latency", metric: record.metric, valueMs: record.valueMs };
     case "done":
       if (!hasOnlyKeys(record, ["kind"])) {
         throw new WebSocketTakeoverError("invalid_message", "Done message has extra fields");
@@ -286,6 +302,7 @@ export class ExperimentalWebSocketTakeoverChannel {
   private readonly lease: WebSocketTakeoverLease;
   private readonly onInput: ExperimentalWebSocketTakeoverOptions["onInput"];
   private readonly onClientDiagnostic: ExperimentalWebSocketTakeoverOptions["onClientDiagnostic"];
+  private readonly latencyTracker: WebSocketLatencyTracker;
   private readonly maxInboundBytes: number;
   private readonly maxFrameBytes: number;
   private readonly maxBufferedBytes: number;
@@ -300,6 +317,7 @@ export class ExperimentalWebSocketTakeoverChannel {
   private droppedFramesValue = 0;
   private lastFailureValue?: WebSocketTakeoverFailureCode;
   private lastInputStageValue: WebSocketTakeoverInputStage = "none";
+  private lastFrameSentAt: number | undefined;
 
   constructor(options: ExperimentalWebSocketTakeoverOptions) {
     validateBinding(options.binding);
@@ -309,6 +327,7 @@ export class ExperimentalWebSocketTakeoverChannel {
     this.lease = options.lease;
     this.onInput = options.onInput;
     this.onClientDiagnostic = options.onClientDiagnostic;
+    this.latencyTracker = options.latencyTracker ?? new WebSocketLatencyTracker();
     this.maxInboundBytes = boundedLimit(
       options.maxInboundBytes,
       DEFAULT_MAX_INBOUND_BYTES,
@@ -371,6 +390,10 @@ export class ExperimentalWebSocketTakeoverChannel {
         try { this.onClientDiagnostic?.(message.event); } catch { /* diagnostics are observe-only */ }
         return;
       }
+      if (message.kind === "latency") {
+        this.latencyTracker.record(message.metric, message.valueMs);
+        return;
+      }
       if (message.kind === "ping") {
         await this.runBoundUse(async () => {
           this.notifyObserveOnly(
@@ -385,6 +408,7 @@ export class ExperimentalWebSocketTakeoverChannel {
         await this.complete();
         return;
       }
+      const inputStartedAt = performance.now();
       this.lastInputStageValue = "received";
       await this.runBoundUse(
         async () => {
@@ -398,6 +422,7 @@ export class ExperimentalWebSocketTakeoverChannel {
         }
       );
       this.lastInputStageValue = "applied";
+      this.latencyTracker.record("input_apply", performance.now() - inputStartedAt);
     });
   }
 
@@ -448,7 +473,9 @@ export class ExperimentalWebSocketTakeoverChannel {
       this.clearDrainTimer();
       this.pendingFrame = undefined;
       try {
+        const revokeStartedAt = performance.now();
         await this.releaseOnce();
+        this.latencyTracker.record("revoke_fence", performance.now() - revokeStartedAt);
       } catch (error) {
         this.recordReleaseFailure();
         await this.safeClose(INTERNAL_CLOSE, "authority_release_failed");
@@ -478,8 +505,15 @@ export class ExperimentalWebSocketTakeoverChannel {
           break;
         }
         await this.runBoundUse(async () => {
+          const sendStartedAt = performance.now();
           await this.peer.sendFrame(current!);
+          this.latencyTracker.record("frame_send", performance.now() - sendStartedAt);
         });
+        const sentAt = performance.now();
+        if (this.lastFrameSentAt !== undefined) {
+          this.latencyTracker.record("frame_cadence", sentAt - this.lastFrameSentAt);
+        }
+        this.lastFrameSentAt = sentAt;
         this.sentFramesValue += 1;
         current = this.pendingFrame;
         this.pendingFrame = undefined;
@@ -547,7 +581,9 @@ export class ExperimentalWebSocketTakeoverChannel {
     // Terminal UI delivery must not gate shared authority completion.
     this.notifyTerminal({ kind: "closing" });
     try {
+      const completionStartedAt = performance.now();
       await this.lease.complete(this.binding);
+      this.latencyTracker.record("completion_fence", performance.now() - completionStartedAt);
       this.released = true;
       this.stateValue = "closed";
       this.notifyTerminal({ kind: "closed" });

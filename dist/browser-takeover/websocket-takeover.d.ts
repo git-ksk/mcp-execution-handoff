@@ -1,3 +1,4 @@
+import { WebSocketLatencyTracker } from "./websocket-latency.js";
 export type WebSocketTakeoverState = "open" | "closing" | "closed" | "revoked" | "failed";
 export type WebSocketTakeoverInputStage = "none" | "received" | "authority_begin_ready" | "dispatch_started" | "dispatch_completed" | "authority_end_ready" | "applied";
 /**
@@ -77,6 +78,8 @@ export interface ExperimentalWebSocketTakeoverOptions {
     onInput(input: WebSocketTakeoverHumanInput): void | Promise<void>;
     /** Observe-only finite enum. It never carries coordinates, text, identity, or browser content. */
     onClientDiagnostic?(kind: WebSocketTakeoverClientDiagnosticKind): void;
+    /** Shared content-free latency tracker for managed WSS acceptance. */
+    latencyTracker?: WebSocketLatencyTracker;
     maxInboundBytes?: number;
     maxFrameBytes?: number;
     maxBufferedBytes?: number;
@@ -93,6 +96,7 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private readonly lease;
     private readonly onInput;
     private readonly onClientDiagnostic;
+    private readonly latencyTracker;
     private readonly maxInboundBytes;
     private readonly maxFrameBytes;
     private readonly maxBufferedBytes;
@@ -107,6 +111,7 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private droppedFramesValue;
     private lastFailureValue?;
     private lastInputStageValue;
+    private lastFrameSentAt;
     constructor(options: ExperimentalWebSocketTakeoverOptions);
     get state(): WebSocketTakeoverState;
     get diagnostics(): Readonly<{

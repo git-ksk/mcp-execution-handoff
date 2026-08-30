@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { type TakeoverAuthorityReleaseEvent, type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import { type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 export type ExperimentalWebSocketWindowInputFailureDisposition = "recoverable" | "authority_lost";
@@ -62,6 +63,8 @@ export declare class ExperimentalWebSocketWindowHandoff {
     authorizeClientPage(sessionId: string, boundPrincipal: string | undefined): boolean;
     /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketBrokerBinding["diagnosticsSnapshot"]>;
+    /** @internal Bounded same-clock WSS latency evidence for #160 acceptance. */
+    latencySnapshot(): WebSocketLatencySnapshot;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response> | Response;
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     ownsPath(pathname: string): boolean;

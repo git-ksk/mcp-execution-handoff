@@ -1,5 +1,6 @@
 import { emptyManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
+import { emptyWebSocketLatencySnapshot } from "./websocket-latency.js";
 import { ManagedWindowHandoffRuntime } from "./managed-handoff-runtime.js";
 import { WindowHandoffCore, WindowHandoffCoreError } from "../window-takeover/window-handoff-core.js";
 export class BrowserHandoffAdapterError extends Error {
@@ -120,6 +121,12 @@ export class BrowserHandoffAdapter {
                 failureCode: "none",
                 failureInputStage: "none"
             };
+    }
+    /** @internal Separate WSS performance evidence; never interpreted as WebRTC latency. */
+    managedWebSocketLatencySnapshot() {
+        return this.#core instanceof ManagedWindowHandoffRuntime
+            ? this.#core.managedWebSocketLatencySnapshot()
+            : emptyWebSocketLatencySnapshot();
     }
     latencySnapshot() { return this.#core.latencySnapshot(); }
 }

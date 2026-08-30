@@ -4,6 +4,7 @@ import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.j
 import { type ManagedOperatorDiagnosticEventObserver, type ManagedOperatorDiagnosticsSnapshot } from "./managed-operator-diagnostics.js";
 import { type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
+import { type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverHostTarget, TakeoverInterventionRef } from "./broker.js";
 import type { SpawnedWebRtcRuntimeProviderConfig, WebRtcHumanInputPolicy } from "./webrtc-runtime-diagnostics.js";
 import type { ManagedHandoffTransportPolicy } from "./transport-fallback-policy.js";
@@ -98,6 +99,8 @@ export declare class BrowserHandoffAdapter {
         failureCode: string;
         failureInputStage: string;
     };
+    /** @internal Separate WSS performance evidence; never interpreted as WebRTC latency. */
+    managedWebSocketLatencySnapshot(): WebSocketLatencySnapshot;
     latencySnapshot(): WebRtcLatencyComparison;
 }
 //# sourceMappingURL=browser-handoff-adapter.d.ts.map

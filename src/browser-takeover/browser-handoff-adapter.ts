@@ -8,6 +8,7 @@ import {
 } from "./managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot, type WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import type { WebRtcLatencyComparison } from "./webrtc-latency.js";
+import { emptyWebSocketLatencySnapshot, type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type {
   TakeoverAuthorityReleaseEvent,
   TakeoverBrokerConfig,
@@ -214,6 +215,12 @@ export class BrowserHandoffAdapter {
           failureCode: "none",
           failureInputStage: "none"
         };
+  }
+  /** @internal Separate WSS performance evidence; never interpreted as WebRTC latency. */
+  managedWebSocketLatencySnapshot(): WebSocketLatencySnapshot {
+    return this.#core instanceof ManagedWindowHandoffRuntime
+      ? this.#core.managedWebSocketLatencySnapshot()
+      : emptyWebSocketLatencySnapshot();
   }
   latencySnapshot(): WebRtcLatencyComparison { return this.#core.latencySnapshot(); }
 }

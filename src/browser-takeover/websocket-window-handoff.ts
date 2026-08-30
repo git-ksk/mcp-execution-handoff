@@ -15,6 +15,7 @@ import {
 } from "../window-takeover/window-handoff-core.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import { WebSocketLatencyTracker, type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type {
   WebSocketTakeoverEditableRegion,
   WebSocketTakeoverFrame,
@@ -111,6 +112,7 @@ export class ExperimentalWebSocketWindowHandoff {
   readonly #sessionsById = new Map<string, ActiveWindowSession>();
   readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
   readonly #onAuthorityReleased: ((event: TakeoverAuthorityReleaseEvent) => void | Promise<void>) | undefined;
+  readonly #latencyTracker = new WebSocketLatencyTracker();
 
   constructor(config: ExperimentalWebSocketWindowHandoffConfig) {
     this.#surface = config.surface;
@@ -140,7 +142,8 @@ export class ExperimentalWebSocketWindowHandoff {
       allowedOrigins: config.allowedOrigins,
       onInput: (binding, input) => this.#dispatchInput(binding.interventionId, binding.epoch, input),
       ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
-      ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
+      ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+      latencyTracker: this.#latencyTracker
     });
   }
 
@@ -234,6 +237,11 @@ export class ExperimentalWebSocketWindowHandoff {
     return this.#binding.diagnosticsSnapshot();
   }
 
+  /** @internal Bounded same-clock WSS latency evidence for #160 acceptance. */
+  latencySnapshot(): WebSocketLatencySnapshot {
+    return this.#latencyTracker.snapshot();
+  }
+
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> | Response {
     return this.#binding.handleBootstrap(request, boundPrincipal)
       ?? this.#broker.handle(request, boundPrincipal);
@@ -264,7 +272,9 @@ export class ExperimentalWebSocketWindowHandoff {
     state.captureInFlight = true;
     let frame: WebSocketTakeoverFrame;
     try {
+      const captureStartedAt = performance.now();
       frame = await this.#surface.captureExactWindow(state.target);
+      this.#latencyTracker.record("capture", performance.now() - captureStartedAt);
     } catch (error) {
       const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
       if (disposition === "recoverable") {

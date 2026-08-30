@@ -5,6 +5,7 @@ import { type WindowHandoffCoreInitialSecureWindowPolicy, type WindowHandoffCore
 import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverInterventionRef } from "./broker.js";
 import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { type WebRtcLatencyComparison } from "./webrtc-latency.js";
+import { type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import { WebSocketBrowserHandoff } from "./websocket-relay.js";
 import { type ManagedWindowWebSocketHostConfig } from "./managed-window-websocket-surface.js";
@@ -46,6 +47,8 @@ export declare class ManagedWindowHandoffRuntime {
     managedSurfaceDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics;
     /** @internal Content-free managed WSS ingress diagnostics for physical acceptance. */
     managedWebSocketDiagnosticsSnapshot(): ReturnType<WebSocketBrowserHandoff["diagnosticsSnapshot"]>;
+    /** @internal Content-free managed WSS latency evidence for #160. */
+    managedWebSocketLatencySnapshot(): WebSocketLatencySnapshot;
     revoke(interventionId: string): Promise<void>;
     revokeUnclaimed(interventionId: string): void;
     completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;

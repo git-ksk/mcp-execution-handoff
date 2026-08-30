@@ -1,6 +1,7 @@
 import { TakeoverBroker } from "../browser-takeover/broker.js";
 import { validWindowHandoffInputPolicy, validWindowHandoffTarget } from "../window-takeover/window-handoff-core.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
+import { WebSocketLatencyTracker } from "./websocket-latency.js";
 const EDITABLE_REGIONS_REFRESH_MS = 500;
 export class ExperimentalWebSocketWindowHandoffError extends Error {
     code;
@@ -26,6 +27,7 @@ export class ExperimentalWebSocketWindowHandoff {
     #sessionsById = new Map();
     #onDiagnosticEvent;
     #onAuthorityReleased;
+    #latencyTracker = new WebSocketLatencyTracker();
     constructor(config) {
         this.#surface = config.surface;
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
@@ -48,7 +50,8 @@ export class ExperimentalWebSocketWindowHandoff {
             allowedOrigins: config.allowedOrigins,
             onInput: (binding, input) => this.#dispatchInput(binding.interventionId, binding.epoch, input),
             ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
-            ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
+            ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+            latencyTracker: this.#latencyTracker
         });
     }
     start(request) {
@@ -111,6 +114,10 @@ export class ExperimentalWebSocketWindowHandoff {
     diagnosticsSnapshot() {
         return this.#binding.diagnosticsSnapshot();
     }
+    /** @internal Bounded same-clock WSS latency evidence for #160 acceptance. */
+    latencySnapshot() {
+        return this.#latencyTracker.snapshot();
+    }
     handle(request, boundPrincipal) {
         return this.#binding.handleBootstrap(request, boundPrincipal)
             ?? this.#broker.handle(request, boundPrincipal);
@@ -139,7 +146,9 @@ export class ExperimentalWebSocketWindowHandoff {
         state.captureInFlight = true;
         let frame;
         try {
+            const captureStartedAt = performance.now();
             frame = await this.#surface.captureExactWindow(state.target);
+            this.#latencyTracker.record("capture", performance.now() - captureStartedAt);
         }
         catch (error) {
             const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
