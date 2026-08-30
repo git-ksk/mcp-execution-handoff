@@ -48,6 +48,22 @@ async function readStatus(cookie) {
   return response.json();
 }
 
+async function checkpoint(label, cookie) {
+  const state = await readStatus(cookie);
+  const latency = state.wssLatency ?? {};
+  process.stdout.write(`MANAGED_WSS_INPUT_CHECKPOINT:${JSON.stringify({
+    run,
+    label,
+    latency: {
+      inputApply: latency.inputApply ?? null,
+      inputPrepare: latency.inputPrepare ?? null,
+      inputQueueWait: latency.inputQueueWait ?? null,
+      inputRevalidate: latency.inputRevalidate ?? null,
+      inputHostAck: latency.inputHostAck ?? null
+    }
+  })}\n`);
+}
+
 async function sendSpaced(ws, message, pauseMs = 180) {
   ws.send(JSON.stringify(message));
   await new Promise((resolve) => setTimeout(resolve, pauseMs));
@@ -157,21 +173,25 @@ try {
     const state = await readStatus(cookie);
     return state.tapObserved === true && state.inputFocused === true;
   }, 5_000);
+  await checkpoint("after_tap", cookie);
 
   for (let index = 0; index < 8; index += 1) {
     await sendSpaced(ws, { kind: "text", text: "x" });
   }
   await waitFor("text", async () => (await readStatus(cookie)).textObserved === true, 3_000);
+  await checkpoint("after_text", cookie);
 
   for (let index = 0; index < 8; index += 1) {
     await sendSpaced(ws, { kind: "key", key: "Backspace" });
   }
   await waitFor("backspace", async () => (await readStatus(cookie)).backspaceObserved === true, 3_000);
+  await checkpoint("after_backspace", cookie);
 
   for (let index = 0; index < 3; index += 1) {
     await sendSpaced(ws, { kind: "scroll", deltaY: 600 });
   }
   await waitFor("scroll", async () => (await readStatus(cookie)).scrollObserved === true, 3_000);
+  await checkpoint("after_scroll", cookie);
 
   await sendSpaced(ws, { kind: "key", key: "Enter" }, 220);
   await waitFor("submit", async () => {
@@ -180,6 +200,7 @@ try {
       && state.enterKeyUpObserved === true
       && state.submitObserved === true;
   }, 4_000);
+  await checkpoint("after_enter", cookie);
 
   await new Promise((resolve) => setTimeout(resolve, 500));
   const preDone = await readStatus(cookie);
