@@ -13,7 +13,11 @@ RUN apt-get update \
       x11-utils \
       xdotool \
       xvfb \
+ && mv /usr/bin/xdotool /usr/bin/xdotool-real \
  && rm -rf /var/lib/apt/lists/*
+
+COPY experiments/websocket-cloud-run/xdotool-fast-scroll.sh /usr/bin/xdotool
+RUN chmod 0755 /usr/bin/xdotool
 
 WORKDIR /app
 COPY package.json package-lock.json ./
