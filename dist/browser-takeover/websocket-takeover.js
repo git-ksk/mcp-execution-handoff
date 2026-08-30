@@ -221,7 +221,7 @@ export class ExperimentalWebSocketTakeoverChannel {
             }
             if (message.kind === "ping") {
                 await this.runBoundUse(async () => {
-                    await this.peer.sendControl(message.nonce === undefined
+                    this.notifyObserveOnly(message.nonce === undefined
                         ? { kind: "pong" }
                         : { kind: "pong", nonce: message.nonce });
                 });
@@ -493,6 +493,15 @@ export class ExperimentalWebSocketTakeoverChannel {
         this.released = false;
         this.stateValue = "failed";
         this.lastFailureValue = "authority_release_failed";
+    }
+    /** Observe-only feedback must never hold terminal authority cleanup on peer delivery. */
+    notifyObserveOnly(message) {
+        try {
+            void Promise.resolve(this.peer.sendControl(message)).catch(() => undefined);
+        }
+        catch {
+            // Pong delivery is transport feedback only and cannot alter authority state.
+        }
     }
     /** Terminal messages are finite, best-effort hints; late outcomes cannot change authority. */
     notifyTerminal(message) {

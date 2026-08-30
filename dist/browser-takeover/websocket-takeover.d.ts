@@ -134,6 +134,8 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private clearDrainTimer;
     private releaseOnce;
     private recordReleaseFailure;
+    /** Observe-only feedback must never hold terminal authority cleanup on peer delivery. */
+    private notifyObserveOnly;
     /** Terminal messages are finite, best-effort hints; late outcomes cannot change authority. */
     private notifyTerminal;
     private safeClose;

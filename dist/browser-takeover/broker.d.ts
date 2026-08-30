@@ -59,6 +59,7 @@ export declare class TakeoverBroker {
     private readonly webRtcTargetWindowIds;
     private readonly webRtcInputPolicies;
     private readonly completionDelivered;
+    private readonly completionFinalizations;
     private readonly completionGraceMs;
     private readonly webRtcConnectInFlight;
     constructor(browser: TakeoverBrowserAdapter, config: TakeoverBrokerConfig, nativeRuntime?: NativeTakeoverRuntimeProvider | undefined, webRtcRuntime?: WebRtcTakeoverRuntimeProvider | undefined, hooks?: TakeoverBrokerHooks);
@@ -78,6 +79,7 @@ export declare class TakeoverBroker {
      */
     completeWebSocketAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
     handle(request: Request, boundPrincipal: string | undefined): Promise<Response>;
+    private finalizeCompletion;
     private createExperimentalWebSocketSession;
     private attachExperimentalWebSocketRevokeHandler;
     private completeExperimentalWebSocketSession;
