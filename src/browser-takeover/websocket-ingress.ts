@@ -21,6 +21,7 @@ import {
   type WebSocketTakeoverInputStage
 } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 
 const HANDOFF_SUBPROTOCOL = "mcp-handoff.websocket.v1";
 const HANDSHAKE_PROTOCOL_PREFIX = "mcp-handoff-auth.";
@@ -268,6 +269,7 @@ export interface ExperimentalWebSocketTakeoverIngressOptions {
   maxInboundBytes?: number;
   /** Content-free bounded event hook for first-class managed operator diagnostics. */
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  latencyTracker?: WebSocketLatencyTracker;
 }
 
 interface ActiveConnection {
@@ -399,6 +401,7 @@ export class ExperimentalWebSocketTakeoverIngress {
             lease: accepted.lease,
             onInput: (input) => this.options.onInput(accepted.binding, input),
             onClientDiagnostic: (kind) => this.options.onDiagnosticEvent?.(kind),
+            ...(this.options.latencyTracker ? { latencyTracker: this.options.latencyTracker } : {}),
             maxInboundBytes: this.#maxInboundBytes
           });
           const previous = this.#active.get(parsed.sessionId);

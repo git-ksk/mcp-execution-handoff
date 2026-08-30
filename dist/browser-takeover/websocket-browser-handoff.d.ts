@@ -4,6 +4,7 @@ import type { TakeoverAuthorityReleaseEvent, TakeoverCompletionEvent, TakeoverHo
 import { ExperimentalWebSocketWindowHandoff, type ExperimentalWebSocketWindowHandoffConfig, type ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { WebSocketLatencySnapshot } from "./websocket-latency.js";
 export interface ExperimentalWebSocketBrowserHandoffConfig {
     takeover: ExperimentalWebSocketWindowHandoffConfig["takeover"];
     allowedOrigins: readonly string[];
@@ -36,6 +37,8 @@ export declare class ExperimentalWebSocketBrowserHandoff {
     ownsPath(pathname: string): boolean;
     /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketWindowHandoff["diagnosticsSnapshot"]>;
+    /** @internal Content-free WSS latency summary for managed acceptance. */
+    latencySnapshot(): WebSocketLatencySnapshot;
     revoke(interventionId: string): void;
     completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
 }

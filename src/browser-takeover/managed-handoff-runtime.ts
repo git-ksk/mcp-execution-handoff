@@ -23,6 +23,7 @@ import {
 } from "./managed-transport-coordinator.js";
 import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { WebRtcLatencyTracker, type WebRtcLatencyComparison } from "./webrtc-latency.js";
+import { emptyWebSocketLatencySnapshot, type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import {
   webRtcRelayEnvironmentConfigured,
@@ -433,6 +434,11 @@ export class ManagedWindowHandoffRuntime {
       failureCode: "none",
       failureInputStage: "none"
     };
+  }
+
+  /** @internal Content-free managed WSS latency evidence for #160. */
+  managedWebSocketLatencySnapshot(): WebSocketLatencySnapshot {
+    return this.#lastSession?.webSocketHandoff?.latencySnapshot() ?? emptyWebSocketLatencySnapshot();
   }
 
   async revoke(interventionId: string): Promise<void> {

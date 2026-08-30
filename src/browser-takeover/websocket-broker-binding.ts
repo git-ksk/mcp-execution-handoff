@@ -7,6 +7,7 @@ import {
   ExperimentalWebSocketTakeoverSessionAuthority
 } from "./websocket-ingress.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 import type {
   WebSocketTakeoverBinding,
   WebSocketTakeoverFrame,
@@ -25,6 +26,7 @@ export interface ExperimentalWebSocketBrokerBindingOptions {
   ): void | Promise<void>;
   maxInboundBytes?: number;
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  latencyTracker?: WebSocketLatencyTracker;
 }
 
 /**
@@ -62,7 +64,8 @@ export class ExperimentalWebSocketBrokerBinding {
       allowedOrigins: options.allowedOrigins,
       onInput: options.onInput,
       ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes }),
-      ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {})
+      ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {}),
+      ...(options.latencyTracker ? { latencyTracker: options.latencyTracker } : {})
     });
   }
 

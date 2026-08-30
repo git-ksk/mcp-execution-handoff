@@ -4,6 +4,7 @@ import WebSocket from "ws";
 import { TakeoverSessionManager, type TakeoverCompletionResult } from "../browser-takeover/session.js";
 import { type WebSocketTakeoverBinding, type WebSocketTakeoverFrame, type WebSocketTakeoverHumanInput, type WebSocketTakeoverInputPolicy, type WebSocketTakeoverLease, type WebSocketTakeoverPeer, type WebSocketTakeoverServerMessage, type WebSocketTakeoverState, type WebSocketTakeoverFailureCode, type WebSocketTakeoverInputStage } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 export interface ExperimentalWebSocketAcceptedSession {
     readonly binding: WebSocketTakeoverBinding;
     readonly inputPolicy: WebSocketTakeoverInputPolicy;
@@ -44,6 +45,7 @@ export interface ExperimentalWebSocketTakeoverIngressOptions {
     maxInboundBytes?: number;
     /** Content-free bounded event hook for first-class managed operator diagnostics. */
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+    latencyTracker?: WebSocketLatencyTracker;
 }
 export type ExperimentalWebSocketIngressDisconnectKind = "none" | "peer_close" | "peer_error" | "policy_close" | "channel_failure";
 export interface ExperimentalWebSocketIngressDiagnostics {

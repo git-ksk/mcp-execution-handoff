@@ -397,6 +397,7 @@ function acceptanceSnapshot() {
         wssFailureChannelState: handoff?.managedWebSocketDiagnosticsSnapshot().failureChannelState ?? "none",
         wssFailureCode: handoff?.managedWebSocketDiagnosticsSnapshot().failureCode ?? "none",
         wssFailureInputStage: handoff?.managedWebSocketDiagnosticsSnapshot().failureInputStage ?? "none",
+        wssLatency: handoff?.managedWebSocketLatencySnapshot() ?? null,
         turnConfigured: false,
         currentTransport: managedEvidence.currentTransport,
         lastTransport: managedEvidence.lastTransport,

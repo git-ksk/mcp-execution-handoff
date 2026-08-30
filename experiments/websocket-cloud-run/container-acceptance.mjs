@@ -207,6 +207,8 @@ try {
     const status = await readAcceptanceStatus(cookie);
     return status.doneObserved === true && closed;
   });
+  const baseline = await readAcceptanceStatus(cookie);
+  process.stdout.write(`WSS_CONTAINER_LATENCY_BASELINE:${JSON.stringify(baseline.wssLatency ?? null)}\n`);
   ws.close();
   process.stdout.write("WSS_CONTAINER_ACCEPTANCE_OK\n");
 } catch (error) {
@@ -240,7 +242,8 @@ try {
         wssChannelLastFailure: status.wssChannelLastFailure ?? "none",
         wssChannelLastInputStage: status.wssChannelLastInputStage ?? "none",
         wssFailureCode: status.wssFailureCode ?? "none",
-        wssFailureInputStage: status.wssFailureInputStage ?? "none"
+        wssFailureInputStage: status.wssFailureInputStage ?? "none",
+        wssLatency: status.wssLatency ?? null
       };
       process.stderr.write(`WSS_CONTAINER_DIAGNOSTICS:${JSON.stringify(diagnostics)}\n`);
     }

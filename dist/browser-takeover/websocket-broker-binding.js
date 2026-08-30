@@ -26,7 +26,8 @@ export class ExperimentalWebSocketBrokerBinding {
             allowedOrigins: options.allowedOrigins,
             onInput: options.onInput,
             ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes }),
-            ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {})
+            ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {}),
+            ...(options.latencyTracker ? { latencyTracker: options.latencyTracker } : {})
         });
     }
     createLink(intervention, principalBinding, inputPolicy) {
