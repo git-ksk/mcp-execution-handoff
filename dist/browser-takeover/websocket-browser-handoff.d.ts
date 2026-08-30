@@ -4,7 +4,7 @@ import type { TakeoverAuthorityReleaseEvent, TakeoverCompletionEvent, TakeoverHo
 import { ExperimentalWebSocketWindowHandoff, type ExperimentalWebSocketWindowHandoffConfig, type ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
-import type { WebSocketLatencySnapshot } from "./websocket-latency.js";
+import type { WebSocketLatencySnapshot, WebSocketLatencyTracker } from "./websocket-latency.js";
 export interface ExperimentalWebSocketBrowserHandoffConfig {
     takeover: ExperimentalWebSocketWindowHandoffConfig["takeover"];
     allowedOrigins: readonly string[];
@@ -12,6 +12,7 @@ export interface ExperimentalWebSocketBrowserHandoffConfig {
     frameIntervalMs?: number;
     maxInboundBytes?: number;
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+    latencyTracker?: WebSocketLatencyTracker;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
     onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }

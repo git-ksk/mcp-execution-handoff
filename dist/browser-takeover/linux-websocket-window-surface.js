@@ -56,6 +56,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     #inputAttempts = 0;
     #authorityBoundary = "valid";
     #onDiagnosticEvent;
+    #latencyTracker;
     constructor(config) {
         if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
             throw new Error("Linux WSS host script must be an absolute path");
@@ -79,6 +80,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#authorityHelperExecutable = authorityHelperExecutable;
         this.#helperTtlMs = helperTtlMs;
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
+        this.#latencyTracker = config.latencyTracker;
     }
     diagnosticsSnapshot() {
         return {
@@ -204,13 +206,19 @@ export class ExperimentalLinuxWebSocketWindowSurface {
         this.#lastInputStage = "none";
         this.#lastInputFailureDetail = "none";
         this.#lastInputBoundaryStage = "requested";
+        const prepareStartedAt = performance.now();
         const active = await this.#ensure(target);
+        this.#latencyTracker?.record("input_prepare", performance.now() - prepareStartedAt);
         this.#lastInputBoundaryStage = "helper_ready";
+        const queuedAt = performance.now();
         active.inputChain = active.inputChain.then(async () => {
+            this.#latencyTracker?.record("input_queue_wait", performance.now() - queuedAt);
             if (active.failed || this.#active !== active)
                 throw new Error("Linux WSS exact-window helper is unavailable");
             try {
+                const revalidateStartedAt = performance.now();
                 await this.#revalidate(target, active);
+                this.#latencyTracker?.record("input_revalidate", performance.now() - revalidateStartedAt);
                 this.#lastInputBoundaryStage = "revalidation_ready";
             }
             catch (error) {
@@ -221,6 +229,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
             }
             if (active.pendingInputAck)
                 throw new Error("Linux WSS exact-window helper input is busy");
+            const hostAckStartedAt = performance.now();
             await new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     if (active.pendingInputAck?.timer !== timer)
@@ -242,6 +251,7 @@ export class ExperimentalLinuxWebSocketWindowSurface {
                 active.child.stdin.write(line);
                 this.#lastInputBoundaryStage = "command_sent";
             });
+            this.#latencyTracker?.record("input_host_ack", performance.now() - hostAckStartedAt);
         });
         return active.inputChain;
     }

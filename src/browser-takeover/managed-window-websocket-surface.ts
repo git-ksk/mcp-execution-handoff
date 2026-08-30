@@ -2,6 +2,7 @@ import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 import {
   ExperimentalLinuxWebSocketWindowSurface as LinuxWebSocketWindowSurface
 } from "./linux-websocket-window-surface.js";
@@ -33,6 +34,7 @@ export interface ManagedWindowWebSocketSurfaceFactoryConfig {
   helperTtlMs: number;
   initialSecureWindowPolicy?: { mode: "macos_local_authentication" };
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  latencyTracker?: WebSocketLatencyTracker;
 }
 
 export function resolveManagedWindowWebSocketPlatform(
@@ -78,6 +80,7 @@ export function createManagedWindowWebSocketSurface(
     ...(config.host.authorityHelperExecutable
       ? { authorityHelperExecutable: config.host.authorityHelperExecutable }
       : {}),
-    ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
+    ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+    ...(config.latencyTracker ? { latencyTracker: config.latencyTracker } : {})
   });
 }

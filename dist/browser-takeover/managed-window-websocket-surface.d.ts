@@ -2,6 +2,7 @@ import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 export type ManagedWindowWebSocketPlatform = "auto" | "macos" | "linux";
 /** Deployment-owned host configuration. It never appears in a semantic Handoff start request. */
 export interface ManagedWindowWebSocketHostConfig {
@@ -27,6 +28,7 @@ export interface ManagedWindowWebSocketSurfaceFactoryConfig {
         mode: "macos_local_authentication";
     };
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+    latencyTracker?: WebSocketLatencyTracker;
 }
 export declare function resolveManagedWindowWebSocketPlatform(host: ManagedWindowWebSocketHostConfig): Exclude<ManagedWindowWebSocketPlatform, "auto">;
 /** Construct one exact-window WSS surface without exposing a concrete OS class to consumers. */

@@ -23,7 +23,11 @@ import {
 } from "./managed-transport-coordinator.js";
 import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
 import { WebRtcLatencyTracker, type WebRtcLatencyComparison } from "./webrtc-latency.js";
-import { emptyWebSocketLatencySnapshot, type WebSocketLatencySnapshot } from "./websocket-latency.js";
+import {
+  WebSocketLatencyTracker,
+  emptyWebSocketLatencySnapshot,
+  type WebSocketLatencySnapshot
+} from "./websocket-latency.js";
 import type { SpawnedWebRtcRuntimeProviderConfig } from "./webrtc-runtime.js";
 import {
   webRtcRelayEnvironmentConfigured,
@@ -275,6 +279,7 @@ export class ManagedWindowHandoffRuntime {
     let surface: ManagedWindowWebSocketSurface | undefined;
     let wss: WebSocketBrowserHandoff | undefined;
     if (this.#transportOrder.includes("websocket_relay")) {
+      const wssLatencyTracker = new WebSocketLatencyTracker();
       try {
         surface = createManagedWindowWebSocketSurface({
           host: this.#config.managedFallback ?? {},
@@ -283,7 +288,8 @@ export class ManagedWindowHandoffRuntime {
           ...(this.#config.initialSecureWindowPolicy
             ? { initialSecureWindowPolicy: this.#config.initialSecureWindowPolicy }
             : {}),
-          onDiagnosticEvent: noteDiagnosticEvent
+          onDiagnosticEvent: noteDiagnosticEvent,
+          latencyTracker: wssLatencyTracker
         });
       } catch (error) {
         throw new WindowHandoffCoreError(
@@ -295,6 +301,7 @@ export class ManagedWindowHandoffRuntime {
         takeover: this.#config.takeover,
         allowedOrigins: [this.#publicOrigin],
         surface,
+        latencyTracker: wssLatencyTracker,
         onDiagnosticEvent: noteDiagnosticEvent,
         onComplete: completion,
         onAuthorityReleased: authorityReleased

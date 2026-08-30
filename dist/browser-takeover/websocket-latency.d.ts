@@ -1,4 +1,4 @@
-export type WebSocketLatencyMetric = "capture" | "frame_send" | "frame_cadence" | "client_frame_decode" | "client_frame_cadence" | "input_apply" | "completion_fence" | "revoke_fence";
+export type WebSocketLatencyMetric = "capture" | "frame_send" | "frame_cadence" | "client_frame_decode" | "client_frame_cadence" | "input_apply" | "input_prepare" | "input_queue_wait" | "input_revalidate" | "input_host_ack" | "completion_fence" | "revoke_fence";
 export interface WebSocketLatencyDistribution {
     count: number;
     p50Ms?: number;
@@ -24,6 +24,10 @@ export interface WebSocketLatencySnapshot {
     clientFrameDecode: WebSocketLatencyDistribution;
     clientFrameCadence: WebSocketLatencyDistribution;
     inputApply: WebSocketLatencyDistribution;
+    inputPrepare: WebSocketLatencyDistribution;
+    inputQueueWait: WebSocketLatencyDistribution;
+    inputRevalidate: WebSocketLatencyDistribution;
+    inputHostAck: WebSocketLatencyDistribution;
     completionFence: WebSocketLatencyDistribution;
     revokeFence: WebSocketLatencyDistribution;
 }

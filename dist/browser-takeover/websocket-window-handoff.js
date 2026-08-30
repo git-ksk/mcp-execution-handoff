@@ -27,9 +27,10 @@ export class ExperimentalWebSocketWindowHandoff {
     #sessionsById = new Map();
     #onDiagnosticEvent;
     #onAuthorityReleased;
-    #latencyTracker = new WebSocketLatencyTracker();
+    #latencyTracker;
     constructor(config) {
         this.#surface = config.surface;
+        this.#latencyTracker = config.latencyTracker ?? new WebSocketLatencyTracker();
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
         this.#onAuthorityReleased = config.onAuthorityReleased;
         this.#frameIntervalMs = boundedFrameInterval(config.frameIntervalMs);

@@ -56,6 +56,8 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
   frameIntervalMs?: number;
   maxInboundBytes?: number;
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  /** Optional shared tracker used by managed composition to include exact-surface stages. */
+  latencyTracker?: WebSocketLatencyTracker;
   /** Called only after the shared Human generation has been fenced. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
   /** Distinguishes explicit Human completion from fail-closed authority loss. */
@@ -112,10 +114,11 @@ export class ExperimentalWebSocketWindowHandoff {
   readonly #sessionsById = new Map<string, ActiveWindowSession>();
   readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
   readonly #onAuthorityReleased: ((event: TakeoverAuthorityReleaseEvent) => void | Promise<void>) | undefined;
-  readonly #latencyTracker = new WebSocketLatencyTracker();
+  readonly #latencyTracker: WebSocketLatencyTracker;
 
   constructor(config: ExperimentalWebSocketWindowHandoffConfig) {
     this.#surface = config.surface;
+    this.#latencyTracker = config.latencyTracker ?? new WebSocketLatencyTracker();
     this.#onDiagnosticEvent = config.onDiagnosticEvent;
     this.#onAuthorityReleased = config.onAuthorityReleased;
     this.#frameIntervalMs = boundedFrameInterval(config.frameIntervalMs);

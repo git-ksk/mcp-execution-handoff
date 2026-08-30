@@ -23,6 +23,7 @@ export class ExperimentalWebSocketBrowserHandoff {
             ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
             ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
             ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+            ...(config.latencyTracker ? { latencyTracker: config.latencyTracker } : {}),
             ...(config.onAuthorityReleased ? { onAuthorityReleased: config.onAuthorityReleased } : {}),
             onComplete: async (event) => {
                 this.#forgetMatching(event.interventionId, event.epoch);

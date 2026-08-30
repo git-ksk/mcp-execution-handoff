@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 import { type TakeoverAuthorityReleaseEvent, type TakeoverBrokerConfig, type TakeoverCompletionEvent, type TakeoverHostTarget, type TakeoverInterventionRef } from "../browser-takeover/broker.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
-import { type WebSocketLatencySnapshot } from "./websocket-latency.js";
+import { WebSocketLatencyTracker, type WebSocketLatencySnapshot } from "./websocket-latency.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 export type ExperimentalWebSocketWindowInputFailureDisposition = "recoverable" | "authority_lost";
@@ -34,6 +34,8 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
     frameIntervalMs?: number;
     maxInboundBytes?: number;
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+    /** Optional shared tracker used by managed composition to include exact-surface stages. */
+    latencyTracker?: WebSocketLatencyTracker;
     /** Called only after the shared Human generation has been fenced. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
     /** Distinguishes explicit Human completion from fail-closed authority loss. */
