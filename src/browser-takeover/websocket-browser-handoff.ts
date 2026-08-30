@@ -14,7 +14,7 @@ import {
 } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
-import type { WebSocketLatencySnapshot } from "./websocket-latency.js";
+import type { WebSocketLatencySnapshot, WebSocketLatencyTracker } from "./websocket-latency.js";
 
 export interface ExperimentalWebSocketBrowserHandoffConfig {
   takeover: ExperimentalWebSocketWindowHandoffConfig["takeover"];
@@ -23,6 +23,7 @@ export interface ExperimentalWebSocketBrowserHandoffConfig {
   frameIntervalMs?: number;
   maxInboundBytes?: number;
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  latencyTracker?: WebSocketLatencyTracker;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
   onAuthorityReleased?: (event: TakeoverAuthorityReleaseEvent) => void | Promise<void>;
 }
@@ -64,6 +65,7 @@ export class ExperimentalWebSocketBrowserHandoff {
       ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
       ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
       ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+      ...(config.latencyTracker ? { latencyTracker: config.latencyTracker } : {}),
       ...(config.onAuthorityReleased ? { onAuthorityReleased: config.onAuthorityReleased } : {}),
       onComplete: async (event) => {
         this.#forgetMatching(event.interventionId, event.epoch);

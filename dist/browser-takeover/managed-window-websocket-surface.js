@@ -41,7 +41,8 @@ export function createManagedWindowWebSocketSurface(config) {
         ...(config.host.authorityHelperExecutable
             ? { authorityHelperExecutable: config.host.authorityHelperExecutable }
             : {}),
-        ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
+        ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+        ...(config.latencyTracker ? { latencyTracker: config.latencyTracker } : {})
     });
 }
 //# sourceMappingURL=managed-window-websocket-surface.js.map

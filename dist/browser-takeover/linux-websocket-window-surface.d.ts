@@ -3,6 +3,7 @@ import type { ExperimentalWebSocketWindowCaptureFailureDisposition, Experimental
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 export { WebSocketWindowHostRecordParser as LinuxWebSocketHostRecordParser } from "./websocket-window-host-record.js";
 export type { WebSocketWindowJpegFrame as LinuxWebSocketJpegFrame } from "./websocket-window-host-record.js";
 export type LinuxWebSocketSurfaceFailure = "none" | "frame_timeout" | "helper_closed" | "helper_error" | "frame_protocol" | "diagnostics_bounds" | "input_failure" | "input_timeout" | "input_revalidation_failure" | "revalidation_failure" | "capture_x11" | "capture_encoder" | "capture_option" | "capture_other";
@@ -24,6 +25,7 @@ export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
     helperTtlMs?: number;
     /** Content-free bounded event hook owned by managed Handoff diagnostics. */
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+    latencyTracker?: WebSocketLatencyTracker;
 }
 /**
  * Private Linux physical-Acceptance surface for the #40 WSS experiment.

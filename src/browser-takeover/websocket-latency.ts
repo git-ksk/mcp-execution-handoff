@@ -5,6 +5,10 @@ export type WebSocketLatencyMetric =
   | "client_frame_decode"
   | "client_frame_cadence"
   | "input_apply"
+  | "input_prepare"
+  | "input_queue_wait"
+  | "input_revalidate"
+  | "input_host_ack"
   | "completion_fence"
   | "revoke_fence";
 
@@ -34,6 +38,10 @@ export interface WebSocketLatencySnapshot {
   clientFrameDecode: WebSocketLatencyDistribution;
   clientFrameCadence: WebSocketLatencyDistribution;
   inputApply: WebSocketLatencyDistribution;
+  inputPrepare: WebSocketLatencyDistribution;
+  inputQueueWait: WebSocketLatencyDistribution;
+  inputRevalidate: WebSocketLatencyDistribution;
+  inputHostAck: WebSocketLatencyDistribution;
   completionFence: WebSocketLatencyDistribution;
   revokeFence: WebSocketLatencyDistribution;
 }
@@ -48,6 +56,10 @@ const METRICS = [
   "client_frame_decode",
   "client_frame_cadence",
   "input_apply",
+  "input_prepare",
+  "input_queue_wait",
+  "input_revalidate",
+  "input_host_ack",
   "completion_fence",
   "revoke_fence"
 ] as const satisfies readonly WebSocketLatencyMetric[];
@@ -74,6 +86,10 @@ export class WebSocketLatencyTracker {
     const clientFrameDecode = distribution(this.#samples.get("client_frame_decode")!);
     const clientFrameCadence = distribution(this.#samples.get("client_frame_cadence")!);
     const inputApply = distribution(this.#samples.get("input_apply")!);
+    const inputPrepare = distribution(this.#samples.get("input_prepare")!);
+    const inputQueueWait = distribution(this.#samples.get("input_queue_wait")!);
+    const inputRevalidate = distribution(this.#samples.get("input_revalidate")!);
+    const inputHostAck = distribution(this.#samples.get("input_host_ack")!);
     const completionFence = distribution(this.#samples.get("completion_fence")!);
     const revokeFence = distribution(this.#samples.get("revoke_fence")!);
     return {
@@ -83,6 +99,10 @@ export class WebSocketLatencyTracker {
         + clientFrameDecode.count
         + clientFrameCadence.count
         + inputApply.count
+        + inputPrepare.count
+        + inputQueueWait.count
+        + inputRevalidate.count
+        + inputHostAck.count
         + completionFence.count
         + revokeFence.count,
       capture,
@@ -91,6 +111,10 @@ export class WebSocketLatencyTracker {
       clientFrameDecode,
       clientFrameCadence,
       inputApply,
+      inputPrepare,
+      inputQueueWait,
+      inputRevalidate,
+      inputHostAck,
       completionFence,
       revokeFence
     };

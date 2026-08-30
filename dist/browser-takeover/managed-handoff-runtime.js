@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WindowHandoffCore, WindowHandoffCoreError } from "../window-takeover/window-handoff-core.js";
 import { ManagedBrowserHandoffTransportCoordinator, ManagedBrowserHandoffTransportCoordinatorError } from "./managed-transport-coordinator.js";
 import { WebRtcLatencyTracker } from "./webrtc-latency.js";
-import { emptyWebSocketLatencySnapshot } from "./websocket-latency.js";
+import { WebSocketLatencyTracker, emptyWebSocketLatencySnapshot } from "./websocket-latency.js";
 import { webRtcRelayEnvironmentConfigured, withDirectOnlyWebRtcEnvironment } from "./webrtc-runtime-attempt.js";
 import { WebSocketBrowserHandoff } from "./websocket-relay.js";
 import { createManagedWindowWebSocketSurface, resolveManagedWindowWebSocketPlatform } from "./managed-window-websocket-surface.js";
@@ -155,6 +155,7 @@ export class ManagedWindowHandoffRuntime {
         let surface;
         let wss;
         if (this.#transportOrder.includes("websocket_relay")) {
+            const wssLatencyTracker = new WebSocketLatencyTracker();
             try {
                 surface = createManagedWindowWebSocketSurface({
                     host: this.#config.managedFallback ?? {},
@@ -163,7 +164,8 @@ export class ManagedWindowHandoffRuntime {
                     ...(this.#config.initialSecureWindowPolicy
                         ? { initialSecureWindowPolicy: this.#config.initialSecureWindowPolicy }
                         : {}),
-                    onDiagnosticEvent: noteDiagnosticEvent
+                    onDiagnosticEvent: noteDiagnosticEvent,
+                    latencyTracker: wssLatencyTracker
                 });
             }
             catch (error) {
@@ -173,6 +175,7 @@ export class ManagedWindowHandoffRuntime {
                 takeover: this.#config.takeover,
                 allowedOrigins: [this.#publicOrigin],
                 surface,
+                latencyTracker: wssLatencyTracker,
                 onDiagnosticEvent: noteDiagnosticEvent,
                 onComplete: completion,
                 onAuthorityReleased: authorityReleased

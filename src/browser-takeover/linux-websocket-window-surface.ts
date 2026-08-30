@@ -11,6 +11,7 @@ import type {
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 import {
   WebSocketWindowHostRecordParser as LinuxWebSocketHostRecordParser,
   type WebSocketWindowJpegFrame as LinuxWebSocketJpegFrame
@@ -187,6 +188,7 @@ export interface ExperimentalLinuxWebSocketWindowSurfaceConfig {
   helperTtlMs?: number;
   /** Content-free bounded event hook owned by managed Handoff diagnostics. */
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  latencyTracker?: WebSocketLatencyTracker;
 }
 
 interface ActiveLinuxSurface {
@@ -255,6 +257,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
   #inputAttempts = 0;
   #authorityBoundary: "valid" | "lost" = "valid";
   readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
+  readonly #latencyTracker: WebSocketLatencyTracker | undefined;
 
   constructor(config: ExperimentalLinuxWebSocketWindowSurfaceConfig) {
     if (!config.hostScript.trim() || !isAbsolute(config.hostScript)) {
@@ -277,6 +280,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     this.#authorityHelperExecutable = authorityHelperExecutable;
     this.#helperTtlMs = helperTtlMs;
     this.#onDiagnosticEvent = config.onDiagnosticEvent;
+    this.#latencyTracker = config.latencyTracker;
   }
 
   diagnosticsSnapshot(): {
@@ -424,12 +428,18 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     this.#lastInputStage = "none";
     this.#lastInputFailureDetail = "none";
     this.#lastInputBoundaryStage = "requested";
+    const prepareStartedAt = performance.now();
     const active = await this.#ensure(target);
+    this.#latencyTracker?.record("input_prepare", performance.now() - prepareStartedAt);
     this.#lastInputBoundaryStage = "helper_ready";
+    const queuedAt = performance.now();
     active.inputChain = active.inputChain.then(async () => {
+      this.#latencyTracker?.record("input_queue_wait", performance.now() - queuedAt);
       if (active.failed || this.#active !== active) throw new Error("Linux WSS exact-window helper is unavailable");
       try {
+        const revalidateStartedAt = performance.now();
         await this.#revalidate(target, active);
+        this.#latencyTracker?.record("input_revalidate", performance.now() - revalidateStartedAt);
         this.#lastInputBoundaryStage = "revalidation_ready";
       } catch (error) {
         this.#recordFailure("input_revalidation_failure");
@@ -437,6 +447,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
         throw error;
       }
       if (active.pendingInputAck) throw new Error("Linux WSS exact-window helper input is busy");
+      const hostAckStartedAt = performance.now();
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           if (active.pendingInputAck?.timer !== timer) return;
@@ -457,6 +468,7 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
         active.child.stdin.write(line);
         this.#lastInputBoundaryStage = "command_sent";
       });
+      this.#latencyTracker?.record("input_host_ack", performance.now() - hostAckStartedAt);
     });
     return active.inputChain;
   }
