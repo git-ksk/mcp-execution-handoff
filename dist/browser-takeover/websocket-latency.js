@@ -2,6 +2,9 @@ const MAX_LATENCY_MS = 120_000;
 const MAX_SAMPLES_PER_METRIC = 128;
 const METRICS = [
     "capture",
+    "capture_prepare",
+    "capture_revalidate",
+    "capture_frame_wait",
     "frame_send",
     "frame_cadence",
     "client_frame_decode",
@@ -28,6 +31,9 @@ export class WebSocketLatencyTracker {
     }
     snapshot() {
         const capture = distribution(this.#samples.get("capture"));
+        const capturePrepare = distribution(this.#samples.get("capture_prepare"));
+        const captureRevalidate = distribution(this.#samples.get("capture_revalidate"));
+        const captureFrameWait = distribution(this.#samples.get("capture_frame_wait"));
         const frameSend = distribution(this.#samples.get("frame_send"));
         const frameCadence = distribution(this.#samples.get("frame_cadence"));
         const clientFrameDecode = distribution(this.#samples.get("client_frame_decode"));
@@ -41,6 +47,9 @@ export class WebSocketLatencyTracker {
         const revokeFence = distribution(this.#samples.get("revoke_fence"));
         return {
             samples: capture.count
+                + capturePrepare.count
+                + captureRevalidate.count
+                + captureFrameWait.count
                 + frameSend.count
                 + frameCadence.count
                 + clientFrameDecode.count
@@ -53,6 +62,9 @@ export class WebSocketLatencyTracker {
                 + completionFence.count
                 + revokeFence.count,
             capture,
+            capturePrepare,
+            captureRevalidate,
+            captureFrameWait,
             frameSend,
             frameCadence,
             clientFrameDecode,

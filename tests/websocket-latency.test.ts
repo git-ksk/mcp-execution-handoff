@@ -48,8 +48,9 @@ test("WSS latency tracker is bounded, rounded and contains distributions only", 
   assert.equal(snapshot.inputApply.count, 0);
   assert.equal(snapshot.samples, 128);
   assert.deepEqual(Object.keys(snapshot).sort(), [
-    "capture", "clientFrameCadence", "clientFrameDecode", "completionFence", "frameCadence",
-    "frameSend", "inputApply", "inputHostAck", "inputPrepare", "inputQueueWait",
+    "capture", "captureFrameWait", "capturePrepare", "captureRevalidate", "clientFrameCadence",
+    "clientFrameDecode", "completionFence", "frameCadence", "frameSend", "inputApply",
+    "inputHostAck", "inputPrepare", "inputQueueWait",
     "inputRevalidate", "revokeFence", "samples"
   ].sort());
   const serialized = JSON.stringify(snapshot);

@@ -45,3 +45,16 @@ test("LocalAuthentication WSS harness shares public HTTPS ingress without invent
   assert.doesNotMatch(script, /latencySnapshot/);
   assert.doesNotMatch(script, /HANDOFF_LAN_HOST/);
 });
+
+test("Cloud Run-equivalent WSS harness exposes only the shared content-free latency snapshot", () => {
+  const server = source("src/experimental/websocket-cloud-run-acceptance-server.ts");
+  const client = source("experiments/websocket-cloud-run/container-acceptance.mjs");
+
+  assert.match(server, /new WebSocketLatencyTracker\(\)/);
+  assert.match(server, /latencyTracker/);
+  assert.match(server, /wssLatency: handoff\?\.latencySnapshot\(\) \?\? null/);
+  assert.match(client, /baseline\.wssLatency \?\? null/);
+  for (const forbidden of ["framebuffer", "humanInput", "capability", "reconnectHandle", "principalBinding"]) {
+    assert.doesNotMatch(server.match(/wssLatency:[^\n]+/)?.[0] ?? "", new RegExp(forbidden, "i"));
+  }
+});
