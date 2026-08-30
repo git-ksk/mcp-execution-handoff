@@ -1,0 +1,1 @@
+Regression-first checkpoint for #177. The parent commit contains the four failing lifecycle regressions before the runtime fix.
