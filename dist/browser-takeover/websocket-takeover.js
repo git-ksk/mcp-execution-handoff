@@ -373,18 +373,13 @@ export class ExperimentalWebSocketTakeoverChannel {
         this.stateValue = "closing";
         this.clearDrainTimer();
         this.pendingFrame = undefined;
-        try {
-            await this.peer.sendControl({ kind: "closing" });
-        }
-        catch (error) {
-            await this.failClosed(new WebSocketTakeoverError("transport_failure", "WebSocket completion signaling failed"));
-            throw error;
-        }
+        // Terminal UI delivery must not gate shared authority completion.
+        this.notifyTerminal({ kind: "closing" });
         try {
             await this.lease.complete(this.binding);
             this.released = true;
             this.stateValue = "closed";
-            await this.peer.sendControl({ kind: "closed" });
+            this.notifyTerminal({ kind: "closed" });
             await this.safeClose(NORMAL_CLOSE, "done");
         }
         catch (error) {
@@ -406,17 +401,12 @@ export class ExperimentalWebSocketTakeoverChannel {
         this.clearDrainTimer();
         this.pendingFrame = undefined;
         try {
-            await this.peer.sendControl({ kind: "error", code: failure.code });
-        }
-        catch {
-            // The connection may already be unavailable. Authority is still fenced below.
-        }
-        try {
             await this.releaseOnce();
         }
         catch {
             this.recordReleaseFailure();
         }
+        this.notifyTerminal({ kind: "error", code: this.lastFailureValue ?? failure.code });
         await this.safeClose(failure.code === "transport_failure" || this.lastFailureValue === "authority_release_failed"
             ? INTERNAL_CLOSE
             : POLICY_CLOSE, this.lastFailureValue ?? failure.code);
@@ -504,12 +494,22 @@ export class ExperimentalWebSocketTakeoverChannel {
         this.stateValue = "failed";
         this.lastFailureValue = "authority_release_failed";
     }
-    async safeClose(code, reason) {
+    /** Terminal messages are finite, best-effort hints; late outcomes cannot change authority. */
+    notifyTerminal(message) {
         try {
-            await this.peer.close(code, reason);
+            void Promise.resolve(this.peer.sendControl(message)).catch(() => undefined);
         }
         catch {
-            // Closing the network connection is best-effort after authority has been fenced.
+            // A synchronous peer failure is also independent of authority completion/release.
+        }
+    }
+    async safeClose(code, reason) {
+        try {
+            // Request closure now, but never hold the operation queue on a peer's close response.
+            void Promise.resolve(this.peer.close(code, reason)).catch(() => undefined);
+        }
+        catch {
+            // Local/shared authority state remains authoritative even if network cleanup fails.
         }
     }
 }

@@ -35,6 +35,10 @@ function createHarness(overrides: HarnessOverrides = {}) {
   const calls = { begin: 0, end: 0, complete: 0, release: 0 };
   let buffered = 0;
   let frameGate: ReturnType<typeof deferred> | undefined;
+  let controlGate: ReturnType<typeof deferred> | undefined;
+  let closeGate: ReturnType<typeof deferred> | undefined;
+  let inputGate: ReturnType<typeof deferred> | undefined;
+  let completionGate: ReturnType<typeof deferred> | undefined;
   let failBegin = false;
   let releaseFailuresLeft = overrides.failReleaseAttempts ?? 0;
 
@@ -50,6 +54,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
     peer: {
       async sendControl(message) {
         controls.push(message);
+        if (controlGate) await controlGate.promise;
         if (overrides.failControl) throw new Error("control failed");
       },
       async sendFrame(frame) {
@@ -63,6 +68,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
       },
       async close(code, reason) {
         closes.push({ code, reason });
+        if (closeGate) await closeGate.promise;
       }
     },
     lease: {
@@ -76,6 +82,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
       },
       async complete() {
         calls.complete += 1;
+        if (completionGate) await completionGate.promise;
         if (overrides.failComplete) throw new Error("stale complete");
       },
       async release() {
@@ -87,8 +94,9 @@ function createHarness(overrides: HarnessOverrides = {}) {
       }
     },
     maxBufferedBytes: 8,
-    onInput(input) {
+    async onInput(input) {
       inputs.push(input);
+      if (inputGate) await inputGate.promise;
       if (overrides.failInput) throw new Error("input failed");
     },
     onClientDiagnostic(kind) {
@@ -106,6 +114,22 @@ function createHarness(overrides: HarnessOverrides = {}) {
     calls,
     setBuffered(value: number) {
       buffered = value;
+    },
+    blockControls() {
+      controlGate = deferred();
+      return controlGate;
+    },
+    blockClose() {
+      closeGate = deferred();
+      return closeGate;
+    },
+    blockCompletion() {
+      completionGate = deferred();
+      return completionGate;
+    },
+    blockInput() {
+      inputGate = deferred();
+      return inputGate;
     },
     blockFrames() {
       frameGate = deferred();
@@ -468,4 +492,151 @@ test("WebSocket invalid frame fails closed", async () => {
   assert.equal(h.channel.state, "failed");
   assert.equal(h.calls.release, 1);
   assert.deepEqual(h.frames, []);
+});
+
+
+test("WebSocket Done finalizes authority despite stalled terminal notifications and close", async () => {
+  const h = createHarness();
+  const controlGate = h.blockControls();
+  const closeGate = h.blockClose();
+  let settled = false;
+  const done = h.channel.receiveText(JSON.stringify({ kind: "done" })).then(() => { settled = true; });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(h.calls.complete, 1);
+    assert.equal(settled, true);
+    assert.equal(h.channel.state, "closed");
+    await h.channel.receiveText(JSON.stringify({ kind: "done" }));
+    await h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 }));
+    await h.channel.revoke();
+    assert.equal(h.calls.complete, 1);
+    assert.deepEqual(h.inputs, []);
+    assert.equal(h.closes.length, 1);
+  } finally {
+    controlGate.resolve();
+    closeGate.resolve();
+    await done;
+  }
+});
+
+test("WebSocket failed input releases authority without waiting for error notification", async () => {
+  const h = createHarness({ failInput: true });
+  const controlGate = h.blockControls();
+  const failed = assert.rejects(
+    h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 })), /input failed/
+  );
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(h.calls.end, 1);
+    assert.equal(h.calls.release, 1);
+    assert.equal(h.calls.complete, 0);
+    assert.equal(h.channel.state, "failed");
+    assert.equal(h.closes.length, 1);
+  } finally {
+    controlGate.resolve();
+    await failed;
+  }
+});
+
+test("WebSocket cleanup retry is reachable despite stalled error and close delivery", async () => {
+  const h = createHarness({ failReleaseAttempts: 1 });
+  const controlGate = h.blockControls();
+  const closeGate = h.blockClose();
+  let settled = false;
+  const failed = assert.rejects(h.channel.receiveText("{invalid"), /invalid JSON/)
+    .then(() => { settled = true; });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, true);
+    assert.equal(h.channel.diagnostics.lastFailure, "authority_release_failed");
+    assert.equal(h.calls.release, 1);
+    await h.channel.revoke();
+    assert.equal(h.calls.release, 2);
+    assert.equal(h.channel.state, "revoked");
+    assert.equal(h.calls.complete, 0);
+  } finally {
+    controlGate.resolve();
+    closeGate.resolve();
+    await failed;
+  }
+});
+
+test("WebSocket late terminal send rejection cannot change completed authority", async () => {
+  const h = createHarness({ failControl: true });
+  const gate = h.blockControls();
+  const done = h.channel.receiveText(JSON.stringify({ kind: "done" })).catch(() => undefined);
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(h.calls.complete, 1);
+    assert.equal(h.channel.state, "closed");
+  } finally {
+    gate.resolve();
+    await done;
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.channel.state, "closed");
+  assert.equal(h.calls.release, 0);
+});
+
+test("WebSocket Done still waits for accepted input to finish its bound use", async () => {
+  const h = createHarness();
+  const inputGate = h.blockInput();
+  const input = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const done = h.channel.receiveText(JSON.stringify({ kind: "done" }));
+  const lateInput = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.3, y: 0.3 }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.calls.complete, 0);
+  assert.equal(h.calls.end, 0);
+  inputGate.resolve();
+  await Promise.all([input, done, lateInput]);
+  assert.equal(h.calls.end, 1);
+  assert.equal(h.calls.complete, 1);
+  assert.equal(h.inputs.length, 1);
+});
+
+test("WebSocket Done discards backpressured frames without waiting for the peer to drain", async () => {
+  const h = createHarness();
+  h.setBuffered(99);
+  await h.channel.pushFrame(frame(1));
+  await h.channel.pushFrame(frame(2));
+  await h.channel.receiveText(JSON.stringify({ kind: "done" }));
+  h.setBuffered(0);
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  assert.equal(h.calls.complete, 1);
+  assert.deepEqual(h.frames, []);
+});
+
+
+test("WebSocket closed notification waits for successful shared authority completion", async () => {
+  const h = createHarness();
+  const gate = h.blockCompletion();
+  const done = h.channel.receiveText(JSON.stringify({ kind: "done" }));
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(h.channel.state, "closing");
+    assert.deepEqual(h.controls, [{ kind: "closing" }]);
+    assert.deepEqual(h.closes, []);
+  } finally {
+    gate.resolve();
+    await done;
+  }
+  assert.equal(h.channel.state, "closed");
+  assert.deepEqual(h.controls, [{ kind: "closing" }, { kind: "closed" }]);
+});
+
+test("WebSocket failed completion releases despite stalled notifications without false success", async () => {
+  const h = createHarness({ failComplete: true });
+  const gate = h.blockControls();
+  const done = assert.rejects(h.channel.receiveText(JSON.stringify({ kind: "done" })), /stale complete/);
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(h.calls.complete, 1);
+    assert.equal(h.calls.release, 1);
+    assert.equal(h.channel.state, "failed");
+    assert.equal(h.controls.some((value) => "kind" in value && value.kind === "closed"), false);
+  } finally {
+    gate.resolve();
+    await done;
+  }
 });

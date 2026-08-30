@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Decouple WSS terminal notifications and peer close responses from authority completion/release (#177). Stalled or rejected terminal writes no longer hold shared lease cleanup or prevent an explicit cleanup retry; accepted input still drains before Done, and late notification outcomes cannot restore authority. Add deterministic stalled-peer regression coverage without requiring ICE or physical authentication.
+
 - Keep managed Linux WSS takeover and keyboard authority alive across recoverable exact-window helper/frame capture faults (#170), while exact PID/window visibility, ownership, geometry, and process loss remain immediate fail-closed authority-boundary failures. Add bounded content-free managed WSS operator diagnostics for surface/channel failure class, frame count, and input progress.
 
 - Keep managed Linux WSS takeover alive across one transient exact-window helper/capture failure (#164): restart the failed helper once only for the same PID/window after mandatory ownership revalidation, while target disappearance, visibility loss, ownership change, and geometry loss remain immediate fail-closed authority-boundary failures. Regression coverage exercises both bounded recovery and no-retry ownership failure.
