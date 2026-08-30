@@ -357,7 +357,9 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
     for (let attempt = 0; attempt < CAPTURE_RECOVERY_ATTEMPTS; attempt += 1) {
       let active: ActiveLinuxSurface;
       try {
+        const prepareStartedAt = performance.now();
         active = await this.#ensure(target);
+        this.#latencyTracker?.record("capture_prepare", performance.now() - prepareStartedAt);
       } catch (error) {
         if (isExactWindowBoundaryError(error)) { this.#noteAuthorityLoss(); throw error; }
         if (attempt + 1 >= CAPTURE_RECOVERY_ATTEMPTS) throw error;
@@ -368,14 +370,18 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
       }
       const before = active.sequence;
       try {
+        const revalidateStartedAt = performance.now();
         await this.#revalidate(target, active);
+        this.#latencyTracker?.record("capture_revalidate", performance.now() - revalidateStartedAt);
       } catch (error) {
         this.#recordFailure("revalidation_failure");
         if (isExactWindowBoundaryError(error)) this.#noteAuthorityLoss();
         throw error;
       }
       try {
+        const frameWaitStartedAt = performance.now();
         const frame = await this.#frameAfter(active, before);
+        this.#latencyTracker?.record("capture_frame_wait", performance.now() - frameWaitStartedAt);
         return {
           data: Buffer.from(frame.data),
           width: frame.width,

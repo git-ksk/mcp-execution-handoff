@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { ExperimentalWebSocketBrowserHandoff } from "./websocket-browser-handoff.js";
 import { ExperimentalLinuxWebSocketWindowSurface } from "./linux-websocket-window-surface.js";
 import { parseWindowIds } from "../browser-takeover/linux-webrtc-host-cli.js";
+import { WebSocketLatencyTracker } from "../browser-takeover/websocket-latency.js";
 
 const DISPLAY = ":99";
 const COOKIE_NAME = "__Host-handoff-accept";
@@ -56,6 +57,7 @@ let activePrincipal: string | undefined;
 let activeLocator: string | undefined;
 let activeStartedAt = 0;
 let activeEpoch = 0;
+const latencyTracker = new WebSocketLatencyTracker();
 
 const port = boundedPort(process.env.PORT);
 const publicBaseUrl = requiredHttpsOrigin(process.env.HANDOFF_WSS_PUBLIC_BASE_URL);
@@ -183,7 +185,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       wssChannelLastFailure: handoff?.diagnosticsSnapshot().lastFailure ?? "none",
       wssChannelLastInputStage: handoff?.diagnosticsSnapshot().lastInputStage ?? "none",
       wssFailureCode: handoff?.diagnosticsSnapshot().failureCode ?? "none",
-      wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none"
+      wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none",
+      wssLatency: handoff?.latencySnapshot() ?? null
     });
     return;
   }
@@ -237,7 +240,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       wssChannelLastFailure: handoff?.diagnosticsSnapshot().lastFailure ?? "none",
       wssChannelLastInputStage: handoff?.diagnosticsSnapshot().lastInputStage ?? "none",
       wssFailureCode: handoff?.diagnosticsSnapshot().failureCode ?? "none",
-      wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none"
+      wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none",
+      wssLatency: handoff?.latencySnapshot() ?? null
     });
     return;
   }
@@ -260,7 +264,8 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       surface = new ExperimentalLinuxWebSocketWindowSurface({
         hostScript,
         displayName: DISPLAY,
-        helperTtlMs: SESSION_TTL_MS
+        helperTtlMs: SESSION_TTL_MS,
+        latencyTracker
       });
     }
     if (!handoff) {
@@ -274,6 +279,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
         allowedOrigins: [publicBaseUrl],
         surface,
         frameIntervalMs: 100,
+        latencyTracker,
         onComplete: () => {
           doneObserved = true;
           activeLocator = undefined;

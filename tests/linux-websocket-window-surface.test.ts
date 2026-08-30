@@ -351,6 +351,9 @@ test("Linux WSS input latency breakdown shares bounded tracker without payload d
       "fixture-only"
     );
     const snapshot = latencyTracker.snapshot();
+    assert.equal(snapshot.capturePrepare.count, 1);
+    assert.equal(snapshot.captureRevalidate.count, 1);
+    assert.equal(snapshot.captureFrameWait.count, 1);
     assert.equal(snapshot.inputPrepare.count, 1);
     assert.equal(snapshot.inputQueueWait.count, 1);
     assert.equal(snapshot.inputRevalidate.count, 1);

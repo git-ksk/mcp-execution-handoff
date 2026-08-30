@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { ExperimentalWebSocketBrowserHandoff } from "./websocket-browser-handoff.js";
 import { ExperimentalLinuxWebSocketWindowSurface } from "./linux-websocket-window-surface.js";
 import { parseWindowIds } from "../browser-takeover/linux-webrtc-host-cli.js";
+import { WebSocketLatencyTracker } from "../browser-takeover/websocket-latency.js";
 const DISPLAY = ":99";
 const COOKIE_NAME = "__Host-handoff-accept";
 const SESSION_TTL_MS = 15 * 60_000;
@@ -37,6 +38,7 @@ let activePrincipal;
 let activeLocator;
 let activeStartedAt = 0;
 let activeEpoch = 0;
+const latencyTracker = new WebSocketLatencyTracker();
 const port = boundedPort(process.env.PORT);
 const publicBaseUrl = requiredHttpsOrigin(process.env.HANDOFF_WSS_PUBLIC_BASE_URL);
 const hostScript = path.resolve("dist/browser-takeover/linux-webrtc-host-cli.js");
@@ -163,7 +165,8 @@ async function handleHttp(req, res) {
             wssChannelLastFailure: handoff?.diagnosticsSnapshot().lastFailure ?? "none",
             wssChannelLastInputStage: handoff?.diagnosticsSnapshot().lastInputStage ?? "none",
             wssFailureCode: handoff?.diagnosticsSnapshot().failureCode ?? "none",
-            wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none"
+            wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none",
+            wssLatency: handoff?.latencySnapshot() ?? null
         });
         return;
     }
@@ -209,7 +212,8 @@ async function handleHttp(req, res) {
             wssChannelLastFailure: handoff?.diagnosticsSnapshot().lastFailure ?? "none",
             wssChannelLastInputStage: handoff?.diagnosticsSnapshot().lastInputStage ?? "none",
             wssFailureCode: handoff?.diagnosticsSnapshot().failureCode ?? "none",
-            wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none"
+            wssFailureInputStage: handoff?.diagnosticsSnapshot().failureInputStage ?? "none",
+            wssLatency: handoff?.latencySnapshot() ?? null
         });
         return;
     }
@@ -235,7 +239,8 @@ async function handleHttp(req, res) {
             surface = new ExperimentalLinuxWebSocketWindowSurface({
                 hostScript,
                 displayName: DISPLAY,
-                helperTtlMs: SESSION_TTL_MS
+                helperTtlMs: SESSION_TTL_MS,
+                latencyTracker
             });
         }
         if (!handoff) {
@@ -249,6 +254,7 @@ async function handleHttp(req, res) {
                 allowedOrigins: [publicBaseUrl],
                 surface,
                 frameIntervalMs: 100,
+                latencyTracker,
                 onComplete: () => {
                     doneObserved = true;
                     activeLocator = undefined;
