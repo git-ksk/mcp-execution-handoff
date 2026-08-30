@@ -1159,7 +1159,16 @@ class LinuxWindowInput {
     if (!delta) return;
     const repeats = Math.max(1, Math.min(12, Math.ceil(Math.abs(delta) / 80)));
     const button = delta < 0 ? negativeButton : positiveButton;
-    await runCommand(this.xdotool, ["click", "--window", String(this.geometry.windowId), "--repeat", String(repeats), String(button)], this.display);
+    await runCommand(this.xdotool, [
+      "click",
+      "--delay",
+      "10",
+      "--window",
+      String(this.geometry.windowId),
+      "--repeat",
+      String(repeats),
+      String(button)
+    ], this.display);
   }
 
   private async typeText(text: string): Promise<void> {

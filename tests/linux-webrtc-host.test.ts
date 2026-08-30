@@ -199,6 +199,7 @@ test("Linux host keeps Human text off argv and binds capture/input to one target
   assert.match(host, /record\.button === "primary"/);
   assert.match(host, /record\.state === "down" \|\| record\.state === "up"/);
   assert.doesNotMatch(host, /POINTER_INPUT_SETTLE_MS/);
+  assert.match(host, /private async scrollAxis[\s\S]*"--delay",[\s\S]*"10"[\s\S]*"--window"[\s\S]*"--repeat"/);
   assert.match(host, /linux_stage=input_pointer_helper_ready/);
   assert.match(host, /linux_stage=input_pointer_helper_failure/);
   assert.match(host, /linux_stage=input_pointer_move_ready/);
