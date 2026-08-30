@@ -180,7 +180,7 @@ function parseHumanMessage(
   inputPolicy: WebSocketTakeoverInputPolicy
 ): WebSocketTakeoverHumanInput
   | { kind: "diagnostic"; event: WebSocketTakeoverClientDiagnosticKind }
-  | { kind: "latency"; metric: "client_frame_decode" | "client_frame_cadence"; valueMs: number }
+  | { kind: "latency"; metric: "client_frame_decode" | "client_frame_cadence" | "client_first_frame" | "client_reconnect_frame" | "client_reconnect_ready"; valueMs: number }
   | { kind: "done" }
   | { kind: "ping"; nonce?: string } {
   if (utf8Length(raw) > maxInboundBytes) {

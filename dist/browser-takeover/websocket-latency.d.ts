@@ -1,4 +1,4 @@
-export type WebSocketLatencyMetric = "capture" | "capture_prepare" | "capture_revalidate" | "capture_frame_wait" | "frame_send" | "frame_cadence" | "client_frame_decode" | "client_frame_cadence" | "input_apply" | "input_prepare" | "input_queue_wait" | "input_revalidate" | "input_host_ack" | "completion_fence" | "revoke_fence";
+export type WebSocketLatencyMetric = "capture" | "capture_prepare" | "capture_revalidate" | "capture_frame_wait" | "frame_send" | "frame_cadence" | "client_frame_decode" | "client_frame_cadence" | "client_first_frame" | "client_reconnect_frame" | "client_reconnect_ready" | "input_apply" | "input_prepare" | "input_queue_wait" | "input_revalidate" | "input_host_ack" | "completion_fence" | "revoke_fence";
 export interface WebSocketLatencyDistribution {
     count: number;
     p50Ms?: number;
@@ -17,8 +17,11 @@ export interface WebSocketLatencyDistribution {
  * is not a pure JPEG encode-duration measurement.
  *
  * `clientFrameDecode` is browser receive-to-`img.onload`, not compositor latency.
- * `clientFrameCadence` is spacing between those browser load completions. Neither field is a
- * cross-clock capture-to-display measurement.
+ * `clientFrameCadence` is spacing between those browser load completions. `clientFirstFrame` is
+ * initial client connect start-to-first-`img.onload`; `clientReconnectFrame` is managed WSS
+ * disconnect detection-to-first post-reconnect `img.onload`; `clientReconnectReady` is managed
+ * WSS disconnect detection-to-fresh-generation `ready`. All client metrics use only the
+ * browser clock and none are cross-clock capture-to-display or compositor measurements.
  */
 export interface WebSocketLatencySnapshot {
     samples: number;
@@ -30,6 +33,9 @@ export interface WebSocketLatencySnapshot {
     frameCadence: WebSocketLatencyDistribution;
     clientFrameDecode: WebSocketLatencyDistribution;
     clientFrameCadence: WebSocketLatencyDistribution;
+    clientFirstFrame: WebSocketLatencyDistribution;
+    clientReconnectFrame: WebSocketLatencyDistribution;
+    clientReconnectReady: WebSocketLatencyDistribution;
     inputApply: WebSocketLatencyDistribution;
     inputPrepare: WebSocketLatencyDistribution;
     inputQueueWait: WebSocketLatencyDistribution;
@@ -45,6 +51,6 @@ export declare class WebSocketLatencyTracker {
     snapshot(): WebSocketLatencySnapshot;
 }
 export declare function emptyWebSocketLatencySnapshot(): WebSocketLatencySnapshot;
-export declare function isWebSocketClientLatencyMetric(value: unknown): value is "client_frame_decode" | "client_frame_cadence";
+export declare function isWebSocketClientLatencyMetric(value: unknown): value is "client_frame_decode" | "client_frame_cadence" | "client_first_frame" | "client_reconnect_frame" | "client_reconnect_ready";
 export declare function validWebSocketLatency(value: unknown): value is number;
 //# sourceMappingURL=websocket-latency.d.ts.map
