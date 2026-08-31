@@ -145,7 +145,7 @@ Candidate scope:
 - maintain the first-class Browser / Window / Terminal component family so consumers depend on bounded lifecycle/target semantics instead of assembling low-level broker, WebRTC, or PTY-authority internals themselves;
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
 - finish the provider-neutral connectivity/relay boundary in #19 without exposing ICE/TURN/provider choice to consumers;
-- measure and reduce managed WSS interaction jank in #160 without weakening latest-frame backpressure, exact-window authority, or privacy boundaries;
+- #160 measured and reduced managed WSS interaction jank without weakening latest-frame backpressure, exact-window authority, or privacy boundaries;
 - define the Desktop Session / Display Backend separation in #161 so persistent application/session state is distinct from physical, virtual, or remote display attachment before broader Desktop authority work in #125;
 - define the hosted control-plane + stateful execution-worker topology in #12 with bounded durable state and authenticated outbound worker connectivity;
 - retain the #13 closeout decision: the historical Thin Takeover/mandatory custom Native-client umbrella is superseded by the accepted WebRTC path and completed WSS evaluation; any future native-client work must return as a new narrowly evidenced requirement;

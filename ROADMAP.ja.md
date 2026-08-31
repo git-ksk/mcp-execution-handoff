@@ -147,7 +147,7 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 - first-class Browser / Window / Terminal component familyを維持し、consumerがlow-level broker / WebRTC / PTY-authority internalsを手組みせずbounded lifecycle / target semanticsへ依存できる状態を保つ
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - #19でprovider-neutral connectivity/relay boundaryを仕上げ、ICE/TURN/provider選択をconsumerへ露出しない
-- #160でmanaged WSSのinteraction jankを計測・改善し、latest-frame backpressure / exact-window authority / privacy boundaryは弱めない
+- #160でmanaged WSSのinteraction jankを計測・改善し、latest-frame backpressure / exact-window authority / privacy boundaryを維持した
 - #161でpersistent application/session stateとphysical / virtual / remote display attachmentを分離するDesktop Session / Display Backend boundaryを定義し、#125のbroader Desktop authorityより先にsession/display責務を固める
 - #12でbounded durable stateとauthenticated outbound worker connectivityを持つhosted control-plane + stateful execution-worker topologyを定義する
 - #13のcloseout decisionを維持する。historical Thin Takeover / mandatory custom Native-client umbrellaはaccepted WebRTC pathと完了済みWSS evaluationにsupersedeされ、将来native-clientが必要なら新しいnarrowなevidence-based Issueとして起こす

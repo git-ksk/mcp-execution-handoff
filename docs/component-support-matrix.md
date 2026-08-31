@@ -4,7 +4,10 @@ This document is the checked-in component-completeness view for Handoff. It reco
 owns, what remains consumer-owned, and which Target Surface / host / transport combinations are
 actually supported. Architectural composability is **not** a support claim.
 
-Tracked by #151 and the conformance gate #184.
+Tracked by #151 and the conformance gate #184. The machine-readable companion is
+[`component-support-matrix.json`](component-support-matrix.json); `tests/component-support-matrix.test.ts`
+rejects support-state drift, missing deterministic coverage references, missing physical-acceptance
+commands for physical-pending rows, and untracked P0 failure-injection categories.
 
 ## Ownership boundary
 
@@ -63,7 +66,7 @@ transport differs.
 | --- | --- | --- | --- | --- | --- |
 | Browser | macOS bounded browser/window host | **Supported** | **Supported** | **Not claimed as a first-class macOS Browser WSS path** | Browser remains a browser-policy facade; do not infer support from the macOS Window WSS primitive alone. |
 | Browser | Linux isolated exact-window browser host | **Supported** | **Supported where relay is configured** | **Supported managed fallback** | Exact X11 PID/window authority, bounded AT-SPI metadata and WSS helper paths remain Handoff-owned. |
-| Window | macOS ordinary exact window | **Supported** | **Supported** | **Deterministic / physical pending (#183)** | Explicit WSS-only facade exists; managed OS-neutral composition is #185. No desktop fallback. |
+| Window | macOS ordinary exact window | **Supported** | **Supported** | **Deterministic / physical pending (#183)** | Explicit WSS-only facade and OS-neutral managed composition exist. No desktop fallback. |
 | Window | macOS LocalAuthentication secure window | **Supported** | **Supported where WebRTC relay is selected** | **Deterministic / physical pending (#183)** | Explicit PID-only secure policy. Backspace/secure text and Human pointer only as reviewed; Enter is not approval. |
 | Window | macOS same-process successor/modal lineage | **Supported** | **Supported where WebRTC relay is selected** | **Planned (#186)** | Exact-one remains default; WSS must reuse the existing lineage authority primitive before support is claimed. |
 | Window | Linux exact X11 window | **Supported** | **Supported where relay is configured** | **Supported managed fallback** | WSS recoverable helper failures retain the valid generation; exact authority loss fences it (#172). |
@@ -137,20 +140,22 @@ for the rest of the component/failure matrix.
 P0/P1 work that most directly reduces future consumer-to-Handoff backtracking:
 
 - **P0 #172** — retain a valid WSS generation after explicitly recoverable Human input helper/ACK
-  failure while still fencing exact authority loss. Deterministic implementation is present on the
-  #183 work branch; merge/consumer evidence remains to be closed out.
-- **P0 #177** — make Human completion vs authority loss lifecycle deterministic and physically clear;
-  WSS verification parity is part of the current #183 work, while Browser physical terminal-state
-  acceptance remains tracked by #177.
+  failure while still fencing exact authority loss. The deterministic implementation is on main;
+  physical/consumer evidence for an actual recoverable failure remains the closeout boundary.
 - **P0 #183** — macOS ordinary + LocalAuthentication exact-window WSS-only component; deterministic
-  implementation/harness exists, physical iPhone Safari acceptance is still required.
-- **P0 #184** — turn this matrix into a durable failure-injection/conformance gate rather than a
-  prose-only inventory.
-- **P0 #185** — deterministic implementation is present: transport order/transport-only selection is exact, managed Window WSS construction uses one OS-neutral macOS/Linux surface factory, and managed diagnostics consume one bounded OS-neutral projection. Merge/CI closeout remains; successor/modal WSS lineage stays separately tracked by #186.
+  implementation/harness exists, with the remaining physical acceptance tracked there.
+- **P0 #184** — maintain this matrix as an executable conformance gate. The checked JSON index now
+  requires deterministic coverage for every supported/conditional/pending row and pins the P0
+  content-free failure-injection categories to tests that run under `npm test`. Broader physical
+  evidence indexing remains follow-up work.
 - **P1 #186** — reuse the existing macOS same-process successor authority under WSS.
-- **P1 #160** — reduce WSS interaction jank only after correctness/authority gates remain green.
 - **P2 #151/#159** — product/package/clean-checkout delivery maturity; do not confuse packaging with
   authority correctness.
+
+Recently completed hardening is no longer tracked as an open conformance gap: #177 completion/revoke
+lifecycle correctness closed after PR #194 plus physical WSS Done/verifying/teardown evidence; #185
+OS-neutral managed Window composition closed after PR #187; and #160 managed-WSS latency/jank work
+closed after the measurement/fix series through #200/#202.
 
 ## Physical acceptance rule
 
