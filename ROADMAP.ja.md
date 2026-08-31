@@ -47,6 +47,24 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
 
+## Product Readiness — 独立したcross-cutting track
+
+Product ReadinessはTransport/Hosted maturityやnpm publicationとは別軸です。現在のsource-release
+JavaScript artifactはclean committed-`dist/` gate (#159)でconsumer-readyとなり、Target Surface / transport
+support inventoryはmachine-check済みです (#184)。release-significantなconsumer evidenceではexact consumer +
+Handoff revisionを記録し、deterministic / consumer integration / physical component / physical dogfoodを区別します。
+
+native helper deliveryは明示的なprovenance/integrity gateが整うまでsource/deployment-ownedです。macOS deploymentは
+review済みSwift/Xcode build、persistent TCCに必要なstable code-sign identity、controlled device permissionを所有し、
+Linux deploymentはpin済みOS/runtime dependency baselineと対応するexact-window acceptanceを所有します。将来prebuilt
+binaryを配布する場合はsigning/notarizationまたはdistro/ABI/provenance/rollbackをproduct-ready claim前のgateにします。
+
+upgrade/rollbackでstale locator/capability/generation/media/input authorityを復元しません。durable recoveryは
+`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。Human-visible lifecycle品質も
+このtrackに含め、#150はverifying/closed sessionをstale LocalAuthentication frameがHuman-activeに見せない状態までactiveです。
+
+詳細は [Product Readiness / consumer compatibility](docs/product-readiness.ja.md) を参照してください。
+
 ## 基本原則
 
 1. **標準を優先する。** MCP-nativeなMRTR、Elicitation、Tasksなどを優先し、同じ意味を持つ独自protocolを安易に増やさない。

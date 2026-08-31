@@ -45,6 +45,27 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
 
+## Product Readiness — independent cross-cutting track
+
+Product Readiness is separate from Transport/Hosted maturity and from npm publication. The current
+source-release JavaScript artifact is consumer-ready through the clean committed-`dist/` gate (#159),
+and the Target Surface/transport support inventory is machine-checked (#184). Release-significant
+consumer evidence must now record exact consumer + Handoff revisions and distinguish deterministic,
+consumer-integration, physical-component, and physical-dogfood evidence.
+
+Native-helper delivery remains source/deployment-owned until explicit provenance/integrity gates exist:
+macOS deployments own reviewed Swift/Xcode builds, stable code-sign identity where persistent TCC is
+required, and controlled-device permissions; Linux deployments own the pinned OS/runtime dependency
+baseline and appropriate exact-window acceptance. Prebuilt binaries, if introduced later, require
+explicit signing/notarization or distro/ABI/provenance/rollback gates before product-ready claims.
+
+Upgrade/rollback never restores stale locator/capability/generation/media/input authority. Durable
+recovery remains `reissue_and_revalidate`, and consumer semantic verification/replay policy remains
+consumer-owned. Human-visible lifecycle quality is also part of this track: #150 remains active until
+stale LocalAuthentication presentation cannot make a verifying/closed session appear Human-active.
+
+See [Product readiness and consumer compatibility](docs/product-readiness.md).
+
 ## Guiding principles
 
 1. **Standards first.** Prefer MCP-native MRTR, elicitation, Tasks, and related protocol mechanisms instead of inventing parallel protocol semantics.
