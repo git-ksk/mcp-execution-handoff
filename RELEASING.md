@@ -56,6 +56,7 @@ Run from a clean checkout/worktree:
 npm ci --ignore-scripts
 npm run check
 npm run build
+npm run verify:consumer-dist
 npm audit --audit-level=moderate
 npm pack --dry-run
 ```
@@ -86,6 +87,8 @@ for (const path of [
 }
 NODE
 ```
+
+`npm run verify:consumer-dist` creates a temporary consumer staging directory from **tracked** `package.json`, `package-lock.json`, and `dist/` artifacts only. It intentionally excludes `src/` and TypeScript build configuration, installs production dependencies with `npm ci --omit=dev --ignore-scripts`, then imports the public root/subpath entry points and verifies the exports required by current consumers. This is the supported GitHub/source-release JavaScript artifact boundary: a consumer staging committed `dist/` does not need to compile TypeScript first. It does **not** enable npm publication or claim that every platform-native helper is distributed as a prebuilt binary.
 
 The final PR must also pass the repository's required GitHub checks. Do not treat a local green run as a substitute for protected-branch checks.
 

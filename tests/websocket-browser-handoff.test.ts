@@ -133,7 +133,9 @@ test("Generic Browser WSS page is not a target selector or generic remote deskto
   const html = await (await handoff.handle(new Request(locator), PRINCIPAL)).text();
   assert.doesNotMatch(html, /select target|choose window|desktop|display capture|screen share/i);
   assert.doesNotMatch(html, /document\.querySelector.*\.click\(|\.click\(\)/);
-  assert.doesNotMatch(html, /chrome\.debugger|devtools|cdp/i);
+  // CSP nonces are random capability-neutral bytes; exclude them from semantic capability scans.
+  const semanticHtml = html.replace(/nonce="[^"]+"/g, 'nonce=""');
+  assert.doesNotMatch(semanticHtml, /chrome\.debugger|devtools|cdp/i);
   handoff.revoke("generic-browser-wss");
 });
 

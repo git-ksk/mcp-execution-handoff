@@ -278,7 +278,7 @@ The two-real-adapter extraction gate is now satisfied:
 - authority, epoch, ownership, checkpoint, takeover-lease, capability, CSP, and replay invariants remain covered by deterministic tests.
 - both consumers pin an immutable commit from this repository and pass clean-install CI.
 
-This repository is the upstream source of truth. `v0.3.0` is the current **GitHub/source release only** baseline. It retains the first-class Browser, bounded OS Window, and bounded Terminal/PTY components, adds provider-neutral bounded checkpoint storage, privacy-bounded audit/operator diagnostics v1, deterministic crash/restart conformance, and the completed post-v0.2 bounded Window/Linux/media hardening. npm publication is a separate decision and has not been performed; `private: true` remains in effect. See [Release process](RELEASING.md).
+This repository is the upstream source of truth. `v0.3.0` is the current **GitHub/source release only** baseline. It retains the first-class Browser, bounded OS Window, and bounded Terminal/PTY components, adds provider-neutral bounded checkpoint storage, privacy-bounded audit/operator diagnostics v1, deterministic crash/restart conformance, and the completed post-v0.2 bounded Window/Linux/media hardening. For source-release JavaScript consumption, the committed `dist/` tree is consumer-ready: CI stages tracked package metadata + `dist/` without `src/`, installs production dependencies only, and smoke-imports the public entry points/consumer-required exports. npm publication is a separate decision and has not been performed; `private: true` remains in effect. Platform-native helper delivery remains documented separately from this JavaScript artifact contract. See [Release process](RELEASING.md).
 
 ## License
 
