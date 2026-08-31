@@ -37,6 +37,31 @@ export interface HandoffCheckpointStore {
 
 interface SignedCheckpointEnvelope { checkpoint: HandoffCheckpoint; mac: string; }
 
+const UNSUPPORTED_DIRECTORY_FSYNC_CODES = new Set(["EINVAL", "ENOTSUP", "EOPNOTSUPP"]);
+
+function syncCheckpointFile(filePath: string): void {
+  const descriptor = fs.openSync(filePath, "r+");
+  try { fs.fsyncSync(descriptor); }
+  finally { fs.closeSync(descriptor); }
+}
+
+function syncCheckpointDirectoryIfSupported(directory: string): void {
+  // Node does not expose a portable Windows directory-handle fsync contract. File fsync remains
+  // mandatory there; the weaker rename power-loss boundary is documented by the local provider.
+  if (process.platform === "win32") return;
+  let descriptor: number;
+  try { descriptor = fs.openSync(directory, "r"); }
+  catch (error) {
+    if (UNSUPPORTED_DIRECTORY_FSYNC_CODES.has((error as NodeJS.ErrnoException).code ?? "")) return;
+    throw error;
+  }
+  try { fs.fsyncSync(descriptor); }
+  catch (error) {
+    if (!UNSUPPORTED_DIRECTORY_FSYNC_CODES.has((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+  finally { fs.closeSync(descriptor); }
+}
+
 export class HandoffCheckpointError extends Error {
   constructor(public readonly code: "CHECKPOINT_INVALID" | "CHECKPOINT_EXPIRED", message: string) {
     super(message);
@@ -102,8 +127,12 @@ export class SignedFileHandoffCheckpointStore implements HandoffCheckpointStore 
     const temp = path.join(directory, `.${path.basename(this.filePath)}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`);
     try {
       fs.writeFileSync(temp, `${JSON.stringify(envelope)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      // Apply the final private mode before the durability barrier so the renamed inode already has
+      // the intended metadata. A barrier failure is a write failure and must propagate.
+      fs.chmodSync(temp, 0o600);
+      syncCheckpointFile(temp);
       fs.renameSync(temp, this.filePath);
-      fs.chmodSync(this.filePath, 0o600);
+      syncCheckpointDirectoryIfSupported(directory);
     } finally {
       try { fs.unlinkSync(temp); } catch {}
     }
@@ -160,8 +189,14 @@ export class SignedFileHandoffCheckpointStore implements HandoffCheckpointStore 
   }
 
   clear(): void {
-    try { fs.unlinkSync(this.filePath); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    let removed = false;
+    try {
+      fs.unlinkSync(this.filePath);
+      removed = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (removed) syncCheckpointDirectoryIfSupported(path.dirname(this.filePath));
   }
 
   private mac(checkpoint: HandoffCheckpoint): string {

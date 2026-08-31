@@ -55,6 +55,8 @@ consumerが許可済みdiagnostics projectionを独自operator systemへ保存�
 
 `SignedFileHandoffCheckpointStore` はこのinterfaceを実装するlocal reference implementationとして維持します。既存の `load()` / `recover()` / operator-revalidation helperもsource compatibilityのため残しますが、runtime本体はprovider-neutral interfaceだけに依存します。
 
+local power-loss hardeningとして、signed-file providerは新しい `0600` temporary fileへ書き込み、そのfileを `fsync` してからatomic renameし、Node / filesystemがdirectory `fsync`をsupportするplatformではparent directoryもflushします。`clear()` もunlink成功後に同じparent directoryをflushし、directory entryの永続化前にdurable deletion成功とはclaimしません。通常のfile / directory barrier failureは同期的な `write()` failureとしてそのまま伝播するため、active Human intervention中なら `ExecutionHandoffRuntime` が既存のcheckpoint write failureと同様にauthorityをcancel / fenceしてからerrorが返ります。directory barrierが `EINVAL` / `ENOTSUP` / `EOPNOTSUPP` で明示的にunsupportedな場合はprovider自体を使用不能にはしませんが、renameのcrash-durability claimだけが弱くなります。Windowsでもfile `fsync`は必須ですが、portableなdirectory-handle `fsync`保証はclaimしません。最も強いlocal filesystem境界にはprivate `0700` checkpoint directoryを事前作成してください。今回のrecursive directory creationが全ancestor directory entryまでdurably flushするとはclaimせず、filesystem固有の `fsync` / rename semanticsを超える普遍的なsudden-power-loss保証もしません。
+
 ### Storage failure semantics
 
 checkpoint-store contractを同期型にするのは意図的です。methodが正常returnした時点でprovider自身のdurability contract上そのstorage operationが完了しており、throwした場合は未完了として扱います。v0.3ではasync / best-effort writeをdurable fencingとして暗黙に扱いません。

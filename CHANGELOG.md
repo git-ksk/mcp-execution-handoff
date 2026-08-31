@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Harden `SignedFileHandoffCheckpointStore` local durability (#141): flush the private temporary checkpoint before atomic rename and fsync the parent directory after both rename and successful clear where the platform/filesystem exposes a supported directory barrier. File-barrier and supported directory-barrier failures propagate synchronously so active Human authority is fenced exactly like any other checkpoint write failure; Windows retains mandatory file fsync but makes no unsupported directory-fsync/power-loss claim.
+
 - Decouple WSS terminal notifications and peer close responses from authority completion/release (#177). Stalled or rejected terminal writes no longer hold shared lease cleanup or prevent an explicit cleanup retry; accepted input still drains before Done, and late notification outcomes cannot restore authority. Add deterministic stalled-peer regression coverage without requiring ICE or physical authentication.
 
 - Keep managed Linux WSS takeover and keyboard authority alive across recoverable exact-window helper/frame capture faults (#170), while exact PID/window visibility, ownership, geometry, and process loss remain immediate fail-closed authority-boundary failures. Add bounded content-free managed WSS operator diagnostics for surface/channel failure class, frame count, and input progress.
