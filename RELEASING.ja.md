@@ -56,6 +56,7 @@ clean checkout/worktreeから実行します。
 npm ci --ignore-scripts
 npm run check
 npm run build
+npm run verify:consumer-dist
 npm audit --audit-level=moderate
 npm pack --dry-run
 ```
@@ -86,6 +87,8 @@ for (const path of [
 }
 NODE
 ```
+
+`npm run verify:consumer-dist` は、**git tracked** な `package.json` / `package-lock.json` / `dist/` だけをtemporary consumer stagingへコピーします。`src/` とTypeScript build設定は意図的に含めず、`npm ci --omit=dev --ignore-scripts` でproduction dependencyだけをinstallした後、public root/subpath entry pointと現行consumerが必要とするexportをimport検証します。これをGitHub/source releaseのJavaScript artifact boundaryとし、committed `dist/` をstageするconsumerは事前にTypeScript compileする必要がありません。ただし、これはnpm publicationを有効化するものでも、全platform native helperをprebuilt binaryとして配布済みと主張するものでもありません。
 
 final PRではGitHubのrequired checksもすべてgreenにします。local greenをprotected-branch checkの代用にはしません。
 
