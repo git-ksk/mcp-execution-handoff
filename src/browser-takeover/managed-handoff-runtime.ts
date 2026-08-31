@@ -753,10 +753,10 @@ export class ManagedWindowHandoffRuntime {
   async #patchWebRtcClient(response: Response): Promise<Response> {
     if (response.status !== 200) return response;
     let script = await response.text();
-    const helperMarker = "const MARK='_';";
+    const helperMarker = "const touchEventsAvailable=('ontouchstart' in window)||(Number(navigator.maxTouchPoints)||0)>0;";
     const failedMarker = "status(finalStatus);failureInProgress=false}";
     const firstFrameMarker = "if(!fired){fired=true;clearFirstFrameTimer();recoveryReconnectUsed=false;";
-    const initialMarker = "resetKeyboard();resetViewTransform();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});";
+    const initialMarker = "resetKeyboardBuffer();resetViewTransform();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});";
     if (
       !script.includes(helperMarker)
       || !script.includes(failedMarker)
@@ -776,7 +776,7 @@ export class ManagedWindowHandoffRuntime {
     );
     script = script.replace(
       initialMarker,
-      "resetKeyboard();resetViewTransform();armKeyboardFallback();armManagedReadyTimeout();void connect('claim').catch(async function(){closePeer();if(await managedTransportFallback())return;if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});"
+      "resetKeyboardBuffer();resetViewTransform();armKeyboardFallback();armManagedReadyTimeout();void connect('claim').catch(async function(){closePeer();if(await managedTransportFallback())return;if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});"
     );
     return cloneResponse(response, script);
   }
