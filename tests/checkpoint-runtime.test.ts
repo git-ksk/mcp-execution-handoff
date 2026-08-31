@@ -12,6 +12,134 @@ test("tampered and expired checkpoints fail closed",()=>{const {dir,file,store}=
 test("checkpoint persistence failure releases Human authority",()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),"handoff-fail-"));const blocker=path.join(dir,"file");fs.writeFileSync(blocker,"x");try{const adapter=new Adapter();const runtime=new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test",adapter),{checkpointStore:new SignedFileHandoffCheckpointStore(path.join(blocker,"checkpoint.json"),Buffer.alloc(32,8)),checkpointTtlMs:60000});assert.throws(()=>runtime.checkpoint("principal-binding-a-1234567890","digest-value-123456"));assert.equal(adapter.getActiveIntervention(),undefined);}finally{fs.rmSync(dir,{recursive:true,force:true});}});
 
 
+test("signed-file checkpoint flushes the file and supported parent directory before reporting success", (t) => {
+  const { dir, store } = temp();
+  const originalFsync = fs.fsyncSync.bind(fs);
+  let syncCalls = 0;
+  t.mock.method(fs, "fsyncSync", (descriptor: number) => {
+    syncCalls += 1;
+    return originalFsync(descriptor);
+  });
+  try {
+    store.write({
+      version: 1, adapterKind: "browser.test", interventionId: "i-durable", status: "human_active",
+      epoch: 4, resumePolicy: "revalidate", principalBinding: "principal-binding-durable-1234",
+      updatedAt: 12_000, expiresAt: 20_000
+    });
+    assert.equal(syncCalls, process.platform === "win32" ? 1 : 2);
+    assert.equal((store.read() as { interventionId?: string }).interventionId, "i-durable");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("file durability barrier failure propagates and fences active Human authority", (t) => {
+  const { dir, file, store } = temp();
+  t.mock.method(fs, "fsyncSync", () => {
+    throw Object.assign(new Error("injected file fsync failure"), { code: "EIO" });
+  });
+  const adapter = new Adapter();
+  const runtime = new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test", adapter), {
+    checkpointStore: store, checkpointTtlMs: 60_000, now: () => 13_000
+  });
+  try {
+    assert.throws(
+      () => runtime.checkpoint("principal-binding-file-fsync-1234"),
+      /injected file fsync failure/
+    );
+    assert.equal(adapter.getActiveIntervention(), undefined);
+    assert.equal(fs.existsSync(file), false, "pre-rename barrier failure must not publish the checkpoint path");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("supported directory durability barrier failure propagates after rename and still fences Human authority", {
+  skip: process.platform === "win32"
+}, (t) => {
+  const { dir, file, store } = temp();
+  const originalFsync = fs.fsyncSync.bind(fs);
+  let syncCalls = 0;
+  t.mock.method(fs, "fsyncSync", (descriptor: number) => {
+    syncCalls += 1;
+    if (syncCalls === 1) return originalFsync(descriptor);
+    throw Object.assign(new Error("injected directory fsync failure"), { code: "EIO" });
+  });
+  const adapter = new Adapter();
+  const runtime = new ExecutionHandoffRuntime(defineExecutionAdapter("browser.test", adapter), {
+    checkpointStore: store, checkpointTtlMs: 60_000, now: () => 13_000
+  });
+  try {
+    assert.throws(
+      () => runtime.checkpoint("principal-binding-dir-fsync-12345"),
+      /injected directory fsync failure/
+    );
+    assert.equal(syncCalls, 2);
+    assert.equal(adapter.getActiveIntervention(), undefined);
+    assert.equal(fs.existsSync(file), true, "rename may complete before the parent-directory barrier fails");
+    assert.equal((store.read() as { interventionId?: string }).interventionId, "i1");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("signed-file clear flushes a supported parent directory after unlink", {
+  skip: process.platform === "win32"
+}, (t) => {
+  const { dir, file, store } = temp();
+  store.write({
+    version: 1, adapterKind: "browser.test", interventionId: "i-clear", status: "human_active",
+    epoch: 4, resumePolicy: "revalidate", principalBinding: "principal-binding-clear-durable",
+    updatedAt: 12_000, expiresAt: 20_000
+  });
+  const originalFsync = fs.fsyncSync.bind(fs);
+  let syncCalls = 0;
+  t.mock.method(fs, "fsyncSync", (descriptor: number) => {
+    syncCalls += 1;
+    return originalFsync(descriptor);
+  });
+  try {
+    store.clear();
+    assert.equal(syncCalls, 1);
+    assert.equal(fs.existsSync(file), false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("clear directory barrier failure propagates instead of claiming durable deletion", {
+  skip: process.platform === "win32"
+}, (t) => {
+  const { dir, file, store } = temp();
+  store.write({
+    version: 1, adapterKind: "browser.test", interventionId: "i-clear-fail", status: "human_active",
+    epoch: 4, resumePolicy: "revalidate", principalBinding: "principal-binding-clear-fail-123",
+    updatedAt: 12_000, expiresAt: 20_000
+  });
+  t.mock.method(fs, "fsyncSync", () => {
+    throw Object.assign(new Error("injected clear directory fsync failure"), { code: "EIO" });
+  });
+  try {
+    assert.throws(() => store.clear(), /injected clear directory fsync failure/);
+    assert.equal(fs.existsSync(file), false, "unlink may complete even when durable directory flush fails");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("explicitly unsupported directory fsync weakens only the durability claim", {
+  skip: process.platform === "win32"
+}, (t) => {
+  const { dir, store } = temp();
+  const originalFsync = fs.fsyncSync.bind(fs);
+  let syncCalls = 0;
+  t.mock.method(fs, "fsyncSync", (descriptor: number) => {
+    syncCalls += 1;
+    if (syncCalls === 1) return originalFsync(descriptor);
+    throw Object.assign(new Error("directory fsync unsupported"), { code: "EINVAL" });
+  });
+  try {
+    assert.doesNotThrow(() => store.write({
+      version: 1, adapterKind: "browser.test", interventionId: "i-unsupported-dir", status: "human_active",
+      epoch: 4, resumePolicy: "revalidate", principalBinding: "principal-binding-dir-unsupported",
+      updatedAt: 12_000, expiresAt: 20_000
+    }));
+    assert.equal(syncCalls, 2);
+    assert.equal((store.read() as { interventionId?: string }).interventionId, "i-unsupported-dir");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+
 test("expired checkpoint is readable only for explicit operator revalidation after MAC verification",()=>{
   const {dir,file,store}=temp(30000);
   try {

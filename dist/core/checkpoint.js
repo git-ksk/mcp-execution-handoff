@@ -1,6 +1,41 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+const UNSUPPORTED_DIRECTORY_FSYNC_CODES = new Set(["EINVAL", "ENOTSUP", "EOPNOTSUPP"]);
+function syncCheckpointFile(filePath) {
+    const descriptor = fs.openSync(filePath, "r+");
+    try {
+        fs.fsyncSync(descriptor);
+    }
+    finally {
+        fs.closeSync(descriptor);
+    }
+}
+function syncCheckpointDirectoryIfSupported(directory) {
+    // Node does not expose a portable Windows directory-handle fsync contract. File fsync remains
+    // mandatory there; the weaker rename power-loss boundary is documented by the local provider.
+    if (process.platform === "win32")
+        return;
+    let descriptor;
+    try {
+        descriptor = fs.openSync(directory, "r");
+    }
+    catch (error) {
+        if (UNSUPPORTED_DIRECTORY_FSYNC_CODES.has(error.code ?? ""))
+            return;
+        throw error;
+    }
+    try {
+        fs.fsyncSync(descriptor);
+    }
+    catch (error) {
+        if (!UNSUPPORTED_DIRECTORY_FSYNC_CODES.has(error.code ?? ""))
+            throw error;
+    }
+    finally {
+        fs.closeSync(descriptor);
+    }
+}
 export class HandoffCheckpointError extends Error {
     code;
     constructor(code, message) {
@@ -67,8 +102,12 @@ export class SignedFileHandoffCheckpointStore {
         const temp = path.join(directory, `.${path.basename(this.filePath)}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`);
         try {
             fs.writeFileSync(temp, `${JSON.stringify(envelope)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+            // Apply the final private mode before the durability barrier so the renamed inode already has
+            // the intended metadata. A barrier failure is a write failure and must propagate.
+            fs.chmodSync(temp, 0o600);
+            syncCheckpointFile(temp);
             fs.renameSync(temp, this.filePath);
-            fs.chmodSync(this.filePath, 0o600);
+            syncCheckpointDirectoryIfSupported(directory);
         }
         finally {
             try {
@@ -129,13 +168,17 @@ export class SignedFileHandoffCheckpointStore {
         return checkpoint ? { ...checkpoint, recovery: "reissue_and_revalidate" } : undefined;
     }
     clear() {
+        let removed = false;
         try {
             fs.unlinkSync(this.filePath);
+            removed = true;
         }
         catch (error) {
             if (error.code !== "ENOENT")
                 throw error;
         }
+        if (removed)
+            syncCheckpointDirectoryIfSupported(path.dirname(this.filePath));
     }
     mac(checkpoint) {
         return createHmac("sha256", this.signingKey)
