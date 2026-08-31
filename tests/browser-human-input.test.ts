@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   browserMobileKeyboardAfterRemoteTap,
+  browserScrollDelta,
   browserScrollDeltaY,
   browserTextReplacementDelta
 } from "../src/browser-takeover/browser-human-input.js";
@@ -12,11 +13,13 @@ test("Browser Human Input replaces an IME preedit instead of appending the commi
   assert.deepEqual(browserTextReplacementDelta("😀a", "😀b"), { backspaces: 1, insert: "b" });
 });
 
-test("Browser Human Input keeps scroll sign aligned with the established WebRTC gesture path", () => {
-  assert.equal(browserScrollDeltaY(40), 120);
-  assert.equal(browserScrollDeltaY(-40), -120);
-  assert.equal(browserScrollDeltaY(10_000), 2_000);
+test("Browser Human Input maps swipe direction to natural remote page scrolling", () => {
+  assert.equal(browserScrollDeltaY(40), -120);
+  assert.equal(browserScrollDeltaY(-40), 120);
+  assert.equal(browserScrollDeltaY(10_000), -2_000);
   assert.equal(browserScrollDeltaY(Number.NaN), 0);
+  assert.equal(browserScrollDelta(40), -120);
+  assert.equal(browserScrollDelta(-40, 2), 80);
 });
 
 test("Browser Human Input keeps an explicitly opened mobile keyboard session across remote taps", () => {
