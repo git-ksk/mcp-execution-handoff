@@ -39,6 +39,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test",
+    "audit:worktrees": "node scripts/audit-worktrees.mjs",
     "verify:consumer-dist": "node scripts/verify-consumer-dist.mjs",
     "prepack": "npm run check && npm run build",
     "accept:webrtc:lan": "swift build -c release --package-path experiments/thin-takeover-runtime --product takeover-webrtc-host && tsx experiments/thin-takeover-runtime/scripts/webrtc-lan-acceptance.mts",

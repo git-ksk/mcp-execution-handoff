@@ -19,4 +19,6 @@ PRを作成する前に、次を確認してください。
 
 英語ドキュメントが正本です。セキュリティやアーキテクチャ上の意味を変更した場合は、主要な日本語ドキュメントも同時に更新してください。
 
+local branchやlinked worktreeを削除する前に、[Repository worktree / branch hygiene](docs/repository-hygiene.ja.md) に従って `npm run audit:worktrees` を実行してください。upstreamが `[gone]` であることや、branch名がmerge済みに見えることだけでは削除可能性の証拠になりません。
+
 新しい汎用public APIを提案したり、プロジェクトの対象範囲を広げたりする前に、[位置づけ](docs/positioning.ja.md) と [ロードマップ](ROADMAP.ja.md) を確認してください。MCP標準ですでに提供されている仕組みと重複する案や、1つの利用側だけに必要な案は、汎用契約として十分な実例が集まるまでは利用側に留めます。
