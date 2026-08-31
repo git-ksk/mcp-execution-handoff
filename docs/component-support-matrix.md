@@ -149,8 +149,7 @@ P0/P1 work that most directly reduces future consumer-to-Handoff backtracking:
   content-free failure-injection categories to tests that run under `npm test`. Broader physical
   evidence indexing remains follow-up work.
 - **P1 #186** — reuse the existing macOS same-process successor authority under WSS.
-- **P2 #151/#159** — product/package/clean-checkout delivery maturity; do not confuse packaging with
-  authority correctness.
+- **P2 #151** — Product Readiness/consumer compatibility contract; #159 clean-consumer packaging is complete.
 
 Recently completed hardening is no longer tracked as an open conformance gap: #177 completion/revoke
 lifecycle correctness closed after PR #194 plus physical WSS Done/verifying/teardown evidence; #185

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "evidenceDate": "2026-08-31",
+  "records": [
+    {
+      "consumerRepository": "git-ksk/maps-browser-mcp",
+      "consumerRevision": "025ec6a882b0851d75f5b19001d354467ec353dd",
+      "handoffRevision": "4f9d809eec812213e404a6d5a6d7d04029170f50",
+      "evidenceClass": "consumer_integration",
+      "result": "pass",
+      "validation": [
+        "npm ci --ignore-scripts --no-audit --no-fund",
+        "npm run check"
+      ],
+      "summary": "Typecheck, 351 tests (346 pass, 5 platform skips), and acceptance-harness syntax gate passed from a detached origin/main worktree using the immutable Handoff source pin.",
+      "limitations": "Deterministic consumer integration only; prior physical Browser evidence remains revision-scoped and was not rerun by this record."
+    },
+    {
+      "consumerRepository": "git-ksk/japan-cinema-browser-mcp",
+      "consumerRevision": "7ec79a682dbeabd371cf28c3422d2d14a49c5ab9",
+      "handoffRevision": "a56cdf22ae6fcf6201c08de7974e01ef5795f6b3",
+      "evidenceClass": "consumer_integration",
+      "result": "pass",
+      "validation": [
+        "npm ci --ignore-scripts --no-audit --no-fund",
+        "npm run check"
+      ],
+      "summary": "Typecheck and 165/165 tests passed from a detached origin/main worktree using the immutable Handoff source pin.",
+      "limitations": "Deterministic consumer integration only; TOHO Gate 0b physical acceptance remains consumer-owned and is not implied by this record."
+    },
+    {
+      "consumerRepository": "git-ksk/computer-use-mcp-gateway",
+      "consumerRevision": "1957921948a3a082a95d9801ee690ec02ed66f4e",
+      "handoffRevision": "096b2e18e5bc582101bfde09330316af9490056e",
+      "evidenceClass": "consumer_integration",
+      "result": "pass",
+      "validation": [
+        "production-style private Handoff runtime staging with npm ci --omit=dev --ignore-scripts",
+        "CUMG v2_handoff_runtime_preflight.py verify-import for nine required public exports",
+        "python3 -m unittest scripts.tests.test_v2_handoff_runtime_preflight"
+      ],
+      "summary": "Production-only dependency stage, npm .bin removal, symlink-free dependency validation, nine required Handoff exports, and CUMG preflight unit suite 14/14 passed against exact origin/main consumer and Handoff revisions.",
+      "limitations": "Consumer integration/staging evidence only; historical physical Window/Terminal dogfood remains separate revision-scoped evidence."
+    }
+  ]
+}
