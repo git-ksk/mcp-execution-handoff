@@ -72,8 +72,9 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /image\/png/);
   assert.match(html, /kind:'tap'/);
   assert.match(html, /kind:'scroll'/);
-  assert.match(html, /Math\.round\(dy\*3\)/);
-  assert.doesNotMatch(html, /Math\.round\(-dy\*3\)/);
+  assert.match(html, /const browserScrollDeltaY=/);
+  assert.match(html, /browserScrollDeltaY\(dy\)/);
+  assert.doesNotMatch(html, /Math\.round\(dy\*3\)/);
   assert.match(html, /kind:'text'/);
   assert.match(html, /kind:'key'/);
   assert.match(html, /maxlength="512"/);

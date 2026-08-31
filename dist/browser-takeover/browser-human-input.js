@@ -9,14 +9,26 @@ export function browserTextReplacementDelta(previous, current) {
         insert: after.slice(prefix).join("")
     };
 }
-/** A positive client Y drag uses the same sign as the established WebRTC gesture path. */
-export function browserScrollDeltaY(pointerDeltaY, scale = 3) {
-    if (!Number.isFinite(pointerDeltaY) || !Number.isFinite(scale) || scale <= 0)
+/** Convert touch/pointer drag motion to wheel semantics on either axis. */
+export function browserScrollDelta(pointerDelta, scale = 3) {
+    if (!Number.isFinite(pointerDelta) || !Number.isFinite(scale) || scale <= 0)
         return 0;
-    return Math.max(-2_000, Math.min(2_000, Math.round(pointerDeltaY * scale)));
+    return Math.max(-2_000, Math.min(2_000, Math.round(-pointerDelta * scale)));
+}
+/** Vertical compatibility helper for existing Browser Human Input callers. */
+export function browserScrollDeltaY(pointerDeltaY, scale = 3) {
+    return browserScrollDelta(pointerDeltaY, scale);
 }
 /** Remote-surface taps never toggle an explicitly opened mobile software keyboard session. */
 export function browserMobileKeyboardAfterRemoteTap(state) {
     return state;
+}
+/** Emit the pure Browser Human Input helpers shared by WSS and WebRTC browser clients. */
+export function browserHumanInputClientSource() {
+    return [
+        `const browserTextReplacementDelta=${browserTextReplacementDelta.toString()};`,
+        `const browserScrollDelta=${browserScrollDelta.toString()};`,
+        `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`
+    ].join("");
 }
 //# sourceMappingURL=browser-human-input.js.map

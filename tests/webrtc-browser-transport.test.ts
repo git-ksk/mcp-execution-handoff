@@ -788,8 +788,11 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /closePeer\(\)[\s\S]*resetViewTransform\(\)/);
   assert.match(script, /function mapPoint\(event\)\{const r=video\.getBoundingClientRect\(\)/);
   assert.match(script, /sendGestureScroll/);
-  assert.match(script, /deltaY:Math\.max\(-2000,Math\.min\(2000,dy\*2\)\)/);
-  assert.doesNotMatch(script, /deltaY:Math\.max\(-2000,Math\.min\(2000,-dy\*2\)\)/);
+  assert.match(script, /const browserScrollDelta=/);
+  assert.match(script, /const browserScrollDeltaY=/);
+  assert.match(script, /deltaX:browserScrollDelta\(dx\),deltaY:browserScrollDeltaY\(dy\)/);
+  assert.match(script, /deltaX:browserScrollDelta\(finalDx\),deltaY:browserScrollDeltaY\(finalDy\)/);
+  assert.doesNotMatch(script, /deltaY:Math\.max\(-2000,Math\.min\(2000,dy\*2\)\)/);
   assert.match(script, /finishGesture/);
   assert.match(script, /if\(touchEventsAvailable&&event\.pointerType==='touch'\)return/);
   assert.match(script, /video\.setPointerCapture/);
