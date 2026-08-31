@@ -17,4 +17,6 @@ Before opening a PR:
 
 English documentation is canonical. Keep the major Japanese documents synchronized when security or architecture semantics change.
 
+Before removing local branches or linked worktrees, follow [Repository worktree and branch hygiene](docs/repository-hygiene.md) and run `npm run audit:worktrees`. A `[gone]` upstream or merged-looking branch name is never sufficient deletion proof.
+
 Before proposing a new generic public API or widening project scope, review [Positioning](docs/positioning.md) and [Roadmap](ROADMAP.md). A proposal that duplicates an MCP-standard mechanism or exists for only one consumer should remain consumer-local until there is stronger evidence for a generic contract.
