@@ -6,7 +6,7 @@ import { ExperimentalWebSocketBrowserHandoff as WebSocketBrowserHandoff } from "
 import { type MacOSWebSocketWindowSurfaceConfig } from "../browser-takeover/macos-websocket-window-surface.js";
 import type { ManagedOperatorDiagnosticEventKind } from "../browser-takeover/managed-operator-diagnostics.js";
 import type { WebSocketTakeoverInputPolicy } from "../browser-takeover/websocket-takeover.js";
-export interface MacOSWindowWebSocketHostConfig extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent"> {
+export interface MacOSWindowWebSocketHostConfig extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent" | "successorWindowPolicy"> {
     platform: "macos";
 }
 export interface LinuxWindowWebSocketHostConfig {
@@ -24,6 +24,10 @@ export interface WindowWebSocketHandoffAdapterConfig {
     host: WindowWebSocketHostConfig;
     frameIntervalMs?: number;
     maxInboundBytes?: number;
+    successorWindowPolicy?: {
+        mode: "same_process";
+        transitionWindowMs?: number;
+    };
     onOperatorDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     /** Human Done only: the consumer must perform fresh semantic verification afterwards. */
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;

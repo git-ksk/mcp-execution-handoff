@@ -43,8 +43,15 @@ export class ManagedWindowHandoffRuntime {
         const webSocketPlatform = needsWebSocket
             ? resolveManagedWindowWebSocketPlatform(config.managedFallback ?? {})
             : undefined;
-        if (needsWebSocket && config.successorWindowPolicy) {
-            throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "The configured WSS backend does not yet support successor-window lineage");
+        if (needsWebSocket && config.successorWindowPolicy && webSocketPlatform !== "macos") {
+            throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "successor-window lineage over managed WSS requires the macOS exact-window backend");
+        }
+        if (needsWebSocket && config.successorWindowPolicy
+            && (this.#transportOrder.length !== 1 || this.#transportOrder[0] !== "websocket_relay")) {
+            throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "macOS WSS successor lineage requires an explicit WSS-only transport plan");
+        }
+        if (needsWebSocket && config.successorWindowPolicy && config.initialSecureWindowPolicy) {
+            throw new WindowHandoffCoreError("INITIAL_SECURE_WINDOW_POLICY_INVALID", "initial secure Window policy cannot be combined with successor-window lineage");
         }
         if (needsWebSocket && config.initialSecureWindowPolicy && webSocketPlatform !== "macos") {
             throw new WindowHandoffCoreError("INITIAL_SECURE_WINDOW_POLICY_INVALID", "LocalAuthentication managed WSS requires the macOS exact-window backend");
@@ -163,6 +170,9 @@ export class ManagedWindowHandoffRuntime {
                     helperTtlMs: this.#config.takeover.ttlMs,
                     ...(this.#config.initialSecureWindowPolicy
                         ? { initialSecureWindowPolicy: this.#config.initialSecureWindowPolicy }
+                        : {}),
+                    ...(this.#config.successorWindowPolicy
+                        ? { successorWindowPolicy: this.#config.successorWindowPolicy }
                         : {}),
                     onDiagnosticEvent: noteDiagnosticEvent,
                     latencyTracker: wssLatencyTracker

@@ -155,6 +155,40 @@ test("managed macOS WSS-only reuses the runtime host without consumer surface-cl
   await adapter.revoke("managed-macos-wss-only");
 });
 
+test("managed macOS successor lineage refuses cross-transport reconstruction of the original target", () => {
+  assert.throws(
+    () => new WindowHandoffAdapter({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+      runtime: { hostExecutable: process.execPath },
+      managedFallback: { platform: "macos" },
+      transportPolicy: { order: ["webrtc_direct", "websocket_relay"] },
+      successorWindowPolicy: { mode: "same_process" }
+    }),
+    (error: unknown) => error instanceof WindowHandoffAdapterError
+      && error.code === "WINDOW_HANDOFF_SUCCESSOR_POLICY_INVALID"
+      && /WSS-only transport plan/.test(error.message)
+  );
+});
+
+test("managed macOS WSS-only admits the existing same-process successor policy", async () => {
+  const adapter = new WindowHandoffAdapter({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },
+    runtime: { hostExecutable: process.execPath },
+    managedFallback: { platform: "macos" },
+    transportPolicy: { order: ["websocket_relay"] },
+    successorWindowPolicy: { mode: "same_process", transitionWindowMs: 650 }
+  });
+  const locator = adapter.start({
+    intervention: { id: "managed-macos-wss-lineage", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: { processId: 4242, windowId: 7331 },
+    inputPolicy: ALL_INPUT
+  });
+  assert.equal((await adapter.handle(new Request(locator), PRINCIPAL)).status, 200);
+  assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "websocket_relay");
+  await adapter.revoke("managed-macos-wss-lineage");
+});
+
 test("managed macOS LocalAuthentication WSS stays PID-only and policy-bounded", async () => {
   const adapter = new WindowHandoffAdapter({
     takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000 },

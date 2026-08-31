@@ -23,11 +23,17 @@ export function createManagedWindowWebSocketSurface(config) {
             ...(config.initialSecureWindowPolicy
                 ? { initialSecureWindowPolicy: config.initialSecureWindowPolicy }
                 : {}),
+            ...(config.successorWindowPolicy
+                ? { successorWindowPolicy: config.successorWindowPolicy }
+                : {}),
             ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
         });
     }
     if (config.initialSecureWindowPolicy) {
         throw new Error("Managed Linux WSS does not support macOS LocalAuthentication authority");
+    }
+    if (config.successorWindowPolicy) {
+        throw new Error("Managed Linux WSS does not support macOS successor-window lineage");
     }
     const displayName = config.host.displayName ?? config.runtime.displayName;
     if (!config.host.linuxHostScript || !displayName) {

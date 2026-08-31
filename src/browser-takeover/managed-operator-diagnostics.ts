@@ -40,6 +40,13 @@ export type ManagedOperatorDiagnosticEventKind =
   | "host_editable_regions_empty"
   | "host_focus_editable"
   | "host_focus_not_editable"
+  | "host_successor_probe_started"
+  | "host_successor_admitted"
+  | "host_successor_returned"
+  | "host_successor_none"
+  | "host_successor_ambiguous"
+  | "host_successor_unsupported"
+  | "host_successor_failure"
   | "client_editable_regions_available"
   | "client_editable_regions_empty"
   | "client_tap_editable_predicted"
@@ -157,7 +164,10 @@ const EVENTS = new Set<ManagedOperatorDiagnosticEventKind>([
   "transport_transition", "wss_open", "wss_degraded", "wss_failed", "capture_recovery_attempt",
   "input_dispatch_failure", "helper_restart", "authority_boundary_lost", "session_retained", "session_revoked",
   "host_editable_regions_available", "host_editable_regions_empty", "host_focus_editable",
-  "host_focus_not_editable", "client_editable_regions_available", "client_editable_regions_empty",
+  "host_focus_not_editable", "host_successor_probe_started", "host_successor_admitted",
+  "host_successor_returned", "host_successor_none", "host_successor_ambiguous",
+  "host_successor_unsupported", "host_successor_failure", "client_editable_regions_available",
+  "client_editable_regions_empty",
   "client_tap_editable_predicted", "client_tap_editable_not_predicted", "client_keyboard_focus_requested",
   "client_keyboard_focus_active", "client_keyboard_focus_inactive"
 ]);
