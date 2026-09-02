@@ -141,7 +141,8 @@ console.log("macOS WSS successor-window physical acceptance ready");
 console.log(`Initial exact target: pid=${TARGET_PID} window_id=${TARGET_WINDOW_ID}`);
 console.log(`Locator: ${locator}`);
 console.log(`Local diagnostics: http://127.0.0.1:${PORT}/__diag`);
-console.log("Expected action: on iPhone Safari, use Aim to tap Accessibility Add (+) once. The same WSS session must rotate to the new file chooser. Do not select a file or change a permission.");
+console.log("Precondition: Privacy & Security must already be unlocked locally before this Handoff. If Add (+) presents password/Touch ID/authorization UI, abort this run; do not admit or operate that secure UI through Handoff. Authenticate locally, dismiss the resulting chooser, then rerun acceptance.");
+console.log("Expected action: on iPhone Safari, tap Accessibility Add (+) directly once. The same WSS session must rotate to the new file chooser. Do not select a file or change a permission.");
 console.log("Acceptance proof: /__diag reports host_successor_admitted and the iPhone frame/input remain bounded to the admitted successor.");
 
 async function shutdown(): Promise<void> {
