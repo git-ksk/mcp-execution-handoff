@@ -1,8 +1,11 @@
+import { spawn } from "node:child_process";
 import { RTCPeerConnection, useH264 } from "werift";
 import {
   SpawnedWebRtcRuntimeProvider,
   type WebRtcTakeoverRuntimeBinding
 } from "../../src/browser-takeover/webrtc-runtime.js";
+
+const BINDING_EXPIRES_AT = Date.now() + 60_000;
 
 const HOST_SCRIPT = String.raw`
 process.stdin.resume();
@@ -41,7 +44,7 @@ function binding(generation = 1): WebRtcTakeoverRuntimeBinding {
     principalBinding: "principal-runtime",
     clientBinding: `runtime-client-${generation}-1234567890`,
     clientGeneration: generation,
-    expiresAt: Date.now() + 60_000
+    expiresAt: BINDING_EXPIRES_AT
   };
 }
 
@@ -112,15 +115,32 @@ async function main(): Promise<void> {
     await provider.revoke("runtime-session-1").catch(() => undefined);
   }
 
-  const reconnectProvider = new SpawnedWebRtcRuntimeProvider({ hostExecutable: process.execPath, hostArgs: ["-e", HOST_SCRIPT] });
+  let hostSpawns = 0;
+  const reconnectProvider = new SpawnedWebRtcRuntimeProvider({
+    hostExecutable: process.execPath,
+    hostArgs: ["-e", HOST_SCRIPT],
+    preserveHostStateOnSuspend: true,
+    spawnProcess(command, args, options) {
+      hostSpawns += 1;
+      return spawn(command, args, options);
+    }
+  });
   const peer = new RTCPeerConnection({ codecs: { video: [useH264()] }, iceServers: [] });
   peer.addTransceiver("video", { direction: "recvonly" });
   peer.createDataChannel("human-critical");
+  let resumeDisconnects = 0;
   try {
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
     const description = { type: "offer" as const, sdp: peer.localDescription!.sdp };
-    await reconnectProvider.start(binding(1), description, { beginInput: () => () => undefined, disconnected: () => undefined });
+    const answer = await reconnectProvider.start(binding(1), description, {
+      beginInput: () => () => undefined,
+      disconnected: () => { resumeDisconnects += 1; }
+    });
+    await peer.setRemoteDescription(answer);
+    await waitFor(() => peer.connectionState === "connected");
+    if (hostSpawns !== 1) throw new Error("initial runtime did not spawn exactly one host");
+
     let rejected = false;
     try {
       await reconnectProvider.reconnect(binding(1), description, { beginInput: () => () => undefined, disconnected: () => undefined });
@@ -128,6 +148,32 @@ async function main(): Promise<void> {
       rejected = error instanceof Error && /already active/i.test(error.message);
     }
     if (!rejected) throw new Error("same-generation reconnect was not rejected");
+
+    if (!reconnectProvider.suspend) throw new Error("spawned runtime does not support lifecycle suspend");
+    await reconnectProvider.suspend("runtime-session-1");
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    if (resumeDisconnects !== 0) throw new Error("broker-directed suspend was reported as unexpected peer loss");
+
+    const resumedPeer = new RTCPeerConnection({ codecs: { video: [useH264()] }, iceServers: [] });
+    resumedPeer.addTransceiver("video", { direction: "recvonly" });
+    resumedPeer.createDataChannel("human-critical");
+    let resumedPackets = 0;
+    resumedPeer.onTrack.subscribe((track) => track.onReceiveRtp.subscribe(() => { resumedPackets += 1; }));
+    try {
+      const resumedOffer = await resumedPeer.createOffer();
+      await resumedPeer.setLocalDescription(resumedOffer);
+      const resumedDescription = { type: "offer" as const, sdp: resumedPeer.localDescription!.sdp };
+      const resumedAnswer = await reconnectProvider.start(binding(2), resumedDescription, {
+        beginInput: () => () => undefined,
+        disconnected: () => undefined
+      });
+      await resumedPeer.setRemoteDescription(resumedAnswer);
+      await waitFor(() => resumedPeer.connectionState === "connected");
+      await waitFor(() => resumedPackets > 0);
+      if (hostSpawns !== 1) throw new Error("fresh-generation reconnect respawned the bounded host");
+    } finally {
+      await resumedPeer.close().catch(() => undefined);
+    }
   } finally {
     await peer.close().catch(() => undefined);
     await reconnectProvider.revoke("runtime-session-1").catch(() => undefined);
