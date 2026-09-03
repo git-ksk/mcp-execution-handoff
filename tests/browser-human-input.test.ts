@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   browserHumanInputClientSource,
   browserMobileKeyboardAfterRemoteTap,
+  browserPhysicalSwipeScrollDelta,
   browserScrollDelta,
   browserScrollDeltaY,
   browserTextReplacementDelta,

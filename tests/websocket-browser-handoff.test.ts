@@ -78,9 +78,18 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /image\/jpeg/);
   assert.match(html, /image\/png/);
   assert.match(html, /kind:'tap'/);
+  assert.match(html, /aria-label="Aim precise remote tap"/);
+  assert.match(html, /id="aim-crosshair"/);
+  assert.match(html, /function setAimMode\(enabled\)/);
+  assert.match(html, /if\(aimMode&&viewScale<MAX_VIEW_SCALE\)applyViewTransform\(MAX_VIEW_SCALE/);
+  assert.match(html, /function tapAimTarget\(\)/);
+  assert.match(html, /if\(aimMode\)\{event\.preventDefault\(\);return\}/);
+  assert.match(html, /localPan:aimMode\|\|viewScale>1/);
+  assert.match(html, /active\.localPan&&moved>8/);
+  assert.match(html, /window\.addEventListener\('orientationchange',scheduleOrientationReset\)/);
   assert.match(html, /kind:'scroll'/);
   assert.match(html, /const browserScrollDeltaY=/);
-  assert.match(html, /browserScrollDeltaY\(dy\)/);
+  assert.match(html, /browserPhysicalSwipeScrollDelta\(dy\)/);
   assert.doesNotMatch(html, /Math\.round\(dy\*3\)/);
   assert.match(html, /kind:'text'/);
   assert.match(html, /kind:'key'/);
@@ -131,6 +140,129 @@ test("Generic Browser WSS emits syntactically valid client JavaScript", async ()
   const match = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
   assert.ok(match?.[1]);
   assert.doesNotThrow(() => new vm.Script(match[1]));
+  handoff.revoke("generic-browser-wss");
+});
+
+test("Generic Browser WSS Aim keeps pan local and emits only one explicit mapped tap", async () => {
+  const handoff = fixture();
+  const locator = start(handoff);
+  const html = await (await handoff.handle(new Request(locator), PRINCIPAL)).text();
+  const match = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
+  assert.ok(match?.[1]);
+
+  const listeners = new Map<string, (event: any) => void>();
+  const app = { dataset: { tap: "1", scroll: "1", text: "1", key: "1" } };
+  const screen = {
+    addEventListener(name: string, listener: (event: any) => void) { listeners.set(name, listener); },
+    setPointerCapture() {},
+    getBoundingClientRect() { return { left: 0, top: 0, width: 320, height: 240 }; }
+  };
+  const frame = {
+    naturalWidth: 640,
+    naturalHeight: 480,
+    onload: null as (() => void) | null,
+    src: "",
+    style: {} as Record<string, string>
+  };
+  const status = { textContent: "" };
+  const button = () => ({
+    style: {} as Record<string, string>,
+    disabled: false,
+    textContent: "",
+    onclick: null as (() => void) | null,
+    setAttribute() {}
+  });
+  const zoom = button();
+  const aim = button();
+  const aimTap = button();
+  const aimCrosshair = { style: {} as Record<string, string> };
+  const keyboardOpen = button();
+  const backspace = button();
+  const done = button();
+  const documentState: { activeElement: unknown } = { activeElement: null };
+  const keyboard = {
+    value: "",
+    addEventListener() {},
+    focus() { documentState.activeElement = keyboard; },
+    blur() { documentState.activeElement = null; },
+    setAttribute() {}
+  };
+  const document = {
+    get activeElement() { return documentState.activeElement; },
+    querySelector(selector: string) {
+      return ({
+        "#app": app,
+        "#screen": screen,
+        "#frame": frame,
+        "#status": status,
+        "#done": done,
+        "#zoom": zoom,
+        "#aim": aim,
+        "#aim-tap": aimTap,
+        "#aim-crosshair": aimCrosshair,
+        "#keyboard-open": keyboardOpen,
+        "#backspace": backspace,
+        "#keyboard-input": keyboard
+      } as Record<string, unknown>)[selector] ?? null;
+    }
+  };
+  const sent: string[] = [];
+  let socket: FakeWebSocket | undefined;
+  class FakeWebSocket {
+    static OPEN = 1;
+    readyState = 1;
+    binaryType = "";
+    onmessage?: (event: { data: unknown }) => void;
+    onclose?: (event: { code: number }) => void;
+    onerror?: () => void;
+    constructor(_url: URL, _protocols: string[]) { socket = this; }
+    send(value: string): void { sent.push(value); }
+    close(): void { this.readyState = 3; }
+  }
+  const timers: Array<{ callback: () => void; delay: number }> = [];
+  const context = vm.createContext({
+    document,
+    location: { pathname: new URL(locator).pathname, href: locator, protocol: "https:" },
+    fetch: async () => ({
+      ok: true,
+      async json() { return { protocols: ["mcp-handoff.websocket.v1", `mcp-handoff-auth.${"x".repeat(32)}`] }; }
+    }),
+    WebSocket: FakeWebSocket,
+    URL,
+    Blob,
+    TextEncoder,
+    performance: { now: () => 1 },
+    queueMicrotask,
+    setTimeout(callback: () => void, delay: number) { timers.push({ callback, delay }); return timers.length; },
+    clearTimeout() {},
+    window: { addEventListener() {} }
+  });
+  new vm.Script(match[1]).runInContext(context);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  socket?.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
+
+  assert.equal(aim.style.display, "block");
+  aim.onclick?.();
+  assert.match(frame.style.transform ?? "", /^matrix\(4,0,0,4,/);
+  assert.equal(aimCrosshair.style.display, "block");
+  assert.equal(aimTap.style.display, "block");
+
+  const preventDefault = () => {};
+  listeners.get("pointerdown")?.({ pointerId: 1, clientX: 160, clientY: 120, preventDefault });
+  listeners.get("pointermove")?.({ pointerId: 1, clientX: -1_000, clientY: 120, preventDefault });
+  listeners.get("pointerup")?.({ pointerId: 1, clientX: -1_000, clientY: 120, preventDefault });
+  assert.deepEqual(sent, [], "Aim pan must remain client-local");
+
+  aimTap.onclick?.();
+  assert.equal(sent.length, 1);
+  const tapped = JSON.parse(sent[0]!) as { kind?: string; x?: number; y?: number };
+  assert.equal(tapped.kind, "tap");
+  assert.equal(tapped.x, 1, "Aim pan must let the fitted remote right edge reach the crosshair");
+  assert.equal(tapped.y, 0.5);
+
+  socket?.onclose?.({ code: 1006 });
+  assert.equal(frame.style.transform, "none", "reconnect must reset local zoom/pan");
+  assert.equal(aimCrosshair.style.display, "none", "reconnect must exit Aim");
   handoff.revoke("generic-browser-wss");
 });
 
@@ -196,9 +328,13 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
     setPointerCapture() {},
     getBoundingClientRect() { return { left: 0, top: 0, width: 320, height: 240 }; }
   };
-  const frame = { naturalWidth: 0, naturalHeight: 0, onload: null as (() => void) | null, src: "" };
+  const frame = { naturalWidth: 0, naturalHeight: 0, onload: null as (() => void) | null, src: "", style: {} as Record<string, string> };
   const status = { textContent: "" };
-  const button = () => ({ style: {} as Record<string, string>, disabled: false, onclick: null as (() => void) | null, setAttribute() {} });
+  const button = () => ({ style: {} as Record<string, string>, disabled: false, textContent: "", onclick: null as (() => void) | null, setAttribute() {} });
+  const zoom = button();
+  const aim = button();
+  const aimTap = button();
+  const aimCrosshair = { style: {} as Record<string, string> };
   const keyboardOpen = button();
   const backspace = button();
   const done = button();
@@ -218,6 +354,10 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
         "#frame": frame,
         "#status": status,
         "#done": done,
+        "#zoom": zoom,
+        "#aim": aim,
+        "#aim-tap": aimTap,
+        "#aim-crosshair": aimCrosshair,
         "#keyboard-open": keyboardOpen,
         "#backspace": backspace,
         "#keyboard-input": keyboard
@@ -263,7 +403,8 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
     performance: { now: () => 1 },
     queueMicrotask,
     setTimeout(callback: () => void, delay: number) { timers.push({ callback, delay }); return timers.length; },
-    clearTimeout() {}
+    clearTimeout() {},
+    window: { addEventListener() {} }
   });
   new vm.Script(match[1]).runInContext(context);
   await new Promise<void>((resolve) => setImmediate(resolve));

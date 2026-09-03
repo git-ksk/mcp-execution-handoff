@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Converge mobile Human-control parity across WebRTC/WSS (#143, #210): keep explicit user-gesture keyboard mode as the iOS-safe first-class baseline, add WSS client-local 1×–4× view/Aim controls, and use the same physically accepted mobile-Safari swipe direction for WSS and WebRTC. Aim pan/zoom emits no remote input and can bring fitted surface edge points to the center crosshair; only explicit `Tap` emits one ordinary server-policy-gated tap, and reconnect/orientation/teardown reset the transform without widening target authority.
+
 - Harden `SignedFileHandoffCheckpointStore` local durability (#141): flush the private temporary checkpoint before atomic rename and fsync the parent directory after both rename and successful clear where the platform/filesystem exposes a supported directory barrier. File-barrier and supported directory-barrier failures propagate synchronously so active Human authority is fenced exactly like any other checkpoint write failure; Windows retains mandatory file fsync but makes no unsupported directory-fsync/power-loss claim.
 
 - Decouple WSS terminal notifications and peer close responses from authority completion/release (#177). Stalled or rejected terminal writes no longer hold shared lease cleanup or prevent an explicit cleanup retry; accepted input still drains before Done, and late notification outcomes cannot restore authority. Add deterministic stalled-peer regression coverage without requiring ICE or physical authentication.

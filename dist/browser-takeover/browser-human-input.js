@@ -19,12 +19,13 @@ export function browserScrollDelta(pointerDelta, scale = 3) {
 export function browserScrollDeltaY(pointerDeltaY, scale = 3) {
     return browserScrollDelta(pointerDeltaY, scale);
 }
-/**
- * Direct WebRTC browser gestures need the opposite final wheel sign at the physical Safari boundary.
- * Keep this adapter explicit so the physically accepted WSS sign remains unchanged.
- */
-export function browserWebRtcScrollDelta(pointerDelta, scale = 3) {
+/** Physical mobile-Safari swipe direction accepted by both WebRTC and WSS Human pages. */
+export function browserPhysicalSwipeScrollDelta(pointerDelta, scale = 3) {
     return -browserScrollDelta(pointerDelta, scale);
+}
+/** Compatibility name retained for the existing WebRTC client source/tests. */
+export function browserWebRtcScrollDelta(pointerDelta, scale = 3) {
+    return browserPhysicalSwipeScrollDelta(pointerDelta, scale);
 }
 /** Remote-surface taps never toggle an explicitly opened mobile software keyboard session. */
 export function browserMobileKeyboardAfterRemoteTap(state) {
@@ -36,6 +37,7 @@ export function browserHumanInputClientSource() {
         `const browserTextReplacementDelta=${browserTextReplacementDelta.toString()};`,
         `const browserScrollDelta=${browserScrollDelta.toString()};`,
         `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`,
+        `const browserPhysicalSwipeScrollDelta=${browserPhysicalSwipeScrollDelta.toString()};`,
         `const browserWebRtcScrollDelta=${browserWebRtcScrollDelta.toString()};`
     ].join("");
 }

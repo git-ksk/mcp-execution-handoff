@@ -620,12 +620,12 @@ export class ManagedWindowHandoffRuntime {
         let html = await response.text();
         const appMarker = '<main id="app" ';
         const helperMarker = "function setStatus(value){status.textContent=value}";
-        const disconnectHookMarker = "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;if(browserWssCloseIsReconnectable(event.code)){scheduleReconnect();return}stopped=true;setStatus('Connection closed')}";
+        const disconnectHookMarker = "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;if(browserWssCloseIsReconnectable(event.code)){scheduleReconnect();return}stopped=true;resetViewTransform();setStatus('Connection closed')}";
         const initialFailureHookMarker = "function onInitialWebSocketConnectFailure(){scheduleReconnect()}";
         const errorMarker = "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}";
         const readyMarker = "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();";
         const frameLoadedMarker = "lastFrameLoadedAt=loadedAt;if(currentUrl)";
-        const initialMarker = "controls();void connect().catch(()=>onInitialWebSocketConnectFailure())";
+        const initialMarker = "controls();resetViewTransform();window.addEventListener('orientationchange',scheduleOrientationReset);void connect().catch(()=>onInitialWebSocketConnectFailure())";
         if (!html.includes(appMarker)
             || !html.includes(helperMarker)
             || !html.includes(disconnectHookMarker)
@@ -640,10 +640,10 @@ export class ManagedWindowHandoffRuntime {
         html = html.replace(helperMarker, `${helperMarker}${managedWebSocketFallbackHelper()}`);
         html = html.replace(readyMarker, "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();managedWebSocketReady();");
         html = html.replace(frameLoadedMarker, "lastFrameLoadedAt=loadedAt;managedWebSocketFrameLoaded(loadedAt);if(currentUrl)");
-        html = html.replace(disconnectHookMarker, "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;void managedWebSocketDisconnected(ws,event)}");
+        html = html.replace(disconnectHookMarker, "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;resetViewTransform();void managedWebSocketDisconnected(ws,event)}");
         html = html.replace(initialFailureHookMarker, "function onInitialWebSocketConnectFailure(){if(!stopped&&!terminalPending)void managedTransportFallback()}");
         html = html.replace(errorMarker, "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}");
-        html = html.replace(initialMarker, "controls();armManagedReadyTimeout();void connect().catch(()=>onInitialWebSocketConnectFailure())");
+        html = html.replace(initialMarker, "controls();resetViewTransform();window.addEventListener('orientationchange',scheduleOrientationReset);armManagedReadyTimeout();void connect().catch(()=>onInitialWebSocketConnectFailure())");
         return cloneResponse(response, html);
     }
     #forgetSession(session) {
