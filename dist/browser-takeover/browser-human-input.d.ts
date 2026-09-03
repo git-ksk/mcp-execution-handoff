@@ -14,6 +14,11 @@ export declare function browserTextReplacementDelta(previous: string, current: s
 export declare function browserScrollDelta(pointerDelta: number, scale?: number): number;
 /** Vertical compatibility helper for existing Browser Human Input callers. */
 export declare function browserScrollDeltaY(pointerDeltaY: number, scale?: number): number;
+/**
+ * Direct WebRTC browser gestures need the opposite final wheel sign at the physical Safari boundary.
+ * Keep this adapter explicit so the physically accepted WSS sign remains unchanged.
+ */
+export declare function browserWebRtcScrollDelta(pointerDelta: number, scale?: number): number;
 export type BrowserMobileKeyboardState = "closed" | "explicit";
 /** Remote-surface taps never toggle an explicitly opened mobile software keyboard session. */
 export declare function browserMobileKeyboardAfterRemoteTap(state: BrowserMobileKeyboardState): BrowserMobileKeyboardState;

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  browserHumanInputClientSource,
   browserMobileKeyboardAfterRemoteTap,
   browserScrollDelta,
   browserScrollDeltaY,
-  browserTextReplacementDelta
+  browserTextReplacementDelta,
+  browserWebRtcScrollDelta
 } from "../src/browser-takeover/browser-human-input.js";
 
 test("Browser Human Input replaces an IME preedit instead of appending the committed text", () => {
@@ -20,9 +22,21 @@ test("Browser Human Input maps swipe direction to natural remote page scrolling"
   assert.equal(browserScrollDeltaY(Number.NaN), 0);
   assert.equal(browserScrollDelta(40), -120);
   assert.equal(browserScrollDelta(-40, 2), 80);
+  assert.equal(browserWebRtcScrollDelta(40), 120);
+  assert.equal(browserWebRtcScrollDelta(-40), -120);
 });
 
 test("Browser Human Input keeps an explicitly opened mobile keyboard session across remote taps", () => {
   assert.equal(browserMobileKeyboardAfterRemoteTap("closed"), "closed");
   assert.equal(browserMobileKeyboardAfterRemoteTap("explicit"), "explicit");
+});
+
+test("Browser Human Input emits browser-safe shared helper source", () => {
+  const source = browserHumanInputClientSource();
+  assert.doesNotThrow(() => new Function(source));
+  assert.match(source, /browserTextReplacementDelta/);
+  assert.match(source, /browserScrollDelta/);
+  assert.match(source, /browserScrollDeltaY/);
+  assert.match(source, /browserWebRtcScrollDelta/);
+  assert.doesNotMatch(source, /credential|token|principal|windowId|processId/i);
 });
