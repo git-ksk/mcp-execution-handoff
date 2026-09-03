@@ -1,6 +1,6 @@
 import { WebSocketLatencyTracker } from "./websocket-latency.js";
 export type WebSocketTakeoverState = "open" | "closing" | "closed" | "revoked" | "failed";
-export type WebSocketTakeoverInputStage = "none" | "received" | "authority_begin_ready" | "dispatch_started" | "dispatch_completed" | "authority_end_ready" | "applied";
+export type WebSocketTakeoverInputStage = "none" | "received" | "authority_begin_ready" | "dispatch_started" | "dispatch_rejected" | "dispatch_completed" | "authority_end_ready" | "applied";
 /**
  * Trusted binding created only after Handoff-owned WSS ingress authenticates the principal,
  * validates the request Origin, and claims one client generation. Never populate these fields
@@ -85,6 +85,9 @@ export interface ExperimentalWebSocketTakeoverOptions {
     maxBufferedBytes?: number;
 }
 export type WebSocketTakeoverFailureCode = "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "transport_failure" | "authority_release_failed";
+export declare class WebSocketTakeoverRecoverableInputError extends Error {
+    constructor(message?: string);
+}
 export declare class WebSocketTakeoverError extends Error {
     readonly code: WebSocketTakeoverFailureCode;
     constructor(code: WebSocketTakeoverFailureCode, message: string);

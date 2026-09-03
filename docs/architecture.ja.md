@@ -220,6 +220,8 @@ mobile Safariのsoftware keyboard activationは明示的なHuman gestureのま�
 
 touch対応SafariではTouch Eventsをgestureの基準とし、touch Pointer Eventsによる二重入力を抑止します。物理swipeからwheelへの方向変換はmobile Safari boundaryで一度だけ正規化し、WebRTC/WSSで共有します。transport選択によってHuman scroll semanticsを反転させません。macOS hostでは `CGEventSource(stateID: .combinedSessionState)` を利用し、login中のuser session内で動くprocessに合わせます。tap/scrollはsession event tapを使います。exact native windowでは、ordinary non-secure AppKit text controlに限り、focused window・focused elementのPID・non-web ancestryを再検証したうえでboundedな `AXSelectedText` commitを先に試します。unsupported controlは既存のtarget-PID keyboard-event経路を維持し、ownershipまたはexact-window不一致時はfallbackせずfail closedします。text routingの診断は bounded なstage (`native_ax` / `pid_keyboard` / `event_creation_failure` / `activation_rejected` / `native_boundary_rejected`) だけを保持し、Human text、座標、target/process/window identity、session identityは保持しません。consumer APIを広げずに、window単位のcapture/inputとbrowser gestureの意味を一致させるための設計です。
 
+限定されたWindow WSSでは、exact target authorityが有効なままの場合に限り、OS surfaceがhelper/ack failureを **recoverable** と分類できます。この失敗でも現在のbound input useは必ず終了し、`dispatch_rejected` とcontent-freeな `input_dispatch_failure` / `session_retained` diagnosticsを記録したうえでWSS generationだけを維持します。失敗したHuman inputをHandoffが自動replayすることはなく、retryには新しいHuman gestureが必要です。target/process消失、visibility/ownership/geometry loss、stale generation、未分類failureは従来どおりfail closedでsessionをrevokeします。
+
 broker自身はtakeover可能なsurfaceを広げません。consumer browser adapterが自身のallowlistと現在のepochに基づいて各操作を検証します。
 
 ## Window handoff

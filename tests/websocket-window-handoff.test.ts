@@ -365,6 +365,40 @@ test("Generic Window WSS consumer revoke does not masquerade as Human completion
   assert.deepEqual(releases, []);
 });
 
+test("Generic Window WSS keeps the same session after a recoverable input failure without replay", async (t) => {
+  const { handoff, calls, diagnosticEvents } = fixture({ recoverableInputFailures: 1 });
+  const locator = handoff.start({
+    intervention: { id: "window-recoverable-input-retry", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: TARGET,
+    inputPolicy: POLICY
+  });
+  const sessionId = sessionIdFrom(locator);
+  const protocols = await bootstrapProtocols(handoff, sessionId);
+  const server = await startServer(handoff);
+  t.after(async () => closeServer(server));
+  const socket = new WebSocket(socketUrl(server, sessionId), protocols, { origin: ORIGIN });
+  assert.deepEqual(JSON.parse((await nextMessage(socket)).data.toString()), { kind: "ready" });
+  await nextMessage(socket);
+
+  socket.send(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 }));
+  await waitFor(() => calls.filter((call) => call.kind === "tap").length === 1);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), true);
+  assert.equal(socket.readyState, WebSocket.OPEN);
+  assert.ok(diagnosticEvents.includes("input_dispatch_failure"));
+  assert.ok(diagnosticEvents.includes("session_retained"));
+
+  socket.send(JSON.stringify({ kind: "tap", x: 0.3, y: 0.3 }));
+  await waitFor(() => calls.filter((call) => call.kind === "tap").length === 2);
+  assert.deepEqual(
+    calls.filter((call) => call.kind === "tap").map((call) => call.args),
+    [[0.2, 0.2], [0.3, 0.3]],
+    "recoverable input is never replayed automatically"
+  );
+  handoff.revoke("window-recoverable-input-retry");
+});
+
 test("Generic Window WSS start is idempotent only for the exact authority/target/policy tuple", () => {
   const { handoff } = fixture();
   const request = {

@@ -121,6 +121,9 @@ export class ExperimentalLinuxWebSocketWindowSurface {
     editableRegionsSnapshot() {
         return this.#editableRegions.map((region) => [...region]);
     }
+    inputFailureDisposition(error) {
+        return isExactWindowBoundaryError(error) ? "authority_lost" : "recoverable";
+    }
     async captureExactWindow(target) {
         let lastError;
         for (let attempt = 0; attempt < CAPTURE_RECOVERY_ATTEMPTS; attempt += 1) {

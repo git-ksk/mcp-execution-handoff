@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ExperimentalWebSocketTakeoverChannel,
   WebSocketTakeoverError,
+  WebSocketTakeoverRecoverableInputError,
   type WebSocketTakeoverFrame
 } from "../src/experimental/websocket-takeover.js";
 
@@ -10,6 +11,7 @@ interface HarnessOverrides {
   failControl?: boolean;
   failComplete?: boolean;
   failInput?: boolean;
+  recoverableInputFailures?: number;
   failFrame?: boolean;
   failBuffered?: boolean;
   failReleaseAttempts?: number;
@@ -41,6 +43,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
   let completionGate: ReturnType<typeof deferred> | undefined;
   let failBegin = false;
   let releaseFailuresLeft = overrides.failReleaseAttempts ?? 0;
+  let recoverableInputFailures = overrides.recoverableInputFailures ?? 0;
 
   const channel = new ExperimentalWebSocketTakeoverChannel({
     binding: {
@@ -98,6 +101,10 @@ function createHarness(overrides: HarnessOverrides = {}) {
       inputs.push(input);
       if (inputGate) await inputGate.promise;
       if (overrides.failInput) throw new Error("input failed");
+      if (recoverableInputFailures > 0) {
+        recoverableInputFailures -= 1;
+        throw new WebSocketTakeoverRecoverableInputError("input not acknowledged");
+      }
     },
     onClientDiagnostic(kind) {
       diagnostics.push(kind);
@@ -432,6 +439,25 @@ test("WebSocket Done is one-shot and fences later input", async () => {
   assert.deepEqual(h.controls, [{ kind: "closing" }, { kind: "closed" }]);
   assert.deepEqual(h.closes, [{ code: 1000, reason: "done" }]);
   assert.equal(h.channel.state, "closed");
+});
+
+test("WebSocket recoverable input failure ends bound use without fencing the session or replaying input", async () => {
+  const h = createHarness({ recoverableInputFailures: 1 });
+  await assert.rejects(
+    h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.1, y: 0.1 })),
+    (error) => error instanceof WebSocketTakeoverRecoverableInputError
+  );
+  assert.equal(h.calls.begin, 1);
+  assert.equal(h.calls.end, 1);
+  assert.equal(h.calls.release, 0);
+  assert.equal(h.channel.state, "open");
+  assert.equal(h.channel.diagnostics.lastFailure, undefined);
+  assert.equal(h.channel.diagnostics.lastInputStage, "dispatch_rejected");
+
+  await h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 }));
+  assert.equal(h.channel.state, "open");
+  assert.equal(h.channel.diagnostics.lastInputStage, "applied");
+  assert.equal(h.inputs.length, 2, "failed input is not replayed automatically");
 });
 
 test("WebSocket target input failure fences after ending bound use", async () => {

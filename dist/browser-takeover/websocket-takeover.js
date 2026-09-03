@@ -1,4 +1,10 @@
 import { WebSocketLatencyTracker, isWebSocketClientLatencyMetric, validWebSocketLatency } from "./websocket-latency.js";
+export class WebSocketTakeoverRecoverableInputError extends Error {
+    constructor(message = "WebSocket takeover input was not applied") {
+        super(message);
+        this.name = "WebSocketTakeoverRecoverableInputError";
+    }
+}
 export class WebSocketTakeoverError extends Error {
     code;
     constructor(code, message) {
@@ -388,6 +394,10 @@ export class ExperimentalWebSocketTakeoverChannel {
             throw stale;
         }
         if (operationError !== undefined) {
+            if (operationError instanceof WebSocketTakeoverRecoverableInputError) {
+                this.lastInputStageValue = "dispatch_rejected";
+                throw operationError;
+            }
             await this.failClosed(new WebSocketTakeoverError("transport_failure", "WebSocket takeover operation failed"));
             throw operationError;
         }
