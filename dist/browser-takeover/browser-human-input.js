@@ -19,6 +19,13 @@ export function browserScrollDelta(pointerDelta, scale = 3) {
 export function browserScrollDeltaY(pointerDeltaY, scale = 3) {
     return browserScrollDelta(pointerDeltaY, scale);
 }
+/**
+ * Direct WebRTC browser gestures need the opposite final wheel sign at the physical Safari boundary.
+ * Keep this adapter explicit so the physically accepted WSS sign remains unchanged.
+ */
+export function browserWebRtcScrollDelta(pointerDelta, scale = 3) {
+    return -browserScrollDelta(pointerDelta, scale);
+}
 /** Remote-surface taps never toggle an explicitly opened mobile software keyboard session. */
 export function browserMobileKeyboardAfterRemoteTap(state) {
     return state;
@@ -28,7 +35,8 @@ export function browserHumanInputClientSource() {
     return [
         `const browserTextReplacementDelta=${browserTextReplacementDelta.toString()};`,
         `const browserScrollDelta=${browserScrollDelta.toString()};`,
-        `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`
+        `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`,
+        `const browserWebRtcScrollDelta=${browserWebRtcScrollDelta.toString()};`
     ].join("");
 }
 //# sourceMappingURL=browser-human-input.js.map
