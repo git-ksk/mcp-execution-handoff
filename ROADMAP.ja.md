@@ -12,7 +12,7 @@
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-08-28
+### 現在の作業状態 — 2026-09-03
 
 v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みで、v0.2 terminology convergenceでは `TargetSurfaceKind` enumをfreezeせずHuman Interaction Policyへcanonical aliasを追加します。
 
@@ -21,13 +21,15 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - `TerminalHandoffAdapter` は #86で完成しました。CUMGはexperimental PTY authorityとTerminal WebRTC transportの個別compositionをやめ、merged-code real PTY cross-repo E2Eとphysical iPhone Human acceptanceも通過済みです。mobileのconnection / Human authority / verifying表示は #91で明示的かつfail-closedになりました。
 - Safari suspend/disconnect後のBrowser WebRTC reconnectは #104でdeterministic化しました。generation releaseをsingle-flight化し、重複lifecycle eventを1本のreconnectへ集約し、active-lease conflictをboundedに観測できます。same-LAN iPhoneのphysical runではbackground/foregroundを3回連続で復帰し、409 loopやblack-frame固定は発生しませんでした。Safari appの完全終了はimplicit lease reclaimを行わず、fresh authorized flowを要求します。
 - #40のHTTPS/WSS managed-runtime evaluationは、#152 / #155 / #156でHandoff-ownedなBrowser / Window fallback `WebRTC direct -> WebSocket relay -> optional WebRTC/TURN relay` へ昇格しました。TURNなしのproduction-shaped Cloud Run `run.app`でphysical iPhone Safari acceptanceまでPASSし、bounded Human input、Done、verification/teardown、stale direct/WSS fencingを確認済みです。Maps consumer adoptionは `git-ksk/maps-browser-mcp#147` で別追跡します。
+- macOS managed Window/WSS系はさらにhardeningが進みました。#183がfirst-class exact-window WSS surfaceを所有し、#185でmanaged exact-window transport compositionのOS-neutral化が完了、#186でbounded same-process successor-window lineage parityをphysical iPhone Safari acceptanceまで完了しています。#184にはTarget Surface × OS × transport support matrixの実行可能baselineが入り、残るcompleteness / failure-injectionを同Issueで継続します。
+- #188でWebRTC/WSS横断のmobile input normalizationを完了しました。日本語IME replacement、explicit software-keyboard persistence、Backspace/Enter、generated-client syntax gate、physical iPhoneのscroll方向までcurrent `main`で再検証済みです。残るclient-side precision parityは#210、System Settings authorization-to-successorの別authority investigationは#211へ分離しています。
 - #47でmacOS/Linuxのbounded exact-window primitiveを再利用可能にし、whole-desktop fallbackは追加していません。
 - #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
 - CUMGはWindowとTerminalの両方で実証済みnon-browser consumerです。
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、後続の明示authority / transport / hosted work（#125 / #19 / #12）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、v0.4+ session / authority / transport / hosted work（#161 / #125 / #19 / #12に加え#183 / #184 / #211のbounded follow-up）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 #94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
 
@@ -43,6 +45,18 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #128 | v0.3 audit | **完了。** 既存checkpoint/recovery event名を維持したstable v1 strict audit union、field/cardinality上限、256件memory reference sink、observe-onlyなsink failure semanticsを固定。 |
 | #129 | v0.3 diagnostics | **完了。** Browser / Window / Terminalへidentifier-freeなstable v1 operator summaryを追加し、generic bounded health/failure categoryと `webrtc` / `terminal_session` / `terminal_webrtc` namespaceへ固有factを分離。既存詳細diagnosticsも互換維持。 |
 | #130 | v0.3 restart conformance | **完了 / v0.3 recovery gate。** 全persisted lifecycle phase、Browser / Window旧locator/capability/generation/reconnect拒否、Terminal Human-active restart / PTY exit、checkpoint tamper/mismatch/expiry、write interruptionをdeterministic first-class testでcoverageし、stale authority / Human input replayなしを固定。 |
+| #172 | v0.3.x recoverable WSS input | **OPEN。** recoverableなHuman input-path failure後もvalidなmanaged WSS sessionを維持し、failed input replayやauthority拡大を行わない。 |
+| #143 | v0.3.x mobile composition | **OPEN。** explicit user-gesture / privacy制約を維持したままmobile keyboard/compositionをfirst-class化。 |
+| #150 | v0.3.x lifecycle presentation | **OPEN。** consumer verification中はcontrolをfenceし、stale LocalAuthentication videoを消す。 |
+| #188 | v0.3.x mobile input normalization | **完了。** WebRTC/WSSでIME/keyboard/gesture semanticsを統一し、physical iPhoneでWebRTC scroll方向のdriftも検出・修正。 |
+| #189 | v0.3.x auth UX feedback | **OPEN。** credential brokerやTarget Surface authority拡大なしでsecure sign-in UXの学びを反映。 |
+| #210 | v0.3.x WSS mobile-control parity | **OPEN。** server authorityを変えず、WebRTC相当のclient-local Aim / precise-tapをWSSへ追加。 |
+| #183 | v0.4+ macOS WSS surface | **OPEN。** reusableなfirst-class macOS exact-window WSS surfaceとacceptance boundaryを仕上げる。 |
+| #184 | v0.4+ conformance | **OPEN。** executable support-matrix baselineは存在。component completeness / failure-injectionを仕上げ、unsupported combinationをexplicit/fail-closedにする。 |
+| #185 | v0.4+ managed composition | **完了。** managed exact-window transport compositionをOS-neutral化し、consumerからLinux/macOS concrete WSS construction選択を除去。 |
+| #186 | v0.4+ WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
+| #211 | v0.4+ bounded secure-flow authority | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
+| #161 | v0.4+ Desktop Session / Display Backend | **OPEN / 次のarchitecture step。** persistent application/session stateとphysical / virtual / remote display attachmentを#125より先に分離。 |
 | #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -51,7 +65,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 Product ReadinessはTransport/Hosted maturityやnpm publicationとは別軸です。現在のsource-release
 JavaScript artifactはclean committed-`dist/` gate (#159)でconsumer-readyとなり、Target Surface / transport
-support inventoryはmachine-check済みです (#184)。release-significantなconsumer evidenceではexact consumer +
+support inventoryの実行可能baselineは#184配下でmachine-check済みです。#184は残るmatrix completeness / failure-injection gateのためOPENを維持します。release-significantなconsumer evidenceではexact consumer +
 Handoff revisionを記録し、deterministic / consumer integration / physical component / physical dogfoodを区別します。
 
 native helper deliveryは明示的なprovenance/integrity gateが整うまでsource/deployment-ownedです。macOS deploymentは
@@ -92,7 +106,7 @@ upgrade/rollbackでstale locator/capability/generation/media/input authorityを�
 
 `v0.3.0` が現在の **GitHub source release** です。完了したv0.3 Recovery / Observability contractをsource baselineへ昇格し、v0.2.0後にmergeしたsecure-system Window admission、same-process successor-window lineage、Window media quality、Linux editable-region parity、現行Cloudflare TURN credential contractも含みます。
 
-releaseはmilestone `v0.3.0 — Source Release` とIssue #145で追跡します。v0.3.x maintenanceの #141〜#144 は明示的にnon-blockingで、このtagとは分離します。npm publicationも別gateのままで、`private: true` を維持します。
+releaseはmilestone `v0.3.0 — Source Release` とIssue #145で追跡します。継続中の `v0.3.x — Maintenance & Durability` milestoneは明示的にnon-blockingで、このtagとは分離します。現在はpost-release lifecycle/product UX、recoverable WSS、mobile input/composition parity、repository/package hardeningを所有します。npm publicationも別gateのままで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -156,6 +170,29 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 
 データ分類、restart state machine、実装順、non-goalは [Recovery / Observability boundary](docs/recovery-observability.ja.md) を参照してください。
 
+## v0.3.x — Maintenance & Durability
+
+milestone `v0.3.x — Maintenance & Durability` はv0.3後のnon-blocking maintenance lineです。v0.3.0のauthority / recovery contractを維持し、**暗黙にbroader Human-control authorityを追加せず、source release gateにもなりません。**
+
+現在のOPEN work:
+
+- #172 — recoverableなmanaged WSS Human-input failureでvalid sessionまで終了させず、failed inputはreplayしない;
+- #143 — browser user-gesture制約下のmobile keyboard/composition UX;
+- #150 — consumer verification中のstale LocalAuthentication frame/control fencing;
+- #189 — credential brokerや新Target Surfaceを追加しないsecure sign-in UX/product feedback;
+- #210 — WebRTC相当のclient-local WSS Aim / precise-tap parity。
+
+完了済みmaintenanceにはsigned-file durability (#141)、roadmap/worktree hygiene (#142/#144)、bounded initial LocalAuthentication admission (#147)、product-readiness / clean consumer-artifact gate (#151/#159)、managed WSS keyboard observability (#181)、cross-transport mobile input normalization (#188)があります。
+
+このlineの完了discipline:
+
+- 各変更で既存principal / epoch / lease / generation / Target Surface authority invariantを維持する;
+- UX改善はHuman observability/interactionを改善してよいが、`Done`推定、Human input replay、credential/content露出、Window/Desktop authority拡大は行わない;
+- deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
+- source release/taggingとnpm publicationは別decisionのまま維持する。
+
+2026-09-03時点で、repositoryのOPEN Issueはすべて明示milestoneへ所属しています。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+
 ## v0.4+ — MCP interoperabilityとtransport成熟
 
 候補scope:
@@ -171,6 +208,17 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 - #13のcloseout decisionを維持する。historical Thin Takeover / mandatory custom Native-client umbrellaはaccepted WebRTC pathと完了済みWSS evaluationにsupersedeされ、将来native-clientが必要なら新しいnarrowなevidence-based Issueとして起こす
 - #11のcloseout decisionを維持する。first-class bounded Windowと #94 secure UI / #124 successor-window lineage / #56 media qualityが旧full-desktop/provider-latency umbrellaをsupersedeする。#125で明示Desktop authorityを調査しても、desktop-wide controlはdefault Window boundary外のままにする
 - 追加のlow-latency push/latest-frame / native Human Takeover pathは、現在のWebRTC/WSS acceptanceでは得られない新しいevidenceがある場合だけ検証する
+
+### 現在のtracked work — 2026-09-03
+
+このmilestoneはcatch-all parking lotではなく、責務を次のように分けます。
+
+- **Transport/component maturity:** #183 macOS exact-window WSS、#184 executable conformance/failure-injection。support stepの#185/#186は完了済みで、#19がprovider-neutral relay/connectivityを所有。
+- **Session/authority architecture:** #161 Desktop Session / Display Backendをbroader #125 explicit Desktop authorityより先に進める。#211はnarrowなsecure-window transitionであり、implicit Desktop fallbackにはしない。
+- **Hosted topology:** #12がprovider-neutral control-plane + stateful execution-worker architectureとauthenticated outbound worker connectivityを所有。
+- **完了済みsupport evidence:** #152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurement。
+
+したがってarchitecture上の順序はdesktop/session authorityが **#161 → #125**、provider-neutral connectivity / hosted deploymentが **#19 → #12**。#183/#184は後続layerが依存するtransport/component contractを締めるため並行して進めます。
 
 ### Transport familyの方向性
 

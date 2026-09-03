@@ -10,7 +10,7 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
-### Current working state — 2026-08-28
+### Current working state — 2026-09-03
 
 The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence. #46 documents the semantic-domain/Target Surface admission contract, and the v0.2 terminology convergence adds canonical Human Interaction Policy aliases without freezing a `TargetSurfaceKind` enum:
 
@@ -19,13 +19,15 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 - `TerminalHandoffAdapter` is complete (#86). CUMG no longer composes the experimental PTY authority and Terminal WebRTC transport as unrelated pieces; merged-code real-PTY cross-repo E2E and physical iPhone Human acceptance passed. Mobile connection/authority/verifying state is now explicit and fail-closed (#91).
 - Browser WebRTC reconnect after Safari suspend/disconnect is deterministic (#104): generation release is single-flight, overlapping lifecycle triggers coalesce to one reconnect, active-lease conflicts are bounded/observable, and a physical same-LAN iPhone run recovered through three background/foreground cycles without a 409 loop or black-frame stall. Full app termination still requires a fresh authorized flow rather than implicit lease reclamation.
 - The HTTPS/WSS managed-runtime evaluation from #40 has been promoted through #152/#155/#156 into the Handoff-owned Browser/Window fallback sequence `WebRTC direct -> WebSocket relay -> optional WebRTC/TURN relay`. Production-shaped Cloud Run `run.app` physical iPhone Safari acceptance passed with TURN absent, including bounded Human input, Done, verification/teardown, and stale direct/WSS fencing. Maps consumer adoption is tracked separately in `git-ksk/maps-browser-mcp#147`.
+- The macOS managed Window/WSS line has since been hardened further: #183 owns the first-class exact-window WSS surface, #185 completed OS-neutral managed exact-window transport composition, and #186 completed bounded same-process successor-window lineage parity with physical iPhone Safari acceptance. #184 now has an executable Target Surface × OS × transport support-matrix baseline, with the remaining completeness/failure-injection work still tracked there.
+- #188 completed mobile input normalization across WebRTC/WSS: Japanese IME replacement semantics, explicit software-keyboard persistence, Backspace/Enter handling, generated-client syntax gating, and the physical iPhone scroll direction were revalidated on current `main`. Remaining client-side precision parity is #210; the separately bounded System Settings authorization-to-successor authority investigation is #211.
 - #47 completed reusable bounded macOS/Linux exact-window primitives without adding whole-desktop fallback.
 - #48 completed the bounded Terminal/PTY semantic dogfood that established staged Agent/Human drain fences, explicit resume, mandatory post-Human state synchronization, and no Human-period output replay to Agent.
 - CUMG is the proven non-browser consumer for both Window and Terminal integration boundaries.
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), and later explicit authority/transport/hosted work (#125/#19/#12). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, and v0.4+ session/authority/transport/hosted work (#161/#125/#19/#12 plus bounded transport follow-ups such as #183/#184/#211). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. Desktop authority remains a separate future escalation in #125 and never a hidden fallback.
 
@@ -41,6 +43,18 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #128 | v0.3 audit | **Complete.** Stable v1 strict audit union keeps the existing checkpoint/recovery event names, bounds fields/cardinality, uses a 256-event memory reference sink, and makes sink failure observe-only without an unbounded core queue. |
 | #129 | v0.3 diagnostics | **Complete.** Stable identifier-free v1 operator summaries are exposed by Browser/Window/Terminal, with generic bounded health/failure categories and target/transport-specific facts kept in `webrtc`, `terminal_session`, and `terminal_webrtc` namespaces; detailed diagnostics remain compatible. |
 | #130 | v0.3 restart conformance | **Complete / v0.3 recovery gate.** Deterministic first-class tests cover all persisted lifecycle phases, stale Browser/Window locator/capability/generation/reconnect rejection, Terminal Human-active restart/PTY exit, checkpoint corruption/mismatch/expiry, and interrupted writes without stale authority or Human-input replay. |
+| #172 | v0.3.x recoverable WSS input | **Open.** Keep a managed WSS Human session alive after a recoverable input-path failure without replaying failed input or widening authority. |
+| #143 | v0.3.x mobile composition | **Open.** Keep mobile keyboard/composition first-class while preserving explicit user-gesture and privacy constraints. |
+| #150 | v0.3.x lifecycle presentation | **Open.** Fence controls and clear stale LocalAuthentication video while consumer verification is pending. |
+| #188 | v0.3.x mobile input normalization | **Complete.** WebRTC/WSS now share the reviewed IME/keyboard/gesture semantics; physical iPhone acceptance also caught and fixed WebRTC scroll-direction drift. |
+| #189 | v0.3.x auth UX feedback | **Open.** Apply observed secure sign-in UX lessons without adding credential brokerage or widening Target Surface authority. |
+| #210 | v0.3.x WSS mobile-control parity | **Open.** Add WebRTC-equivalent client-local Aim/precise-tap affordance to WSS without changing server authority. |
+| #183 | v0.4+ macOS WSS surface | **Open.** Finish the reusable first-class macOS exact-window WSS surface and its acceptance boundary. |
+| #184 | v0.4+ conformance | **Open.** Executable support-matrix baseline exists; finish component completeness and failure-injection coverage so unsupported combinations are explicit/fail-closed. |
+| #185 | v0.4+ managed composition | **Complete.** Managed exact-window transport composition is OS-neutral and consumer code no longer selects concrete Linux/macOS WSS construction. |
+| #186 | v0.4+ WSS successor lineage | **Complete.** Physical iPhone Safari acceptance proved bounded same-process successor rotation over WSS with stale-generation fencing. |
+| #211 | v0.4+ bounded secure-flow authority | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
+| #161 | v0.4+ Desktop Session / Display Backend | **Open / next architecture step.** Separate persistent application/session state from physical, virtual, or remote display attachment before #125. |
 | #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -49,7 +63,8 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 
 Product Readiness is separate from Transport/Hosted maturity and from npm publication. The current
 source-release JavaScript artifact is consumer-ready through the clean committed-`dist/` gate (#159),
-and the Target Surface/transport support inventory is machine-checked (#184). Release-significant
+and an executable Target Surface/transport support-inventory baseline is machine-checked under #184;
+#184 remains open for the remaining matrix completeness and failure-injection gate. Release-significant
 consumer evidence must now record exact consumer + Handoff revisions and distinguish deterministic,
 consumer-integration, physical-component, and physical-dogfood evidence.
 
@@ -93,7 +108,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 `v0.3.0` is the current **GitHub source release**. It promotes the completed v0.3 Recovery & Observability contract into the source baseline while also carrying the bounded hardening merged after v0.2.0: secure-system Window admission, same-process successor-window lineage, Window media quality, Linux editable-region parity, and the current Cloudflare TURN credential contract.
 
-The release is tracked by milestone `v0.3.0 — Source Release` and Issue #145. The v0.3.x maintenance issues #141–#144 are explicitly non-blocking and remain separate from this tag. npm publication is still a separate gate and `private: true` remains required.
+The release is tracked by milestone `v0.3.0 — Source Release` and Issue #145. The continuing `v0.3.x — Maintenance & Durability` milestone is explicitly non-blocking and remains separate from this tag; it now owns post-release lifecycle/product UX, recoverable WSS behavior, mobile input/composition parity, and repository/package hardening. npm publication is still a separate gate and `private: true` remains required.
 
 See [Release process](RELEASING.md) for the repeatable source-release checklist and the separate npm publication boundary.
 
@@ -157,6 +172,29 @@ Exit criteria:
 
 See [Recovery and observability boundary](docs/recovery-observability.md) for the data classification, restart state machine, sequencing, and non-goals.
 
+## v0.3.x — Maintenance & Durability
+
+Milestone `v0.3.x — Maintenance & Durability` is the non-blocking post-v0.3 line. It must preserve the v0.3.0 authority/recovery contract and does **not** silently introduce broader Human-control authority or become a release gate.
+
+Current open work:
+
+- #172 — recover managed WSS Human-input failures without terminating an otherwise valid session, while never replaying failed input;
+- #143 — mobile keyboard/composition UX under browser user-gesture constraints;
+- #150 — stale LocalAuthentication frame/control fencing during consumer verification;
+- #189 — secure sign-in UX/product feedback without credential brokerage or a new Target Surface;
+- #210 — client-local WSS Aim/precise-tap parity with WebRTC.
+
+Completed maintenance includes signed-file durability (#141), roadmap/worktree hygiene (#142/#144), bounded initial LocalAuthentication admission (#147), product-readiness and clean consumer-artifact gates (#151/#159), managed WSS keyboard observability (#181), and cross-transport mobile input normalization (#188).
+
+Exit discipline for this line:
+
+- each change preserves existing principal/epoch/lease/generation and target-surface authority invariants;
+- UX fixes may improve Human observability/interaction but cannot infer `Done`, replay Human input, expose credential/content data, or widen Window/Desktop authority;
+- deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
+- source release/tagging and npm publication remain separate decisions.
+
+As of 2026-09-03, every open repository Issue is assigned to an explicit milestone; new work should be classified when the Issue is created rather than left outside roadmap accounting.
+
 ## v0.4+ — MCP interoperability and transport maturity
 
 Candidate scope:
@@ -172,6 +210,17 @@ Candidate scope:
 - retain the #13 closeout decision: the historical Thin Takeover/mandatory custom Native-client umbrella is superseded by the accepted WebRTC path and completed WSS evaluation; any future native-client work must return as a new narrowly evidenced requirement;
 - retain the #11 closeout decision: first-class bounded Window Handoff plus #94 secure UI, #124 successor-window lineage, and #56 media quality supersede the old full-desktop/provider-latency umbrella; #125 may investigate explicit Desktop authority, but desktop-wide control remains outside the default Window boundary;
 - validate any additional low-latency push/latest-frame or native Human Takeover path only when it adds evidence not already covered by current WebRTC/WSS acceptance.
+
+### Current tracked work — 2026-09-03
+
+The milestone is now explicit rather than a catch-all parking lot:
+
+- **Transport/component maturity:** #183 macOS exact-window WSS and #184 executable conformance/failure-injection; #185/#186 are complete supporting steps, while #19 owns provider-neutral relay/connectivity.
+- **Session/authority architecture:** #161 Desktop Session / Display Backend is sequenced before the broader #125 explicit Desktop authority investigation. #211 is a narrower bounded secure-window transition and must not become an implicit Desktop fallback.
+- **Hosted topology:** #12 owns provider-neutral control-plane + stateful execution-worker architecture and authenticated outbound worker connectivity.
+- **Completed supporting evidence:** #152 managed WebSocket fallback, #160 WSS interaction-jank work, #190 external lifecycle/transport design feedback reconciliation, and #201 Terminal ordered-load responsiveness measurement.
+
+The intended architecture order is therefore **#161 → #125** for desktop/session authority, with **#19 → #12** for provider-neutral connectivity and hosted deployment. #183/#184 continue in parallel because they tighten the transport/component contract that those later layers depend on.
 
 ### Transport family direction
 
