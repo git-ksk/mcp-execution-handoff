@@ -190,7 +190,8 @@ export class ExperimentalWebSocketTakeoverIngress {
         failureDisconnectKind: "none",
         failureChannelState: "none",
         failureCode: "none",
-        failureInputStage: "none"
+        failureInputStage: "none",
+        peerCloseCode: 0
     };
     constructor(options) {
         this.options = options;
@@ -346,7 +347,7 @@ export class ExperimentalWebSocketTakeoverIngress {
     #wireConnection(sessionId, active, webSocket) {
         let disconnected = false;
         let disconnectKind = "none";
-        const disconnectOnce = async (kind) => {
+        const disconnectOnce = async (kind, peerCloseCode = 0) => {
             if (disconnectKind === "none" || kind === "channel_failure")
                 disconnectKind = kind;
             if (disconnected)
@@ -355,7 +356,7 @@ export class ExperimentalWebSocketTakeoverIngress {
             if (this.#active.get(sessionId) === active)
                 this.#active.delete(sessionId);
             await active.channel.disconnect().catch(() => undefined);
-            this.#recordDiagnostics(active, disconnectKind);
+            this.#recordDiagnostics(active, disconnectKind, peerCloseCode);
         };
         webSocket.on("message", (data, isBinary) => {
             if (isBinary || rawDataByteLength(data) > this.#maxInboundBytes) {
@@ -372,16 +373,16 @@ export class ExperimentalWebSocketTakeoverIngress {
                 }
             });
         });
-        webSocket.once("close", () => {
+        webSocket.once("close", (code) => {
             const kind = active.channel.diagnostics.lastFailure ? "channel_failure" : "peer_close";
-            void disconnectOnce(kind);
+            void disconnectOnce(kind, boundedPeerCloseCode(code));
         });
         webSocket.once("error", () => {
             void active.peer.close(INTERNAL_CLOSE, "transport_failure").catch(() => undefined);
             void disconnectOnce("peer_error");
         });
     }
-    #recordDiagnostics(active, kind) {
+    #recordDiagnostics(active, kind, peerCloseCode = 0) {
         const previous = this.#lastDiagnostics;
         const channel = active.channel.diagnostics;
         const disconnectKind = channel.lastFailure ? "channel_failure" : kind;
@@ -405,7 +406,8 @@ export class ExperimentalWebSocketTakeoverIngress {
                 : this.#lastDiagnostics.failureCode,
             failureInputStage: captureFailure
                 ? channel.lastInputStage
-                : this.#lastDiagnostics.failureInputStage
+                : this.#lastDiagnostics.failureInputStage,
+            peerCloseCode: peerCloseCode || this.#lastDiagnostics.peerCloseCode
         };
         if (channel.state === "open" && previous.channelState !== "open") {
             this.options.onDiagnosticEvent?.("wss_open");
@@ -499,6 +501,9 @@ export class NodeWebSocketTakeoverPeer {
             });
         });
     }
+}
+function boundedPeerCloseCode(value) {
+    return Number.isSafeInteger(value) && Number(value) >= 1000 && Number(value) <= 4999 ? Number(value) : 0;
 }
 function bootstrapJson(status, body) {
     return new Response(JSON.stringify(body), {

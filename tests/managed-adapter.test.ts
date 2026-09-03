@@ -94,7 +94,11 @@ test("managed transport policy supports explicit WSS-only without constructing W
   });
   const page = await adapter.handle(new Request(locator), PRINCIPAL);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /Remote bounded browser surface/);
+  const html = await page.text();
+  assert.match(html, /Remote bounded browser surface/);
+  assert.match(html, /function onWebSocketDisconnected\(ws,event\)\{if\(stopped\|\|terminalPending\)return;void managedWebSocketDisconnected\(ws,event\)\}/);
+  assert.match(html, /function onInitialWebSocketConnectFailure\(\)\{if\(!stopped&&!terminalPending\)void managedTransportFallback\(\)\}/);
+  assert.doesNotMatch(html, /function onWebSocketDisconnected\(ws,event\).*browserWssCloseIsReconnectable\(event\.code\)/);
   assert.equal(adapter.managedOperatorDiagnosticsSnapshot().currentTransport, "websocket_relay");
   assert.deepEqual(adapter.diagnosticsSnapshot().events, []);
   await adapter.revoke("managed-wss-only");

@@ -119,7 +119,8 @@ export class BrowserHandoffAdapter {
                 failureDisconnectKind: "none",
                 failureChannelState: "none",
                 failureCode: "none",
-                failureInputStage: "none"
+                failureInputStage: "none",
+                peerCloseCode: 0
             };
     }
     /** @internal Separate WSS performance evidence; never interpreted as WebRTC latency. */

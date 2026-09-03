@@ -63,6 +63,13 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
 
   const html = await page.text();
   assert.match(html, /new WebSocket\(target,body\.protocols\)/);
+  assert.match(html, /browserWssCloseIsReconnectable\(event\.code\)/);
+  assert.match(html, /function onWebSocketDisconnected\(ws,event\)/);
+  assert.match(html, /function onInitialWebSocketConnectFailure\(\)/);
+  assert.match(html, /browserWssReconnectMaxAttempts/);
+  assert.match(html, /setStatus\('Reconnecting…'\)/);
+  assert.match(html, /socket!==ws/);
+  assert.match(html, /void connect\(\)\.catch\(\(\)=>onInitialWebSocketConnectFailure\(\)\)/);
   assert.match(html, /data-tap="1" data-scroll="1" data-text="1" data-key="1"/);
   assert.match(html, /app\.dataset\.tap==='1'/);
   assert.doesNotMatch(html, /const policy=\{\"/);
@@ -173,5 +180,112 @@ test("Generic Browser WSS HEAD is content-free and POST cannot mutate the client
 
   const post = await handoff.handle(new Request(locator, { method: "POST" }), PRINCIPAL);
   assert.equal(post.status, 405);
+  handoff.revoke("generic-browser-wss");
+});
+
+test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but never revives a policy close", async () => {
+  const handoff = fixture();
+  const locator = start(handoff);
+  const html = await (await handoff.handle(new Request(locator), PRINCIPAL)).text();
+  const match = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
+  assert.ok(match?.[1]);
+
+  const app = { dataset: { tap: "1", scroll: "1", text: "1", key: "1" } };
+  const screen = {
+    addEventListener() {},
+    setPointerCapture() {},
+    getBoundingClientRect() { return { left: 0, top: 0, width: 320, height: 240 }; }
+  };
+  const frame = { naturalWidth: 0, naturalHeight: 0, onload: null as (() => void) | null, src: "" };
+  const status = { textContent: "" };
+  const button = () => ({ style: {} as Record<string, string>, disabled: false, onclick: null as (() => void) | null, setAttribute() {} });
+  const keyboardOpen = button();
+  const backspace = button();
+  const done = button();
+  const keyboard = {
+    value: "",
+    addEventListener() {},
+    focus() { documentState.activeElement = keyboard; },
+    blur() { documentState.activeElement = null; }
+  };
+  const documentState: { activeElement: unknown } = { activeElement: null };
+  const document = {
+    get activeElement() { return documentState.activeElement; },
+    querySelector(selector: string) {
+      return ({
+        "#app": app,
+        "#screen": screen,
+        "#frame": frame,
+        "#status": status,
+        "#done": done,
+        "#keyboard-open": keyboardOpen,
+        "#backspace": backspace,
+        "#keyboard-input": keyboard
+      } as Record<string, unknown>)[selector] ?? null;
+    }
+  };
+  const sockets: Array<{
+    readyState: number;
+    binaryType: string;
+    onmessage?: (event: { data: unknown }) => void;
+    onclose?: (event: { code: number }) => void;
+    onerror?: () => void;
+    send(value: string): void;
+    close(): void;
+  }> = [];
+  class FakeWebSocket {
+    static OPEN = 1;
+    readyState = 1;
+    binaryType = "";
+    onmessage?: (event: { data: unknown }) => void;
+    onclose?: (event: { code: number }) => void;
+    onerror?: () => void;
+    constructor(_url: URL, _protocols: string[]) { sockets.push(this); }
+    send(_value: string): void {}
+    close(): void { this.readyState = 3; }
+  }
+  const timers: Array<{ callback: () => void; delay: number }> = [];
+  let bootstrapCalls = 0;
+  const context = vm.createContext({
+    document,
+    location: { pathname: new URL(locator).pathname, href: locator, protocol: "https:" },
+    fetch: async () => {
+      bootstrapCalls += 1;
+      return {
+        ok: true,
+        async json() { return { protocols: ["mcp-handoff.websocket.v1", `mcp-handoff-auth.${"x".repeat(32)}`] }; }
+      };
+    },
+    WebSocket: FakeWebSocket,
+    URL,
+    Blob,
+    TextEncoder,
+    performance: { now: () => 1 },
+    queueMicrotask,
+    setTimeout(callback: () => void, delay: number) { timers.push({ callback, delay }); return timers.length; },
+    clearTimeout() {}
+  });
+  new vm.Script(match[1]).runInContext(context);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(bootstrapCalls, 1);
+  assert.equal(sockets.length, 1);
+
+  sockets[0]!.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
+  assert.equal(status.textContent, "Human authority active");
+  sockets[0]!.onclose?.({ code: 1006 });
+  assert.equal(status.textContent, "Reconnecting…");
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0]!.delay, 250);
+
+  timers.shift()!.callback();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(bootstrapCalls, 2);
+  assert.equal(sockets.length, 2);
+  sockets[1]!.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
+  assert.equal(status.textContent, "Human authority active");
+
+  sockets[1]!.onclose?.({ code: 1008 });
+  assert.equal(status.textContent, "Connection closed");
+  assert.equal(timers.length, 0, "policy close must not schedule a new generation");
   handoff.revoke("generic-browser-wss");
 });

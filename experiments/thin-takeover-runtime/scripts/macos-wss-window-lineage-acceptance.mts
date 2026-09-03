@@ -100,6 +100,7 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({
         successorAdmitted: diagnosticEvents.includes("host_successor_admitted"),
         successorReturned: diagnosticEvents.includes("host_successor_returned"),
+        wss: handoff.diagnosticsSnapshot(),
         events: diagnosticEvents
       }));
       return;

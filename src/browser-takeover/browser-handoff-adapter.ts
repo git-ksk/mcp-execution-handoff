@@ -200,6 +200,7 @@ export class BrowserHandoffAdapter {
     failureChannelState: string;
     failureCode: string;
     failureInputStage: string;
+    peerCloseCode: number;
   } {
     return this.#core instanceof ManagedWindowHandoffRuntime
       ? this.#core.managedWebSocketDiagnosticsSnapshot()
@@ -213,7 +214,8 @@ export class BrowserHandoffAdapter {
           failureDisconnectKind: "none",
           failureChannelState: "none",
           failureCode: "none",
-          failureInputStage: "none"
+          failureInputStage: "none",
+          peerCloseCode: 0
         };
   }
   /** @internal Separate WSS performance evidence; never interpreted as WebRTC latency. */

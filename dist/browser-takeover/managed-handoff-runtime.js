@@ -322,7 +322,8 @@ export class ManagedWindowHandoffRuntime {
             failureDisconnectKind: "none",
             failureChannelState: "none",
             failureCode: "none",
-            failureInputStage: "none"
+            failureInputStage: "none",
+            peerCloseCode: 0
         };
     }
     /** @internal Content-free managed WSS latency evidence for #160. */
@@ -619,14 +620,16 @@ export class ManagedWindowHandoffRuntime {
         let html = await response.text();
         const appMarker = '<main id="app" ';
         const helperMarker = "function setStatus(value){status.textContent=value}";
-        const closeMarker = "ws.onclose=()=>{ready=false;if(!stopped)setStatus('Connection closed')};";
-        const errorMarker = "ws.onerror=()=>{ready=false;if(!stopped)setStatus('Connection unavailable')}";
+        const disconnectHookMarker = "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;if(browserWssCloseIsReconnectable(event.code)){scheduleReconnect();return}stopped=true;setStatus('Connection closed')}";
+        const initialFailureHookMarker = "function onInitialWebSocketConnectFailure(){scheduleReconnect()}";
+        const errorMarker = "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}";
         const readyMarker = "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();";
         const frameLoadedMarker = "lastFrameLoadedAt=loadedAt;if(currentUrl)";
-        const initialMarker = "controls();void connect().catch(()=>{ready=false;stopped=true;setStatus('Session unavailable')})";
+        const initialMarker = "controls();void connect().catch(()=>onInitialWebSocketConnectFailure())";
         if (!html.includes(appMarker)
             || !html.includes(helperMarker)
-            || !html.includes(closeMarker)
+            || !html.includes(disconnectHookMarker)
+            || !html.includes(initialFailureHookMarker)
             || !html.includes(errorMarker)
             || !html.includes(readyMarker)
             || !html.includes(frameLoadedMarker)
@@ -637,9 +640,10 @@ export class ManagedWindowHandoffRuntime {
         html = html.replace(helperMarker, `${helperMarker}${managedWebSocketFallbackHelper()}`);
         html = html.replace(readyMarker, "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();managedWebSocketReady();");
         html = html.replace(frameLoadedMarker, "lastFrameLoadedAt=loadedAt;managedWebSocketFrameLoaded(loadedAt);if(currentUrl)");
-        html = html.replace(closeMarker, "ws.onclose=event=>{ready=false;if(!stopped)void managedWebSocketDisconnected(ws,event)};");
-        html = html.replace(errorMarker, "ws.onerror=()=>{ready=false;if(!stopped)setStatus('Connection unavailable')}");
-        html = html.replace(initialMarker, "controls();armManagedReadyTimeout();void connect().catch(()=>{ready=false;if(!stopped)void managedTransportFallback()})");
+        html = html.replace(disconnectHookMarker, "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;void managedWebSocketDisconnected(ws,event)}");
+        html = html.replace(initialFailureHookMarker, "function onInitialWebSocketConnectFailure(){if(!stopped&&!terminalPending)void managedTransportFallback()}");
+        html = html.replace(errorMarker, "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}");
+        html = html.replace(initialMarker, "controls();armManagedReadyTimeout();void connect().catch(()=>onInitialWebSocketConnectFailure())");
         return cloneResponse(response, html);
     }
     #forgetSession(session) {
