@@ -9,6 +9,7 @@ private struct FixtureState: Codable {
     let text: String
     let tapX: Double
     let tapY: Double
+    let aimActivated: Bool
 }
 
 @MainActor
@@ -17,6 +18,7 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
     private var window: NSWindow?
     private var textView: NSTextView?
     private var scrollView: NSScrollView?
+    private var aimActivated = false
     private var timer: Timer?
 
     init(statePath: String) {
@@ -49,8 +51,14 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
 
         let focusSink = NSButton(frame: NSRect(x: 32, y: 368, width: 180, height: 28))
         focusSink.title = "Initial Focus"
+        let aimTarget = NSButton(frame: NSRect(x: 590, y: 372, width: 18, height: 18))
+        aimTarget.title = "·"
+        aimTarget.toolTip = "Harmless Aim acceptance target"
+        aimTarget.target = self
+        aimTarget.action = #selector(activateAimTarget(_:))
         window.contentView?.addSubview(scroll)
         window.contentView?.addSubview(focusSink)
+        window.contentView?.addSubview(aimTarget)
 
         self.window = window
         self.textView = textView
@@ -82,6 +90,12 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
         persistState()
     }
 
+    @objc private func activateAimTarget(_ sender: NSButton) {
+        aimActivated = true
+        sender.title = "✓"
+        persistState()
+    }
+
     private func persistState() {
         guard let window, let textView, let scrollView else { return }
         let windowFrame = window.accessibilityFrame()
@@ -98,7 +112,8 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate
             focused: window.firstResponder === textView,
             text: textView.string,
             tapX: tapX,
-            tapY: tapY
+            tapY: tapY,
+            aimActivated: aimActivated
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: stateURL, options: .atomic)

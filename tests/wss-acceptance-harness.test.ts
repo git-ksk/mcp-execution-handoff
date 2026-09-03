@@ -15,6 +15,8 @@ test("macOS ordinary WSS physical harness is self-contained and HTTPS/WSS-only",
   assert.match(command, /takeover-macos-text-input-fixture/);
   assert.match(script, /takeover-macos-text-input-fixture/);
   assert.match(script, /WSS_ACCEPT_OK/);
+  assert.match(script, /aimActivated === true/);
+  assert.match(script, /enable Aim/);
   assert.match(script, /HANDOFF_WSS_PORT/);
   assert.match(script, /resolveWssAcceptanceIngress\(PORT\)/);
   assert.match(script, /server\.listen\(PORT, "127\.0\.0\.1"/);

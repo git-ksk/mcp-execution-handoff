@@ -25,6 +25,7 @@ type FixtureState = {
   text: string;
   tapX: number;
   tapY: number;
+  aimActivated: boolean;
 };
 
 
@@ -45,6 +46,7 @@ async function readFixtureState(statePath: string): Promise<FixtureState | undef
       && typeof value.text === "string"
       && typeof value.tapX === "number" && Number.isFinite(value.tapX) && value.tapX >= 0 && value.tapX <= 1
       && typeof value.tapY === "number" && Number.isFinite(value.tapY) && value.tapY >= 0 && value.tapY <= 1
+      && typeof value.aimActivated === "boolean"
     ) return value as FixtureState;
   } catch {
     // Fixture writes atomically; retry until a complete state record exists.
@@ -170,6 +172,7 @@ const server = createServer(async (req, res) => {
       const current = await readFixtureState(fixtureStatePath);
       const verified = current?.pid === TARGET_PID
         && current.windowId === TARGET_WINDOW_ID
+        && current.aimActivated === true
         && current.text.includes(EXPECTED_MARKER);
       const completed = verified
         ? await handoff.completeAfterVerification({ id: interventionId, epoch: 1 })
@@ -227,7 +230,7 @@ console.log(`Local diagnostics: http://127.0.0.1:${PORT}/__diag`);
 console.log(`Local verified-complete control: POST http://127.0.0.1:${PORT}/__verified_complete`);
 if (initialFixture) {
   console.log(`Fixture tap hint: x=${initialFixture.tapX.toFixed(4)} y=${initialFixture.tapY.toFixed(4)}`);
-  console.log(`Expected action: tap the text area, type WSS_ACCEPT_OKX, Backspace once, press Enter, scroll the text view, then Done. Verification checks only for the harmless fixed marker ${EXPECTED_MARKER}.`);
+  console.log(`Expected action: enable Aim, locally pan the 4× view until the tiny · button at the upper-right is under the crosshair, press the WSS Tap control once and confirm it changes to ✓; then disable Aim, press 4× once to return to 1×, tap the text area, enable ⌨︎, type WSS_ACCEPT_OKX, Backspace once, press Enter, scroll the text view, and Done. Verification requires only the harmless Aim button state plus fixed marker ${EXPECTED_MARKER}.`);
 } else {
   console.log("External target mode: verify exact bounded Window display, tap, text, Backspace, Enter, scroll, then Done; semantic verification remains external.");
 }
