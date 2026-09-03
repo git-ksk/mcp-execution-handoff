@@ -6,6 +6,7 @@ import type { Readable, Writable } from "node:stream";
 import type { TakeoverHostTarget } from "../browser-takeover/broker.js";
 import type {
   ExperimentalWebSocketWindowCaptureFailureDisposition,
+  ExperimentalWebSocketWindowInputFailureDisposition,
   ExperimentalWebSocketWindowSurface
 } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
@@ -350,6 +351,10 @@ export class ExperimentalLinuxWebSocketWindowSurface implements ExperimentalWebS
 
   editableRegionsSnapshot(): WebSocketTakeoverEditableRegion[] {
     return this.#editableRegions.map((region) => [...region] as WebSocketTakeoverEditableRegion);
+  }
+
+  inputFailureDisposition(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition {
+    return isExactWindowBoundaryError(error) ? "authority_lost" : "recoverable";
   }
 
   async captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame> {
