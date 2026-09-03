@@ -27,6 +27,10 @@ export interface ManagedWindowWebSocketSurfaceFactoryConfig {
     initialSecureWindowPolicy?: {
         mode: "macos_local_authentication";
     };
+    successorWindowPolicy?: {
+        mode: "same_process";
+        transitionWindowMs?: number;
+    };
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     latencyTracker?: WebSocketLatencyTracker;
 }

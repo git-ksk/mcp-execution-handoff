@@ -47,6 +47,8 @@ export interface WebRtcTakeoverRuntimeProvider {
     latencySnapshot(): WebRtcLatencyComparison;
     recordDiagnostic(event: WebRtcDiagnosticEvent): void;
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
+    /** Release one browser generation while preserving host-local bounded surface state when supported. */
+    suspend?(takeoverSessionId: string): Promise<void>;
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
 }
@@ -69,6 +71,8 @@ export interface SpawnedWebRtcRuntimeProviderConfig {
     hostArgs?: string[];
     displayId?: number;
     displayName?: string;
+    /** Preserve the exact local host across browser lifecycle suspend; opt in only for stateful bounded surfaces. */
+    preserveHostStateOnSuspend?: boolean;
     spawnProcess?: typeof spawn;
 }
 /**
@@ -95,9 +99,11 @@ export declare class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRunti
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     start(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
     reconnect(binding: WebRtcTakeoverRuntimeBinding, offer: WebRtcSessionDescription, hooks: WebRtcRuntimeHooks): Promise<WebRtcSessionDescription>;
+    suspend(takeoverSessionId: string): Promise<void>;
     revoke(takeoverSessionId: string): Promise<void>;
     revokeForIntervention(interventionId: string): Promise<void>;
     private revokePrepared;
+    private resumeSuspended;
     private spawnHost;
     private attachPeer;
     private attachHost;

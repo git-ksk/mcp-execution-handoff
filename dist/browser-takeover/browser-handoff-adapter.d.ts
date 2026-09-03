@@ -98,6 +98,7 @@ export declare class BrowserHandoffAdapter {
         failureChannelState: string;
         failureCode: string;
         failureInputStage: string;
+        peerCloseCode: number;
     };
     /** @internal Separate WSS performance evidence; never interpreted as WebRTC latency. */
     managedWebSocketLatencySnapshot(): WebSocketLatencySnapshot;

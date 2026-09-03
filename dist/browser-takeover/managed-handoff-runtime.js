@@ -43,8 +43,15 @@ export class ManagedWindowHandoffRuntime {
         const webSocketPlatform = needsWebSocket
             ? resolveManagedWindowWebSocketPlatform(config.managedFallback ?? {})
             : undefined;
-        if (needsWebSocket && config.successorWindowPolicy) {
-            throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "The configured WSS backend does not yet support successor-window lineage");
+        if (needsWebSocket && config.successorWindowPolicy && webSocketPlatform !== "macos") {
+            throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "successor-window lineage over managed WSS requires the macOS exact-window backend");
+        }
+        if (needsWebSocket && config.successorWindowPolicy
+            && (this.#transportOrder.length !== 1 || this.#transportOrder[0] !== "websocket_relay")) {
+            throw new WindowHandoffCoreError("SUCCESSOR_POLICY_INVALID", "macOS WSS successor lineage requires an explicit WSS-only transport plan");
+        }
+        if (needsWebSocket && config.successorWindowPolicy && config.initialSecureWindowPolicy) {
+            throw new WindowHandoffCoreError("INITIAL_SECURE_WINDOW_POLICY_INVALID", "initial secure Window policy cannot be combined with successor-window lineage");
         }
         if (needsWebSocket && config.initialSecureWindowPolicy && webSocketPlatform !== "macos") {
             throw new WindowHandoffCoreError("INITIAL_SECURE_WINDOW_POLICY_INVALID", "LocalAuthentication managed WSS requires the macOS exact-window backend");
@@ -163,6 +170,9 @@ export class ManagedWindowHandoffRuntime {
                     helperTtlMs: this.#config.takeover.ttlMs,
                     ...(this.#config.initialSecureWindowPolicy
                         ? { initialSecureWindowPolicy: this.#config.initialSecureWindowPolicy }
+                        : {}),
+                    ...(this.#config.successorWindowPolicy
+                        ? { successorWindowPolicy: this.#config.successorWindowPolicy }
                         : {}),
                     onDiagnosticEvent: noteDiagnosticEvent,
                     latencyTracker: wssLatencyTracker
@@ -312,7 +322,8 @@ export class ManagedWindowHandoffRuntime {
             failureDisconnectKind: "none",
             failureChannelState: "none",
             failureCode: "none",
-            failureInputStage: "none"
+            failureInputStage: "none",
+            peerCloseCode: 0
         };
     }
     /** @internal Content-free managed WSS latency evidence for #160. */
@@ -609,14 +620,16 @@ export class ManagedWindowHandoffRuntime {
         let html = await response.text();
         const appMarker = '<main id="app" ';
         const helperMarker = "function setStatus(value){status.textContent=value}";
-        const closeMarker = "ws.onclose=()=>{ready=false;if(!stopped)setStatus('Connection closed')};";
-        const errorMarker = "ws.onerror=()=>{ready=false;if(!stopped)setStatus('Connection unavailable')}";
+        const disconnectHookMarker = "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;if(browserWssCloseIsReconnectable(event.code)){scheduleReconnect();return}stopped=true;setStatus('Connection closed')}";
+        const initialFailureHookMarker = "function onInitialWebSocketConnectFailure(){scheduleReconnect()}";
+        const errorMarker = "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}";
         const readyMarker = "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();";
         const frameLoadedMarker = "lastFrameLoadedAt=loadedAt;if(currentUrl)";
-        const initialMarker = "controls();void connect().catch(()=>{ready=false;stopped=true;setStatus('Session unavailable')})";
+        const initialMarker = "controls();void connect().catch(()=>onInitialWebSocketConnectFailure())";
         if (!html.includes(appMarker)
             || !html.includes(helperMarker)
-            || !html.includes(closeMarker)
+            || !html.includes(disconnectHookMarker)
+            || !html.includes(initialFailureHookMarker)
             || !html.includes(errorMarker)
             || !html.includes(readyMarker)
             || !html.includes(frameLoadedMarker)
@@ -627,9 +640,10 @@ export class ManagedWindowHandoffRuntime {
         html = html.replace(helperMarker, `${helperMarker}${managedWebSocketFallbackHelper()}`);
         html = html.replace(readyMarker, "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();managedWebSocketReady();");
         html = html.replace(frameLoadedMarker, "lastFrameLoadedAt=loadedAt;managedWebSocketFrameLoaded(loadedAt);if(currentUrl)");
-        html = html.replace(closeMarker, "ws.onclose=event=>{ready=false;if(!stopped)void managedWebSocketDisconnected(ws,event)};");
-        html = html.replace(errorMarker, "ws.onerror=()=>{ready=false;if(!stopped)setStatus('Connection unavailable')}");
-        html = html.replace(initialMarker, "controls();armManagedReadyTimeout();void connect().catch(()=>{ready=false;if(!stopped)void managedTransportFallback()})");
+        html = html.replace(disconnectHookMarker, "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;void managedWebSocketDisconnected(ws,event)}");
+        html = html.replace(initialFailureHookMarker, "function onInitialWebSocketConnectFailure(){if(!stopped&&!terminalPending)void managedTransportFallback()}");
+        html = html.replace(errorMarker, "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}");
+        html = html.replace(initialMarker, "controls();armManagedReadyTimeout();void connect().catch(()=>onInitialWebSocketConnectFailure())");
         return cloneResponse(response, html);
     }
     #forgetSession(session) {

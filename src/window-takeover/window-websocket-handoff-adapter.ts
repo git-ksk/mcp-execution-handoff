@@ -21,7 +21,7 @@ import type { WebSocketTakeoverInputPolicy } from "../browser-takeover/websocket
 import type { ExperimentalWebSocketWindowSurface } from "../browser-takeover/websocket-window-handoff.js";
 
 export interface MacOSWindowWebSocketHostConfig
-  extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent"> {
+  extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent" | "successorWindowPolicy"> {
   platform: "macos";
 }
 
@@ -44,6 +44,7 @@ export interface WindowWebSocketHandoffAdapterConfig {
   host: WindowWebSocketHostConfig;
   frameIntervalMs?: number;
   maxInboundBytes?: number;
+  successorWindowPolicy?: { mode: "same_process"; transitionWindowMs?: number };
   onOperatorDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
   /** Human Done only: the consumer must perform fresh semantic verification afterwards. */
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
@@ -71,7 +72,11 @@ export class WindowWebSocketHandoffAdapter {
   readonly #secureLocalAuthentication: boolean;
 
   constructor(config: WindowWebSocketHandoffAdapterConfig) {
-    this.#surface = makeSurface(config.host, config.onOperatorDiagnosticEvent);
+    this.#surface = makeSurface(
+      config.host,
+      config.successorWindowPolicy,
+      config.onOperatorDiagnosticEvent
+    );
     this.#secureLocalAuthentication = config.host.platform === "macos"
       && config.host.initialSecureWindowPolicy?.mode === "macos_local_authentication";
     this.#handoff = new WebSocketBrowserHandoff({
@@ -127,6 +132,7 @@ export class WindowWebSocketHandoffAdapter {
 
 function makeSurface(
   host: WindowWebSocketHostConfig,
+  successorWindowPolicy: { mode: "same_process"; transitionWindowMs?: number } | undefined,
   onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined
 ): ExperimentalWebSocketWindowSurface {
   if (host.platform === "macos") {
@@ -136,8 +142,12 @@ function makeSurface(
       ...(host.initialSecureWindowPolicy
         ? { initialSecureWindowPolicy: host.initialSecureWindowPolicy }
         : {}),
+      ...(successorWindowPolicy ? { successorWindowPolicy } : {}),
       ...(onDiagnosticEvent ? { onDiagnosticEvent } : {})
     });
+  }
+  if (successorWindowPolicy) {
+    throw new Error("Linux WSS does not support macOS successor-window lineage");
   }
   return new LinuxWebSocketWindowSurface({
     hostScript: host.hostScript,

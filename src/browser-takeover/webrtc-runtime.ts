@@ -87,6 +87,8 @@ export interface WebRtcTakeoverRuntimeProvider {
   latencySnapshot(): WebRtcLatencyComparison;
   recordDiagnostic(event: WebRtcDiagnosticEvent): void;
   diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
+  /** Release one browser generation while preserving host-local bounded surface state when supported. */
+  suspend?(takeoverSessionId: string): Promise<void>;
   revoke(takeoverSessionId: string): Promise<void>;
   revokeForIntervention(interventionId: string): Promise<void>;
 }
@@ -200,7 +202,7 @@ interface HostReadyGate {
 
 interface ActiveWebRtcRuntime {
   binding: WebRtcTakeoverRuntimeBinding;
-  iceSession: WebRtcPreparedIceSession;
+  iceSession?: WebRtcPreparedIceSession;
   expiryTimer: NodeJS.Timeout;
   peer: RTCPeerConnection;
   track: MediaStreamTrack;
@@ -208,6 +210,8 @@ interface ActiveWebRtcRuntime {
   host: ChildProcess;
   hooks: WebRtcRuntimeHooks;
   closing: boolean;
+  suspended: boolean;
+  resumeFailed?: boolean;
   critical?: RTCDataChannel;
   nextSequence: number;
   lastIdrRequestAt: number;
@@ -233,6 +237,8 @@ export interface SpawnedWebRtcRuntimeProviderConfig {
   hostArgs?: string[];
   displayId?: number;
   displayName?: string;
+  /** Preserve the exact local host across browser lifecycle suspend; opt in only for stateful bounded surfaces. */
+  preserveHostStateOnSuspend?: boolean;
   spawnProcess?: typeof spawn;
 }
 
@@ -265,15 +271,24 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
 
   async prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration> {
     const existing = this.active.get(binding.takeoverSessionId);
-    if (existing?.binding.clientGeneration === binding.clientGeneration) {
+    if (existing?.binding.clientGeneration === binding.clientGeneration && !existing.suspended) {
       throw new WebRtcTakeoverRuntimeError(
         "WEBRTC_RUNTIME_ALREADY_ACTIVE",
         "WebRTC runtime for this generation is already active"
       );
     }
-    if (existing) {
-      // A broker-authorized fresh generation must fence and close the previous peer before new
-      // ICE material exists. This also covers reconnect after the broker's idle threshold.
+    if (existing?.suspended) {
+      if (existing.resumeFailed || !sameReconnectAuthority(existing.binding, binding)) {
+        throw new WebRtcTakeoverRuntimeError(
+          "WEBRTC_RUNTIME_START_FAILED",
+          "Suspended WebRTC runtime cannot be safely resumed",
+          "host_spawn",
+          "host_not_ready"
+        );
+      }
+    } else if (existing) {
+      // Unexpected generation replacement closes the local host. Browser lifecycle suspension uses
+      // suspend() below so bounded host-local successor state can survive a fresh client generation.
       await this.end(binding.takeoverSessionId, false, "generation_replace");
     }
     await this.revokePrepared(binding.takeoverSessionId);
@@ -335,13 +350,24 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       throw new WebRtcTakeoverRuntimeError("WEBRTC_OFFER_INVALID", "WebRTC offer is invalid");
     }
     const existing = this.active.get(binding.takeoverSessionId);
-    if (existing?.binding.clientGeneration === binding.clientGeneration) {
+    if (existing?.binding.clientGeneration === binding.clientGeneration && !existing.suspended) {
       throw new WebRtcTakeoverRuntimeError(
         "WEBRTC_RUNTIME_ALREADY_ACTIVE",
         "WebRTC runtime for this generation is already active"
       );
     }
-    if (existing) await this.end(binding.takeoverSessionId, false, "generation_replace");
+    if (existing?.suspended) {
+      if (existing.resumeFailed || !sameReconnectAuthority(existing.binding, binding)) {
+        throw new WebRtcTakeoverRuntimeError(
+          "WEBRTC_RUNTIME_START_FAILED",
+          "Suspended WebRTC runtime cannot be safely resumed",
+          "host_spawn",
+          "host_not_ready"
+        );
+      }
+    } else if (existing) {
+      await this.end(binding.takeoverSessionId, false, "generation_replace");
+    }
 
     let prepared = this.prepared.get(binding.takeoverSessionId);
     if (!prepared && !this.#iceCredentialProvider) {
@@ -353,6 +379,10 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     }
     this.prepared.delete(binding.takeoverSessionId);
     clearTimeout(prepared.expiryTimer);
+
+    if (existing?.suspended) {
+      return this.resumeSuspended(existing, binding, offer, hooks, prepared);
+    }
 
     const peer = new RTCPeerConnection({
       codecs: { video: [useH264()] },
@@ -368,7 +398,10 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       host = this.spawnHost(binding);
       await this.waitForSpawn(host);
       const expiryTimer = setTimeout(() => {
-        void this.end(binding.takeoverSessionId, true, "expiry");
+        const active = this.active.get(binding.takeoverSessionId);
+        // A broker-directed suspend already released that Human generation. Expiry must still tear
+        // down the retained host, but must not report stale peer loss through the old generation hook.
+        void this.end(binding.takeoverSessionId, Boolean(active && !active.suspended), "expiry");
       }, Math.max(0, binding.expiresAt - Date.now()));
       expiryTimer.unref();
       const hostReady = this.config.displayName === undefined ? undefined : createHostReadyGate();
@@ -382,6 +415,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         host,
         hooks,
         closing: false,
+        suspended: false,
         nextSequence: random16(),
         lastIdrRequestAt: 0,
         videoDrainActive: false,
@@ -462,6 +496,32 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     return this.start(binding, offer, hooks);
   }
 
+  async suspend(takeoverSessionId: string): Promise<void> {
+    if (!this.config.preserveHostStateOnSuspend) {
+      await this.revoke(takeoverSessionId);
+      return;
+    }
+    await this.revokePrepared(takeoverSessionId);
+    const runtime = this.active.get(takeoverSessionId);
+    if (!runtime || runtime.closing || runtime.suspended) return;
+
+    // Broker authority is released before this method is called. Preserve only the local bounded
+    // host so successor/predecessor lineage state survives Safari lifecycle suspension. The old
+    // peer and its DataChannels are closed, so no stale Human generation can mutate the host.
+    runtime.suspended = true;
+    runtime.critical?.close();
+    delete runtime.critical;
+    delete runtime.sender;
+    delete runtime.pendingFrame;
+    delete runtime.preconnectKeyframe;
+    runtime.awaitingVideoKeyframe = true;
+    const peer = runtime.peer;
+    await peer.close().catch(() => undefined);
+    const iceSession = runtime.iceSession;
+    delete runtime.iceSession;
+    await iceSession?.revoke().catch(() => undefined);
+  }
+
   async revoke(takeoverSessionId: string): Promise<void> {
     await this.revokePrepared(takeoverSessionId);
     await this.end(takeoverSessionId, false, "explicit_revoke");
@@ -489,6 +549,74 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     }
   }
 
+  private async resumeSuspended(
+    runtime: ActiveWebRtcRuntime,
+    binding: WebRtcTakeoverRuntimeBinding,
+    offer: WebRtcSessionDescription,
+    hooks: WebRtcRuntimeHooks,
+    prepared: PreparedWebRtcRuntime
+  ): Promise<WebRtcSessionDescription> {
+    const peer = new RTCPeerConnection({
+      codecs: { video: [useH264()] },
+      iceServers: cloneIceServers(prepared.iceSession.serverIceServers),
+      iceTransportPolicy: "all",
+      maxMessageSize: MAX_DATA_CHANNEL_MESSAGE_BYTES
+    });
+    const track = new MediaStreamTrack({ kind: "video" });
+    runtime.binding = { ...binding };
+    runtime.iceSession = prepared.iceSession;
+    runtime.peer = peer;
+    runtime.track = track;
+    runtime.hooks = hooks;
+    runtime.suspended = false;
+    runtime.resumeFailed = false;
+    runtime.nextSequence = random16();
+    runtime.lastIdrRequestAt = 0;
+    runtime.videoDrainActive = false;
+    runtime.awaitingVideoKeyframe = true;
+    delete runtime.pendingFrame;
+    delete runtime.preconnectKeyframe;
+    delete runtime.critical;
+    delete runtime.sender;
+    this.attachPeer(runtime);
+
+    const answerStartedAt = Date.now();
+    let startStage: WebRtcRuntimeStartStage = "remote_description";
+    try {
+      await peer.setRemoteDescription(offer);
+      startStage = "track_setup";
+      const sender = peer.addTrack(track);
+      runtime.sender = sender;
+      sender.onPictureLossIndication.subscribe(() => this.requestIdr(runtime));
+      startStage = "answer_create";
+      const answer = await peer.createAnswer();
+      startStage = "local_description";
+      await peer.setLocalDescription(answer);
+      startStage = "answer_finalize";
+      const local = peer.localDescription;
+      if (!local?.sdp) throw new Error("WebRTC answer missing local SDP");
+      this.recordDiagnostic({
+        stage: "server.answer.ready",
+        candidateCounts: webRtcCandidateCountsFromSdp(local.sdp),
+        durationMs: Date.now() - answerStartedAt
+      });
+      return { type: "answer", sdp: local.sdp };
+    } catch (error) {
+      const failedSignalingState = runtimeSignalingState(peer.signalingState);
+      await this.end(binding.takeoverSessionId, false, "generation_replace").catch(() => undefined);
+      throw error instanceof WebRtcTakeoverRuntimeError
+        ? error
+        : new WebRtcTakeoverRuntimeError(
+            "WEBRTC_RUNTIME_START_FAILED",
+            "WebRTC runtime failed to resume",
+            startStage,
+            classifyRuntimeStartReason(error),
+            failedSignalingState,
+            "generation_replace"
+          );
+    }
+  }
+
   private spawnHost(binding: WebRtcTakeoverRuntimeBinding): ChildProcess {
     const env: NodeJS.ProcessEnv = {
       // Keep the helper environment bounded while allowing packaged Node entrypoints that use
@@ -513,17 +641,20 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
   }
 
   private attachPeer(runtime: ActiveWebRtcRuntime): void {
-    runtime.peer.onDataChannel.subscribe((channel) => {
+    const peer = runtime.peer;
+    peer.onDataChannel.subscribe((channel) => {
       if (channel.label !== "human-critical" && channel.label !== "human-realtime") {
         channel.close();
         return;
       }
       if (channel.label === "human-critical") runtime.critical = channel;
       channel.onMessage.subscribe((message) => {
+        if (runtime.peer !== peer || runtime.suspended) return;
         this.handleChannelMessage(runtime, channel.label, message);
       });
     });
-    runtime.peer.connectionStateChange.subscribe((state) => {
+    peer.connectionStateChange.subscribe((state) => {
+      if (runtime.peer !== peer) return;
       if (state === "new" || state === "connecting" || state === "connected" || state === "disconnected" || state === "failed" || state === "closed") {
         this.recordDiagnostic({ stage: "server.peer.state", state });
       }
@@ -539,6 +670,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         return;
       }
       if (state === "failed" || state === "disconnected" || state === "closed") {
+        if (runtime.suspended) return;
         void this.end(runtime.binding.takeoverSessionId, true, "peer_state");
       }
     });
@@ -556,6 +688,11 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       (editable) => this.sendEditableFeedback(runtime, editable, "tap"),
       () => {
         runtime.mediaReady.reject();
+        if (runtime.suspended) {
+          runtime.resumeFailed = true;
+          runtime.host.kill("SIGTERM");
+          return;
+        }
         void this.end(runtime.binding.takeoverSessionId, true, "host_protocol");
       }
     );
@@ -578,17 +715,23 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     runtime.host.once("exit", () => {
       runtime.hostReady?.reject();
       runtime.mediaReady.reject();
+      if (runtime.suspended) { runtime.resumeFailed = true; return; }
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true, "host_exit");
     });
     runtime.host.once("error", () => {
       runtime.hostReady?.reject();
       runtime.mediaReady.reject();
+      if (runtime.suspended) { runtime.resumeFailed = true; return; }
       if (!runtime.closing) void this.end(runtime.binding.takeoverSessionId, true, "host_error");
     });
   }
 
   private writeFrame(runtime: ActiveWebRtcRuntime, frame: EncodedHostFrame): void {
     if (runtime.closing) return;
+    if (runtime.suspended) {
+      if (frame.keyframe) runtime.preconnectKeyframe = frame;
+      return;
+    }
     if (runtime.peer.connectionState !== "connected" || !runtime.sender) {
       // ScreenCaptureKit may produce the only useful static-screen IDR before ICE/DTLS is connected.
       // Keep exactly one pre-connect keyframe so the receiver can initialize without retaining a
@@ -717,7 +860,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     label: string,
     message: string | Buffer
   ): void {
-    if (runtime.closing) return;
+    if (runtime.closing || runtime.suspended) return;
     const bytes = Buffer.isBuffer(message) ? message : Buffer.from(message, "utf8");
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_DATA_CHANNEL_MESSAGE_BYTES) return;
     let value: unknown;
@@ -787,6 +930,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
     if (!runtime || runtime.closing) return;
     runtime.endCause = cause;
     runtime.closing = true;
+    runtime.suspended = false;
     this.active.delete(takeoverSessionId);
     clearTimeout(runtime.expiryTimer);
     // Fence broker authority before any OS cleanup or third-party TURN revocation can block.
@@ -808,7 +952,8 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
         );
       }
     } finally {
-      await runtime.iceSession.revoke().catch(() => undefined);
+      await runtime.iceSession?.revoke().catch(() => undefined);
+      delete runtime.iceSession;
     }
   }
 
@@ -949,6 +1094,19 @@ function addBoundedLinuxAccessibilityEnvironment(target: NodeJS.ProcessEnv, sour
   if (runtimeDir && runtimeDir.startsWith("/") && runtimeDir.length <= 512 && !/[\0\r\n]/.test(runtimeDir)) {
     target.XDG_RUNTIME_DIR = runtimeDir;
   }
+}
+
+function sameReconnectAuthority(
+  left: WebRtcTakeoverRuntimeBinding,
+  right: WebRtcTakeoverRuntimeBinding
+): boolean {
+  return left.takeoverSessionId === right.takeoverSessionId
+    && left.interventionId === right.interventionId
+    && left.epoch === right.epoch
+    && left.principalBinding === right.principalBinding
+    && left.expiresAt === right.expiresAt
+    && left.targetProcessId === right.targetProcessId
+    && left.targetWindowId === right.targetWindowId;
 }
 
 function sameBinding(left: WebRtcTakeoverRuntimeBinding, right: WebRtcTakeoverRuntimeBinding): boolean {

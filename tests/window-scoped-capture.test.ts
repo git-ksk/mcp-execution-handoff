@@ -194,6 +194,8 @@ test("macOS successor-window lineage stays same-process, explicit, and desktop-f
   const exact = source("experiments/thin-takeover-runtime/Sources/TakeoverMacOSWindow/ExactWindowSurface.swift");
   const host = source("experiments/thin-takeover-runtime/Sources/takeover-webrtc-host/main.swift");
   const acceptance = source("experiments/thin-takeover-runtime/scripts/macos-window-lineage-acceptance.mts");
+  const wssAcceptance = source("experiments/thin-takeover-runtime/scripts/macos-wss-window-lineage-acceptance.mts");
+  const wssSurface = source("src/browser-takeover/macos-websocket-window-surface.ts");
   const linux = source("src/browser-takeover/linux-webrtc-host-cli.ts");
 
   assert.match(adapter, /successorWindowPolicy\?: WindowHandoffSuccessorPolicy/);
@@ -210,12 +212,21 @@ test("macOS successor-window lineage stays same-process, explicit, and desktop-f
   assert.match(host, /onScreenWindowsOnly: false/);
   assert.match(host, /visibility change must never make a pre-existing window/);
   assert.match(host, /authority\.fenceForTransition\(\)/);
+  assert.match(host, /snapshotForFrame\(\)/);
+  assert.match(host, /frameTokenIsCurrent/);
+  assert.match(host, /activeTarget\.map\(revalidateLineageTarget\)/);
+  assert.match(host, /return MacOSWindowLineage\.isSupportedSurface\(candidate\)/);
+  assert.match(host, /writer\.submitFrame\(record, stillValid: frameStillValid\)/);
   assert.match(host, /stream\.updateContentFilter\(surface\.filter\)/);
   assert.match(host, /stream\.updateConfiguration\(configuration\)/);
   assert.match(host, /successor_stage=/);
   assert.doesNotMatch(host, /Screen Sharing|Remote Management|screensharing|kickstart/);
   assert.match(acceptance, /successorWindowPolicy: \{ mode: "same_process", transitionWindowMs: 1_200 \}/);
   assert.match(acceptance, /inputPolicy: \{ tap: true, scroll: false, text: false, key: false \}/);
+  assert.match(wssAcceptance, /successorWindowPolicy: \{ mode: "same_process", transitionWindowMs: 1_200 \}/);
+  assert.match(wssAcceptance, /host_successor_admitted/);
+  assert.match(wssSurface, /TAKEOVER_WEBRTC_WINDOW_LINEAGE = "same_process_successor"/);
+  assert.match(wssSurface, /host_successor_\$\{successorStage\}/);
   assert.match(linux, /successor-window lineage is not supported by the Linux WebRTC host/);
 });
 

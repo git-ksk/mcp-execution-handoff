@@ -794,7 +794,8 @@ export class TakeoverBroker {
         throw error;
       }
       try {
-        await this.webRtcRuntime.revoke(id);
+        if (this.webRtcRuntime.suspend) await this.webRtcRuntime.suspend(id);
+        else await this.webRtcRuntime.revoke(id);
       } catch {
         return json(503, { error: "webrtc_runtime_revoke_failed", suspended: true });
       }

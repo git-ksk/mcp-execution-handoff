@@ -59,6 +59,8 @@ export interface ExperimentalWebSocketIngressDiagnostics {
     failureChannelState: WebSocketTakeoverState | "none";
     failureCode: WebSocketTakeoverFailureCode | "none";
     failureInputStage: WebSocketTakeoverInputStage;
+    /** Numeric RFC6455 close code only; peer-supplied reason text is never retained. */
+    peerCloseCode: number;
 }
 /** Concrete Node HTTPS/WSS ingress for the experimental WebSocket transport carrying Browser Handoff. */
 export declare class ExperimentalWebSocketTakeoverIngress {

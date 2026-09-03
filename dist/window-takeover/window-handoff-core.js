@@ -222,6 +222,10 @@ function runtimeConfigForHandoff(runtime, mediaProfile, policy, initialSecureWin
         }
         return baseSpawn(command, args, { ...options, env });
     });
-    return { ...runtime, spawnProcess };
+    return {
+        ...runtime,
+        ...(policy ? { preserveHostStateOnSuspend: true } : {}),
+        spawnProcess
+    };
 }
 //# sourceMappingURL=window-handoff-core.js.map

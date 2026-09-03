@@ -23,6 +23,7 @@ export class MacOSWebSocketWindowSurface {
     #hostExecutable;
     #helperTtlMs;
     #secureWindow;
+    #successorTransitionWindowMs;
     #onDiagnosticEvent;
     #active;
     #transition;
@@ -41,6 +42,19 @@ export class MacOSWebSocketWindowSurface {
             && config.initialSecureWindowPolicy.mode !== "macos_local_authentication") {
             throw new Error("macOS WSS initial secure-window policy is invalid");
         }
+        const successorTransitionWindowMs = config.successorWindowPolicy
+            ? (config.successorWindowPolicy.transitionWindowMs ?? 800)
+            : undefined;
+        if (config.successorWindowPolicy
+            && (config.successorWindowPolicy.mode !== "same_process"
+                || !Number.isSafeInteger(successorTransitionWindowMs)
+                || (successorTransitionWindowMs ?? 0) < 100
+                || (successorTransitionWindowMs ?? 0) > 2_000)) {
+            throw new Error("macOS WSS successor policy is invalid");
+        }
+        if (config.initialSecureWindowPolicy && config.successorWindowPolicy) {
+            throw new Error("macOS WSS initial secure-window policy cannot combine with successor lineage");
+        }
         const helperTtlMs = config.helperTtlMs ?? 15 * 60_000;
         if (!Number.isSafeInteger(helperTtlMs) || helperTtlMs < 30_000 || helperTtlMs > 60 * 60_000) {
             throw new Error("macOS WSS helper ttl is invalid");
@@ -48,6 +62,7 @@ export class MacOSWebSocketWindowSurface {
         this.#hostExecutable = config.hostExecutable;
         this.#helperTtlMs = helperTtlMs;
         this.#secureWindow = config.initialSecureWindowPolicy?.mode === "macos_local_authentication";
+        this.#successorTransitionWindowMs = successorTransitionWindowMs;
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
     }
     diagnosticsSnapshot() {
@@ -223,6 +238,10 @@ export class MacOSWebSocketWindowSurface {
         }
         else {
             env.TAKEOVER_WEBRTC_TARGET_WINDOW_ID = String(target.windowId);
+            if (this.#successorTransitionWindowMs !== undefined) {
+                env.TAKEOVER_WEBRTC_WINDOW_LINEAGE = "same_process_successor";
+                env.TAKEOVER_WEBRTC_WINDOW_LINEAGE_TRANSITION_MS = String(this.#successorTransitionWindowMs);
+            }
         }
         const child = spawn(this.#hostExecutable, [], { env, stdio: ["pipe", "pipe", "pipe"] });
         const state = {
@@ -230,6 +249,7 @@ export class MacOSWebSocketWindowSurface {
             child,
             sequence: 0,
             failed: false,
+            stopping: false,
             frameWaiters: [],
             stderrBuffer: "",
             pendingInputAck: undefined,
@@ -254,17 +274,23 @@ export class MacOSWebSocketWindowSurface {
             }
             catch {
                 this.#recordFailure("frame_protocol");
+                if (this.#successorTransitionWindowMs !== undefined && !state.stopping)
+                    this.#noteAuthorityLoss();
                 failActive(state, "macOS WSS exact-window helper frame protocol failed");
             }
         });
         child.stderr.on("data", (chunk) => this.#consumeDiagnostics(state, chunk));
         child.once("error", () => {
             this.#recordFailure("helper_error");
+            if (this.#successorTransitionWindowMs !== undefined && !state.stopping)
+                this.#noteAuthorityLoss();
             failActive(state, "macOS WSS exact-window helper failed");
         });
         child.once("close", () => {
             if (!state.failed)
                 this.#recordFailure("helper_closed");
+            if (this.#successorTransitionWindowMs !== undefined && !state.stopping)
+                this.#noteAuthorityLoss();
             failActive(state, "macOS WSS exact-window helper closed");
         });
         this.#active = state;
@@ -276,6 +302,8 @@ export class MacOSWebSocketWindowSurface {
         state.stderrBuffer += chunk.toString("utf8");
         if (Buffer.byteLength(state.stderrBuffer, "utf8") > MAX_DIAGNOSTIC_BUFFER_BYTES) {
             this.#recordFailure("diagnostics_bounds");
+            if (this.#successorTransitionWindowMs !== undefined && !state.stopping)
+                this.#noteAuthorityLoss();
             failActive(state, "macOS WSS helper diagnostics exceeded bounds");
             return;
         }
@@ -291,6 +319,17 @@ export class MacOSWebSocketWindowSurface {
                 this.#onDiagnosticEvent?.(regions.length > 0
                     ? "host_editable_regions_available"
                     : "host_editable_regions_empty");
+                continue;
+            }
+            const successorStage = this.#successorTransitionWindowMs === undefined
+                ? undefined
+                : parseSuccessorStage(line);
+            if (successorStage) {
+                this.#onDiagnosticEvent?.(`host_successor_${successorStage}`);
+                if (successorStage === "ambiguous" || successorStage === "unsupported" || successorStage === "failure") {
+                    this.#noteAuthorityLoss();
+                    settleInput(state, false, authorityLostError());
+                }
                 continue;
             }
             if (line === "MCP_HANDOFF_DIAGNOSTIC input_stage=applied") {
@@ -389,6 +428,16 @@ function parseEditableRegions(line) {
     }
     return regions;
 }
+function parseSuccessorStage(line) {
+    const prefix = "MCP_HANDOFF_DIAGNOSTIC successor_stage=";
+    if (!line.startsWith(prefix))
+        return undefined;
+    const stage = line.slice(prefix.length);
+    return stage === "probe_started" || stage === "admitted" || stage === "returned" || stage === "none"
+        || stage === "ambiguous" || stage === "unsupported" || stage === "failure"
+        ? stage
+        : undefined;
+}
 function managedFailure(failure, authorityBoundary) {
     if (authorityBoundary === "lost" || failure === "authority_lost")
         return "revalidation_failure";
@@ -424,6 +473,7 @@ function failActive(active, message) {
         active.child.kill("SIGTERM");
 }
 async function stopActive(active) {
+    active.stopping = true;
     if (active.pendingInputAck)
         settleInput(active, false, new Error("macOS WSS helper stopped"));
     if (active.child.exitCode !== null || active.child.signalCode !== null)

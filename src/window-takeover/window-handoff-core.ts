@@ -329,5 +329,9 @@ function runtimeConfigForHandoff(
     }
     return baseSpawn(command, args as string[], { ...options, env });
   }) as typeof spawn;
-  return { ...runtime, spawnProcess };
+  return {
+    ...runtime,
+    ...(policy ? { preserveHostStateOnSuspend: true } : {}),
+    spawnProcess
+  };
 }

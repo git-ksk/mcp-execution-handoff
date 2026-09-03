@@ -15,7 +15,7 @@ export class WindowWebSocketHandoffAdapter {
     #handoff;
     #secureLocalAuthentication;
     constructor(config) {
-        this.#surface = makeSurface(config.host, config.onOperatorDiagnosticEvent);
+        this.#surface = makeSurface(config.host, config.successorWindowPolicy, config.onOperatorDiagnosticEvent);
         this.#secureLocalAuthentication = config.host.platform === "macos"
             && config.host.initialSecureWindowPolicy?.mode === "macos_local_authentication";
         this.#handoff = new WebSocketBrowserHandoff({
@@ -62,7 +62,7 @@ export class WindowWebSocketHandoffAdapter {
     }
     async close() { await this.#surface.close?.(); }
 }
-function makeSurface(host, onDiagnosticEvent) {
+function makeSurface(host, successorWindowPolicy, onDiagnosticEvent) {
     if (host.platform === "macos") {
         return new MacOSWebSocketWindowSurface({
             hostExecutable: host.hostExecutable,
@@ -70,8 +70,12 @@ function makeSurface(host, onDiagnosticEvent) {
             ...(host.initialSecureWindowPolicy
                 ? { initialSecureWindowPolicy: host.initialSecureWindowPolicy }
                 : {}),
+            ...(successorWindowPolicy ? { successorWindowPolicy } : {}),
             ...(onDiagnosticEvent ? { onDiagnosticEvent } : {})
         });
+    }
+    if (successorWindowPolicy) {
+        throw new Error("Linux WSS does not support macOS successor-window lineage");
     }
     return new LinuxWebSocketWindowSurface({
         hostScript: host.hostScript,

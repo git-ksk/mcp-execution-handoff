@@ -272,7 +272,8 @@ test("WSS clean disconnect reconnects with a fresh server-derived generation", a
       failureDisconnectKind: "none",
       failureChannelState: "none",
       failureCode: "none",
-      failureInputStage: "none"
+      failureInputStage: "none",
+      peerCloseCode: 1005
     });
 
     const second = connect();

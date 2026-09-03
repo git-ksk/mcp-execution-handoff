@@ -156,6 +156,12 @@ private struct WindowTargetSnapshot: Sendable, Equatable {
     let processID: pid_t
     let windowID: CGWindowID
     let inputBounds: CGRect
+    let allowNonZeroLayer: Bool
+}
+
+private struct WindowTargetFrameToken: Sendable, Equatable {
+    let snapshot: WindowTargetSnapshot
+    let generation: UInt64
 }
 
 /// Mutable authority for exactly one Window target. During successor discovery no mutable input
@@ -163,6 +169,7 @@ private struct WindowTargetSnapshot: Sendable, Equatable {
 private final class WindowTargetAuthority: @unchecked Sendable {
     private let lock = NSLock()
     private var current: WindowTargetSnapshot
+    private var generation: UInt64 = 0
     private var fenced = false
     private var failed = false
 
@@ -177,9 +184,25 @@ private final class WindowTargetAuthority: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }; return current
     }
 
+    func snapshotForFrame() -> WindowTargetFrameToken? {
+        lock.lock(); defer { lock.unlock() }
+        guard !fenced, !failed else { return nil }
+        return WindowTargetFrameToken(snapshot: current, generation: generation)
+    }
+
+    func frameTokenIsCurrent(_ token: WindowTargetFrameToken) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !fenced && !failed && generation == token.generation && current == token.snapshot
+    }
+
+    func isFailed() -> Bool {
+        lock.lock(); defer { lock.unlock() }; return failed
+    }
+
     func fenceForTransition() -> WindowTargetSnapshot? {
         lock.lock(); defer { lock.unlock() }
         guard !fenced, !failed else { return nil }
+        generation &+= 1
         fenced = true
         return current
     }
@@ -209,6 +232,7 @@ private struct CaptureSurface {
     let inputBounds: CGRect
     let pixelWidth: Double
     let pixelHeight: Double
+    let allowNonZeroLayer: Bool
 }
 
 private func selectedCaptureSurface(
@@ -239,7 +263,8 @@ private func selectedCaptureSurface(
                 sourceRect: exact.sourceRect,
                 inputBounds: exact.inputBounds,
                 pixelWidth: exact.pixelWidth,
-                pixelHeight: exact.pixelHeight
+                pixelHeight: exact.pixelHeight,
+                allowNonZeroLayer: initialSecureWindowPolicy == .macosLocalAuthentication
             )
         } catch {
             throw WebRtcHostError.display
@@ -252,7 +277,8 @@ private func selectedCaptureSurface(
         sourceRect: nil,
         inputBounds: CGDisplayBounds(display.displayID),
         pixelWidth: Double(display.width),
-        pixelHeight: Double(display.height)
+        pixelHeight: Double(display.height),
+        allowNonZeroLayer: false
     )
 }
 
@@ -300,7 +326,8 @@ private func selectedLineageCaptureSurface(
         sourceRect: sourceRect,
         inputBounds: window.frame,
         pixelWidth: max(2.0, Double(sourceRect.width) * scale),
-        pixelHeight: max(2.0, Double(sourceRect.height) * scale)
+        pixelHeight: max(2.0, Double(sourceRect.height) * scale),
+        allowNonZeroLayer: window.windowLayer != 0
     )
 }
 
@@ -375,6 +402,55 @@ private func windowLineageCandidates(from content: SCShareableContent, targetPro
             isDialog: relation?.isDialog ?? false
         )
     }
+}
+
+private func currentLineageCandidate(for snapshot: WindowTargetSnapshot) -> MacOSWindowLineageCandidate? {
+    guard let raw = CGWindowListCopyWindowInfo([.optionIncludingWindow], snapshot.windowID) as? [[String: Any]] else {
+        return nil
+    }
+    let metadata = axWindowLineageMetadata(processID: snapshot.processID)
+    let candidates = raw.compactMap { info -> MacOSWindowLineageCandidate? in
+        guard let number = info[kCGWindowNumber as String] as? NSNumber,
+              number.uint32Value == snapshot.windowID,
+              let owner = info[kCGWindowOwnerPID as String] as? NSNumber,
+              let layer = info[kCGWindowLayer as String] as? NSNumber,
+              let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+              let frame = CGRect(dictionaryRepresentation: bounds) else { return nil }
+        let matches = metadata.filter { MacOSExactWindowGeometry.framesMatch($0.frame, frame) }
+        let relation = matches.count == 1 ? matches[0] : nil
+        return MacOSWindowLineageCandidate(
+            processID: pid_t(owner.int32Value),
+            windowID: CGWindowID(number.uint32Value),
+            frame: frame,
+            isOnScreen: (info[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false,
+            layer: layer.intValue,
+            isFocused: relation?.isFocused ?? false,
+            isModal: relation?.isModal ?? false,
+            isDialog: relation?.isDialog ?? false
+        )
+    }.filter { candidate in
+        candidate.processID == snapshot.processID
+            && candidate.windowID == snapshot.windowID
+            && candidate.isOnScreen
+            && MacOSExactWindowGeometry.framesMatch(candidate.frame, snapshot.inputBounds)
+    }
+    guard candidates.count == 1 else { return nil }
+    return candidates[0]
+}
+
+/// Revalidate a lineage-owned target through the same exact-window and successor-surface policies
+/// that admitted it. Non-zero-layer successors keep focused modal/dialog proof at every mutable
+/// input/frame boundary; layer-zero successors retain the ordinary exact-window rule.
+private func revalidateLineageTarget(_ snapshot: WindowTargetSnapshot) -> Bool {
+    guard MacOSExactWindowAuthority.revalidate(
+        processID: snapshot.processID,
+        windowID: snapshot.windowID,
+        inputBounds: snapshot.inputBounds,
+        allowNonZeroLayer: snapshot.allowNonZeroLayer
+    ) else { return false }
+    guard snapshot.allowNonZeroLayer else { return true }
+    guard let candidate = currentLineageCandidate(for: snapshot) else { return false }
+    return MacOSWindowLineage.isSupportedSurface(candidate)
 }
 
 private func sameProcessWindowIDs(from content: SCShareableContent, targetProcessID: pid_t) -> Set<CGWindowID> {
@@ -556,30 +632,44 @@ private final class EditableRegionPublisher: @unchecked Sendable {
 }
 
 private final class LatestOutputWriter: @unchecked Sendable {
+    private struct PendingOutput {
+        let record: Data
+        let stillValid: (@Sendable () -> Bool)?
+    }
+
     private let handle = FileHandle.standardOutput
     private let queue = DispatchQueue(label: "takeover.webrtc.stdout", qos: .userInteractive)
     private let lock = NSLock()
     private var writing = false
-    private var latestFrame: Data?
-    private var latestControl: Data?
+    private var latestFrame: PendingOutput?
+    private var latestControl: PendingOutput?
 
-    func submitFrame(_ record: Data) { enqueue(record, control: false) }
+    func submitFrame(_ record: Data, stillValid: (@Sendable () -> Bool)? = nil) {
+        enqueue(PendingOutput(record: record, stillValid: stillValid), control: false)
+    }
     func submitEditable(_ editable: Bool) {
         let payload = Data([editable ? 1 : 0])
         var record = Data([2]); var length = UInt32(payload.count).bigEndian
         withUnsafeBytes(of: &length) { record.append(contentsOf: $0) }
-        record.append(payload); enqueue(record, control: true)
+        record.append(payload)
+        enqueue(PendingOutput(record: record, stillValid: nil), control: true)
     }
-    private func enqueue(_ record: Data, control: Bool) {
+    private func enqueue(_ output: PendingOutput, control: Bool) {
         lock.lock()
-        if writing { if control { latestControl = record } else { latestFrame = record }; lock.unlock(); return }
-        writing = true; lock.unlock()
-        queue.async { [weak self] in self?.drain(first: record) }
+        if writing {
+            if control { latestControl = output } else { latestFrame = output }
+            lock.unlock()
+            return
+        }
+        writing = true
+        lock.unlock()
+        queue.async { [weak self] in self?.drain(first: output) }
     }
-    private func drain(first: Data) {
-        var current: Data? = first
-        while let record = current {
-            handle.write(record); lock.lock()
+    private func drain(first: PendingOutput) {
+        var current: PendingOutput? = first
+        while let output = current {
+            if output.stillValid?() ?? true { handle.write(output.record) }
+            lock.lock()
             if let control = latestControl { latestControl = nil; current = control }
             else if let frame = latestFrame { latestFrame = nil; current = frame }
             else { writing = false; current = nil }
@@ -618,6 +708,7 @@ private final class JPEGFrameOutput: NSObject, SCStreamOutput, @unchecked Sendab
     private let targetProcessID: pid_t
     private let targetWindowID: CGWindowID
     private let inputBounds: CGRect
+    private let targetAuthority: WindowTargetAuthority?
     private let secureWindow: Bool
     private let authorityLost: @Sendable () -> Void
 
@@ -629,6 +720,7 @@ private final class JPEGFrameOutput: NSObject, SCStreamOutput, @unchecked Sendab
         targetProcessID: pid_t,
         targetWindowID: CGWindowID,
         inputBounds: CGRect,
+        targetAuthority: WindowTargetAuthority? = nil,
         secureWindow: Bool,
         authorityLost: @escaping @Sendable () -> Void
     ) {
@@ -639,6 +731,7 @@ private final class JPEGFrameOutput: NSObject, SCStreamOutput, @unchecked Sendab
         self.targetProcessID = targetProcessID
         self.targetWindowID = targetWindowID
         self.inputBounds = inputBounds
+        self.targetAuthority = targetAuthority
         self.secureWindow = secureWindow
         self.authorityLost = authorityLost
     }
@@ -650,17 +743,39 @@ private final class JPEGFrameOutput: NSObject, SCStreamOutput, @unchecked Sendab
            let status = SCFrameStatus(rawValue: raw), status != .complete { return }
         guard admission.tryAcquire() else { return }
         defer { admission.release() }
-        let exactWindowValid = MacOSExactWindowAuthority.revalidate(
-            processID: targetProcessID,
-            windowID: targetWindowID,
-            inputBounds: inputBounds,
-            allowNonZeroLayer: secureWindow
+
+        let activeTarget: WindowTargetSnapshot?
+        let frameStillValid: @Sendable () -> Bool
+        if let targetAuthority {
+            guard let token = targetAuthority.snapshotForFrame() else {
+                if targetAuthority.isFailed() {
+                    FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC capture_stage=authority_lost\n".utf8))
+                    authorityLost()
+                }
+                return
+            }
+            activeTarget = token.snapshot
+            frameStillValid = { targetAuthority.frameTokenIsCurrent(token) }
+        } else {
+            activeTarget = nil
+            frameStillValid = { true }
+        }
+        let activeProcessID = activeTarget?.processID ?? targetProcessID
+        let activeWindowID = activeTarget?.windowID ?? targetWindowID
+        let activeInputBounds = activeTarget?.inputBounds ?? inputBounds
+        let allowNonZeroLayer = activeTarget?.allowNonZeroLayer ?? secureWindow
+        let exactWindowValid = activeTarget.map(revalidateLineageTarget) ?? MacOSExactWindowAuthority.revalidate(
+            processID: activeProcessID,
+            windowID: activeWindowID,
+            inputBounds: activeInputBounds,
+            allowNonZeroLayer: allowNonZeroLayer
         )
         let secureIdentityValid = !secureWindow || MacOSLocalAuthenticationWindowInput.verifyFocused(
-            processID: targetProcessID, inputBounds: inputBounds
+            processID: activeProcessID, inputBounds: activeInputBounds
         )
         guard exactWindowValid, secureIdentityValid else {
             FileHandle.standardError.write(Data("MCP_HANDOFF_DIAGNOSTIC capture_stage=authority_lost\n".utf8))
+            targetAuthority?.failClosed()
             authorityLost()
             return
         }
@@ -671,7 +786,7 @@ private final class JPEGFrameOutput: NSObject, SCStreamOutput, @unchecked Sendab
                 colorSpace: colorSpace,
                 options: [CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): 0.72]
             ), let record = jpegFrameRecord(jpeg: jpeg, width: width, height: height) else { return }
-            writer.submitFrame(record)
+            writer.submitFrame(record, stillValid: frameStillValid)
         }
     }
 }
@@ -910,7 +1025,8 @@ private final class WindowLineageController: @unchecked Sendable {
                     let restored = WindowTargetSnapshot(
                         processID: targetProcessID,
                         windowID: predecessor.windowID,
-                        inputBounds: predecessorSurface.inputBounds
+                        inputBounds: predecessorSurface.inputBounds,
+                        allowNonZeroLayer: predecessorSurface.allowNonZeroLayer
                     )
                     guard authority.rotate(from: previous, to: restored) else { return failClosed("failure") }
                     popPredecessor()
@@ -943,7 +1059,8 @@ private final class WindowLineageController: @unchecked Sendable {
                     let successor = WindowTargetSnapshot(
                         processID: targetProcessID,
                         windowID: resolution.windowID,
-                        inputBounds: surface.inputBounds
+                        inputBounds: surface.inputBounds,
+                        allowNonZeroLayer: surface.allowNonZeroLayer
                     )
                     guard authority.rotate(from: previous, to: successor) else { return failClosed("failure") }
                     pushPredecessor(previous)
@@ -1051,7 +1168,7 @@ private final class HumanInputInjector: @unchecked Sendable {
         let activeWindowID = activeTarget?.windowID ?? targetWindowID
         let activeInputBounds = activeTarget?.inputBounds ?? inputBounds
         if let activeProcessID, let activeWindowID {
-            let exactWindowValid = MacOSExactWindowAuthority.revalidate(
+            let exactWindowValid = activeTarget.map(revalidateLineageTarget) ?? MacOSExactWindowAuthority.revalidate(
                 processID: activeProcessID,
                 windowID: activeWindowID,
                 inputBounds: activeInputBounds,
@@ -1472,6 +1589,21 @@ struct WebRtcMacHost {
         let width = mediaPolicy.width, height = mediaPolicy.height
         emitMediaProfile(mediaProfile, policy: mediaPolicy)
 
+        let targetAuthority: WindowTargetAuthority?
+        if lineageConfig != nil {
+            guard let targetProcessID, let resolvedWindowID = surface.targetWindowID else {
+                throw WebRtcHostError.configuration
+            }
+            targetAuthority = WindowTargetAuthority(WindowTargetSnapshot(
+                processID: targetProcessID,
+                windowID: resolvedWindowID,
+                inputBounds: surface.inputBounds,
+                allowNonZeroLayer: surface.allowNonZeroLayer
+            ))
+        } else {
+            targetAuthority = nil
+        }
+
         let writer = LatestOutputWriter()
         let metricWriter = HostMetricWriter()
         let controlWriter = HostControlWriter()
@@ -1489,6 +1621,7 @@ struct WebRtcMacHost {
                 targetProcessID: targetProcessID,
                 targetWindowID: exactWindowID,
                 inputBounds: surface.inputBounds,
+                targetAuthority: targetAuthority,
                 secureWindow: initialSecureWindowPolicy == .macosLocalAuthentication,
                 authorityLost: { stop.stop(.windowResolution) }
             )
@@ -1509,18 +1642,6 @@ struct WebRtcMacHost {
             streamOutput = CaptureOutput(encoder: encoder, lease: lease)
             requestIDR = { encoder.requestIDR() }
         }
-        let targetAuthority: WindowTargetAuthority?
-        if lineageConfig != nil {
-            guard let targetProcessID, let resolvedWindowID = surface.targetWindowID else { throw WebRtcHostError.configuration }
-            targetAuthority = WindowTargetAuthority(WindowTargetSnapshot(
-                processID: targetProcessID,
-                windowID: resolvedWindowID,
-                inputBounds: surface.inputBounds
-            ))
-        } else {
-            targetAuthority = nil
-        }
-
         let configuration = makeStreamConfiguration(
             surface: surface,
             width: width,

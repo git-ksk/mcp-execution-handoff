@@ -11,6 +11,11 @@ export interface MacOSWebSocketWindowSurfaceConfig {
     initialSecureWindowPolicy?: {
         mode: "macos_local_authentication";
     };
+    /** Reuse the reviewed macOS same-process successor authority inside the local helper. */
+    successorWindowPolicy?: {
+        mode: "same_process";
+        transitionWindowMs?: number;
+    };
     /** Content-free bounded event hook owned by Handoff diagnostics. */
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
 }
