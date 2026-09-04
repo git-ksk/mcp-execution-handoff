@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "states": [
     "supported",
     "supported_if_configured",
@@ -16,16 +16,28 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/webrtc-browser-transport.test.ts", "name": "WebRTC runtime binding keeps an exact optional host process/window private and generation-bound" },
-            { "file": "tests/webrtc-browser-transport.test.ts", "name": "WebRTC Done immediately fences local Human controls and remains one-shot while completion is pending" }
+            {
+              "file": "tests/webrtc-browser-transport.test.ts",
+              "name": "WebRTC runtime binding keeps an exact optional host process/window private and generation-bound"
+            },
+            {
+              "file": "tests/webrtc-browser-transport.test.ts",
+              "name": "WebRTC Done immediately fences local Human controls and remains one-shot while completion is pending"
+            }
           ],
           "physicalCommand": "accept:webrtc:lan"
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/webrtc-runtime-turn-env.test.ts", "name": "relay-enabled runtime construction can still issue configured TURN credentials" },
-            { "file": "tests/webrtc-browser-transport.test.ts", "name": "TURN issuance unavailable remains explicit direct-only preparation instead of relay-only or locator revocation" }
+            {
+              "file": "tests/webrtc-runtime-turn-env.test.ts",
+              "name": "relay-enabled runtime construction can still issue configured TURN credentials"
+            },
+            {
+              "file": "tests/webrtc-browser-transport.test.ts",
+              "name": "TURN issuance unavailable remains explicit direct-only preparation instead of relay-only or locator revocation"
+            }
           ],
           "physicalCommand": "accept:webrtc:public-relay"
         },
@@ -43,21 +55,33 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/webrtc-runtime-host-ready.test.ts", "name": "Linux WebRTC runtime fails closed before answer creation when the target window cannot become ready" }
+            {
+              "file": "tests/webrtc-runtime-host-ready.test.ts",
+              "name": "Linux WebRTC runtime fails closed before answer creation when the target window cannot become ready"
+            }
           ],
           "physicalCommand": "accept:webrtc:linux"
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/webrtc-runtime-turn-env.test.ts", "name": "relay-enabled runtime construction can still issue configured TURN credentials" }
+            {
+              "file": "tests/webrtc-runtime-turn-env.test.ts",
+              "name": "relay-enabled runtime construction can still issue configured TURN credentials"
+            }
           ]
         },
         "websocket_wss": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/linux-websocket-window-surface.test.ts", "name": "Linux WSS physical surface reuses exact helper without transport or target leakage" },
-            { "file": "tests/websocket-window-handoff.test.ts", "name": "Generic Window WSS captures and inputs only through the exact trusted process/window" }
+            {
+              "file": "tests/linux-websocket-window-surface.test.ts",
+              "name": "Linux WSS physical surface reuses exact helper without transport or target leakage"
+            },
+            {
+              "file": "tests/websocket-window-handoff.test.ts",
+              "name": "Generic Window WSS captures and inputs only through the exact trusted process/window"
+            }
           ],
           "physicalCommand": "accept:websocket:cloud-run-container"
         }
@@ -71,22 +95,33 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/window-handoff-adapter.test.ts", "name": "first-class Window Handoff issues only a WebRTC locator for an exact bounded target" }
+            {
+              "file": "tests/window-handoff-adapter.test.ts",
+              "name": "first-class Window Handoff issues only a WebRTC locator for an exact bounded target"
+            }
           ],
           "physicalCommand": "accept:window:macos-native-text"
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/webrtc-runtime-turn-env.test.ts", "name": "relay-enabled runtime construction can still issue configured TURN credentials" }
+            {
+              "file": "tests/webrtc-runtime-turn-env.test.ts",
+              "name": "relay-enabled runtime construction can still issue configured TURN credentials"
+            }
           ]
         },
         "websocket_wss": {
-          "state": "deterministic_physical_pending",
-          "issue": 183,
+          "state": "supported",
           "deterministicTests": [
-            { "file": "tests/macos-websocket-window-surface.test.ts", "name": "macOS WSS exact-window surface is JPEG-only without ICE STUN or TURN" },
-            { "file": "tests/managed-adapter.test.ts", "name": "managed macOS WSS-only reuses the runtime host without consumer surface-class selection" }
+            {
+              "file": "tests/macos-websocket-window-surface.test.ts",
+              "name": "macOS WSS exact-window surface is JPEG-only without ICE STUN or TURN"
+            },
+            {
+              "file": "tests/managed-adapter.test.ts",
+              "name": "managed macOS WSS-only reuses the runtime host without consumer surface-class selection"
+            }
           ],
           "physicalCommand": "accept:window:macos-wss"
         }
@@ -100,22 +135,33 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/window-handoff-adapter.test.ts", "name": "LocalAuthentication initial secure Window policy is explicit PID-only Human secure-input authority" }
+            {
+              "file": "tests/window-handoff-adapter.test.ts",
+              "name": "LocalAuthentication initial secure Window policy is explicit PID-only Human secure-input authority"
+            }
           ],
           "physicalCommand": "accept:window:macos-local-auth"
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/webrtc-runtime-turn-env.test.ts", "name": "relay-enabled runtime construction can still issue configured TURN credentials" }
+            {
+              "file": "tests/webrtc-runtime-turn-env.test.ts",
+              "name": "relay-enabled runtime construction can still issue configured TURN credentials"
+            }
           ]
         },
         "websocket_wss": {
-          "state": "deterministic_physical_pending",
-          "issue": 183,
+          "state": "supported",
           "deterministicTests": [
-            { "file": "tests/macos-websocket-window-surface.test.ts", "name": "macOS LocalAuthentication WSS is PID-only and rejects scroll or Enter locally" },
-            { "file": "tests/managed-adapter.test.ts", "name": "managed macOS LocalAuthentication WSS stays PID-only and policy-bounded" }
+            {
+              "file": "tests/macos-websocket-window-surface.test.ts",
+              "name": "macOS LocalAuthentication WSS is PID-only and rejects scroll or Enter locally"
+            },
+            {
+              "file": "tests/managed-adapter.test.ts",
+              "name": "managed macOS LocalAuthentication WSS stays PID-only and policy-bounded"
+            }
           ],
           "physicalCommand": "accept:window:macos-local-auth-wss"
         }
@@ -129,20 +175,35 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/window-handoff-adapter.test.ts", "name": "Window Handoff successor lineage is explicit and bounded while exact-one remains the default" }
+            {
+              "file": "tests/window-handoff-adapter.test.ts",
+              "name": "Window Handoff successor lineage is explicit and bounded while exact-one remains the default"
+            }
           ],
           "physicalCommand": "accept:window:macos-lineage"
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/window-handoff-adapter.test.ts", "name": "Window Handoff successor lineage is explicit and bounded while exact-one remains the default" }
+            {
+              "file": "tests/window-handoff-adapter.test.ts",
+              "name": "Window Handoff successor lineage is explicit and bounded while exact-one remains the default"
+            }
           ]
         },
         "websocket_wss": {
-          "state": "planned",
-          "issue": 186,
-          "reason": "WSS must reuse the existing bounded same-process lineage authority before support is claimed."
+          "state": "supported",
+          "deterministicTests": [
+            {
+              "file": "tests/macos-websocket-window-surface.test.ts",
+              "name": "macOS WSS successor lineage reuses one helper and passes only the reviewed lineage env"
+            },
+            {
+              "file": "tests/managed-adapter.test.ts",
+              "name": "managed macOS WSS-only admits the existing same-process successor policy"
+            }
+          ],
+          "physicalCommand": "accept:window:macos-wss-lineage"
         }
       }
     },
@@ -154,21 +215,33 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/window-handoff-adapter.test.ts", "name": "first-class Window Handoff issues only a WebRTC locator for an exact bounded target" }
+            {
+              "file": "tests/window-handoff-adapter.test.ts",
+              "name": "first-class Window Handoff issues only a WebRTC locator for an exact bounded target"
+            }
           ],
           "physicalCommand": "accept:webrtc:linux"
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/webrtc-runtime-turn-env.test.ts", "name": "relay-enabled runtime construction can still issue configured TURN credentials" }
+            {
+              "file": "tests/webrtc-runtime-turn-env.test.ts",
+              "name": "relay-enabled runtime construction can still issue configured TURN credentials"
+            }
           ]
         },
         "websocket_wss": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/websocket-window-handoff.test.ts", "name": "Generic Window WSS retains the generation after a recoverable input helper failure" },
-            { "file": "tests/linux-websocket-window-surface.test.ts", "name": "Linux WSS capture does not retry an exact-window ownership failure" }
+            {
+              "file": "tests/websocket-window-handoff.test.ts",
+              "name": "Generic Window WSS retains the generation after a recoverable input helper failure"
+            },
+            {
+              "file": "tests/linux-websocket-window-surface.test.ts",
+              "name": "Linux WSS capture does not retry an exact-window ownership failure"
+            }
           ]
         }
       }
@@ -181,14 +254,23 @@
         "webrtc_direct": {
           "state": "supported",
           "deterministicTests": [
-            { "file": "tests/terminal-webrtc.test.ts", "name": "Terminal WebRTC keeps input fenced until Human activation and orders Done after input" },
-            { "file": "tests/terminal-pty-experimental.test.ts", "name": "Human disconnect is not Done and never restores Agent authority" }
+            {
+              "file": "tests/terminal-webrtc.test.ts",
+              "name": "Terminal WebRTC keeps input fenced until Human activation and orders Done after input"
+            },
+            {
+              "file": "tests/terminal-pty-experimental.test.ts",
+              "name": "Human disconnect is not Done and never restores Agent authority"
+            }
           ]
         },
         "webrtc_relay": {
           "state": "supported_if_configured",
           "deterministicTests": [
-            { "file": "tests/terminal-webrtc.test.ts", "name": "Terminal WebRTC keeps input fenced until Human activation and orders Done after input" }
+            {
+              "file": "tests/terminal-webrtc.test.ts",
+              "name": "Terminal WebRTC keeps input fenced until Human activation and orders Done after input"
+            }
           ]
         },
         "websocket_wss": {
@@ -202,9 +284,18 @@
       "surface": "terminal_pty",
       "host": "windows_conpty_specific_containment",
       "transports": {
-        "webrtc_direct": { "state": "unsupported", "reason": "Windows ConPTY descendant-containment parity is not claimed by the first-class API." },
-        "webrtc_relay": { "state": "unsupported", "reason": "Windows ConPTY descendant-containment parity is not claimed by the first-class API." },
-        "websocket_wss": { "state": "unsupported", "reason": "Terminal WSS is not a supported first-class transport." }
+        "webrtc_direct": {
+          "state": "unsupported",
+          "reason": "Windows ConPTY descendant-containment parity is not claimed by the first-class API."
+        },
+        "webrtc_relay": {
+          "state": "unsupported",
+          "reason": "Windows ConPTY descendant-containment parity is not claimed by the first-class API."
+        },
+        "websocket_wss": {
+          "state": "unsupported",
+          "reason": "Terminal WSS is not a supported first-class transport."
+        }
       }
     },
     {
@@ -212,44 +303,218 @@
       "surface": "desktop",
       "host": "physical_virtual_or_remote_desktop",
       "transports": {
-        "webrtc_direct": { "state": "unsupported", "reason": "Desktop is not an implicit Window fallback; explicit future authority/session work is #125/#161." },
-        "webrtc_relay": { "state": "unsupported", "reason": "Desktop is not an implicit Window fallback; explicit future authority/session work is #125/#161." },
-        "websocket_wss": { "state": "unsupported", "reason": "Desktop is not an implicit Window fallback; explicit future authority/session work is #125/#161." }
+        "webrtc_direct": {
+          "state": "unsupported",
+          "reason": "Desktop is not an implicit Window fallback; explicit future authority/session work is #125/#161."
+        },
+        "webrtc_relay": {
+          "state": "unsupported",
+          "reason": "Desktop is not an implicit Window fallback; explicit future authority/session work is #125/#161."
+        },
+        "websocket_wss": {
+          "state": "unsupported",
+          "reason": "Desktop is not an implicit Window fallback; explicit future authority/session work is #125/#161."
+        }
       }
     }
   ],
   "highRiskFailureGates": [
     {
       "category": "capture_transient_failure",
-      "test": { "file": "tests/linux-websocket-window-surface.test.ts", "name": "Linux WSS capture restarts one failed helper for the same exact PID/window" }
+      "test": {
+        "file": "tests/linux-websocket-window-surface.test.ts",
+        "name": "Linux WSS capture restarts one failed helper for the same exact PID/window"
+      }
     },
     {
       "category": "input_transient_failure",
-      "test": { "file": "tests/websocket-window-handoff.test.ts", "name": "Generic Window WSS retains the generation after a recoverable input helper failure" }
+      "test": {
+        "file": "tests/websocket-window-handoff.test.ts",
+        "name": "Generic Window WSS keeps the same session after a recoverable input failure without replay"
+      }
     },
     {
       "category": "exact_target_authority_loss",
-      "test": { "file": "tests/websocket-window-handoff.test.ts", "name": "Generic Window WSS revokes the session when exact-window capture cannot be revalidated" }
+      "test": {
+        "file": "tests/websocket-window-handoff.test.ts",
+        "name": "Generic Window WSS revokes the session when exact-window capture cannot be revalidated"
+      }
     },
     {
       "category": "reconnect_and_stale_generation",
-      "test": { "file": "tests/webrtc-browser-transport.test.ts", "name": "reconnect active-lease conflict is bounded and peer loss releases the exact stale generation" }
+      "test": {
+        "file": "tests/webrtc-browser-transport.test.ts",
+        "name": "reconnect active-lease conflict is bounded and peer loss releases the exact stale generation"
+      }
     },
     {
       "category": "consumer_restart",
-      "test": { "file": "tests/restart-conformance.test.ts", "name": "Browser and Window restart reject stale locator capability generation and reconnect handle" }
+      "test": {
+        "file": "tests/restart-conformance.test.ts",
+        "name": "Browser and Window restart reject stale locator capability generation and reconnect handle"
+      }
     },
     {
       "category": "completion_observer_failure",
-      "test": { "file": "tests/websocket-lifecycle-conformance.test.ts", "name": "WSS conformance: completion observer failure cannot restore mutable authority" }
+      "test": {
+        "file": "tests/websocket-lifecycle-conformance.test.ts",
+        "name": "WSS conformance: completion observer failure cannot restore mutable authority"
+      }
     },
     {
       "category": "diagnostic_observer_failure",
-      "test": { "file": "tests/managed-operator-diagnostics.test.ts", "name": "managed diagnostic observer is bounded and observe-only" }
+      "test": {
+        "file": "tests/managed-operator-diagnostics.test.ts",
+        "name": "managed diagnostic observer is bounded and observe-only"
+      }
     },
     {
       "category": "runtime_revoke_failure_retry",
-      "test": { "file": "tests/completion-lifecycle-races.test.ts", "name": "WebRTC completion retries failed runtime teardown before consumer completion" }
+      "test": {
+        "file": "tests/completion-lifecycle-races.test.ts",
+        "name": "WebRTC completion retries failed runtime teardown before consumer completion"
+      }
+    }
+  ],
+  "authUxPolicy": {
+    "secureFormCredentialBroker": "out_of_scope",
+    "modeSwitch": "unsupported",
+    "sessionPersistenceOwner": "consumer_provider",
+    "semanticVerificationOwner": "consumer"
+  },
+  "authUxGates": [
+    {
+      "category": "manual_completion_and_verification_outcomes",
+      "test": {
+        "file": "tests/auth-ux-conformance.test.ts",
+        "name": "synthetic auth UX distinguishes Human Done from four consumer verification outcomes"
+      }
+    },
+    {
+      "category": "cancellation",
+      "test": {
+        "file": "tests/auth-ux-conformance.test.ts",
+        "name": "synthetic auth UX cancellation fences the locator and is never completion"
+      }
+    },
+    {
+      "category": "expiry",
+      "test": {
+        "file": "tests/auth-ux-conformance.test.ts",
+        "name": "synthetic auth UX expiry remains input-required rather than authenticated"
+      }
+    },
+    {
+      "category": "transport_loss",
+      "test": {
+        "file": "tests/auth-ux-conformance.test.ts",
+        "name": "synthetic auth UX transport loss is not Done and cannot restore Agent authority"
+      }
+    },
+    {
+      "category": "stale_generation",
+      "test": {
+        "file": "tests/auth-ux-conformance.test.ts",
+        "name": "synthetic auth UX reconnect rotates generation and rejects stale Human input authority"
+      }
+    },
+    {
+      "category": "observation_isolation_and_mode_switch",
+      "test": {
+        "file": "tests/auth-ux-conformance.test.ts",
+        "name": "synthetic auth UX observation record is content-free and mode switching stays unsupported"
+      }
+    }
+  ],
+  "acceptanceEvidence": [
+    {
+      "rowId": "browser-macos-bounded",
+      "transport": "webrtc_direct",
+      "status": "passed",
+      "command": "accept:webrtc:lan",
+      "evidence": "Physical iPhone Safari same-LAN direct WebRTC Browser acceptance baseline."
+    },
+    {
+      "rowId": "browser-macos-bounded",
+      "transport": "webrtc_relay",
+      "status": "passed",
+      "command": "accept:webrtc:public-relay",
+      "evidence": "Physical iPhone Safari cellular/TURN relay Browser acceptance baseline."
+    },
+    {
+      "rowId": "browser-linux-exact-window",
+      "transport": "webrtc_direct",
+      "status": "passed",
+      "command": "accept:webrtc:linux",
+      "evidence": "Canonical Linux exact-window WebRTC acceptance harness passed for the bounded host."
+    },
+    {
+      "rowId": "browser-linux-exact-window",
+      "transport": "websocket_wss",
+      "status": "passed",
+      "command": "accept:websocket:cloud-run-container",
+      "evidence": "Cloud Run-equivalent WSS container gate plus exact-window deterministic host coverage."
+    },
+    {
+      "rowId": "window-macos-ordinary",
+      "transport": "webrtc_direct",
+      "status": "passed",
+      "command": "accept:window:macos-native-text",
+      "evidence": "Physical macOS exact-window native-text/WebRTC acceptance is established on the first-class Window path."
+    },
+    {
+      "rowId": "window-macos-ordinary",
+      "transport": "websocket_wss",
+      "status": "passed",
+      "command": "accept:window:macos-wss",
+      "evidence": "PR #214 physical iPhone Safari WSS-only acceptance verified Aim, text, scroll, Done and consumer completion."
+    },
+    {
+      "rowId": "window-macos-local-authentication",
+      "transport": "webrtc_direct",
+      "status": "passed",
+      "command": "accept:window:macos-local-auth",
+      "evidence": "Existing physical LocalAuthentication WebRTC acceptance established the exact PID-only secure-window boundary."
+    },
+    {
+      "rowId": "window-macos-local-authentication",
+      "transport": "websocket_wss",
+      "status": "passed",
+      "command": "accept:window:macos-local-auth-wss",
+      "evidence": "PR #217 physical iPhone Safari WSS-only LocalAuthentication acceptance passed: Human Cancel fenced the exact secure Window, revoked the channel with normal close code 1000, and cleared the stale secure frame without WebRTC/ICE/STUN/TURN."
+    },
+    {
+      "rowId": "window-macos-successor-lineage",
+      "transport": "webrtc_direct",
+      "status": "passed",
+      "command": "accept:window:macos-lineage",
+      "evidence": "Physical iPhone bounded same-process successor lineage acceptance established the WebRTC baseline."
+    },
+    {
+      "rowId": "window-macos-successor-lineage",
+      "transport": "websocket_wss",
+      "status": "passed",
+      "command": "accept:window:macos-wss-lineage",
+      "evidence": "Issue #186 physical iPhone Safari acceptance proved bounded WSS successor rotation and stale-generation fencing."
+    },
+    {
+      "rowId": "window-linux-exact-x11",
+      "transport": "webrtc_direct",
+      "status": "passed",
+      "command": "accept:webrtc:linux",
+      "evidence": "Canonical Linux exact-window WebRTC acceptance covers the same bounded X11 authority primitive."
+    },
+    {
+      "rowId": "window-linux-exact-x11",
+      "transport": "websocket_wss",
+      "status": "documented",
+      "evidence": "Deterministic exact-X11 WSS host, authority-loss and recoverable input gates run in the standard suite."
+    },
+    {
+      "rowId": "terminal-consumer-pty",
+      "transport": "webrtc_direct",
+      "status": "documented",
+      "evidence": "Merged-code real PTY E2E and physical iPhone Human acceptance are established; PTY allocation remains consumer-owned."
     }
   ]
 }

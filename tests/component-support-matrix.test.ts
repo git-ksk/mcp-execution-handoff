@@ -29,11 +29,30 @@ interface MatrixRow {
   transports: Record<string, TransportEntry>;
 }
 
+type AcceptanceStatus = "passed" | "pending" | "documented";
+
+interface AcceptanceEvidence {
+  rowId: string;
+  transport: string;
+  status: AcceptanceStatus;
+  command?: string;
+  issue?: number;
+  evidence: string;
+}
+
 interface MatrixDocument {
   schemaVersion: number;
   states: SupportState[];
   rows: MatrixRow[];
   highRiskFailureGates: Array<{ category: string; test: TestRef }>;
+  authUxGates: Array<{ category: string; test: TestRef }>;
+  authUxPolicy: {
+    secureFormCredentialBroker: "out_of_scope";
+    modeSwitch: "unsupported";
+    sessionPersistenceOwner: "consumer_provider";
+    semanticVerificationOwner: "consumer";
+  };
+  acceptanceEvidence: AcceptanceEvidence[];
 }
 
 const matrix = JSON.parse(
@@ -60,7 +79,7 @@ function assertAcceptanceCommand(command: string): void {
 }
 
 test("component support matrix is closed-world and every claimed row has executable coverage", async () => {
-  assert.equal(matrix.schemaVersion, 1);
+  assert.equal(matrix.schemaVersion, 2);
   assert.deepEqual(new Set(matrix.states), new Set<SupportState>([
     "supported",
     "supported_if_configured",
@@ -119,4 +138,77 @@ test("component support matrix tracks every P0 high-risk failure-injection categ
   const actual = new Set(matrix.highRiskFailureGates.map((gate) => gate.category));
   assert.deepEqual(actual, required);
   for (const gate of matrix.highRiskFailureGates) await assertTrackedTest(gate.test);
+});
+
+
+test("component support matrix indexes canonical acceptance evidence independently of consumers", () => {
+  const rows = new Map(matrix.rows.map((row) => [row.id, row]));
+  const seen = new Set<string>();
+  for (const evidence of matrix.acceptanceEvidence) {
+    const row = rows.get(evidence.rowId);
+    assert.ok(row, `acceptance evidence references unknown row: ${evidence.rowId}`);
+    const entry = row!.transports[evidence.transport];
+    assert.ok(entry, `acceptance evidence references unknown transport: ${evidence.rowId}/${evidence.transport}`);
+    const key = `${evidence.rowId}/${evidence.transport}`;
+    assert.equal(seen.has(key), false, `duplicate acceptance evidence: ${key}`);
+    seen.add(key);
+    assert.ok(evidence.evidence.length >= 12, `acceptance evidence is too vague: ${key}`);
+    if (evidence.command) {
+      assert.equal(entry.physicalCommand, evidence.command, `acceptance command drifted: ${key}`);
+      assertAcceptanceCommand(evidence.command);
+    }
+    if (entry.state === "deterministic_physical_pending") {
+      assert.equal(evidence.status, "pending", `physical-pending row must remain pending: ${key}`);
+      assert.equal(evidence.issue, entry.issue, `physical-pending issue drifted: ${key}`);
+    }
+    if ((entry.state === "supported" || entry.state === "supported_if_configured") && entry.physicalCommand) {
+      assert.equal(evidence.status, "passed", `claimed physical command lacks passed evidence: ${key}`);
+    }
+  }
+
+  for (const row of matrix.rows) {
+    for (const [transport, entry] of Object.entries(row.transports)) {
+      if (entry.physicalCommand) {
+        assert.ok(seen.has(`${row.id}/${transport}`), `physical command lacks indexed evidence: ${row.id}/${transport}`);
+      }
+    }
+  }
+
+  for (const required of [
+    "browser-macos-bounded/webrtc_direct",
+    "browser-macos-bounded/webrtc_relay",
+    "browser-linux-exact-window/webrtc_direct",
+    "browser-linux-exact-window/websocket_wss",
+    "window-macos-ordinary/webrtc_direct",
+    "window-macos-ordinary/websocket_wss",
+    "window-macos-local-authentication/webrtc_direct",
+    "window-macos-local-authentication/websocket_wss",
+    "window-macos-successor-lineage/webrtc_direct",
+    "window-macos-successor-lineage/websocket_wss",
+    "window-linux-exact-x11/webrtc_direct",
+    "window-linux-exact-x11/websocket_wss",
+    "terminal-consumer-pty/webrtc_direct"
+  ]) {
+    assert.ok(seen.has(required), `minimum physical/real acceptance evidence missing: ${required}`);
+  }
+});
+
+test("component support matrix closes auth UX scope with synthetic no-secret gates", async () => {
+  assert.deepEqual(matrix.authUxPolicy, {
+    secureFormCredentialBroker: "out_of_scope",
+    modeSwitch: "unsupported",
+    sessionPersistenceOwner: "consumer_provider",
+    semanticVerificationOwner: "consumer"
+  });
+  const required = new Set([
+    "manual_completion_and_verification_outcomes",
+    "cancellation",
+    "expiry",
+    "transport_loss",
+    "stale_generation",
+    "observation_isolation_and_mode_switch"
+  ]);
+  const actual = new Set(matrix.authUxGates.map((gate) => gate.category));
+  assert.deepEqual(actual, required);
+  for (const gate of matrix.authUxGates) await assertTrackedTest(gate.test);
 });

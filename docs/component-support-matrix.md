@@ -66,9 +66,9 @@ transport differs.
 | --- | --- | --- | --- | --- | --- |
 | Browser | macOS bounded browser/window host | **Supported** | **Supported** | **Not claimed as a first-class macOS Browser WSS path** | Browser remains a browser-policy facade; do not infer support from the macOS Window WSS primitive alone. |
 | Browser | Linux isolated exact-window browser host | **Supported** | **Supported where relay is configured** | **Supported managed fallback** | Exact X11 PID/window authority, bounded AT-SPI metadata and WSS helper paths remain Handoff-owned. |
-| Window | macOS ordinary exact window | **Supported** | **Supported** | **Deterministic / physical pending (#183)** | Explicit WSS-only facade and OS-neutral managed composition exist. No desktop fallback. |
-| Window | macOS LocalAuthentication secure window | **Supported** | **Supported where WebRTC relay is selected** | **Deterministic / physical pending (#183)** | Explicit PID-only secure policy. Backspace/secure text and Human pointer only as reviewed; Enter is not approval. |
-| Window | macOS same-process successor/modal lineage | **Supported** | **Supported where WebRTC relay is selected** | **Planned (#186)** | Exact-one remains default; WSS must reuse the existing lineage authority primitive before support is claimed. |
+| Window | macOS ordinary exact window | **Supported** | **Supported** | **Supported** | Physical iPhone WSS-only acceptance passed on PR #214, including Aim/text/scroll/Done and consumer completion. No desktop fallback. |
+| Window | macOS LocalAuthentication secure window | **Supported** | **Supported where WebRTC relay is selected** | **Supported** | Explicit PID-only secure policy. Physical iPhone Safari WSS-only acceptance passed on PR #217; stale secure frames are cleared when authority is fenced. Backspace/secure text and Human pointer only as reviewed; Enter is not approval. |
+| Window | macOS same-process successor/modal lineage | **Supported** | **Supported where WebRTC relay is selected** | **Supported** | #186 physical iPhone Safari acceptance proved same-process WSS successor rotation with stale-generation fencing; exact-one remains default. |
 | Window | Linux exact X11 window | **Supported** | **Supported where relay is configured** | **Supported managed fallback** | WSS recoverable helper failures retain the valid generation; exact authority loss fences it (#172). |
 | Terminal/PTY | consumer-owned bounded PTY | **Supported DataChannel transport** | **Supported where relay is configured** | **Unsupported / not justified** | WSS is not added for visual symmetry. Terminal owns ordered byte-stream/drain semantics, not framebuffer capture. |
 | Terminal/PTY | Windows ConPTY-specific containment | **Not claimed** | **Not claimed** | **Unsupported** | The first-class API does not imply Windows descendant-containment parity. |
@@ -139,16 +139,15 @@ for the rest of the component/failure matrix.
 
 P0/P1 work that most directly reduces future consumer-to-Handoff backtracking:
 
-- **P0 #172** — retain a valid WSS generation after explicitly recoverable Human input helper/ACK
-  failure while still fencing exact authority loss. The deterministic implementation is on main;
-  physical/consumer evidence for an actual recoverable failure remains the closeout boundary.
-- **P0 #183** — macOS ordinary + LocalAuthentication exact-window WSS-only component; deterministic
-  implementation/harness exists, with the remaining physical acceptance tracked there.
+- **Completed #172** — recoverable Human-input helper/ACK failure ends the bound use, records
+  `dispatch_rejected`, retains the valid WSS generation, and never automatically replays the input;
+  exact authority loss still revokes fail-closed.
+- **Completed #183** — macOS ordinary + LocalAuthentication exact-window WSS-only component. Physical iPhone Safari WSS-only acceptance passed and the client clears stale secure frames when a generation is fenced.
 - **P0 #184** — maintain this matrix as an executable conformance gate. The checked JSON index now
   requires deterministic coverage for every supported/conditional/pending row and pins the P0
   content-free failure-injection categories to tests that run under `npm test`. Broader physical
   evidence indexing remains follow-up work.
-- **P1 #186** — reuse the existing macOS same-process successor authority under WSS.
+- **Completed #186** — macOS same-process successor authority is reused under WSS and has physical iPhone Safari acceptance.
 - **P2 #151** — Product Readiness/consumer compatibility contract; #159 clean-consumer packaging is complete.
 
 Recently completed hardening is no longer tracked as an open conformance gap: #177 completion/revoke
@@ -173,3 +172,17 @@ npm run accept:window:macos-local-auth-wss
 They intentionally construct the WSS-only Window component and no WebRTC/ICE/STUN/TURN runtime. The ordinary command is consumer-independent: it builds and launches a harmless AppKit scroll/text fixture, discovers its exact PID/window id from a local state file, and creates a temporary Cloudflare quick tunnel when `HANDOFF_WSS_PUBLIC_BASE_URL` is not supplied. The acceptance server itself listens only on loopback, while the Human locator uses one exact HTTPS/WSS origin. Its local verifier checks only the fixed harmless marker `WSS_ACCEPT_OK`; framebuffer and Human-input payloads remain outside diagnostics.
 
 The LocalAuthentication command shares the same loopback + exact-HTTPS ingress helper but deliberately does **not** create the secure prompt. A benign already-displayed Apple LocalAuthentication prompt remains the platform precondition, because prompt generation/authorization semantics are outside the transport component.
+
+## Synthetic authentication UX conformance
+
+Authentication semantics remain outside the generic transport. `tests/auth-ux-conformance.test.ts` uses only synthetic identifiers and no credential/page content to prove the lifecycle boundary requested by #189:
+
+- Human `Done` enters `verifying`; it is not authentication success.
+- consumer outcomes remain distinct: still at login → fresh Human intervention, verification failed, post-navigation result unknown, or verified success → explicit Agent resume;
+- cancellation and expiry never become completion;
+- transport loss is not `Done`;
+- reconnect rotates the Human generation and stale input authority is rejected;
+- the checked observation record is content-free;
+- secure-form credential brokering is **out of scope** and form-to-direct mode switching is **unsupported** unless separately designed and reviewed.
+
+Browser/profile/session persistence, destination/provider-step validation, intended-account verification, and consequential-action approval remain consumer/provider responsibilities. This gate deliberately does not encode Google- or ChatGPT-specific behavior.
