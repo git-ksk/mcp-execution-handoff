@@ -188,7 +188,7 @@ See [Recovery and observability boundary](docs/recovery-observability.md) for th
 
 ## v0.3.x — Maintenance & Durability
 
-Milestone `v0.3.x — Maintenance & Durability` is the non-blocking post-v0.3 line. It must preserve the v0.3.0 authority/recovery contract and does **not** silently introduce broader Human-control authority or become a release gate.
+Milestone `v0.3.x — Maintenance & Durability` is the completed non-blocking post-v0.3 line. All eight tracked issues are closed as of 2026-09-04. The line preserved the v0.3.0 authority/recovery contract and did **not** silently introduce broader Human-control authority or become a release gate.
 
 The release-significant maintenance set carried into v0.4.0 is complete: recoverable WSS input (#172), mobile keyboard/composition (#143), stale LocalAuthentication presentation (#150), auth-UX responsibility/conformance (#189), and WSS Aim/precise-tap parity (#210).
 
@@ -201,7 +201,7 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-04, every open repository Issue is assigned to an explicit milestone; new work should be classified when the Issue is created rather than left outside roadmap accounting.
+As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. Every remaining open repository Issue is assigned to the single active milestone `v0.4+ — Transport & Hosted Maturity`; new work should be classified when the Issue is created rather than left outside roadmap accounting.
 
 ## v0.4+ — MCP interoperability and transport maturity
 
@@ -221,14 +221,18 @@ Candidate scope:
 
 ### Current tracked work — 2026-09-04
 
-The milestone is now explicit rather than a catch-all parking lot:
+The milestone is now explicit rather than a catch-all parking lot. Four issues remain open:
 
-- **Transport/component maturity:** #184 conformance/failure-injection is complete; #183 LocalAuthentication WSS physical closeout is complete. #185/#186 are complete supporting steps, while #19 owns provider-neutral relay/connectivity.
-- **Session/authority architecture:** #161 is complete and promoted into the v0.4.1 internal Desktop Session / Display Backend boundary; virtual/remote backend proofs remain follow-up. The broader #125 explicit Desktop authority investigation stays later. #211 is a narrower bounded secure-window transition and must not become an implicit Desktop fallback.
-- **Hosted topology:** #12 owns provider-neutral control-plane + stateful execution-worker architecture and authenticated outbound worker connectivity.
-- **Completed supporting evidence:** #152 managed WebSocket fallback, #160 WSS interaction-jank work, #190 external lifecycle/transport design feedback reconciliation, and #201 Terminal ordered-load responsiveness measurement.
+| Order | Issue | Role now |
+| --- | --- | --- |
+| **1** | #19 | **Next transport task.** Finish the Handoff-owned provider-neutral relay/connectivity boundary without exposing ICE/STUN/TURN/provider choice to consumers. |
+| **2** | #12 | Hosted control plane + stateful execution-worker topology. It follows #19 so hosted architecture does not bake in provider-specific relay details. |
+| **Authority-first** | #211 | Narrowly prove or reject the exact System Settings authorization → independently admitted successor flow while remaining bounded Window authority. |
+| **Authority-later** | #125 | Broader explicit Human-only Desktop authority. Proceed beyond design only if #211 or another physical workflow proves bounded Window/successor authority is insufficient. |
 
-The architecture order remains **#161 → #125** for desktop/session authority: #161 establishes only the internal physical session/display boundary, while #125 remains the separate explicit Desktop-authority decision. Provider-neutral connectivity/hosted deployment remains **#19 → #12**. #183 LocalAuthentication WSS physical closeout and #184 checked transport/component conformance are complete.
+Completed transport/component/session evidence remains part of the baseline: #183/#184/#185/#186 are complete, and #161 is promoted into the v0.4.1 internal Desktop Session / Display Backend boundary. Completed supporting evidence also includes #152 managed WebSocket fallback, #160 WSS interaction-jank work, #190 external lifecycle/transport design feedback reconciliation, and #201 Terminal ordered-load responsiveness measurement.
+
+The active sequencing is therefore **#19 → #12** for provider-neutral connectivity/hosted deployment. On the authority track, **#161 is complete → #211 first as the narrow bounded proof → #125 only if broader Desktop authority is justified by physical evidence**. No issue may turn Window failure into an implicit Window→Desktop fallback.
 
 ### Transport family direction
 
