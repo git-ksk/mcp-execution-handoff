@@ -213,12 +213,12 @@ milestone `v0.3.x — Maintenance & Durability` はv0.3後のnon-blocking mainte
 
 このmilestoneはcatch-all parking lotではなく、責務を次のように分けます。
 
-- **Transport/component maturity:** #184 executable conformance/failure-injectionは完了。#183はLocalAuthentication WSS physical closeoutのみ残し、support stepの#185/#186は完了済み。#19がprovider-neutral relay/connectivityを所有。
+- **Transport/component maturity:** #184 executable conformance/failure-injectionは完了。#183 LocalAuthentication WSS physical closeoutは完了し、support stepの#185/#186も完了済み。#19がprovider-neutral relay/connectivityを所有。
 - **Session/authority architecture:** #161 Desktop Session / Display Backendをbroader #125 explicit Desktop authorityより先に進める。#211はnarrowなsecure-window transitionであり、implicit Desktop fallbackにはしない。
 - **Hosted topology:** #12がprovider-neutral control-plane + stateful execution-worker architectureとauthenticated outbound worker connectivityを所有。
 - **完了済みsupport evidence:** #152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurement。
 
-したがってarchitecture上の順序はdesktop/session authorityが **#161 → #125**、provider-neutral connectivity / hosted deploymentが **#19 → #12**。#183は最終LocalAuthentication WSS physical closeoutのみ残し、#184は完了して後続layer向けchecked transport/component contractを提供します。
+したがってarchitecture上の順序はdesktop/session authorityが **#161 → #125**、provider-neutral connectivity / hosted deploymentが **#19 → #12**。#183 LocalAuthentication WSS physical closeoutと#184 checked transport/component conformanceは完了済みです。
 
 ### Transport familyの方向性
 

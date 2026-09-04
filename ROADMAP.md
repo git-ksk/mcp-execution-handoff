@@ -214,12 +214,12 @@ Candidate scope:
 
 The milestone is now explicit rather than a catch-all parking lot:
 
-- **Transport/component maturity:** #184 conformance/failure-injection is complete; #183 retains only the remaining LocalAuthentication WSS physical closeout. #185/#186 are complete supporting steps, while #19 owns provider-neutral relay/connectivity.
+- **Transport/component maturity:** #184 conformance/failure-injection is complete; #183 LocalAuthentication WSS physical closeout is complete. #185/#186 are complete supporting steps, while #19 owns provider-neutral relay/connectivity.
 - **Session/authority architecture:** #161 Desktop Session / Display Backend is sequenced before the broader #125 explicit Desktop authority investigation. #211 is a narrower bounded secure-window transition and must not become an implicit Desktop fallback.
 - **Hosted topology:** #12 owns provider-neutral control-plane + stateful execution-worker architecture and authenticated outbound worker connectivity.
 - **Completed supporting evidence:** #152 managed WebSocket fallback, #160 WSS interaction-jank work, #190 external lifecycle/transport design feedback reconciliation, and #201 Terminal ordered-load responsiveness measurement.
 
-The intended architecture order is therefore **#161 → #125** for desktop/session authority, with **#19 → #12** for provider-neutral connectivity and hosted deployment. #183 retains the final LocalAuthentication WSS physical closeout; #184 is complete and now provides the checked transport/component contract for later layers.
+The intended architecture order is therefore **#161 → #125** for desktop/session authority, with **#19 → #12** for provider-neutral connectivity and hosted deployment. #183 LocalAuthentication WSS physical closeout and #184 checked transport/component conformance are complete.
 
 ### Transport family direction
 

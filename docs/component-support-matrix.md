@@ -67,7 +67,7 @@ transport differs.
 | Browser | macOS bounded browser/window host | **Supported** | **Supported** | **Not claimed as a first-class macOS Browser WSS path** | Browser remains a browser-policy facade; do not infer support from the macOS Window WSS primitive alone. |
 | Browser | Linux isolated exact-window browser host | **Supported** | **Supported where relay is configured** | **Supported managed fallback** | Exact X11 PID/window authority, bounded AT-SPI metadata and WSS helper paths remain Handoff-owned. |
 | Window | macOS ordinary exact window | **Supported** | **Supported** | **Supported** | Physical iPhone WSS-only acceptance passed on PR #214, including Aim/text/scroll/Done and consumer completion. No desktop fallback. |
-| Window | macOS LocalAuthentication secure window | **Supported** | **Supported where WebRTC relay is selected** | **Deterministic / physical pending (#183)** | Explicit PID-only secure policy. Backspace/secure text and Human pointer only as reviewed; Enter is not approval. |
+| Window | macOS LocalAuthentication secure window | **Supported** | **Supported where WebRTC relay is selected** | **Supported** | Explicit PID-only secure policy. Physical iPhone Safari WSS-only acceptance passed on PR #217; stale secure frames are cleared when authority is fenced. Backspace/secure text and Human pointer only as reviewed; Enter is not approval. |
 | Window | macOS same-process successor/modal lineage | **Supported** | **Supported where WebRTC relay is selected** | **Supported** | #186 physical iPhone Safari acceptance proved same-process WSS successor rotation with stale-generation fencing; exact-one remains default. |
 | Window | Linux exact X11 window | **Supported** | **Supported where relay is configured** | **Supported managed fallback** | WSS recoverable helper failures retain the valid generation; exact authority loss fences it (#172). |
 | Terminal/PTY | consumer-owned bounded PTY | **Supported DataChannel transport** | **Supported where relay is configured** | **Unsupported / not justified** | WSS is not added for visual symmetry. Terminal owns ordered byte-stream/drain semantics, not framebuffer capture. |
@@ -142,8 +142,7 @@ P0/P1 work that most directly reduces future consumer-to-Handoff backtracking:
 - **Completed #172** — recoverable Human-input helper/ACK failure ends the bound use, records
   `dispatch_rejected`, retains the valid WSS generation, and never automatically replays the input;
   exact authority loss still revokes fail-closed.
-- **P0 #183** — macOS ordinary + LocalAuthentication exact-window WSS-only component; deterministic
-  implementation/harness exists, with the remaining physical acceptance tracked there.
+- **Completed #183** — macOS ordinary + LocalAuthentication exact-window WSS-only component. Physical iPhone Safari WSS-only acceptance passed and the client clears stale secure frames when a generation is fenced.
 - **P0 #184** — maintain this matrix as an executable conformance gate. The checked JSON index now
   requires deterministic coverage for every supported/conditional/pending row and pins the P0
   content-free failure-injection categories to tests that run under `npm test`. Broader physical

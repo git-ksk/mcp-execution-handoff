@@ -152,8 +152,7 @@
           ]
         },
         "websocket_wss": {
-          "state": "deterministic_physical_pending",
-          "issue": 183,
+          "state": "supported",
           "deterministicTests": [
             {
               "file": "tests/macos-websocket-window-surface.test.ts",
@@ -480,10 +479,9 @@
     {
       "rowId": "window-macos-local-authentication",
       "transport": "websocket_wss",
-      "status": "pending",
+      "status": "passed",
       "command": "accept:window:macos-local-auth-wss",
-      "issue": 183,
-      "evidence": "Deterministic PID-only WSS policy is complete; benign physical LocalAuthentication WSS acceptance remains #183."
+      "evidence": "PR #217 physical iPhone Safari WSS-only LocalAuthentication acceptance passed separate Human Cancel and benign Approve runs: prompt disappearance fenced/revoked the exact secure Window with normal close and cleared stale secure presentation; the benign Secure Enclave signing helper completed separately, while Handoff never inferred semantic success. No WebRTC/ICE/STUN/TURN."
     },
     {
       "rowId": "window-macos-successor-lineage",
