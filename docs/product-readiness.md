@@ -11,7 +11,7 @@ Tracked by #151. Target Surface support claims remain governed by the
 
 ## Current product boundary
 
-The current baseline is a **GitHub/source release** with `private: true`.
+The current baseline is the **v0.4.0 GitHub/source release** with `private: true`.
 
 - The committed JavaScript `dist/` tree is a supported source-release artifact boundary. CI stages
   only tracked package metadata + `dist/`, excludes TypeScript source/build configuration, installs
@@ -146,9 +146,7 @@ Presentation requirements:
 - `closed` means the Human-control surface is terminal, not that a consequential consumer action was
   approved or semantically successful.
 
-Issue #150 is an active v0.3.x product-quality example: backend lifecycle correctness is insufficient
-if a stale decoded LocalAuthentication frame makes the Human believe an old control is still active.
-Such defects stay in Product Readiness even when transport/authority tests are green.
+Issue #150 is now completed v0.4.0 Product Readiness evidence: physical iPhone LocalAuthentication OK/Cancel runs proved that exact-target disappearance fences Human input, clears the stale decoded secure frame, shows a non-interactive verifying state, and allows terminal success only after consumer-owned verification. Backend lifecycle correctness alone remains insufficient if stale presentation could make an old control appear active; defects of that class stay in Product Readiness even when transport/authority tests are green.
 
 ## Diagnostics, resource, and supply-chain readiness
 

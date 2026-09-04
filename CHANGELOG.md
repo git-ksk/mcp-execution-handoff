@@ -4,7 +4,9 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
-- Clear the WSS browser client's last decoded remote frame whenever a generation is no longer ready, so reconnect, terminal close, and exact-target disappearance cannot leave stale secure UI visible while Human input is fenced (#183). Physical iPhone Safari WSS-only LocalAuthentication cancellation then passed with the channel revoked, normal close code 1000, and the stale frame cleared.
+## [0.4.0] - 2026-09-04
+
+- Clear the WSS browser client's last decoded remote frame whenever a generation is no longer ready, so reconnect, terminal close, and exact-target disappearance cannot leave stale secure UI visible while Human input is fenced (#183). Physical iPhone Safari WSS-only LocalAuthentication acceptance passed separate Human Cancel and benign dedicated Approve runs: prompt disappearance fenced/revoked the exact secure Window with normal close, stale presentation was cleared, and Handoff never inferred semantic success from disappearance.
 
 - Close the v0.4 component-conformance and auth-UX design gates (#184, #189): machine-check every claimed Target Surface/OS/transport row and physical acceptance reference, pin the completed macOS WSS successor/ordinary evidence, and add a synthetic no-secret authentication lifecycle gate that keeps Done, cancellation, expiry, transport loss, stale generations, failed/unknown verification and verified success distinct. The LocalAuthentication WSS row is now physically accepted via #183; secure-form credential brokering remains out of scope and mode switching remains unsupported without a separate reviewed provider.
 
