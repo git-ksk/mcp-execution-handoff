@@ -68,10 +68,12 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --no-audit
         if: needs.changes.outputs.runtime == 'true'
+      # Dependency vulnerability state is lockfile-scoped, not Node-matrix-scoped.
+      # Audit once on Node 24; dependency-review remains a separate required PR gate.
       - run: npm audit --audit-level=moderate
-        if: needs.changes.outputs.runtime == 'true'
+        if: needs.changes.outputs.runtime == 'true' && matrix.node == 24
       - run: npm run check
         if: needs.changes.outputs.runtime == 'true'
       - run: npm run build
@@ -101,7 +103,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --no-audit
       - run: npm run check
       - run: npm run build
       - name: Verify committed dist is current
@@ -121,7 +123,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --no-audit
       - run: npm run check
       - run: npm run build
       - name: Verify committed dist is current
@@ -138,7 +140,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --no-audit
       - run: npm run build
       - name: Install Linux normal-browser takeover dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libx11-dev libxtst-dev libxres-dev libatspi2.0-dev at-spi2-core dbus-x11 xvfb xdotool x11-utils openbox ffmpeg
@@ -209,7 +211,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --no-audit
       - name: Build Cloud Run-equivalent WSS acceptance image
         run: docker build -f experiments/websocket-cloud-run/Dockerfile -t handoff-wss-acceptance:local .
       - name: Run bounded WSS container acceptance
