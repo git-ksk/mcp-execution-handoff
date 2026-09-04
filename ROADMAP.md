@@ -55,6 +55,9 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #186 | v0.4 WSS successor lineage | **Complete.** Physical iPhone Safari acceptance proved bounded same-process successor rotation over WSS with stale-generation fencing. |
 | #211 | Authority Research — Bounded Secure Flow | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
 | #161 | v0.4.1 Desktop Session / Display Backend | **Complete / v0.4.1 boundary.** Internal Window-only physical backend boundary separates persistent session/display continuity from viewer/transport generations; viewer scaling is distinct from unsupported physical display resize. No Desktop authority/public subpath/virtual or remote backend is added. |
+| #226 | v0.4.2 maintenance | **Open / v0.4.2 candidate gate.** Fix stale/expired credential-safe Human-surface reuse without authority widening or Human-input replay. |
+| #227 | Host Parity Backlog — Windows Browser | **Open / version uncommitted.** Future bounded Windows Browser Handoff parity; requires dedicated Windows + mobile physical acceptance before support claim. |
+| #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
 | #19 | v0.5.0 provider-neutral connectivity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.6.0 hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -201,11 +204,40 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. The former `v0.4+ — Transport & Hosted Maturity` catch-all is also closed. The four remaining open Issues are assigned explicitly to `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), `Authority Research — Bounded Secure Flow` (#211), and `Authority Research — Desktop Escalation` (#125). New work should be classified when the Issue is created rather than left outside roadmap accounting.
+As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. The former `v0.4+ — Transport & Hosted Maturity` catch-all is also closed. Seven Issues are currently open and are classified explicitly: `v0.4.2 — Maintenance` (#226), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), `Authority Research — Bounded Secure Flow` (#211), `Authority Research — Desktop Escalation` (#125), plus version-uncommitted host-parity backlog #227 (Windows Browser Handoff) and #228 (Linux successor-window lineage). New work must be classified when the Issue is created rather than left outside roadmap accounting.
+
+## v0.4.2 — Maintenance
+
+`v0.4.2` is the bounded maintenance source-release candidate after `v0.4.1`. Its release-significant scope is intentionally limited to #226, the credential-safe external Human-surface lifecycle bug found during Maps Browser MCP dogfooding.
+
+Goal: ensure an expired or provider-stale cached Human surface is never returned as if it were still active, without widening authority or changing the transport roadmap.
+
+Scope:
+
+- #226 — reject/reissue expired credential-safe external surfaces under the existing intervention / epoch / principal / generation contract;
+- preserve no-replay, stale-authority fencing, fail-closed target/window loss, and content-free diagnostics;
+- document deterministic consumer recovery behavior for stale/expired provider surfaces.
+
+Explicitly triaged out of `v0.4.2`:
+
+- #227 — Windows Browser Handoff parity is useful future host coverage, but it adds a new physical OS support claim and requires dedicated Windows + mobile acceptance; it is not a patch-release gate.
+- #228 — Linux successor-window lineage parity broadens Linux Window capability and requires Linux-native lineage evidence plus physical acceptance; it is not a patch-release gate.
+
+Exit criteria:
+
+- #226 deterministic expiry/staleness coverage is green on the exact candidate revision;
+- no expired cached locator can be returned as active and no Human input/authority is replayed or resurrected;
+- relevant consumer regression evidence is attached;
+- `v0.4.2` introduces no new Target Surface, OS-support, Desktop-authority, or transport-provider claim;
+- npm publication remains a separate decision.
+
+## Host Parity Backlog — version uncommitted
+
+#227 and #228 are classified roadmap work but remain version-uncommitted until concrete consumer need and the required physical acceptance justify scheduling them. They do not block `v0.4.2`, `v0.5.0`, or `v0.6.0`.
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` is the next planned source-release line after `v0.4.1`. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
+`v0.5.0` is the next planned feature source-release line after the bounded `v0.4.2` maintenance candidate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
