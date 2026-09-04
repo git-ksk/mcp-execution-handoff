@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Introduce the internal v0.4.1 Desktop Session / Display Backend boundary (#161) without adding Desktop authority or a public package surface: the Window facade keeps one physical display/session boundary while managed WebRTC/WSS viewer generations rotate, stale viewer generations and implicit retargeting fail closed, viewer fit/actual/adaptive transforms remain viewer-side, and physical dynamic display resize is explicitly unsupported. Browser/Terminal behavior, existing Target Surface authority, and consumer-owned semantic verification remain unchanged.
+
 ## [0.4.0] - 2026-09-04
 
 - Clear the WSS browser client's last decoded remote frame whenever a generation is no longer ready, so reconnect, terminal close, and exact-target disappearance cannot leave stale secure UI visible while Human input is fenced (#183). Physical iPhone Safari WSS-only LocalAuthentication acceptance passed separate Human Cancel and benign dedicated Approve runs: prompt disappearance fenced/revoked the exact secure Window with normal close, stale presentation was cleared, and Handoff never inferred semantic success from disappearance.

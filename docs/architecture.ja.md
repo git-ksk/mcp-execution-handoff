@@ -226,6 +226,8 @@ broker自身はtakeover可能なsurfaceを広げません。consumer browser ada
 
 ## Window handoff
 
+**Desktop Session / Display Backend境界（#161 / v0.4.1）。** Window facadeにinternalなphysical-display session boundaryを追加し、persistent application/display continuityとHuman viewer/transport generationを分離します。managed WebRTC/WSS fallbackでrotateするのはviewer generationだけで、同じphysical display boundaryを維持します。viewer scalingとbackend display resizeは別能力で、physical backendは `dynamic_display_resize: false` です。Desktop Target Surface / authorityや新しいpackage surfaceは追加しません。詳細は [Desktop Session / Display Backend境界](desktop-session-display-backend.ja.md) を参照してください。
+
 `WindowHandoffAdapter` はnon-browserのbounded window向けfirst-class componentです。BrowserとWindowは、exact process/window binding、short-lived locator/session lifecycle、direct-first ICE + optional TURN fallback、reconnect/client-generation fencing、revoke、privacy-bounded transport diagnosticsという最小のinternal bounded-window WebRTC/session coreだけを共有します。browser profile / authentication policyはBrowser facadeに残し、Window componentへ漏らしません。
 
 Window adapterはpositiveな `processId`、必要ならexact `windowId`、明示的でboundedな `{ tap, scroll, text, key }` Human input policyを要求します。display-wide / whole-desktop fallbackはありません。`processId`だけならeligibleなowned windowを厳密に1つ解決し、`windowId`指定時はそのprocess ownershipを再検証します。target消失、ambiguity、ownership mismatch、input host failure時はscopeを広げずHuman transportをfenceします。

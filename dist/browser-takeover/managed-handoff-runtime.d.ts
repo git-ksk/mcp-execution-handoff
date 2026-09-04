@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot, OperatorDiagnosticsSource } from "../core/operator-diagnostics.js";
+import { type DesktopSessionSnapshot } from "../desktop-session/desktop-session.js";
 import { type WindowHandoffCoreInitialSecureWindowPolicy, type WindowHandoffCoreStartRequest, type WindowHandoffCoreSuccessorPolicy } from "../window-takeover/window-handoff-core.js";
 import type { TakeoverAuthorityReleaseEvent, TakeoverBrokerConfig, TakeoverCompletionEvent, TakeoverInterventionRef } from "./broker.js";
 import type { WebRtcDiagnosticsSnapshot } from "./webrtc-diagnostics.js";
@@ -23,6 +24,8 @@ export interface ManagedWindowHandoffRuntimeConfig {
     mediaProfile?: "window_text";
     successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
     initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;
+    /** @internal Opt in only for the first-class Window facade; Browser remains outside Desktop Session semantics. */
+    desktopSessionBoundary?: "physical_window";
     /** Observe-only bounded managed diagnostic events. Callback failures are contained. */
     onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
@@ -57,6 +60,8 @@ export declare class ManagedWindowHandoffRuntime {
     diagnosticsSnapshot(): WebRtcDiagnosticsSnapshot;
     /** Stable, strict, content-free managed takeover diagnostics for production troubleshooting. */
     managedOperatorDiagnosticsSnapshot(source: Extract<OperatorDiagnosticsSource, "browser_handoff" | "window_handoff">): ManagedOperatorDiagnosticsSnapshot;
+    /** @internal Content-free Desktop Session / Display Backend lifecycle evidence for #161. */
+    desktopSessionSnapshot(): DesktopSessionSnapshot | undefined;
     latencySnapshot(): WebRtcLatencyComparison;
     operatorDiagnosticsSnapshot(source: Extract<OperatorDiagnosticsSource, "browser_handoff" | "window_handoff">): OperatorDiagnosticsSnapshot;
 }

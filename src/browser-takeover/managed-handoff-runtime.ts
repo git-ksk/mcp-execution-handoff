@@ -3,6 +3,11 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot, OperatorDiagnosticsSource } from "../core/operator-diagnostics.js";
 import {
+  createPhysicalDesktopSessionBoundary,
+  type DesktopSessionDisplayBoundary,
+  type DesktopSessionSnapshot
+} from "../desktop-session/desktop-session.js";
+import {
   WindowHandoffCore,
   WindowHandoffCoreError,
   type WindowHandoffCoreInitialSecureWindowPolicy,
@@ -72,6 +77,8 @@ export interface ManagedWindowHandoffRuntimeConfig {
   mediaProfile?: "window_text";
   successorWindowPolicy?: WindowHandoffCoreSuccessorPolicy;
   initialSecureWindowPolicy?: WindowHandoffCoreInitialSecureWindowPolicy;
+  /** @internal Opt in only for the first-class Window facade; Browser remains outside Desktop Session semantics. */
+  desktopSessionBoundary?: "physical_window";
   /** Observe-only bounded managed diagnostic events. Callback failures are contained. */
   onManagedOperatorDiagnosticEvent?: ManagedOperatorDiagnosticEventObserver;
   onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;
@@ -97,6 +104,7 @@ interface ManagedDriverState {
 
 interface ManagedHandoffSession {
   readonly intervention: TakeoverInterventionRef;
+  readonly desktopSession?: DesktopSessionDisplayBoundary;
   readonly principalBinding: string;
   readonly coordinator: ManagedBrowserHandoffTransportCoordinator;
   readonly state: ManagedDriverState;
@@ -226,6 +234,14 @@ export class ManagedWindowHandoffRuntime {
       );
     }
 
+    const desktopSession = this.#config.desktopSessionBoundary === "physical_window"
+      ? createPhysicalDesktopSessionBoundary({
+          kind: "bounded_window",
+          processId: request.target.processId,
+          ...(request.target.windowId === undefined ? {} : { windowId: request.target.windowId })
+        })
+      : undefined;
+
     let sessionRef: ManagedHandoffSession | undefined;
     const state: ManagedDriverState = { current: undefined };
     const diagnosticEvents = new ManagedOperatorDiagnosticEvents(this.#config.onManagedOperatorDiagnosticEvent);
@@ -249,6 +265,7 @@ export class ManagedWindowHandoffRuntime {
         session.sessionDisposition = "revoked";
         diagnosticEvents.record("session_revoked");
       }
+      session.desktopSession?.detachCurrentViewer();
       await this.#config.onAuthorityReleased?.(event);
     };
     const completion = async (event: TakeoverCompletionEvent): Promise<void> => {
@@ -330,14 +347,29 @@ export class ManagedWindowHandoffRuntime {
           if (!directCore) throw new WindowHandoffCoreError("UNAVAILABLE", "Direct WebRTC transport is unavailable");
           return {
             kind: attempt,
-            start: () => {
-              const locator = directCore.start(request);
-              state.current = { kind: attempt, core: directCore };
-              return locator;
+            start: (generation) => {
+              desktopSession?.assertSameTarget({
+                kind: "bounded_window",
+                processId: request.target.processId,
+                ...(request.target.windowId === undefined ? {} : { windowId: request.target.windowId })
+              });
+              desktopSession?.attachViewer(generation);
+              try {
+                const locator = directCore.start(request);
+                state.current = { kind: attempt, core: directCore };
+                return locator;
+              } catch (error) {
+                desktopSession?.detachCurrentViewer();
+                throw error;
+              }
             },
             revoke: async () => {
-              await directCore.revoke(request.intervention.id);
-              if (state.current?.kind === attempt) state.current = undefined;
+              try {
+                await directCore.revoke(request.intervention.id);
+              } finally {
+                desktopSession?.detachCurrentViewer();
+                if (state.current?.kind === attempt) state.current = undefined;
+              }
             }
           };
         }
@@ -345,15 +377,30 @@ export class ManagedWindowHandoffRuntime {
           if (!wss || !surface) throw new WindowHandoffCoreError("UNAVAILABLE", "WebSocket transport is unavailable");
           return {
             kind: attempt,
-            start: () => {
-              const locator = wss.start(request);
-              state.current = { kind: attempt, handoff: wss, surface };
-              return locator;
+            start: (generation) => {
+              desktopSession?.assertSameTarget({
+                kind: "bounded_window",
+                processId: request.target.processId,
+                ...(request.target.windowId === undefined ? {} : { windowId: request.target.windowId })
+              });
+              desktopSession?.attachViewer(generation);
+              try {
+                const locator = wss.start(request);
+                state.current = { kind: attempt, handoff: wss, surface };
+                return locator;
+              } catch (error) {
+                desktopSession?.detachCurrentViewer();
+                throw error;
+              }
             },
             revoke: async () => {
-              wss.revoke(request.intervention.id);
-              await surface.close();
-              if (state.current?.kind === attempt) state.current = undefined;
+              try {
+                wss.revoke(request.intervention.id);
+                await surface.close();
+              } finally {
+                desktopSession?.detachCurrentViewer();
+                if (state.current?.kind === attempt) state.current = undefined;
+              }
             }
           };
         }
@@ -361,14 +408,29 @@ export class ManagedWindowHandoffRuntime {
           if (!relayCore) throw new WindowHandoffCoreError("UNAVAILABLE", "Relay-capable WebRTC transport is unavailable");
           return {
             kind: attempt,
-            start: () => {
-              const locator = relayCore.start(request);
-              state.current = { kind: attempt, core: relayCore };
-              return locator;
+            start: (generation) => {
+              desktopSession?.assertSameTarget({
+                kind: "bounded_window",
+                processId: request.target.processId,
+                ...(request.target.windowId === undefined ? {} : { windowId: request.target.windowId })
+              });
+              desktopSession?.attachViewer(generation);
+              try {
+                const locator = relayCore.start(request);
+                state.current = { kind: attempt, core: relayCore };
+                return locator;
+              } catch (error) {
+                desktopSession?.detachCurrentViewer();
+                throw error;
+              }
             },
             revoke: async () => {
-              await relayCore.revoke(request.intervention.id);
-              if (state.current?.kind === attempt) state.current = undefined;
+              try {
+                await relayCore.revoke(request.intervention.id);
+              } finally {
+                desktopSession?.detachCurrentViewer();
+                if (state.current?.kind === attempt) state.current = undefined;
+              }
             }
           };
         }
@@ -392,6 +454,7 @@ export class ManagedWindowHandoffRuntime {
     cleanupTimer.unref();
     const session: ManagedHandoffSession = {
       intervention: { ...request.intervention },
+      ...(desktopSession ? { desktopSession } : {}),
       principalBinding: request.principalBinding,
       coordinator,
       state,
@@ -469,7 +532,11 @@ export class ManagedWindowHandoffRuntime {
     const session = this.#sessionsByIntervention.get(interventionId);
     if (!session) return;
     this.#forgetSession(session);
-    await session.coordinator.revoke(session.lease).catch(() => undefined);
+    try {
+      await session.coordinator.revoke(session.lease).catch(() => undefined);
+    } finally {
+      session.desktopSession?.close();
+    }
   }
 
   revokeUnclaimed(interventionId: string): void {
@@ -483,6 +550,7 @@ export class ManagedWindowHandoffRuntime {
       current.core.revokeUnclaimed(interventionId);
     }
     this.#forgetSession(session);
+    session.desktopSession?.close();
     void session.coordinator.revoke(session.lease).catch(() => undefined);
   }
 
@@ -494,7 +562,10 @@ export class ManagedWindowHandoffRuntime {
     const completed = current.kind === "websocket_relay"
       ? await current.handoff.completeAfterVerification(intervention)
       : await current.core.completeAfterVerification(intervention);
-    if (completed) session.completed = true;
+    if (completed) {
+      session.completed = true;
+      session.desktopSession?.close();
+    }
     return completed;
   }
 
@@ -624,6 +695,11 @@ export class ManagedWindowHandoffRuntime {
       },
       events: session.diagnosticEvents.snapshot()
     });
+  }
+
+  /** @internal Content-free Desktop Session / Display Backend lifecycle evidence for #161. */
+  desktopSessionSnapshot(): DesktopSessionSnapshot | undefined {
+    return this.#lastSession?.desktopSession?.snapshot();
   }
 
   latencySnapshot(): WebRtcLatencyComparison {

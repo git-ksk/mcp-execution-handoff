@@ -56,7 +56,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #185 | v0.4+ managed composition | **完了。** managed exact-window transport compositionをOS-neutral化し、consumerからLinux/macOS concrete WSS construction選択を除去。 |
 | #186 | v0.4+ WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
 | #211 | v0.4+ bounded secure-flow authority | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
-| #161 | v0.4+ Desktop Session / Display Backend | **OPEN / 次のarchitecture step。** persistent application/session stateとphysical / virtual / remote display attachmentを#125より先に分離。 |
+| #161 | v0.4.1 Desktop Session / Display Backend | **merge待ちで実装完了。** internalなWindow-only physical backend boundaryでpersistent session/display continuityとviewer/transport generationを分離。viewer scalingとphysical display resizeを別能力にし、後者はunsupported。Desktop authority / public subpath / virtual・remote backendは追加しない。 |
 | #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -205,7 +205,7 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - #19でprovider-neutral connectivity/relay boundaryを仕上げ、ICE/TURN/provider選択をconsumerへ露出しない
 - #160でmanaged WSSのinteraction jankを計測・改善し、latest-frame backpressure / exact-window authority / privacy boundaryを維持した
-- #161でpersistent application/session stateとphysical / virtual / remote display attachmentを分離するDesktop Session / Display Backend boundaryを定義し、#125のbroader Desktop authorityより先にsession/display責務を固める
+- #161でinternal Desktop Session / Display Backend boundaryを確立し、persistent application/session continuityとphysical display、Human viewer/transport generationを分離する。virtual/remote backend proofと#125 Desktop authorityは後続に残す
 - #12でbounded durable stateとauthenticated outbound worker connectivityを持つhosted control-plane + stateful execution-worker topologyを定義する
 - #13のcloseout decisionを維持する。historical Thin Takeover / mandatory custom Native-client umbrellaはaccepted WebRTC pathと完了済みWSS evaluationにsupersedeされ、将来native-clientが必要なら新しいnarrowなevidence-based Issueとして起こす
 - #11のcloseout decisionを維持する。first-class bounded Windowと #94 secure UI / #124 successor-window lineage / #56 media qualityが旧full-desktop/provider-latency umbrellaをsupersedeする。#125で明示Desktop authorityを調査しても、desktop-wide controlはdefault Window boundary外のままにする
@@ -216,11 +216,11 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 このmilestoneはcatch-all parking lotではなく、責務を次のように分けます。
 
 - **Transport/component maturity:** #184 executable conformance/failure-injectionは完了。#183 LocalAuthentication WSS physical closeoutは完了し、support stepの#185/#186も完了済み。#19がprovider-neutral relay/connectivityを所有。
-- **Session/authority architecture:** #161 Desktop Session / Display Backendをbroader #125 explicit Desktop authorityより先に進める。#211はnarrowなsecure-window transitionであり、implicit Desktop fallbackにはしない。
+- **Session/authority architecture:** #161はv0.4.1 internal Desktop Session / Display Backend boundaryとしてmerge待ちで実装完了。virtual/remote backend proofは後続です。broader #125 explicit Desktop authorityは引き続き後段、#211もimplicit Desktop fallbackにしません。
 - **Hosted topology:** #12がprovider-neutral control-plane + stateful execution-worker architectureとauthenticated outbound worker connectivityを所有。
 - **完了済みsupport evidence:** #152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurement。
 
-したがってarchitecture上の順序はdesktop/session authorityが **#161 → #125**、provider-neutral connectivity / hosted deploymentが **#19 → #12**。#183 LocalAuthentication WSS physical closeoutと#184 checked transport/component conformanceは完了済みです。
+architecture順序は引き続きdesktop/session authorityが **#161 → #125** です。#161はinternal physical session/display boundaryだけを確立し、#125をexplicit Desktop authorityの別decisionとして残します。provider-neutral connectivity / hosted deploymentは **#19 → #12** のままです。#183 LocalAuthentication WSS physical closeoutと#184 checked transport/component conformanceは完了済みです。
 
 ### Transport familyの方向性
 

@@ -54,7 +54,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #185 | v0.4+ managed composition | **Complete.** Managed exact-window transport composition is OS-neutral and consumer code no longer selects concrete Linux/macOS WSS construction. |
 | #186 | v0.4+ WSS successor lineage | **Complete.** Physical iPhone Safari acceptance proved bounded same-process successor rotation over WSS with stale-generation fencing. |
 | #211 | v0.4+ bounded secure-flow authority | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
-| #161 | v0.4+ Desktop Session / Display Backend | **Open / next architecture step.** Separate persistent application/session state from physical, virtual, or remote display attachment before #125. |
+| #161 | v0.4.1 Desktop Session / Display Backend | **Implementation complete pending merge.** Internal Window-only physical backend boundary separates persistent session/display continuity from viewer/transport generations; viewer scaling is distinct from unsupported physical display resize. No Desktop authority/public subpath/virtual or remote backend is added. |
 | #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
 | #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -205,7 +205,7 @@ Candidate scope:
 - add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
 - finish the provider-neutral connectivity/relay boundary in #19 without exposing ICE/TURN/provider choice to consumers;
 - #160 measured and reduced managed WSS interaction jank without weakening latest-frame backpressure, exact-window authority, or privacy boundaries;
-- define the Desktop Session / Display Backend separation in #161 so persistent application/session state is distinct from physical, virtual, or remote display attachment before broader Desktop authority work in #125;
+- complete the internal Desktop Session / Display Backend separation in #161 so persistent application/session continuity, the physical display backend, and Human viewer/transport generations are distinct; virtual/remote backend proofs and broader Desktop authority in #125 remain follow-up;
 - define the hosted control-plane + stateful execution-worker topology in #12 with bounded durable state and authenticated outbound worker connectivity;
 - retain the #13 closeout decision: the historical Thin Takeover/mandatory custom Native-client umbrella is superseded by the accepted WebRTC path and completed WSS evaluation; any future native-client work must return as a new narrowly evidenced requirement;
 - retain the #11 closeout decision: first-class bounded Window Handoff plus #94 secure UI, #124 successor-window lineage, and #56 media quality supersede the old full-desktop/provider-latency umbrella; #125 may investigate explicit Desktop authority, but desktop-wide control remains outside the default Window boundary;
@@ -216,11 +216,11 @@ Candidate scope:
 The milestone is now explicit rather than a catch-all parking lot:
 
 - **Transport/component maturity:** #184 conformance/failure-injection is complete; #183 LocalAuthentication WSS physical closeout is complete. #185/#186 are complete supporting steps, while #19 owns provider-neutral relay/connectivity.
-- **Session/authority architecture:** #161 Desktop Session / Display Backend is sequenced before the broader #125 explicit Desktop authority investigation. #211 is a narrower bounded secure-window transition and must not become an implicit Desktop fallback.
+- **Session/authority architecture:** #161 is the v0.4.1 internal Desktop Session / Display Backend boundary and is complete pending merge; virtual/remote backend proofs remain follow-up. The broader #125 explicit Desktop authority investigation stays later. #211 is a narrower bounded secure-window transition and must not become an implicit Desktop fallback.
 - **Hosted topology:** #12 owns provider-neutral control-plane + stateful execution-worker architecture and authenticated outbound worker connectivity.
 - **Completed supporting evidence:** #152 managed WebSocket fallback, #160 WSS interaction-jank work, #190 external lifecycle/transport design feedback reconciliation, and #201 Terminal ordered-load responsiveness measurement.
 
-The intended architecture order is therefore **#161 → #125** for desktop/session authority, with **#19 → #12** for provider-neutral connectivity and hosted deployment. #183 LocalAuthentication WSS physical closeout and #184 checked transport/component conformance are complete.
+The architecture order remains **#161 → #125** for desktop/session authority: #161 establishes only the internal physical session/display boundary, while #125 remains the separate explicit Desktop-authority decision. Provider-neutral connectivity/hosted deployment remains **#19 → #12**. #183 LocalAuthentication WSS physical closeout and #184 checked transport/component conformance are complete.
 
 ### Transport family direction
 

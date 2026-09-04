@@ -2,6 +2,10 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { OperatorDiagnosticsSnapshot } from "../core/operator-diagnostics.js";
 import {
+  createPhysicalDesktopSessionBoundary,
+  type DesktopSessionDisplayBoundary
+} from "../desktop-session/desktop-session.js";
+import {
   emptyManagedOperatorDiagnosticsSnapshot,
   type ManagedOperatorDiagnosticEventObserver,
   type ManagedOperatorDiagnosticsSnapshot
@@ -83,6 +87,7 @@ export class WindowHandoffAdapterError extends Error {
  */
 export class WindowHandoffAdapter {
   readonly #core: WindowHandoffCore | ManagedWindowHandoffRuntime;
+  readonly #directDesktopSessions = new Map<string, DesktopSessionDisplayBoundary>();
 
   constructor(config: WindowHandoffAdapterConfig) {
     try {
@@ -98,9 +103,16 @@ export class WindowHandoffAdapter {
             mediaProfile: "window_text",
             ...(config.successorWindowPolicy ? { successorWindowPolicy: config.successorWindowPolicy } : {}),
             ...(config.initialSecureWindowPolicy ? { initialSecureWindowPolicy: config.initialSecureWindowPolicy } : {}),
+            desktopSessionBoundary: "physical_window",
             ...(config.onComplete ? { onComplete: config.onComplete } : {})
           })
-        : new WindowHandoffCore({ ...config, mediaProfile: "window_text" });
+        : new WindowHandoffCore({
+            ...config,
+            mediaProfile: "window_text",
+            onAuthorityReleased: (event) => {
+              this.#directDesktopSessions.get(event.interventionId)?.detachCurrentViewer();
+            }
+          });
     } catch (error) {
       throw translateError(error);
     }
@@ -112,20 +124,52 @@ export class WindowHandoffAdapter {
 
   start(request: WindowHandoffStartRequest): string {
     try {
-      return this.#core.start(request);
+      const locator = this.#core.start(request);
+      if (this.#core instanceof WindowHandoffCore) {
+        const desktopSession = createPhysicalDesktopSessionBoundary({
+          kind: "bounded_window",
+          processId: request.target.processId,
+          ...(request.target.windowId === undefined ? {} : { windowId: request.target.windowId })
+        });
+        desktopSession.attachViewer(1);
+        this.#directDesktopSessions.set(request.intervention.id, desktopSession);
+      }
+      return locator;
     } catch (error) {
       throw translateError(error);
     }
   }
 
-  async revoke(interventionId: string): Promise<void> { await this.#core.revoke(interventionId); }
+  async revoke(interventionId: string): Promise<void> {
+    try {
+      await this.#core.revoke(interventionId);
+    } finally {
+      const desktopSession = this.#directDesktopSessions.get(interventionId);
+      desktopSession?.close();
+      this.#directDesktopSessions.delete(interventionId);
+    }
+  }
   async revokeForIntervention(interventionId: string): Promise<void> { await this.revoke(interventionId); }
   /** Fence a session only after the consumer independently verifies the Human action succeeded. */
   async completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean> {
-    return this.#core.completeAfterVerification(intervention);
+    const completed = await this.#core.completeAfterVerification(intervention);
+    if (completed) {
+      const desktopSession = this.#directDesktopSessions.get(intervention.id);
+      desktopSession?.close();
+      this.#directDesktopSessions.delete(intervention.id);
+    }
+    return completed;
   }
   /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
-  revokeUnclaimed(interventionId: string): void { this.#core.revokeUnclaimed(interventionId); }
+  revokeUnclaimed(interventionId: string): void {
+    try {
+      this.#core.revokeUnclaimed(interventionId);
+    } finally {
+      const desktopSession = this.#directDesktopSessions.get(interventionId);
+      desktopSession?.close();
+      this.#directDesktopSessions.delete(interventionId);
+    }
+  }
   handle(request: Request, boundPrincipal: string | undefined): Promise<Response> {
     return this.#core.handle(request, boundPrincipal);
   }
