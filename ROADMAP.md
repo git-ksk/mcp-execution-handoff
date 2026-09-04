@@ -27,9 +27,9 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), and later authority/transport/hosted work (#125/#19/#12 plus bounded follow-ups such as #211). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
-Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. Desktop authority remains a separate future escalation in #125 and never a hidden fallback.
+Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. #211 is now the narrow bounded secure-flow research step; broader Desktop authority remains a separate #125 research escalation only if bounded authority is physically proven insufficient, and never a hidden fallback.
 
 ### Post-v0.2.0 roadmap issue map
 
@@ -50,14 +50,14 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #189 | v0.3.x auth UX feedback | **Complete.** Responsibility boundaries and synthetic no-secret auth lifecycle conformance are fixed without credential brokerage or Target Surface widening. |
 | #210 | v0.3.x WSS mobile-control parity | **Complete.** WSS client-local Aim/pan/zoom parity is physically accepted; only explicit mapped Tap emits remote input and the server authority boundary is unchanged. |
 | #183 | v0.4 macOS WSS surface | **Complete.** Reusable macOS exact-window WSS-only path is physically accepted for ordinary Window and LocalAuthentication Cancel/benign Approve, with no WebRTC/ICE/STUN/TURN construction or desktop fallback. |
-| #184 | v0.4+ conformance | **Complete.** Executable support/acceptance matrix and P0 failure-injection/auth-UX gates are checked in; unsupported combinations remain explicit/fail-closed. |
-| #185 | v0.4+ managed composition | **Complete.** Managed exact-window transport composition is OS-neutral and consumer code no longer selects concrete Linux/macOS WSS construction. |
-| #186 | v0.4+ WSS successor lineage | **Complete.** Physical iPhone Safari acceptance proved bounded same-process successor rotation over WSS with stale-generation fencing. |
-| #211 | v0.4+ bounded secure-flow authority | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
+| #184 | v0.4 component baseline | **Complete.** Executable support/acceptance matrix and P0 failure-injection/auth-UX gates are checked in; unsupported combinations remain explicit/fail-closed. |
+| #185 | v0.4 managed composition | **Complete.** Managed exact-window transport composition is OS-neutral and consumer code no longer selects concrete Linux/macOS WSS construction. |
+| #186 | v0.4 WSS successor lineage | **Complete.** Physical iPhone Safari acceptance proved bounded same-process successor rotation over WSS with stale-generation fencing. |
+| #211 | Authority Research — Bounded Secure Flow | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
 | #161 | v0.4.1 Desktop Session / Display Backend | **Complete / v0.4.1 boundary.** Internal Window-only physical backend boundary separates persistent session/display continuity from viewer/transport generations; viewer scaling is distinct from unsupported physical display resize. No Desktop authority/public subpath/virtual or remote backend is added. |
-| #125 | v0.4+ Desktop authority | Design an explicit Human-only Desktop Handoff escalation only for workflows that #124 cannot represent safely; no silent Window-to-Desktop fallback. |
-| #19 | v0.4+ transport maturity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
-| #12 | v0.4+ hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
+| #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
+| #19 | v0.5.0 provider-neutral connectivity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
+| #12 | v0.6.0 hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
 
 ## Product Readiness — independent cross-cutting track
 
@@ -142,7 +142,7 @@ Current scope and closeout:
 - retain #85's completed physical Window evidence across both same-LAN direct and public Tunnel/TURN relay paths, including stale-locator rejection;
 - retain #94 as completed evidence: exact-window Human-only macOS input passes the tested secure System Settings control without privileged/desktop fallback;
 - retain #124 as completed bounded successor-window evidence: exact-one remains default, opt-in same-process lineage fences the old target and rotates only to a uniquely proven successor; physical iPhone `Accessibility -> Add (+) -> Open` passed without desktop/display fallback;
-- keep #125 as a separate explicit Human-only Desktop authority investigation, sequenced after #124 unless physical evidence proves a workflow cannot be represented by bounded window lineage;
+- keep #125 as a separate explicit Human-only Desktop authority investigation after #211 or equivalent narrow authority research proves a concrete workflow cannot be represented by bounded Window/successor authority;
 - retain #56 as completed bounded Window media evidence: Browser compatibility stays ≤1280×720 / 3 Mbps, macOS Window uses no-upscale ≤1920×1080 / 5 Mbps with unchanged newest-frame backpressure, and physical iPhone direct/TURN relay passed; retain #34 as completed Linux parity evidence with read-only AT-SPI process/window geometry binding, bounded editable/focus metadata only, and no DOM/CDP/credential exposure;
 - keep CUMG on `WindowHandoffAdapter` and `TerminalHandoffAdapter`, with Handoff owning canonical authority/session/transport ordering and CUMG retaining authorization, PTY/process containment, quarantine, and semantic verification;
 - formalize compatibility fixtures for authority, epoch, ownership, resume policy, request-state binding, and stale surface/session fencing;
@@ -201,38 +201,92 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. Every remaining open repository Issue is assigned to the single active milestone `v0.4+ — Transport & Hosted Maturity`; new work should be classified when the Issue is created rather than left outside roadmap accounting.
+As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. The former `v0.4+ — Transport & Hosted Maturity` catch-all is also closed. The four remaining open Issues are assigned explicitly to `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), `Authority Research — Bounded Secure Flow` (#211), and `Authority Research — Desktop Escalation` (#125). New work should be classified when the Issue is created rather than left outside roadmap accounting.
 
-## v0.4+ — MCP interoperability and transport maturity
+## v0.5.0 — Provider-Neutral Connectivity
 
-Candidate scope:
+`v0.5.0` is the next planned source-release line after `v0.4.1`. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
-- track MCP MRTR, elicitation, and Tasks evolution and remove redundant project-specific plumbing when the standard subsumes it;
+Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
+
+Scope:
+
+- evolve the existing ICE credential/provider seam into a provider-neutral connectivity/relay boundary;
+- keep direct-first behavior and deliberate browser/server gathering policy under Handoff control;
+- retain Cloudflare Realtime TURN as one implementation rather than the product abstraction;
+- make a coturn/self-hosted provider implementable without changing consumer APIs;
+- keep relay secrets, provider choice, STUN/TURN details, and candidate policy out of MCP tool arguments/results, model context, consumer configuration, logs, and durable checkpoints;
+- prohibit silent cross-vendor failover; provider changes remain explicit deployment/security decisions;
+- keep bounded identifier/content-free connectivity diagnostics;
+- preserve existing generation fencing, one-client ownership, revoke semantics, no Human-input replay, and consumer-owned semantic verification.
+
+Exit criteria:
+
+- #19 acceptance criteria are complete against the exact release candidate revision;
+- established consumers contain no provider-selection or TURN-credential handling logic;
+- direct-only and relay-enabled paths remain deterministic and fail closed under provider failure;
+- Cloudflare and at least one provider-neutral/self-hosted implementation shape are proven through the same Handoff-owned seam;
+- documentation clearly separates hosted ingress/tunnel concerns from WebRTC relay/TURN;
+- relevant deterministic, consumer-integration, and physical evidence is attached to the exact candidate revision;
+- npm publication remains a separate decision and `private: true` is preserved unless its independent gate is explicitly completed.
+
+## v0.6.0 — Hosted Worker Topology
+
+`v0.6.0` is the planned hosted-architecture line after the v0.5.0 connectivity boundary. Milestone `v0.6.0 — Hosted Worker Topology` is owned by #12 and must consume, rather than redefine, the provider-neutral connectivity contract established by #19.
+
+Goal: separate a hosted Handoff/MCP control plane from a stateful browser/desktop execution worker while preserving the same intervention, authority, reconnect, revoke, and semantic-verification contract.
+
+Scope:
+
+- define provider-neutral hosted control-plane + stateful execution-worker topology;
+- prefer authenticated **outbound** worker connectivity so private/local workers do not require public inbound listeners;
+- bind worker registration and intervention routing to authenticated worker identity, principal, epoch, and current generation;
+- persist only bounded control-plane metadata; frames, typed secrets, credentials, cookies, and arbitrary target content remain non-durable;
+- define duplicate ownership, stale reconnect, worker liveness, reassignment, revocation propagation, and latest-frame/backpressure semantics fail closed;
+- keep persistent browser/profile/session storage outside disposable control-plane instances;
+- document reference shapes for local-only, hosted-control-plane + local worker, and hosted-control-plane + remote/stateful worker deployment.
+
+Exit criteria:
+
+- #12 acceptance direction passes for both hosted-control-plane + local worker and hosted-control-plane + remote/stateful worker references;
+- the worker requires no inbound public listener in the reference topology;
+- disconnect/reconnect preserves epoch, one-client ownership, and stale-generation fencing;
+- Done/Cancel/expiry revokes relay and local execution capability before Agent resume;
+- fresh Agent readiness/revalidation remains mandatory after Human completion;
+- v0.6.0 introduces no implicit Desktop authority and does not make #125 a prerequisite.
+
+## Authority Research — version uncommitted
+
+Authority expansion is intentionally separated from the v0.5.0 → v0.6.0 transport/hosted release line. These milestones are research/decision gates, not promised release versions.
+
+### #211 — Bounded Secure Flow
+
+Milestone `Authority Research — Bounded Secure Flow` narrowly investigates the exact System Settings authorization → independently admitted successor flow. The preferred outcome is to prove or reject a bounded Window-authority rule without generic secure-UI authority or Desktop fallback.
+
+- preserve existing LocalAuthentication and same-process successor-lineage contracts unless a reviewed narrow extension is required;
+- keep credential contents transient and out of logs/checkpoints/model context;
+- unknown, ambiguous, stale, cancelled, timed-out, or identity-changed transitions fail closed;
+- successful authorization may continue only to an independently proven successor, not arbitrary UI;
+- this research does not block v0.5.0 or v0.6.0.
+
+### #125 — Desktop Escalation
+
+Milestone `Authority Research — Desktop Escalation` remains a design/research gate. A broader Human-only Desktop Handoff must **not** be scheduled into a release merely because the internal Desktop Session / Display Backend boundary exists.
+
+Proceed beyond design only if #211 or another concrete physical workflow proves that an important Human workflow cannot be represented safely by bounded Window/successor authority. Any future Desktop authority must be explicit, separately requested, Human-only, fail closed across display/session changes, revoked before Agent resume, and never an automatic Window recovery path.
+
+The authority sequence is therefore **#161 complete → #211 narrow proof/rejection → #125 only with concrete physical necessity**.
+
+## Later pre-1.0 interoperability and transport direction
+
+Beyond the concrete v0.5.0/v0.6.0 lines, continue to:
+
+- track MCP MRTR, elicitation, Tasks, and related protocol evolution, removing project-specific plumbing when the standard subsumes it;
 - test against multiple MCP client/server implementations where practical;
-- maintain the first-class Browser / Window / Terminal component family so consumers depend on bounded lifecycle/target semantics instead of assembling low-level broker, WebRTC, or PTY-authority internals themselves;
-- add transport conformance tests for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
-- finish the provider-neutral connectivity/relay boundary in #19 without exposing ICE/TURN/provider choice to consumers;
-- #160 measured and reduced managed WSS interaction jank without weakening latest-frame backpressure, exact-window authority, or privacy boundaries;
-- retain the completed internal Desktop Session / Display Backend separation from #161 so persistent application/session continuity, the physical display backend, and Human viewer/transport generations stay distinct; virtual/remote backend proofs and broader Desktop authority in #125 remain follow-up;
-- define the hosted control-plane + stateful execution-worker topology in #12 with bounded durable state and authenticated outbound worker connectivity;
-- retain the #13 closeout decision: the historical Thin Takeover/mandatory custom Native-client umbrella is superseded by the accepted WebRTC path and completed WSS evaluation; any future native-client work must return as a new narrowly evidenced requirement;
-- retain the #11 closeout decision: first-class bounded Window Handoff plus #94 secure UI, #124 successor-window lineage, and #56 media quality supersede the old full-desktop/provider-latency umbrella; #125 may investigate explicit Desktop authority, but desktop-wide control remains outside the default Window boundary;
-- validate any additional low-latency push/latest-frame or native Human Takeover path only when it adds evidence not already covered by current WebRTC/WSS acceptance.
-
-### Current tracked work — 2026-09-04
-
-The milestone is now explicit rather than a catch-all parking lot. Four issues remain open:
-
-| Order | Issue | Role now |
-| --- | --- | --- |
-| **1** | #19 | **Next transport task.** Finish the Handoff-owned provider-neutral relay/connectivity boundary without exposing ICE/STUN/TURN/provider choice to consumers. |
-| **2** | #12 | Hosted control plane + stateful execution-worker topology. It follows #19 so hosted architecture does not bake in provider-specific relay details. |
-| **Authority-first** | #211 | Narrowly prove or reject the exact System Settings authorization → independently admitted successor flow while remaining bounded Window authority. |
-| **Authority-later** | #125 | Broader explicit Human-only Desktop authority. Proceed beyond design only if #211 or another physical workflow proves bounded Window/successor authority is insufficient. |
-
-Completed transport/component/session evidence remains part of the baseline: #183/#184/#185/#186 are complete, and #161 is promoted into the v0.4.1 internal Desktop Session / Display Backend boundary. Completed supporting evidence also includes #152 managed WebSocket fallback, #160 WSS interaction-jank work, #190 external lifecycle/transport design feedback reconciliation, and #201 Terminal ordered-load responsiveness measurement.
-
-The active sequencing is therefore **#19 → #12** for provider-neutral connectivity/hosted deployment. On the authority track, **#161 is complete → #211 first as the narrow bounded proof → #125 only if broader Desktop authority is justified by physical evidence**. No issue may turn Window failure into an implicit Window→Desktop fallback.
+- maintain first-class Browser / Window / Terminal components so consumers depend on bounded lifecycle/target semantics instead of low-level transport internals;
+- extend transport conformance for capability, lease, origin, expiry, revocation, reconnect-handle rotation, and client-generation fencing;
+- retain the historical #11/#13 closeout decisions: whole-desktop control and mandatory custom Native-client paths are not default product scope;
+- validate additional low-latency/native/WebTransport paths only when they add evidence not already covered by current WebRTC/WSS acceptance.
 
 ### Transport family direction
 
@@ -248,9 +302,9 @@ Transport-specific mechanisms such as ICE/SDP/RTP/DataChannel, WebSocket framing
 
 Issue #40 completed the initial WebSocket managed-runtime evaluation: physical iPhone Safari WSS control, bounded latest-frame/drop behavior, and Cloud Run application reachability were demonstrated. Issues #155 and #156 then promoted those proven primitives into the Handoff-owned Browser/Window managed fallback without duplicating the authority/session stack. This is not a transparent socket downgrade: each transition revokes/fences the abandoned transport before a fresh generation/capability can admit Human input.
 
-The production-proven default remains `WebRTC direct -> WebSocket relay -> optional relay-capable WebRTC`, but managed Browser/Window composition now represents transport selection as an exact finite ordered policy. Deployments may intentionally choose WSS-only, direct-only, relay-capable-WebRTC-only, or another reviewed unique order without consumer-side transport branching; omitted attempts are not silently inserted. Browser/Window consumers keep one Handoff lifecycle abstraction and do not select WebSocket/ICE/TURN providers or credentials in semantic requests. Stale direct-WebRTC and WSS generations fail closed, no admitted input is replayed across transports, disconnect still does not mean Done, and exact process/window plus Human input policy remain unchanged across fallback. Issue #152 completed the production-shaped Cloud Run `run.app` physical iPhone Safari gate on runtime revision `43d4624e16fb878260145767b4f2b6f103b3f822` with TURN absent: direct-WebRTC unavailability selected `websocket_relay`; tap/text/Backspace/scroll/Enter/semantic submit/Done passed; verification and teardown completed; stale direct and WSS locators/generations were fenced; and the bounded verifier returned `MANAGED_PHYSICAL_ACCEPTANCE_OK`. PR #157 carries the accepted runtime plus synchronized verifier/dist and all CI gates are green. Visible WSS interaction jank is explicitly non-blocking correctness follow-up #160. Numeric same-session latency comparison against direct WebRTC/TURN remains unrecorded; see `experiments/websocket-cloud-run/COMPARISON.md`, which makes no unsupported numeric performance claim.
+The production-proven default remains `WebRTC direct -> WebSocket relay -> optional relay-capable WebRTC`, while managed Browser/Window composition represents transport selection as an exact finite ordered policy. Deployments may intentionally choose WSS-only, direct-only, relay-capable-WebRTC-only, or another reviewed unique order without consumer-side transport branching. Stale direct-WebRTC and WSS generations fail closed, admitted input is never replayed across transports, disconnect is not Done, and exact process/window plus Human input policy remain unchanged across fallback. #152 remains the production-shaped Cloud Run physical evidence baseline; unsupported numeric latency claims remain excluded from `experiments/websocket-cloud-run/COMPARISON.md`.
 
-The exact version number for each item will be chosen when the work is concrete. The project may use `0.5`, `0.6`, `0.10`, and later pre-1.0 releases as needed.
+Later pre-1.0 versions remain evidence-driven. `v0.7`, `v0.8`, `v0.10`, or other pre-1.0 releases may be introduced when a concrete compatibility or maturity boundary exists; version numbers are not reserved merely to fill a sequence.
 
 ## v1.0 — stable contract milestone
 

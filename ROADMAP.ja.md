@@ -29,9 +29,9 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、後続のauthority / transport / hosted work（#125 / #19 / #12と#211などのbounded follow-up）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
-#94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
+#94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。現在は#211をnarrow bounded secure-flow researchとして先行し、bounded authority不足がphysical evidenceで証明された場合だけ#125 broader Desktop authorityを検討します。hidden fallbackにはしません。
 
 ### v0.2.0後のroadmap Issue map
 
@@ -52,14 +52,14 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #189 | v0.3.x auth UX feedback | **完了。** credential brokerやTarget Surface authority拡大なしで責務境界とsynthetic no-secret auth lifecycle conformanceを固定。 |
 | #210 | v0.3.x WSS mobile-control parity | **完了。** WSS client-local Aim / pan / zoomをphysical acceptanceし、explicit mapped Tapだけがremote inputを出す。server authorityは不変。 |
 | #183 | v0.4 macOS WSS surface | **完了。** ordinary WindowとLocalAuthentication Cancel / benign Approveでreusable macOS exact-window WSS-onlyをphysical acceptance。WebRTC/ICE/STUN/TURNやdesktop fallbackは構築しない。 |
-| #184 | v0.4+ conformance | **完了。** executable support/acceptance matrixとP0 failure-injection/auth-UX gateをchecked-inし、unsupported combinationをexplicit/fail-closedに固定。 |
-| #185 | v0.4+ managed composition | **完了。** managed exact-window transport compositionをOS-neutral化し、consumerからLinux/macOS concrete WSS construction選択を除去。 |
-| #186 | v0.4+ WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
-| #211 | v0.4+ bounded secure-flow authority | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
+| #184 | v0.4 component baseline | **完了。** executable support/acceptance matrixとP0 failure-injection/auth-UX gateをchecked-inし、unsupported combinationをexplicit/fail-closedに固定。 |
+| #185 | v0.4 managed composition | **完了。** managed exact-window transport compositionをOS-neutral化し、consumerからLinux/macOS concrete WSS construction選択を除去。 |
+| #186 | v0.4 WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
+| #211 | Authority Research — Bounded Secure Flow | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
 | #161 | v0.4.1 Desktop Session / Display Backend | **完了 / v0.4.1 boundary。** internalなWindow-only physical backend boundaryでpersistent session/display continuityとviewer/transport generationを分離。viewer scalingとphysical display resizeを別能力にし、後者はunsupported。Desktop authority / public subpath / virtual・remote backendは追加しない。 |
-| #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
-| #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
-| #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
+| #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
+| #19 | v0.5.0 provider-neutral connectivity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
+| #12 | v0.6.0 hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
 
 ## Product Readiness — 独立したcross-cutting track
 
@@ -142,7 +142,7 @@ repeatableなsource-release checklistとnpm publicationとの分離は [リリ�
 - #85で完了したsame-LAN directとpublic Tunnel/TURN relayの両physical Window evidence、およびstale locator拒否を維持する
 - #94の完了evidenceを維持する。exact-window Human-only macOS inputでテスト対象secure System Settings controlが通り、privileged / desktop fallbackは不要
 - #124の完了evidenceを維持する。exact-oneをdefaultのまま、opt-in same-process lineageは旧targetをfenceしてuniqueに証明したsuccessorだけへrotateする。physical iPhoneの `Accessibility -> 追加 (+) -> 開く` はdesktop/display fallbackなしで通過済み
-- #125は#124で安全に表現できないworkflowのevidenceが出た場合に備えた、別の明示的Human-only Desktop authority investigationとして維持する
+- #125は#211または同等のnarrow authority researchでbounded Window/successor authorityでは表現できない具体的workflowが証明された場合にだけ進める、別のexplicit Human-only Desktop authority investigationとして維持する
 - #56の完了evidenceを維持する。Browser compatibilityは≤1280×720 / 3 Mbpsのまま、macOS Windowのみno-upscale ≤1920×1080 / 5 Mbps、newest-frame backpressure不変でphysical iPhone direct / TURN relayを通過済み。#34もread-only AT-SPIをprocess/window geometryへbindし、bounded editable/focus metadataだけを扱い、DOM / CDP / credential露出なしでLinux parityを完了
 - CUMGを `WindowHandoffAdapter` / `TerminalHandoffAdapter` 利用へ固定し、canonical authority/session/transport orderingはHandoff、authorization / PTY-process containment / quarantine / semantic verificationはCUMGに残す
 - authority / epoch / ownership / resume policy / request-state binding / stale surface-session fencingのcompatibility fixtureをformalizeする
@@ -201,38 +201,92 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-04時点で `v0.3.x — Maintenance & Durability` milestoneは0 open / 8 closedでclose済みです。残るOPEN Issueはすべて唯一のactive milestone `v0.4+ — Transport & Hosted Maturity` に所属しています。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-04時点で `v0.3.x — Maintenance & Durability` milestoneは0 open / 8 closedでclose済みです。旧 `v0.4+ — Transport & Hosted Maturity` catch-allもcloseし、残るOPEN 4件を `v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、`Authority Research — Bounded Secure Flow` (#211)、`Authority Research — Desktop Escalation` (#125)へ明示的に分離しました。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
-## v0.4+ — MCP interoperabilityとtransport成熟
+## v0.5.0 — Provider-Neutral Connectivity
 
-候補scope:
+`v0.5.0` は `v0.4.1` の次に予定するsource release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
 
-- MCP MRTR / Elicitation / Tasksの進化を追跡し、標準で置き換えられる独自plumbingを削減
-- 実用上可能な範囲で複数MCP client/server implementationと検証
-- first-class Browser / Window / Terminal component familyを維持し、consumerがlow-level broker / WebRTC / PTY-authority internalsを手組みせずbounded lifecycle / target semanticsへ依存できる状態を保つ
-- capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
-- #19でprovider-neutral connectivity/relay boundaryを仕上げ、ICE/TURN/provider選択をconsumerへ露出しない
-- #160でmanaged WSSのinteraction jankを計測・改善し、latest-frame backpressure / exact-window authority / privacy boundaryを維持した
-- #161で完了したinternal Desktop Session / Display Backend boundaryを維持し、persistent application/session continuityとphysical display、Human viewer/transport generationを分離したままにする。virtual/remote backend proofと#125 Desktop authorityは後続に残す
-- #12でbounded durable stateとauthenticated outbound worker connectivityを持つhosted control-plane + stateful execution-worker topologyを定義する
-- #13のcloseout decisionを維持する。historical Thin Takeover / mandatory custom Native-client umbrellaはaccepted WebRTC pathと完了済みWSS evaluationにsupersedeされ、将来native-clientが必要なら新しいnarrowなevidence-based Issueとして起こす
-- #11のcloseout decisionを維持する。first-class bounded Windowと #94 secure UI / #124 successor-window lineage / #56 media qualityが旧full-desktop/provider-latency umbrellaをsupersedeする。#125で明示Desktop authorityを調査しても、desktop-wide controlはdefault Window boundary外のままにする
-- 追加のlow-latency push/latest-frame / native Human Takeover pathは、現在のWebRTC/WSS acceptanceでは得られない新しいevidenceがある場合だけ検証する
+目的は、WebRTC discovery / relay connectivityを **Handoff-ownedかつprovider-neutralなdeployment boundary** として確立することです。consumer-facing Browser / Window lifecycleは変えず、Human-control authorityも広げません。
 
-### 現在のtracked work — 2026-09-04
+scope:
 
-このmilestoneはcatch-all parking lotではなく、現在のOPEN 4件を次の順序と責務で管理します。
+- 既存ICE credential/provider seamをprovider-neutral connectivity / relay boundaryへ整理する;
+- direct-first挙動とbrowser/server gathering policyをHandoff側で明示的に管理する;
+- Cloudflare Realtime TURNをproduct abstractionではなく1つのprovider implementationとして扱う;
+- consumer APIを変えずにcoturn / self-hosted providerを追加できる形にする;
+- relay secret、provider選択、STUN/TURN詳細、candidate policyをMCP tool引数/結果、model context、consumer config、log、durable checkpointへ出さない;
+- silentなcross-vendor failoverを禁止し、provider変更を明示的なdeployment/security decisionにする;
+- identifier/content-freeなbounded connectivity diagnosticsだけを許可する;
+- generation fencing、one-client ownership、revoke、Human-input non-replay、consumer-owned semantic verificationを維持する。
 
-| 順序 | Issue | 現在の役割 |
-| --- | --- | --- |
-| **1** | #19 | **次のtransport本筋。** ICE / STUN / TURN / provider選択をconsumerへ露出せず、Handoff-owned provider-neutral relay/connectivity boundaryを仕上げる。 |
-| **2** | #12 | hosted control plane + stateful execution-worker topology。provider固有relay詳細をhosted architectureへ焼き込まないよう、#19の後に進める。 |
-| **Authority-first** | #211 | System Settings authorization → independently admitted successorというexact flowを、bounded Window authorityのまま狭くproveまたはrejectする。 |
-| **Authority-later** | #125 | broader explicit Human-only Desktop authority。#211または別physical workflowでbounded Window/successor authorityの不足が証明された場合だけdesign investigationを越えて進める。 |
+完了条件:
 
-#183 / #184 / #185 / #186はtransport/component baselineとして完了済みで、#161もv0.4.1 internal Desktop Session / Display Backend boundaryへ昇格済みです。supporting evidenceとして#152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurementも完了済みです。
+- #19 acceptance criteriaをexact release candidate revisionで完了する;
+- established consumerからprovider選択logic / TURN credential handlingが消えている;
+- direct-only / relay-enabledの両方がdeterministicで、provider failure時もfail closedを維持する;
+- Cloudflareと少なくとも1つのprovider-neutral/self-hosted implementation shapeを同じHandoff-owned seamで実証する;
+- hosted ingress/tunnelとWebRTC relay/TURNの責務分離を明文化する;
+- relevant deterministic / consumer-integration / physical evidenceをexact candidate revisionへ紐づける;
+- npm publicationは別decisionのままとし、独立gateを明示完了しない限り `private: true` を維持する。
 
-active sequencingはprovider-neutral connectivity / hosted deploymentが **#19 → #12**。authority側は **#161完了 → #211でnarrow bounded proofを先行 → broader Desktop authorityがphysical evidenceで必要と示された場合のみ#125** です。Window failureをimplicit Window→Desktop fallbackへ変えることは禁止します。
+## v0.6.0 — Hosted Worker Topology
+
+`v0.6.0` はv0.5.0 connectivity boundaryの後に進めるhosted architecture lineです。milestone `v0.6.0 — Hosted Worker Topology` は#12が所有し、#19で確立したprovider-neutral connectivity contractを再定義せず利用します。
+
+目的は、hosted Handoff/MCP control planeとstateful browser/desktop execution workerを分離しつつ、同じintervention / authority / reconnect / revoke / semantic-verification contractを維持することです。
+
+scope:
+
+- provider-neutral hosted control-plane + stateful execution-worker topologyを定義する;
+- private/local workerへpublic inbound listenerを要求しないようauthenticated **outbound** worker connectivityを優先する;
+- worker registration / intervention routingをauthenticated worker identity、principal、epoch、current generationへbindする;
+- durable化するのはbounded control-plane metadataだけとし、frame、typed secret、credential、cookie、任意target contentは非durableのままにする;
+- duplicate ownership、stale reconnect、worker liveness、reassignment、revocation propagation、latest-frame/backpressureをfail closedで定義する;
+- persistent browser/profile/session storageをdisposable control-plane instanceから分離する;
+- local-only、hosted-control-plane + local worker、hosted-control-plane + remote/stateful workerのreference shapeを文書化する。
+
+完了条件:
+
+- #12 acceptance directionがhosted-control-plane + local workerとhosted-control-plane + remote/stateful workerの両方で通る;
+- reference topologyでworkerにpublic inbound listenerを要求しない;
+- disconnect/reconnect後もepoch、one-client ownership、stale-generation fencingを維持する;
+- Done/Cancel/expiryでrelayとlocal execution capabilityをAgent resume前にrevokeする;
+- Human completion後もfresh Agent readiness/revalidationを必須にする;
+- v0.6.0でimplicit Desktop authorityを追加せず、#125を前提条件にしない。
+
+## Authority Research — version未確定
+
+Authority拡張はv0.5.0 → v0.6.0のtransport/hosted release lineから意図的に分離します。ここはresearch / decision gateであり、release versionを予約しません。
+
+### #211 — Bounded Secure Flow
+
+milestone `Authority Research — Bounded Secure Flow` では、System Settings authorization → independently admitted successorというexact flowだけを狭く調査します。generic secure-UI authorityやDesktop fallbackを追加せず、bounded Window authorityのままproveまたはrejectすることを優先します。
+
+- reviewed narrow extensionが必要と証明されない限り、既存LocalAuthentication / same-process successor-lineage contractを維持する;
+- credential contentはtransientのままlog / checkpoint / model contextへ出さない;
+- unknown / ambiguous / stale / Cancel / timeout / identity changeはfail closed;
+- authorization成功後もindependently proven successorにだけ継続でき、arbitrary UIへは遷移しない;
+- このresearchはv0.5.0 / v0.6.0をblockしない。
+
+### #125 — Desktop Escalation
+
+milestone `Authority Research — Desktop Escalation` はdesign / research gateのまま維持します。internal Desktop Session / Display Backend boundaryが存在することだけを理由に、broader Human-only Desktop Handoffをreleaseへ予定しません。
+
+#211または別の具体的physical workflowで、重要なHuman workflowをbounded Window/successor authorityでは安全に表現できないと証明された場合だけdesignを越えて進めます。将来Desktop authorityを導入する場合も、explicit request、Human-only、display/session change時fail closed、Agent resume前revokeを必須とし、Window failureからのautomatic fallbackにはしません。
+
+authority順序は **#161完了 → #211 narrow proof/rejection → concrete physical necessityがある場合だけ#125** です。
+
+## v1.0までのinteroperability / transport方向
+
+具体化済みv0.5.0 / v0.6.0の先では、次を継続します。
+
+- MCP MRTR / Elicitation / Tasksなど標準の進化を追跡し、標準で置き換えられるproject-specific plumbingを削減する;
+- 実用上可能な範囲で複数MCP client/server implementationと検証する;
+- first-class Browser / Window / Terminal componentを維持し、consumerがlow-level transport internalsではなくbounded lifecycle/target semanticsへ依存できる状態を保つ;
+- capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformanceを拡張する;
+- historical #11 / #13 closeout decisionを維持し、whole-desktop controlやmandatory custom Native-client pathをdefault product scopeにしない;
+- 追加のlow-latency / native / WebTransport pathは、現在のWebRTC/WSS acceptanceでは得られない新しいevidenceがある場合だけ検証する。
 
 ### Transport familyの方向性
 
@@ -246,11 +300,11 @@ Human takeover transportはconsumerごとのforkにせず、同じbroker authori
 
 ICE / SDP / RTP / DataChannel、WebSocket framing / backpressure、将来のWebTransport stream / datagramなどtransport固有mechanismはtransport実装内部へ閉じ込めます。consumerは下層network protocolではなく、locator / start / reconnect / revoke系のlifecycle semanticsへ依存し続けます。
 
-Issue #40で初期WebSocket managed-runtime evaluationを完了し、physical iPhone SafariのWSS操作、bounded latest-frame/drop挙動、Cloud Run application reachabilityを確認しました。その後 #155 / #156で実証済みprimitiveをHandoff-owned Browser / Window managed fallbackへ昇格し、authority/session stackを二重化せず再利用しています。これはtransparentなsocket downgradeではなく、各transitionで旧transportをrevoke/fenceしてからfresh generation/capabilityへauthorityを移す明示的なtransitionです。
+Issue #40で初期WebSocket managed-runtime evaluationを完了し、physical iPhone SafariのWSS操作、bounded latest-frame/drop挙動、Cloud Run application reachabilityを確認しました。その後 #155 / #156で実証済みprimitiveをHandoff-owned Browser / Window managed fallbackへ昇格し、authority/session stackを二重化せず再利用しています。各transitionでは旧transportをrevoke/fenceしてからfresh generation/capabilityへauthorityを移します。
 
-productionで実証済みdefaultは `WebRTC direct -> WebSocket relay -> optional relay-capable WebRTC` のままですが、現在のmanaged Browser / Window compositionはtransport選択をexactな有限ordered policyとして表現します。deploymentはWSS-only、direct-only、relay-capable-WebRTC-only、または別のreview済みunique順序を選べ、省略attemptは自動挿入しません。Browser / Window consumerは単一のHandoff lifecycle abstractionを使い続け、semantic request内でWebSocket / ICE / TURN providerやcredentialを選択しません。stale direct-WebRTC / WSS generationはfail closed、transport間でadmit済みinputをreplayせず、disconnectはDoneを意味せず、fallback後もexact process/windowとHuman input policyは変わりません。#152はruntime revision `43d4624e16fb878260145767b4f2b6f103b3f822` でproduction-shaped Cloud Run `run.app` physical iPhone Safari gateをTURNなしで完了しました。direct-WebRTC unavailableから`websocket_relay`を選択し、tap / text / Backspace / scroll / Enter / semantic submit / Done、verification / teardown、stale direct / WSS locator・generation fencingまでPASSし、bounded verifierは `MANAGED_PHYSICAL_ACCEPTANCE_OK` を返しています。PR #157はaccepted runtimeと同期済みverifier/distを含み、CI gateは全greenです。目視できたWSS interaction jankはcorrectnessをblockしないfollow-up #160として分離しています。WebRTC direct / TURNとの同一session数値latency比較は未記録のため、`experiments/websocket-cloud-run/COMPARISON.md`では根拠のない数値性能主張を行いません。
+productionで実証済みdefaultは `WebRTC direct -> WebSocket relay -> optional relay-capable WebRTC` のままです。managed Browser / Window compositionはtransport選択をexactな有限ordered policyとして表現し、stale direct-WebRTC / WSS generationはfail closed、admit済みinputはtransport間でreplayせず、disconnectはDoneを意味せず、fallback後もexact process/windowとHuman input policyを維持します。#152をproduction-shaped Cloud Run physical evidence baselineとして保持し、`experiments/websocket-cloud-run/COMPARISON.md`では未計測の数値latency claimを行いません。
 
-具体的なworkが決まった時点でversionを割り当てます。必要なら `0.5`、`0.6`、`0.10` 以降も使用します。
+v0.7 / v0.8 / v0.10など後続pre-1.0 versionはevidence-drivenに決めます。具体的なcompatibility / maturity boundaryが存在するときだけversionを追加し、番号を埋めるためには予約しません。
 
 ## v1.0 — stable contract milestone
 
