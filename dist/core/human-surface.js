@@ -28,10 +28,12 @@ export function selectHumanSurface(reason, credentialSafeReasons) {
 }
 export class CredentialSafeHumanSurfaceRuntime {
     provider;
+    now;
     providerKind;
     active;
-    constructor(provider) {
+    constructor(provider, now = Date.now) {
         this.provider = provider;
+        this.now = now;
         const normalized = provider.kind.trim();
         if (!normalized || normalized.length > 80) {
             throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_PROVIDER_INVALID", "external Human surface provider kind must contain 1-80 characters");
@@ -39,10 +41,13 @@ export class CredentialSafeHumanSurfaceRuntime {
         this.providerKind = normalized;
     }
     getActive() {
-        return this.active ? { ...this.active } : undefined;
+        const active = this.active;
+        if (!active || this.isExpired(active))
+            return undefined;
+        return { ...active };
     }
     assertInactive() {
-        if (!this.active)
+        if (!this.active || this.isExpired(this.active))
             return;
         throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_ACTIVE", `External Human surface ${this.active.sessionId} is still active; revoke it before restoring automation authority`);
     }
@@ -50,8 +55,17 @@ export class CredentialSafeHumanSurfaceRuntime {
         this.assertCredentialSafeEntryState(intervention);
         this.assertPrincipalBinding(principalBinding);
         if (this.active) {
-            if (this.matches(this.active, intervention, principalBinding))
-                return { ...this.active };
+            const cached = this.active;
+            if (this.isExpired(cached)) {
+                this.active = undefined;
+                await this.provider.revoke(cached.sessionId).catch(() => undefined);
+                if (this.matches(cached, intervention, principalBinding)) {
+                    throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_EXPIRED", "The cached credential-safe external Human surface expired; begin a fresh Human surface explicitly");
+                }
+                throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_STATE_CHANGED", "The expired credential-safe external Human surface belonged to another intervention, epoch, or principal");
+            }
+            if (this.matches(cached, intervention, principalBinding))
+                return { ...cached };
             throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_ACTIVE", "Another credential-safe external Human surface is already active");
         }
         const grant = await this.provider.begin({
@@ -100,6 +114,9 @@ export class CredentialSafeHumanSurfaceRuntime {
         if (grant.expiresAt !== undefined && (!Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= 0)) {
             throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_PROVIDER_INVALID", "external Human surface provider returned an invalid expiry");
         }
+        if (grant.expiresAt !== undefined && grant.expiresAt <= this.now()) {
+            throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_EXPIRED", "external Human surface provider returned an already-expired surface");
+        }
         return {
             providerKind: this.providerKind,
             interventionId: intervention.id,
@@ -109,6 +126,9 @@ export class CredentialSafeHumanSurfaceRuntime {
             locator,
             ...(grant.expiresAt === undefined ? {} : { expiresAt: grant.expiresAt })
         };
+    }
+    isExpired(active) {
+        return active.expiresAt !== undefined && active.expiresAt <= this.now();
     }
     matches(active, intervention, principalBinding) {
         return this.matchesIdentity(active, intervention.id, intervention.epoch, principalBinding);

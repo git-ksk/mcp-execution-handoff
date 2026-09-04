@@ -33,8 +33,8 @@ export interface ActiveExternalHumanSurface extends ExternalHumanSurfaceRequest 
     expiresAt?: number;
 }
 export declare class ExternalHumanSurfaceError extends Error {
-    readonly code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_PROVIDER_INVALID";
-    constructor(code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_PROVIDER_INVALID", message: string);
+    readonly code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_EXPIRED" | "EXTERNAL_SURFACE_PROVIDER_INVALID";
+    constructor(code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_EXPIRED" | "EXTERNAL_SURFACE_PROVIDER_INVALID", message: string);
 }
 export declare function selectHumanInteractionPolicy<TReason extends string>(reason: TReason, credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]): HumanInteractionPolicyKind;
 /**
@@ -44,9 +44,10 @@ export declare function selectHumanInteractionPolicy<TReason extends string>(rea
 export declare function selectHumanSurface<TReason extends string>(reason: TReason, credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]): HumanSurfaceKind;
 export declare class CredentialSafeHumanSurfaceRuntime {
     private readonly provider;
+    private readonly now;
     private readonly providerKind;
     private active;
-    constructor(provider: ExternalHumanSurfaceProvider);
+    constructor(provider: ExternalHumanSurfaceProvider, now?: () => number);
     getActive(): ActiveExternalHumanSurface | undefined;
     assertInactive(): void;
     begin(intervention: HumanSurfaceInterventionRef, principalBinding: string): Promise<ActiveExternalHumanSurface>;
@@ -54,6 +55,7 @@ export declare class CredentialSafeHumanSurfaceRuntime {
     private assertCredentialSafeEntryState;
     private assertPrincipalBinding;
     private normalizeGrant;
+    private isExpired;
     private matches;
     private matchesIdentity;
     private same;
