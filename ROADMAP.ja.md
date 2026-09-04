@@ -188,7 +188,7 @@ milestone `v0.3 — Recovery & Observability` では、既存のsigned checkpoin
 
 ## v0.3.x — Maintenance & Durability
 
-milestone `v0.3.x — Maintenance & Durability` はv0.3後のnon-blocking maintenance lineです。v0.3.0のauthority / recovery contractを維持し、**暗黙にbroader Human-control authorityを追加せず、source release gateにもなりません。**
+milestone `v0.3.x — Maintenance & Durability` は完了済みのv0.3後non-blocking maintenance lineです。2026-09-04時点でtracked Issue 8件はすべてclose済みです。v0.3.0のauthority / recovery contractを維持し、**暗黙にbroader Human-control authorityを追加せず、source release gateにもなりませんでした。**
 
 v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しました: recoverable WSS input (#172)、mobile keyboard/composition (#143)、stale LocalAuthentication presentation (#150)、auth-UX responsibility/conformance (#189)、WSS Aim / precise-tap parity (#210)。
 
@@ -201,7 +201,7 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-04時点で、repositoryのOPEN Issueはすべて明示milestoneへ所属しています。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-04時点で `v0.3.x — Maintenance & Durability` milestoneは0 open / 8 closedでclose済みです。残るOPEN Issueはすべて唯一のactive milestone `v0.4+ — Transport & Hosted Maturity` に所属しています。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
 ## v0.4+ — MCP interoperabilityとtransport成熟
 
@@ -221,14 +221,18 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 
 ### 現在のtracked work — 2026-09-04
 
-このmilestoneはcatch-all parking lotではなく、責務を次のように分けます。
+このmilestoneはcatch-all parking lotではなく、現在のOPEN 4件を次の順序と責務で管理します。
 
-- **Transport/component maturity:** #184 executable conformance/failure-injectionは完了。#183 LocalAuthentication WSS physical closeoutは完了し、support stepの#185/#186も完了済み。#19がprovider-neutral relay/connectivityを所有。
-- **Session/authority architecture:** #161は完了し、v0.4.1 internal Desktop Session / Display Backend boundaryへ昇格済みです。virtual/remote backend proofは後続です。broader #125 explicit Desktop authorityは引き続き後段、#211もimplicit Desktop fallbackにしません。
-- **Hosted topology:** #12がprovider-neutral control-plane + stateful execution-worker architectureとauthenticated outbound worker connectivityを所有。
-- **完了済みsupport evidence:** #152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurement。
+| 順序 | Issue | 現在の役割 |
+| --- | --- | --- |
+| **1** | #19 | **次のtransport本筋。** ICE / STUN / TURN / provider選択をconsumerへ露出せず、Handoff-owned provider-neutral relay/connectivity boundaryを仕上げる。 |
+| **2** | #12 | hosted control plane + stateful execution-worker topology。provider固有relay詳細をhosted architectureへ焼き込まないよう、#19の後に進める。 |
+| **Authority-first** | #211 | System Settings authorization → independently admitted successorというexact flowを、bounded Window authorityのまま狭くproveまたはrejectする。 |
+| **Authority-later** | #125 | broader explicit Human-only Desktop authority。#211または別physical workflowでbounded Window/successor authorityの不足が証明された場合だけdesign investigationを越えて進める。 |
 
-architecture順序は引き続きdesktop/session authorityが **#161 → #125** です。#161はinternal physical session/display boundaryだけを確立し、#125をexplicit Desktop authorityの別decisionとして残します。provider-neutral connectivity / hosted deploymentは **#19 → #12** のままです。#183 LocalAuthentication WSS physical closeoutと#184 checked transport/component conformanceは完了済みです。
+#183 / #184 / #185 / #186はtransport/component baselineとして完了済みで、#161もv0.4.1 internal Desktop Session / Display Backend boundaryへ昇格済みです。supporting evidenceとして#152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurementも完了済みです。
+
+active sequencingはprovider-neutral connectivity / hosted deploymentが **#19 → #12**。authority側は **#161完了 → #211でnarrow bounded proofを先行 → broader Desktop authorityがphysical evidenceで必要と示された場合のみ#125** です。Window failureをimplicit Window→Desktop fallbackへ変えることは禁止します。
 
 ### Transport familyの方向性
 
