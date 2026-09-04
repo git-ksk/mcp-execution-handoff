@@ -481,7 +481,7 @@
       "transport": "websocket_wss",
       "status": "passed",
       "command": "accept:window:macos-local-auth-wss",
-      "evidence": "PR #217 physical iPhone Safari WSS-only LocalAuthentication acceptance passed: Human Cancel fenced the exact secure Window, revoked the channel with normal close code 1000, and cleared the stale secure frame without WebRTC/ICE/STUN/TURN."
+      "evidence": "PR #217 physical iPhone Safari WSS-only LocalAuthentication acceptance passed separate Human Cancel and benign Approve runs: prompt disappearance fenced/revoked the exact secure Window with normal close and cleared stale secure presentation; the benign Secure Enclave signing helper completed separately, while Handoff never inferred semantic success. No WebRTC/ICE/STUN/TURN."
     },
     {
       "rowId": "window-macos-successor-lineage",
