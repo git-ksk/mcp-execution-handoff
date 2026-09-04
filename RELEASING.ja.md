@@ -9,7 +9,7 @@
 1. **GitHub source release** — reviewedな`main` commitにversion tagを付け、GitHub Releaseを公開する。
 2. **npm publication** — 将来の別gate。packageは `private: true` のままで、source releaseを出しても `npm publish` を意味しません。
 
-**v0.4.1** が現在のGitHub/source-release baselineで、milestone `v0.4.1 — Desktop Session Boundary` (#8) で追跡します。v0.4.0のTarget Surface / authority contractを維持しながら、#161のinternal Physical Window Desktop Session / Display Backend separationを追加し、#220はWSS container acceptance gateを弱めずtimeoutだけを延長します。Desktop authority、public package subpath、virtual/remote backend、Browser/Terminal semantic change、npm publicationは追加しません。後続のrelay / hosted / Desktop authority（#19 / #12 / #125）は別trackで、release blockerにはしません。
+**v0.4.2** が現在のGitHub/source-release baselineで、milestone `v0.4.2 — Maintenance` (#13) で追跡します。v0.4.1のTarget Surface / authority / Desktop Session boundaryを維持しながら、#226でexpired credential-safe external Human surfaceをactiveとして再利用しないよう修正します。このpatchでTarget Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、npm publicationのscopeは広げません。#227 / #228はversion未確定のhost parity backlog、#19 / #12は次のconnectivity / hosted lineとして分離します。
 
 ## Versioning policy
 
@@ -22,6 +22,7 @@ npm未公開の間もSemVerをcompatibility signalとして使います。
 - later `0.3.x`: v0.3 contractを維持するcompatible maintenance / durability hardening。
 - `0.4.0`: implicit Desktop authorityを追加せず、macOS exact-window WSS / LocalAuthentication、managed recoverable WSS、mobile Human-control parity、executable support/auth-UX conformance、lifecycle presentation hardeningをまとめるbounded transport/component-maturity boundary。
 - `0.4.1`: 既存Physical Window pathの内側にcompatibleなinternal Desktop Session / Display Backend separationを追加し、Desktop authority / public package surface / virtual・remote backend / Browser・Terminal semantic changeは追加しない。
+- `0.4.2`: credential-safe external Human surfaceのexpiryをbounded maintenanceし、stale cached surfaceは明示的にfailして別のfresh beginを要求する。authority復活やHuman-input replayは行わない。
 - later `0.4.x`: v0.4のTarget Surface / authority boundaryを維持するcompatible hardening。
 - それ以降のpre-1.0 minor: public contractやdeployment semanticsが再び本質的に拡張する場合に使う。
 
@@ -51,7 +52,7 @@ final release PRは、blocker修正が必要な場合を除きrelease bookkeepin
 4. source-only releaseでは `private: true` を維持する。
 5. clean installから後述のrelease validationを全部通す。
 
-v0.4.1ではmilestone #8 (`v0.4.1 — Desktop Session Boundary`) をauthoritative release gateとし、final release PR前に#161 / #220がclose済みであることを確認します。historicalなv0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
+v0.4.2ではmilestone #13 (`v0.4.2 — Maintenance`) をauthoritative release gateとし、final release PR前に#226がclose済みであることを確認します。#227 / #228は明示的にnon-blockingなversion未確定host parity workです。historicalなv0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
 
 ## Release validation
 

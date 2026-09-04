@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-04
+
 - Fix credential-safe external Human-surface cache expiry (#226): expired cached locators are no longer returned as active, matching retries fail explicitly with `EXTERNAL_SURFACE_EXPIRED` and require a separate fresh `begin()`, already-expired provider grants are rejected, and best-effort cleanup never restores authority or replays Human input.
 
 ## [0.4.1] - 2026-09-04

@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-**v0.4.1** is the current GitHub/source-release baseline, tracked through milestone `v0.4.1 — Desktop Session Boundary` (#8). It preserves the v0.4.0 Target Surface/authority contract while adding #161's internal Physical Window Desktop Session / Display Backend separation; #220 only extends the WSS container acceptance timeout without weakening the gate. No Desktop authority, public package subpath, virtual/remote backend, Browser/Terminal semantic change, or npm publication is added. Later relay/hosted/Desktop-authority work (#19/#12/#125) remains separate and non-blocking.
+**v0.4.2** is the current GitHub/source-release baseline, tracked through milestone `v0.4.2 — Maintenance` (#13). It preserves the v0.4.1 Target Surface/authority and Desktop Session boundaries while fixing #226 so expired credential-safe external Human surfaces are never reused as active. The patch does not add Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, or npm-publication scope. #227/#228 remain version-uncommitted host-parity backlog; #19/#12 remain the next connectivity/hosted lines.
 
 ## Versioning policy
 
@@ -20,6 +20,7 @@ Use SemVer as a compatibility signal even before npm publication.
 - later `0.3.x`: compatible maintenance/durability/documentation hardening that preserves the v0.3 contract.
 - `0.4.0`: bounded transport/component-maturity boundary: reusable macOS exact-window WSS including LocalAuthentication, managed recoverable WSS semantics, mobile Human-control parity, executable support/auth-UX conformance, and lifecycle-presentation hardening without adding implicit Desktop authority.
 - `0.4.1`: compatible internal Desktop Session / Display Backend separation around the existing Physical Window path, without adding Desktop authority, public package surface, virtual/remote backends, or Browser/Terminal semantic changes.
+- `0.4.2`: bounded maintenance for credential-safe external Human-surface expiry; stale cached surfaces fail explicitly and require a separate fresh begin without authority restoration or Human-input replay.
 - later `0.4.x`: compatible hardening that preserves the v0.4 Target Surface and authority boundaries.
 - later pre-1.0 minors: use when public contract/deployment semantics materially expand again.
 
@@ -49,7 +50,7 @@ The final release PR should contain only release bookkeeping unless a blocker re
 4. Keep `private: true` for source-only releases.
 5. Run the complete release validation below from a clean install.
 
-For v0.4.1, the authoritative release gate is milestone #8 (`v0.4.1 — Desktop Session Boundary`), with #161 and #220 closed before the final release PR. Historical v0.4.0 used Issue #213; v0.3.0 used Issue #145; v0.2.0 used Issue #119.
+For v0.4.2, the authoritative release gate is milestone #13 (`v0.4.2 — Maintenance`), with #226 closed before the final release PR. #227/#228 are explicitly non-blocking version-uncommitted host-parity work. Historical v0.4.1 used milestone #8; v0.4.0 used Issue #213; v0.3.0 used Issue #145; v0.2.0 used Issue #119.
 
 ## Release validation
 

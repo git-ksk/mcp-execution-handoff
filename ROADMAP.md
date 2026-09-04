@@ -4,9 +4,9 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.4.1
+## Current baseline: v0.4.2
 
-`v0.4.1` is the current GitHub/source-release baseline. It retains the v0.4.0 bounded WSS/component-maturity line and adds the internal Desktop Session / Display Backend boundary around the existing Physical Window path: persistent application/session and physical-display continuity are separated from viewer/transport generations, while Desktop authority, public package surface, virtual/remote backends, Browser/Terminal semantics, and physical dynamic resize remain unchanged or unsupported.
+`v0.4.2` is the current GitHub/source-release baseline. It retains the v0.4.1 Desktop Session / Display Backend boundary and fixes credential-safe external Human-surface expiry (#226): expired cached locators are never returned as active, fresh provider issuance is explicit, and expiry cleanup cannot restore authority or replay Human input. No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -55,7 +55,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #186 | v0.4 WSS successor lineage | **Complete.** Physical iPhone Safari acceptance proved bounded same-process successor rotation over WSS with stale-generation fencing. |
 | #211 | Authority Research — Bounded Secure Flow | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
 | #161 | v0.4.1 Desktop Session / Display Backend | **Complete / v0.4.1 boundary.** Internal Window-only physical backend boundary separates persistent session/display continuity from viewer/transport generations; viewer scaling is distinct from unsupported physical display resize. No Desktop authority/public subpath/virtual or remote backend is added. |
-| #226 | v0.4.2 maintenance | **Open / v0.4.2 candidate gate.** Fix stale/expired credential-safe Human-surface reuse without authority widening or Human-input replay. |
+| #226 | v0.4.2 maintenance | **Complete / v0.4.2 gate.** Expired credential-safe Human surfaces are fenced, matching stale retries fail explicitly, fresh issuance requires a separate `begin()`, and no Human input/authority is replayed or restored. |
 | #227 | Host Parity Backlog — Windows Browser | **Open / version uncommitted.** Future bounded Windows Browser Handoff parity; requires dedicated Windows + mobile physical acceptance before support claim. |
 | #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
@@ -105,9 +105,15 @@ Focus:
 
 Exit condition: each patch must preserve the documented security invariants and remain green in both established real consumers.
 
+## v0.4.2 source release
+
+`v0.4.2` is the current **GitHub source release**. It is a bounded v0.4.x maintenance patch owned by #226: credential-safe external Human surfaces now treat declared expiry as a hard cached-surface cutoff, never return stale locators as active, reject already-expired provider grants, and require a separate explicit `begin()` for fresh provider issuance. Best-effort stale-provider cleanup cannot complete the Human intervention, restore Agent authority, replay Human input, or attest target-service authentication.
+
+The release is tracked by milestone `v0.4.2 — Maintenance` (#13). #227 (Windows Browser Handoff parity) and #228 (Linux successor-window lineage parity) remain version-uncommitted and non-blocking. No new Target Surface, OS-support claim, Desktop authority, transport-provider claim, public package subpath, or npm publication is introduced.
+
 ## v0.4.1 source release
 
-`v0.4.1` is the current **GitHub source release**. It is a compatible v0.4.x architecture patch: #161 places the existing Physical Window path behind an internal Desktop Session / Display Backend boundary so application/session continuity, physical display attachment, Human viewer attachment generation, and transport/client generation are distinct. Viewer disconnect/reconnect does not destroy the application/Desktop Session; viewer scaling is not physical display resize; stale generation/retargeting fails closed; Human input is never replayed; disconnect is not Done; and consumer verification still owns semantic success.
+`v0.4.1` is the previous **GitHub source release**. It is a compatible v0.4.x architecture patch: #161 places the existing Physical Window path behind an internal Desktop Session / Display Backend boundary so application/session continuity, physical display attachment, Human viewer attachment generation, and transport/client generation are distinct. Viewer disconnect/reconnect does not destroy the application/Desktop Session; viewer scaling is not physical display resize; stale generation/retargeting fails closed; Human input is never replayed; disconnect is not Done; and consumer verification still owns semantic success.
 
 The release is tracked by milestone `v0.4.1 — Desktop Session Boundary` (#8). #220 only raises the WSS container acceptance job timeout from 20 to 40 minutes while preserving every acceptance step. No Desktop authority, public package subpath, virtual/remote backend, Browser/Terminal semantic change, or physical dynamic-resize support is introduced. npm publication remains separate and `private: true` stays required.
 
@@ -204,17 +210,17 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. The former `v0.4+ — Transport & Hosted Maturity` catch-all is also closed. Seven Issues are currently open and are classified explicitly: `v0.4.2 — Maintenance` (#226), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), `Authority Research — Bounded Secure Flow` (#211), `Authority Research — Desktop Escalation` (#125), plus version-uncommitted host-parity backlog #227 (Windows Browser Handoff) and #228 (Linux successor-window lineage). New work must be classified when the Issue is created rather than left outside roadmap accounting.
+As of 2026-09-04, the `v0.3.x — Maintenance & Durability` milestone is closed with 0 open / 8 closed issues. The former `v0.4+ — Transport & Hosted Maturity` catch-all is also closed. Six Issues are currently open and are classified explicitly: `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), `Authority Research — Bounded Secure Flow` (#211), `Authority Research — Desktop Escalation` (#125), plus version-uncommitted host-parity backlog #227 (Windows Browser Handoff) and #228 (Linux successor-window lineage). #226 is complete in the v0.4.2 maintenance line. New work must be classified when the Issue is created rather than left outside roadmap accounting.
 
 ## v0.4.2 — Maintenance
 
-`v0.4.2` is the bounded maintenance source-release candidate after `v0.4.1`. Its release-significant scope is intentionally limited to #226, the credential-safe external Human-surface lifecycle bug found during Maps Browser MCP dogfooding.
+`v0.4.2` is the completed bounded maintenance source release after `v0.4.1`. Its release-significant scope is intentionally limited to #226, the credential-safe external Human-surface lifecycle bug found during Maps Browser MCP dogfooding.
 
 Goal: ensure an expired or provider-stale cached Human surface is never returned as if it were still active, without widening authority or changing the transport roadmap.
 
 Scope:
 
-- #226 — reject/reissue expired credential-safe external surfaces under the existing intervention / epoch / principal / generation contract;
+- #226 — **complete:** reject expired credential-safe external surfaces under the existing intervention / epoch / principal / generation contract and require a separate explicit fresh issuance;
 - preserve no-replay, stale-authority fencing, fail-closed target/window loss, and content-free diagnostics;
 - document deterministic consumer recovery behavior for stale/expired provider surfaces.
 
@@ -225,7 +231,7 @@ Explicitly triaged out of `v0.4.2`:
 
 Exit criteria:
 
-- #226 deterministic expiry/staleness coverage is green on the exact candidate revision;
+- #226 deterministic expiry/staleness coverage is green on the exact release revision;
 - no expired cached locator can be returned as active and no Human input/authority is replayed or resurrected;
 - relevant consumer regression evidence is attached;
 - `v0.4.2` introduces no new Target Surface, OS-support, Desktop-authority, or transport-provider claim;
@@ -237,7 +243,7 @@ Exit criteria:
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` is the next planned feature source-release line after the bounded `v0.4.2` maintenance candidate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
+`v0.5.0` is the next planned feature source-release line after the bounded `v0.4.2` maintenance release. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
