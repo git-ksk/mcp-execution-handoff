@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Clear the WSS browser client's last decoded remote frame whenever a generation is no longer ready, so reconnect, terminal close, and exact-target disappearance cannot leave stale secure UI visible while Human input is fenced (#183).
+
 - Converge mobile Human-control parity across WebRTC/WSS (#143, #210): keep explicit user-gesture keyboard mode as the iOS-safe first-class baseline, add WSS client-local 1×–4× view/Aim controls, and use the same physically accepted mobile-Safari swipe direction for WSS and WebRTC. Aim pan/zoom emits no remote input and can bring fitted surface edge points to the center crosshair; only explicit `Tap` emits one ordinary server-policy-gated tap, and reconnect/orientation/teardown reset the transform without widening target authority.
 
 - Keep bounded Window WSS sessions alive after explicitly classified recoverable Human-input helper/ack failures (#172) without replaying the failed input. The bound use still ends, diagnostics record `dispatch_rejected` plus content-free `input_dispatch_failure` / `session_retained`, and only a fresh Human gesture can retry. Exact process/window visibility, ownership, geometry, stale-generation, and unknown input failures remain fail-closed and revoke authority.

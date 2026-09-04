@@ -413,8 +413,12 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
 
   sockets[0]!.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
   assert.equal(status.textContent, "Human authority active");
+  frame.src = "blob:stale-generation-1";
+  frame.style.opacity = "1";
   sockets[0]!.onclose?.({ code: 1006 });
   assert.equal(status.textContent, "Reconnecting…");
+  assert.equal(frame.style.opacity, "0", "disconnect must hide a stale decoded frame before reconnect");
+  assert.equal(frame.src, "", "disconnect must detach the stale frame source");
   assert.equal(timers.length, 1);
   assert.equal(timers[0]!.delay, 250);
 
@@ -424,9 +428,13 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
   assert.equal(sockets.length, 2);
   sockets[1]!.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
   assert.equal(status.textContent, "Human authority active");
+  frame.src = "blob:stale-generation-2";
+  frame.style.opacity = "1";
 
   sockets[1]!.onclose?.({ code: 1008 });
   assert.equal(status.textContent, "Connection closed");
+  assert.equal(frame.style.opacity, "0", "terminal close must not leave the last remote frame visible");
+  assert.equal(frame.src, "", "terminal close must detach the stale frame source");
   assert.equal(timers.length, 0, "policy close must not schedule a new generation");
   handoff.revoke("generic-browser-wss");
 });
