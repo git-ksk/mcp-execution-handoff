@@ -4,7 +4,10 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-04
+
 - Introduce the internal v0.4.1 Desktop Session / Display Backend boundary (#161) without adding Desktop authority or a public package surface: the Window facade keeps one physical display/session boundary while managed WebRTC/WSS viewer generations rotate, stale viewer generations and implicit retargeting fail closed, viewer fit/actual/adaptive transforms remain viewer-side, and physical dynamic display resize is explicitly unsupported. Browser/Terminal behavior, existing Target Surface authority, and consumer-owned semantic verification remain unchanged.
+- Keep the full `websocket-cloud-run-container` acceptance gate intact while raising only its job timeout from 20 to 40 minutes (#220) after repeated cancellation during registry/image builds; no acceptance step, runtime behavior, authority boundary, or transport semantics change.
 
 ## [0.4.0] - 2026-09-04
 
