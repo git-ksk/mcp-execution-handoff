@@ -21,7 +21,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 - `TerminalHandoffAdapter` は #86で完成しました。CUMGはexperimental PTY authorityとTerminal WebRTC transportの個別compositionをやめ、merged-code real PTY cross-repo E2Eとphysical iPhone Human acceptanceも通過済みです。mobileのconnection / Human authority / verifying表示は #91で明示的かつfail-closedになりました。
 - Safari suspend/disconnect後のBrowser WebRTC reconnectは #104でdeterministic化しました。generation releaseをsingle-flight化し、重複lifecycle eventを1本のreconnectへ集約し、active-lease conflictをboundedに観測できます。same-LAN iPhoneのphysical runではbackground/foregroundを3回連続で復帰し、409 loopやblack-frame固定は発生しませんでした。Safari appの完全終了はimplicit lease reclaimを行わず、fresh authorized flowを要求します。
 - #40のHTTPS/WSS managed-runtime evaluationは、#152 / #155 / #156でHandoff-ownedなBrowser / Window fallback `WebRTC direct -> WebSocket relay -> optional WebRTC/TURN relay` へ昇格しました。TURNなしのproduction-shaped Cloud Run `run.app`でphysical iPhone Safari acceptanceまでPASSし、bounded Human input、Done、verification/teardown、stale direct/WSS fencingを確認済みです。Maps consumer adoptionは `git-ksk/maps-browser-mcp#147` で別追跡します。
-- macOS managed Window/WSS系はさらにhardeningが進みました。#183がfirst-class exact-window WSS surfaceを所有し、#185でmanaged exact-window transport compositionのOS-neutral化が完了、#186でbounded same-process successor-window lineage parityをphysical iPhone Safari acceptanceまで完了しています。#184にはTarget Surface × OS × transport support matrixの実行可能baselineが入り、残るcompleteness / failure-injectionを同Issueで継続します。
+- macOS managed Window/WSS系はさらにhardeningが進みました。#183がfirst-class exact-window WSS surfaceを所有し、#185でmanaged exact-window transport compositionのOS-neutral化が完了、#186でbounded same-process successor-window lineage parityをphysical iPhone Safari acceptanceまで完了しています。#184でTarget Surface × OS × transport support matrix、acceptance evidence index、content-free failure/auth-UX conformance gateまで完了しました。
 - #188でWebRTC/WSS横断のmobile input normalizationを完了しました。日本語IME replacement、explicit software-keyboard persistence、Backspace/Enter、generated-client syntax gate、physical iPhoneのscroll方向までcurrent `main`で再検証済みです。残るclient-side precision parityは#210、System Settings authorization-to-successorの別authority investigationは#211へ分離しています。
 - #47でmacOS/Linuxのbounded exact-window primitiveを再利用可能にし、whole-desktop fallbackは追加していません。
 - #48でbounded Terminal/PTY semantic dogfoodを完了し、Agent/Human staged drain fence、explicit resume、post-Human state sync必須化、Human期間outputのAgent replay禁止を確立しました。
@@ -49,10 +49,10 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #143 | v0.3.x mobile composition | **OPEN。** explicit user-gesture / privacy制約を維持したままmobile keyboard/compositionをfirst-class化。 |
 | #150 | v0.3.x lifecycle presentation | **OPEN。** consumer verification中はcontrolをfenceし、stale LocalAuthentication videoを消す。 |
 | #188 | v0.3.x mobile input normalization | **完了。** WebRTC/WSSでIME/keyboard/gesture semanticsを統一し、physical iPhoneでWebRTC scroll方向のdriftも検出・修正。 |
-| #189 | v0.3.x auth UX feedback | **OPEN。** credential brokerやTarget Surface authority拡大なしでsecure sign-in UXの学びを反映。 |
+| #189 | v0.3.x auth UX feedback | **完了。** credential brokerやTarget Surface authority拡大なしで責務境界とsynthetic no-secret auth lifecycle conformanceを固定。 |
 | #210 | v0.3.x WSS mobile-control parity | **OPEN。** server authorityを変えず、WebRTC相当のclient-local Aim / precise-tapをWSSへ追加。 |
 | #183 | v0.4+ macOS WSS surface | **OPEN。** reusableなfirst-class macOS exact-window WSS surfaceとacceptance boundaryを仕上げる。 |
-| #184 | v0.4+ conformance | **OPEN。** executable support-matrix baselineは存在。component completeness / failure-injectionを仕上げ、unsupported combinationをexplicit/fail-closedにする。 |
+| #184 | v0.4+ conformance | **完了。** executable support/acceptance matrixとP0 failure-injection/auth-UX gateをchecked-inし、unsupported combinationをexplicit/fail-closedに固定。 |
 | #185 | v0.4+ managed composition | **完了。** managed exact-window transport compositionをOS-neutral化し、consumerからLinux/macOS concrete WSS construction選択を除去。 |
 | #186 | v0.4+ WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
 | #211 | v0.4+ bounded secure-flow authority | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
@@ -65,7 +65,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 Product ReadinessはTransport/Hosted maturityやnpm publicationとは別軸です。現在のsource-release
 JavaScript artifactはclean committed-`dist/` gate (#159)でconsumer-readyとなり、Target Surface / transport
-support inventoryの実行可能baselineは#184配下でmachine-check済みです。#184は残るmatrix completeness / failure-injection gateのためOPENを維持します。release-significantなconsumer evidenceではexact consumer +
+support inventory、acceptance-evidence index、failure injection、synthetic auth-UX lifecycle gateは完了した#184配下でmachine-check済みです。release-significantなconsumer evidenceではexact consumer +
 Handoff revisionを記録し、deterministic / consumer integration / physical component / physical dogfoodを区別します。
 
 native helper deliveryは明示的なprovenance/integrity gateが整うまでsource/deployment-ownedです。macOS deploymentは
@@ -213,12 +213,12 @@ milestone `v0.3.x — Maintenance & Durability` はv0.3後のnon-blocking mainte
 
 このmilestoneはcatch-all parking lotではなく、責務を次のように分けます。
 
-- **Transport/component maturity:** #183 macOS exact-window WSS、#184 executable conformance/failure-injection。support stepの#185/#186は完了済みで、#19がprovider-neutral relay/connectivityを所有。
+- **Transport/component maturity:** #184 executable conformance/failure-injectionは完了。#183はLocalAuthentication WSS physical closeoutのみ残し、support stepの#185/#186は完了済み。#19がprovider-neutral relay/connectivityを所有。
 - **Session/authority architecture:** #161 Desktop Session / Display Backendをbroader #125 explicit Desktop authorityより先に進める。#211はnarrowなsecure-window transitionであり、implicit Desktop fallbackにはしない。
 - **Hosted topology:** #12がprovider-neutral control-plane + stateful execution-worker architectureとauthenticated outbound worker connectivityを所有。
 - **完了済みsupport evidence:** #152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurement。
 
-したがってarchitecture上の順序はdesktop/session authorityが **#161 → #125**、provider-neutral connectivity / hosted deploymentが **#19 → #12**。#183/#184は後続layerが依存するtransport/component contractを締めるため並行して進めます。
+したがってarchitecture上の順序はdesktop/session authorityが **#161 → #125**、provider-neutral connectivity / hosted deploymentが **#19 → #12**。#183は最終LocalAuthentication WSS physical closeoutのみ残し、#184は完了して後続layer向けchecked transport/component contractを提供します。
 
 ### Transport familyの方向性
 
