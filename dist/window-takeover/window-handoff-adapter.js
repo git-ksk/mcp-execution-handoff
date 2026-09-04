@@ -1,3 +1,4 @@
+import { createPhysicalDesktopSessionBoundary } from "../desktop-session/desktop-session.js";
 import { emptyManagedOperatorDiagnosticsSnapshot } from "../browser-takeover/managed-operator-diagnostics.js";
 import { webRtcOperatorDiagnosticsSnapshot } from "../browser-takeover/webrtc-diagnostics.js";
 import { ManagedWindowHandoffRuntime } from "../browser-takeover/managed-handoff-runtime.js";
@@ -19,6 +20,7 @@ export class WindowHandoffAdapterError extends Error {
  */
 export class WindowHandoffAdapter {
     #core;
+    #directDesktopSessions = new Map();
     constructor(config) {
         try {
             this.#core = config.managedFallback || config.transportPolicy
@@ -33,9 +35,16 @@ export class WindowHandoffAdapter {
                     mediaProfile: "window_text",
                     ...(config.successorWindowPolicy ? { successorWindowPolicy: config.successorWindowPolicy } : {}),
                     ...(config.initialSecureWindowPolicy ? { initialSecureWindowPolicy: config.initialSecureWindowPolicy } : {}),
+                    desktopSessionBoundary: "physical_window",
                     ...(config.onComplete ? { onComplete: config.onComplete } : {})
                 })
-                : new WindowHandoffCore({ ...config, mediaProfile: "window_text" });
+                : new WindowHandoffCore({
+                    ...config,
+                    mediaProfile: "window_text",
+                    onAuthorityReleased: (event) => {
+                        this.#directDesktopSessions.get(event.interventionId)?.detachCurrentViewer();
+                    }
+                });
         }
         catch (error) {
             throw translateError(error);
@@ -46,20 +55,54 @@ export class WindowHandoffAdapter {
     ownsPath(pathname) { return this.#core.ownsPath(pathname); }
     start(request) {
         try {
-            return this.#core.start(request);
+            const locator = this.#core.start(request);
+            if (this.#core instanceof WindowHandoffCore) {
+                const desktopSession = createPhysicalDesktopSessionBoundary({
+                    kind: "bounded_window",
+                    processId: request.target.processId,
+                    ...(request.target.windowId === undefined ? {} : { windowId: request.target.windowId })
+                });
+                desktopSession.attachViewer(1);
+                this.#directDesktopSessions.set(request.intervention.id, desktopSession);
+            }
+            return locator;
         }
         catch (error) {
             throw translateError(error);
         }
     }
-    async revoke(interventionId) { await this.#core.revoke(interventionId); }
+    async revoke(interventionId) {
+        try {
+            await this.#core.revoke(interventionId);
+        }
+        finally {
+            const desktopSession = this.#directDesktopSessions.get(interventionId);
+            desktopSession?.close();
+            this.#directDesktopSessions.delete(interventionId);
+        }
+    }
     async revokeForIntervention(interventionId) { await this.revoke(interventionId); }
     /** Fence a session only after the consumer independently verifies the Human action succeeded. */
     async completeAfterVerification(intervention) {
-        return this.#core.completeAfterVerification(intervention);
+        const completed = await this.#core.completeAfterVerification(intervention);
+        if (completed) {
+            const desktopSession = this.#directDesktopSessions.get(intervention.id);
+            desktopSession?.close();
+            this.#directDesktopSessions.delete(intervention.id);
+        }
+        return completed;
     }
     /** Synchronously invalidate a locator that was cancelled before any Human generation was claimed. */
-    revokeUnclaimed(interventionId) { this.#core.revokeUnclaimed(interventionId); }
+    revokeUnclaimed(interventionId) {
+        try {
+            this.#core.revokeUnclaimed(interventionId);
+        }
+        finally {
+            const desktopSession = this.#directDesktopSessions.get(interventionId);
+            desktopSession?.close();
+            this.#directDesktopSessions.delete(interventionId);
+        }
+    }
     handle(request, boundPrincipal) {
         return this.#core.handle(request, boundPrincipal);
     }

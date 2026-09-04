@@ -18,6 +18,7 @@ function fixture(onManagedOperatorDiagnosticEvent?: (event: { kind: string }) =>
     takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
     runtime: { hostExecutable: process.execPath },
     managedFallback: { platform: "linux", linuxHostScript: process.execPath, displayName: ":99" },
+    desktopSessionBoundary: "physical_window",
     ...(onManagedOperatorDiagnosticEvent ? { onManagedOperatorDiagnosticEvent } : {})
   });
 }
@@ -71,6 +72,15 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     const observed: Array<{ kind: string }> = [];
     const runtime = fixture((event) => observed.push(event));
     const direct = runtime.start(request());
+    assert.deepEqual(runtime.desktopSessionSnapshot(), {
+      version: 1,
+      lifecycle: "active",
+      displayBackend: "physical",
+      displayAttached: true,
+      viewerAttached: true,
+      viewerGeneration: 1,
+      capabilities: { viewerScaling: true, dynamicDisplayResize: false }
+    });
     const directId = sessionId(direct);
     const capability = await fallbackCapability(runtime, direct);
 
@@ -89,6 +99,15 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     assert.equal(moved.status, 200);
     const body = await moved.json() as { path: string };
     assert.notEqual(body.path, new URL(direct).pathname);
+    assert.deepEqual(runtime.desktopSessionSnapshot(), {
+      version: 1,
+      lifecycle: "active",
+      displayBackend: "physical",
+      displayAttached: true,
+      viewerAttached: true,
+      viewerGeneration: 2,
+      capabilities: { viewerScaling: true, dynamicDisplayResize: false }
+    });
 
     const stalePage = await runtime.handle(new Request(direct), PRINCIPAL);
     assert.equal(stalePage.status, 404);
@@ -148,7 +167,17 @@ test("managed facade fences direct WebRTC before issuing a fresh WSS locator", a
     assert.deepEqual(managed.events, [{ kind: "transport_transition" }]);
     assert.deepEqual(observed, [{ kind: "transport_transition" }]);
     assert.doesNotMatch(JSON.stringify(managed), /managed-int|managed-principal|4242|7331/);
+    assert.doesNotMatch(JSON.stringify(runtime.desktopSessionSnapshot()), /managed-int|managed-principal|4242|7331/);
     await runtime.revoke("managed-int");
+    assert.deepEqual(runtime.desktopSessionSnapshot(), {
+      version: 1,
+      lifecycle: "closed",
+      displayBackend: "physical",
+      displayAttached: false,
+      viewerAttached: false,
+      viewerGeneration: 2,
+      capabilities: { viewerScaling: true, dynamicDisplayResize: false }
+    });
   } finally {
     restoreRelayEnv(saved);
   }
@@ -242,6 +271,23 @@ test("racing fallback requests cannot both claim a later Human transport", async
       assert.equal(snapshot.transport.generation, 2);
       assert.equal(snapshot.transport.transitionCount, 1);
     }
+    await runtime.revoke("managed-int");
+  } finally {
+    restoreRelayEnv(saved);
+  }
+});
+
+test("managed runtime without Window opt-in does not invent Desktop Session semantics", async () => {
+  const saved = saveRelayEnv();
+  try {
+    clearRelayEnv();
+    const runtime = new ManagedWindowHandoffRuntime({
+      takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 500 },
+      runtime: { hostExecutable: process.execPath },
+      managedFallback: { platform: "linux", linuxHostScript: process.execPath, displayName: ":99" }
+    });
+    runtime.start(request());
+    assert.equal(runtime.desktopSessionSnapshot(), undefined);
     await runtime.revoke("managed-int");
   } finally {
     restoreRelayEnv(saved);

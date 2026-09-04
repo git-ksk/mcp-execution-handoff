@@ -239,7 +239,7 @@ test("Window text media profile raises only the Window quality ceiling without c
   const runtime = source("src/browser-takeover/webrtc-runtime.ts");
   const acceptance = source("experiments/thin-takeover-runtime/scripts/macos-window-media-quality-acceptance.mts");
 
-  assert.match(adapter, /new WindowHandoffCore\(\{ \.\.\.config, mediaProfile: "window_text" \}\)/);
+  assert.match(adapter, /: new WindowHandoffCore\(\{[\s\S]*?mediaProfile: "window_text",[\s\S]*?onAuthorityReleased:/);
   assert.doesNotMatch(browser, /mediaProfile/);
   assert.match(core, /TAKEOVER_WEBRTC_MEDIA_PROFILE = mediaProfile/);
   assert.match(policy, /case standard/);
