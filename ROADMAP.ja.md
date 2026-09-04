@@ -6,9 +6,9 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.4.0
+## 現在のbaseline: v0.4.1
 
-`v0.4.0` が現在のGitHub/source-release baselineです。first-class Browser / bounded OS Window / bounded Terminal-PTYとv0.3 Recovery / Observability contractを維持し、reusableなmacOS exact-window WSS / LocalAuthentication、Human inputをreplayしないmanaged recoverable WSS、mobile Human-control parity、executable Target Surface × OS × transport / auth-UX conformance、consumer verification中のstale secure-frame fencingをbaselineへ昇格します。
+`v0.4.1` が現在のGitHub/source-release baselineです。v0.4.0のbounded WSS/component-maturity lineを維持し、既存Physical Window pathの内側にinternal Desktop Session / Display Backend boundaryを追加します。persistent application/sessionとphysical display continuityをviewer/transport generationから分離しますが、Desktop authority、public package surface、virtual/remote backend、Browser/Terminal semantics、physical dynamic resizeは追加せず、既存boundaryを維持します。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -29,7 +29,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、v0.4+ session / authority / transport / hosted work（#161 / #125 / #19 / #12に加え#183 / #184 / #211のbounded follow-up）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、後続のauthority / transport / hosted work（#125 / #19 / #12と#211などのbounded follow-up）へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 #94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。Desktop authorityは#125の別escalationとして扱い、hidden fallbackにはしません。
 
@@ -56,7 +56,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #185 | v0.4+ managed composition | **完了。** managed exact-window transport compositionをOS-neutral化し、consumerからLinux/macOS concrete WSS construction選択を除去。 |
 | #186 | v0.4+ WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
 | #211 | v0.4+ bounded secure-flow authority | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
-| #161 | v0.4.1 Desktop Session / Display Backend | **merge待ちで実装完了。** internalなWindow-only physical backend boundaryでpersistent session/display continuityとviewer/transport generationを分離。viewer scalingとphysical display resizeを別能力にし、後者はunsupported。Desktop authority / public subpath / virtual・remote backendは追加しない。 |
+| #161 | v0.4.1 Desktop Session / Display Backend | **完了 / v0.4.1 boundary。** internalなWindow-only physical backend boundaryでpersistent session/display continuityとviewer/transport generationを分離。viewer scalingとphysical display resizeを別能力にし、後者はunsupported。Desktop authority / public subpath / virtual・remote backendは追加しない。 |
 | #125 | v0.4+ Desktop authority | #124で安全に表現できないworkflow向けに、明示的Human-only Desktop Handoff escalationを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.4+ transport maturity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.4+ hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -102,11 +102,19 @@ upgrade/rollbackでstale locator/capability/generation/media/input authorityを�
 
 完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
 
+## v0.4.1 source release
+
+`v0.4.1` が現在の **GitHub source release** です。compatibleなv0.4.x architecture patchとして、#161で既存Physical Window pathをinternal Desktop Session / Display Backend boundaryへ載せ、application/session continuity、physical display attachment、Human viewer attachment generation、transport/client generationを分離します。viewer disconnect/reconnectでapplication/Desktop Sessionを破棄せず、viewer scalingはphysical display resizeではなく、stale generation / retargetingはfail closed、Human inputはreplayせず、disconnectはDoneを意味せず、semantic successは引き続きconsumer verificationが確定します。
+
+releaseはmilestone `v0.4.1 — Desktop Session Boundary` (#8) で追跡します。#220はWSS container acceptanceの全stepを維持したままjob timeoutだけを20分から40分へ延長します。Desktop authority、public package subpath、virtual/remote backend、Browser/Terminal semantic change、physical dynamic-resize supportは追加しません。npm publicationも別gateで、`private: true` を維持します。
+
+repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
+
 ## v0.4.0 source release
 
-`v0.4.0` が現在の **GitHub source release** です。v0.3 Recovery / Observability boundaryを維持し、post-v0.3のbounded transport/component workとしてmacOS exact-window WSS / LocalAuthentication WSS、Human inputをreplayしないmanaged recoverable WSS、mobile keyboard / Aim / scroll parity、executable Target Surface × OS × transport / auth-UX conformance、consumer verification中のstale secure-frame fencingをsource baselineへ昇格します。
+`v0.4.0` は以前の **GitHub source release** です。v0.3 Recovery / Observability boundaryを維持し、post-v0.3のbounded transport/component workとしてmacOS exact-window WSS / LocalAuthentication WSS、Human inputをreplayしないmanaged recoverable WSS、mobile keyboard / Aim / scroll parity、executable Target Surface × OS × transport / auth-UX conformance、consumer verification中のstale secure-frame fencingをsource baselineへ昇格しました。
 
-releaseはmilestone `v0.4.0 — Source Release` とIssue #213で追跡します。provider-neutral relay/connectivity (#19)、hosted topology (#12)、Desktop Session / Display Backend (#161)、explicit Desktop authority (#125)、bounded System Settings successor investigation (#211)は後続workであり、このreleaseのためにauthorityを広げたりsilent fallbackを追加しません。npm publicationも別gateで、`private: true` を維持します。
+releaseはmilestone `v0.4.0 — Source Release` とIssue #213で追跡されました。当時はprovider-neutral relay/connectivity (#19)、hosted topology (#12)、Desktop Session / Display Backend (#161)、explicit Desktop authority (#125)、bounded System Settings successor investigation (#211)を後続workとして残しており、#161はauthorityを広げずv0.4.1で完了しました。npm publicationは別gateのままで、`private: true` を維持します。
 
 repeatableなsource-release checklistとnpm publicationとの分離は [リリース手順](RELEASING.ja.md) を参照してください。
 
@@ -205,18 +213,18 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - capability / lease / origin / expiry / revocation / reconnect-handle rotation / client-generation fencingのtransport conformance test強化
 - #19でprovider-neutral connectivity/relay boundaryを仕上げ、ICE/TURN/provider選択をconsumerへ露出しない
 - #160でmanaged WSSのinteraction jankを計測・改善し、latest-frame backpressure / exact-window authority / privacy boundaryを維持した
-- #161でinternal Desktop Session / Display Backend boundaryを確立し、persistent application/session continuityとphysical display、Human viewer/transport generationを分離する。virtual/remote backend proofと#125 Desktop authorityは後続に残す
+- #161で完了したinternal Desktop Session / Display Backend boundaryを維持し、persistent application/session continuityとphysical display、Human viewer/transport generationを分離したままにする。virtual/remote backend proofと#125 Desktop authorityは後続に残す
 - #12でbounded durable stateとauthenticated outbound worker connectivityを持つhosted control-plane + stateful execution-worker topologyを定義する
 - #13のcloseout decisionを維持する。historical Thin Takeover / mandatory custom Native-client umbrellaはaccepted WebRTC pathと完了済みWSS evaluationにsupersedeされ、将来native-clientが必要なら新しいnarrowなevidence-based Issueとして起こす
 - #11のcloseout decisionを維持する。first-class bounded Windowと #94 secure UI / #124 successor-window lineage / #56 media qualityが旧full-desktop/provider-latency umbrellaをsupersedeする。#125で明示Desktop authorityを調査しても、desktop-wide controlはdefault Window boundary外のままにする
 - 追加のlow-latency push/latest-frame / native Human Takeover pathは、現在のWebRTC/WSS acceptanceでは得られない新しいevidenceがある場合だけ検証する
 
-### 現在のtracked work — 2026-09-03
+### 現在のtracked work — 2026-09-04
 
 このmilestoneはcatch-all parking lotではなく、責務を次のように分けます。
 
 - **Transport/component maturity:** #184 executable conformance/failure-injectionは完了。#183 LocalAuthentication WSS physical closeoutは完了し、support stepの#185/#186も完了済み。#19がprovider-neutral relay/connectivityを所有。
-- **Session/authority architecture:** #161はv0.4.1 internal Desktop Session / Display Backend boundaryとしてmerge待ちで実装完了。virtual/remote backend proofは後続です。broader #125 explicit Desktop authorityは引き続き後段、#211もimplicit Desktop fallbackにしません。
+- **Session/authority architecture:** #161は完了し、v0.4.1 internal Desktop Session / Display Backend boundaryへ昇格済みです。virtual/remote backend proofは後続です。broader #125 explicit Desktop authorityは引き続き後段、#211もimplicit Desktop fallbackにしません。
 - **Hosted topology:** #12がprovider-neutral control-plane + stateful execution-worker architectureとauthenticated outbound worker connectivityを所有。
 - **完了済みsupport evidence:** #152 managed WebSocket fallback、#160 WSS interaction-jank、#190 external lifecycle/transport design feedback reconciliation、#201 Terminal ordered-load responsiveness measurement。
 

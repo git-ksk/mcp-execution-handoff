@@ -6,7 +6,7 @@
 
 MCPで動く処理の途中でHumanによる手動操作が必要になったとき、Agentの実行を安全に止めて一時的にHumanへ権限を移し、明示的な検証とpolicy確認を通過した場合だけ処理を再開するための、小さなTypeScript runtimeです。
 
-**Status:** 再利用可能なupstreamとして検証済みです。`v0.4.0` が現在のGitHub/source release baselineで、v0.3 Recovery / Observability contractを維持しつつ、完了済みのbounded WSS/component-maturity line（macOS exact-window WSS / LocalAuthentication、managed WSS recovery、mobile Human-control parity、executable support/auth-UX conformance、stale secure-frame fencing）を含みます。`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npmには公開していません。
+**Status:** 再利用可能なupstreamとして検証済みです。`v0.4.1` が現在のGitHub/source release baselineで、v0.4.0のbounded WSS/component-maturity lineを維持しつつ、既存Physical Window pathの内側にDesktop Session / Display Backend boundaryを追加します。persistent session/display continuityとviewer/transport generationを分離しますが、Desktop authority、public package subpath、virtual/remote backend実装は追加せず、Browser/Terminal semanticsも変更しません。`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npmには公開していません。
 
 ## このプロジェクトが必要な理由
 
@@ -280,7 +280,7 @@ npm audit --audit-level=moderate
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.4.0` が現在の **GitHub/source release only** baselineです。first-class Browser / bounded OS Window / bounded Terminal-PTYとv0.3 Recovery / Observability contractを維持しつつ、reusableなmacOS exact-window WSS / LocalAuthentication WSS、Human inputをreplayしないmanaged recoverable WSS、mobile Aim / keyboard / scroll parity、executable Target Surface × OS × transport conformance、consumer verification中のstale secure-frame fencingをsource baselineへ昇格します。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.4.1` が現在の **GitHub/source release only** baselineです。first-class Browser / bounded OS Window / bounded Terminal-PTYとv0.4.0のbounded WSS/component-maturity workを維持し、既存Physical Window pathの内側にinternal Desktop Session / Display Backend boundaryを追加します。persistent application/session stateとphysical display continuityをHuman viewer/transport generationから分離し、viewer reconnectはapplication/session teardownを意味せず、viewer scalingとphysical display resizeを別能力として扱い、stale generation / retargetingはfail closed、physical backendのdynamic resizeはunsupportedのままです。Desktop authority、virtual/remote backend、public package subpath、Browser/Terminal semantic changeは追加しません。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
 
 ## License
 
