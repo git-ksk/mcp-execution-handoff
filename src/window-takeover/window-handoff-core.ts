@@ -163,7 +163,8 @@ export class WindowHandoffCore {
       request.intervention,
       request.principalBinding,
       request.target,
-      request.inputPolicy
+      request.inputPolicy,
+      this.#initialSecureWindowPolicy ? { terminalTargetBehavior: "verifying" } : undefined
     );
     if (!locator) throw new WindowHandoffCoreError("UNAVAILABLE", "bounded Window WebRTC Handoff is unavailable");
     const sessionId = takeoverSessionIdFromPath(new URL(locator).pathname);

@@ -205,6 +205,7 @@ export class SpawnedWebRtcRuntimeProvider {
                 hooks,
                 closing: false,
                 suspended: false,
+                wasConnected: false,
                 nextSequence: random16(),
                 lastIdrRequestAt: 0,
                 videoDrainActive: false,
@@ -428,6 +429,7 @@ export class SpawnedWebRtcRuntimeProvider {
                 this.recordDiagnostic({ stage: "server.peer.state", state });
             }
             if (state === "connected") {
+                runtime.wasConnected = true;
                 const keyframe = runtime.preconnectKeyframe;
                 delete runtime.preconnectKeyframe;
                 if (keyframe && runtime.sender) {
@@ -469,6 +471,9 @@ export class SpawnedWebRtcRuntimeProvider {
                 runtime.hostReady?.resolve();
             if (stage === "host.target.missing" || stage === "host.window.failure.none" || stage === "host.window.failure.multiple") {
                 runtime.hostReady?.reject();
+            }
+            if (stage === "host.target.missing" && runtime.wasConnected && !runtime.closing) {
+                void this.end(runtime.binding.takeoverSessionId, true, "target_missing");
             }
         });
         stdout.on("data", (chunk) => parser.push(chunk));
@@ -714,8 +719,15 @@ export class SpawnedWebRtcRuntimeProvider {
         clearTimeout(runtime.expiryTimer);
         // Fence broker authority before any OS cleanup or third-party TURN revocation can block.
         // Relay credential revocation is defense-in-depth after the exact client generation is stale.
-        if (notifyDisconnect)
+        const verificationPending = notifyDisconnect
+            && runtime.wasConnected
+            && runtime.hooks.terminal?.(cause) === true;
+        if (verificationPending && runtime.critical?.readyState === "open") {
+            runtime.critical.send(JSON.stringify({ kind: "state", state: "verifying" }));
+        }
+        else if (notifyDisconnect) {
             runtime.hooks.disconnected();
+        }
         try {
             runtime.critical?.close();
             await runtime.peer.close().catch(() => undefined);
@@ -1032,6 +1044,11 @@ class HostMetricParser {
                     capture_failure_other: "host.capture.failure.other"
                 };
                 this.onHostStage(stages[diagnostic[1]]);
+                continue;
+            }
+            const macTarget = /^MCP_HANDOFF_DIAGNOSTIC host_exit_reason=(target_unavailable)$/.exec(line);
+            if (macTarget) {
+                this.onHostStage("host.target.missing");
                 continue;
             }
             const macPointer = /^MCP_HANDOFF_DIAGNOSTIC input_stage=(activation_failed|primary_down_rejected|primary_down_sent|primary_up_rejected|primary_up_sent)$/.exec(line);
