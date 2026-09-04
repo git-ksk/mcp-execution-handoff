@@ -6,7 +6,49 @@ on:
 permissions:
   contents: read
 jobs:
+  changes:
+    name: classify-changes
+    runs-on: ubuntu-24.04
+    outputs:
+      runtime: ${{ steps.classify.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Classify Markdown-only change
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+            if [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              base="$(git rev-list --max-parents=0 "$head" | tail -n 1)"
+            fi
+          fi
+
+          runtime=false
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            case "$path" in
+              *.md) ;;
+              *) runtime=true; break ;;
+            esac
+          done < <(git diff --name-only "$base" "$head")
+
+          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          if [ "$runtime" = "true" ]; then
+            echo "Runtime-affecting or non-Markdown changes detected; run full CI."
+          else
+            echo "Markdown-only change detected; skip runtime/platform acceptance."
+          fi
+
   check:
+    needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -14,17 +56,28 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
+      # These matrix job names are required by the main-branch ruleset. Keep
+      # them present for Markdown-only PRs, but avoid npm/platform work.
+      - name: Markdown-only required-check fast path
+        if: needs.changes.outputs.runtime != 'true'
+        run: echo "Markdown-only change; runtime CI is not required."
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.runtime == 'true'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.runtime == 'true'
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --ignore-scripts
+        if: needs.changes.outputs.runtime == 'true'
       - run: npm audit --audit-level=moderate
+        if: needs.changes.outputs.runtime == 'true'
       - run: npm run check
+        if: needs.changes.outputs.runtime == 'true'
       - run: npm run build
+        if: needs.changes.outputs.runtime == 'true'
       - name: Upload generated dist for synchronization
-        if: matrix.node == 24
+        if: needs.changes.outputs.runtime == 'true' && matrix.node == 24
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-node24
@@ -32,13 +85,14 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Verify committed dist is current
-        if: matrix.node == 24
+        if: needs.changes.outputs.runtime == 'true' && matrix.node == 24
         run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
       - name: Verify clean consumer dist contract
-        if: matrix.node == 24
+        if: needs.changes.outputs.runtime == 'true' && matrix.node == 24
         run: npm run verify:consumer-dist
-
   macos-portability:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -54,6 +108,8 @@ jobs:
         run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
 
   windows-portability:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -72,6 +128,8 @@ jobs:
         run: node -e "const {execFileSync}=require('node:child_process'); const s=execFileSync('git',['status','--porcelain','--','dist'],{encoding:'utf8'}); if(s){process.stderr.write(s); process.exit(1)}"
 
   linux-normal-browser-webrtc:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -141,6 +199,8 @@ jobs:
           test "${{ steps.stable_chrome_2.outcome }}" = success
 
   websocket-cloud-run-container:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
