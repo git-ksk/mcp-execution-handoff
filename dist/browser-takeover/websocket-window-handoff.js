@@ -2,6 +2,7 @@ import { TakeoverBroker } from "../browser-takeover/broker.js";
 import { validWindowHandoffInputPolicy, validWindowHandoffTarget } from "../window-takeover/window-handoff-core.js";
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import { WebSocketLatencyTracker } from "./websocket-latency.js";
+import { WebSocketTakeoverRecoverableInputError } from "./websocket-takeover.js";
 const EDITABLE_REGIONS_REFRESH_MS = 500;
 export class ExperimentalWebSocketWindowHandoffError extends Error {
     code;
@@ -222,7 +223,7 @@ export class ExperimentalWebSocketWindowHandoff {
             this.#onDiagnosticEvent?.("input_dispatch_failure");
             if (disposition === "recoverable") {
                 this.#onDiagnosticEvent?.("session_retained");
-                return;
+                throw new WebSocketTakeoverRecoverableInputError();
             }
             this.revoke(state.interventionId);
             void Promise.resolve(this.#onAuthorityReleased?.({

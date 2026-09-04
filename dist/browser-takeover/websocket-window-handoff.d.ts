@@ -4,7 +4,7 @@ import { type TakeoverAuthorityReleaseEvent, type TakeoverBrokerConfig, type Tak
 import { ExperimentalWebSocketBrokerBinding } from "./websocket-broker-binding.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import { WebSocketLatencyTracker, type WebSocketLatencySnapshot } from "./websocket-latency.js";
-import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame, WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
+import { type WebSocketTakeoverEditableRegion, type WebSocketTakeoverFrame, type WebSocketTakeoverInputPolicy } from "./websocket-takeover.js";
 export type ExperimentalWebSocketWindowCaptureFailureDisposition = "recoverable" | "authority_lost";
 export type ExperimentalWebSocketWindowInputFailureDisposition = "recoverable" | "authority_lost";
 export interface ExperimentalWebSocketWindowSurface {
@@ -16,7 +16,7 @@ export interface ExperimentalWebSocketWindowSurface {
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
     captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
-    /** Unknown input failures default to authority_lost so generic surfaces remain fail closed. */
+    /** Recoverable input failures are never replayed automatically; the Human may retry manually. Unknown failures fail closed. */
     inputFailureDisposition?(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition;
     /** Content-free normalized editable rectangles, never text/value/DOM content. */
     editableRegionsSnapshot?(): WebSocketTakeoverEditableRegion[];

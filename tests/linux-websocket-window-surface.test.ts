@@ -70,6 +70,22 @@ test("Linux WSS physical surface reuses exact helper without transport or target
 });
 
 
+test("Linux WSS input failure classification preserves session only outside exact authority loss", () => {
+  const prototype = ExperimentalLinuxWebSocketWindowSurface.prototype;
+  assert.equal(
+    prototype.inputFailureDisposition(new Error("Linux WSS exact-window helper input acknowledgement timed out")),
+    "recoverable"
+  );
+  assert.equal(
+    prototype.inputFailureDisposition(new Error("Linux WSS target window ownership changed")),
+    "authority_lost"
+  );
+  assert.equal(
+    prototype.inputFailureDisposition(new Error("Linux WSS target window geometry is unavailable")),
+    "authority_lost"
+  );
+});
+
 test("Linux WSS capture restarts one failed helper for the same exact PID/window", { skip: process.platform === "win32" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "handoff-wss-recovery-"));
   const countFile = join(dir, "count");

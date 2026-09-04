@@ -11,6 +11,7 @@ export type WebSocketTakeoverInputStage =
   | "received"
   | "authority_begin_ready"
   | "dispatch_started"
+  | "dispatch_rejected"
   | "dispatch_completed"
   | "authority_end_ready"
   | "applied";
@@ -104,6 +105,13 @@ export type WebSocketTakeoverFailureCode =
   | "frame_too_large"
   | "transport_failure"
   | "authority_release_failed";
+
+export class WebSocketTakeoverRecoverableInputError extends Error {
+  constructor(message = "WebSocket takeover input was not applied") {
+    super(message);
+    this.name = "WebSocketTakeoverRecoverableInputError";
+  }
+}
 
 export class WebSocketTakeoverError extends Error {
   constructor(
@@ -565,6 +573,10 @@ export class ExperimentalWebSocketTakeoverChannel {
     }
 
     if (operationError !== undefined) {
+      if (operationError instanceof WebSocketTakeoverRecoverableInputError) {
+        this.lastInputStageValue = "dispatch_rejected";
+        throw operationError;
+      }
       await this.failClosed(
         new WebSocketTakeoverError("transport_failure", "WebSocket takeover operation failed")
       );

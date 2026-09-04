@@ -1,5 +1,5 @@
 import type { TakeoverHostTarget } from "../browser-takeover/broker.js";
-import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
+import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowInputFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
 import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diagnostics.js";
 import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
@@ -69,6 +69,7 @@ export declare class ExperimentalLinuxWebSocketWindowSurface implements Experime
     managedDiagnosticsSnapshot(): ManagedWindowWebSocketSurfaceDiagnostics;
     captureFailureDisposition(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     editableRegionsSnapshot(): WebSocketTakeoverEditableRegion[];
+    inputFailureDisposition(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition;
     captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;

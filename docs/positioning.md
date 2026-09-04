@@ -101,6 +101,22 @@ Systems such as RustDesk or Apache Guacamole primarily expose a device/session/d
 
 Browser platforms may own the browser runtime, session persistence, automation stack, and Human live-view/takeover plane as one integrated product. Handoff keeps browser/profile lifecycle and target-service authentication semantics consumer-owned. The optional Browser Handoff component supplies bounded Human control and session fencing, while fresh semantic verification remains outside the transport.
 
+#### Authentication / Human-control responsibility boundary
+
+| Responsibility | Handoff | Consumer / provider |
+| --- | --- | --- |
+| Agent ↔ Human authority, intervention/epoch/principal binding | Owns and fences it | Must not duplicate or bypass it |
+| Human transport lifecycle (`awaiting_human`, Human active, Done → verifying, revoke/expiry) | Owns generic lifecycle facts | Presents task-specific meaning without redefining authority |
+| Exact supported Target Surface and stale-generation fencing | Owns for supported rows in the component matrix | Selects an already-authorized candidate and application lifecycle |
+| Authentication destination / origin / step semantics | Does not infer generic login success | Validates the current destination/provider step under consumer policy |
+| Credentials, OTP/MFA values and secure-form processing | No generic credential broker in core | Uses a reviewed provider/Human-only surface when required |
+| Browser/profile/session persistence | Not Handoff continuity state | Consumer/provider responsibility |
+| Human `Done` | Fences mutable Human authority and begins verification handoff | Never treats Done itself as authentication or approval |
+| Post-Human semantic/account verification | Exposes only the handoff boundary | Owns fresh verification, including intended account/service state |
+| Consequential action approval / replay | Never inferred from Human completion | Consumer policy; stale action state must be revalidated |
+
+The checked support and failure-injection contract is [`component-support-matrix.md`](component-support-matrix.md). The synthetic auth-UX gate intentionally contains no real credentials or provider-specific page data: cancellation, expiry, transport loss, stale generation, still-at-login, failed verification, unknown post-navigation state, and verified success stay distinct. Secure-form credential brokering remains out of scope, and form-to-direct mode switching is explicitly unsupported unless a separate reviewed provider is introduced.
+
 ### Integrated agent sandbox / execution platforms
 
 Larger execution platforms may own the sandbox/VM/browser/desktop, agent runtime, Human interaction surface, and routing together. Handoff is deliberately smaller: it is intended to be embedded into an existing MCP consumer/runtime and preserve the consumer's process/profile/authorization ownership instead of becoming the execution platform itself.

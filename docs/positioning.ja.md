@@ -105,6 +105,22 @@ RustDeskやApache Guacamoleのようなsystemは、device / session / desktop自
 
 browser platformはbrowser runtime、session persistence、automation stack、Human live-view/takeover planeを1つのproductとして所有する場合があります。Handoffではbrowser/profile lifecycleとtarget-service authentication semanticsはconsumer責務のままです。optional Browser Handoff componentはbounded Human controlとsession fencingを提供しますが、fresh semantic verificationはtransport外に残します。
 
+#### 認証 / Human-control の責務境界
+
+| 責務 | Handoff | Consumer / provider |
+| --- | --- | --- |
+| Agent ↔ Human authority、intervention / epoch / principal binding | Handoffが所有しfenceする | 重複実装やbypassをしない |
+| Human transport lifecycle（`awaiting_human`、Human active、Done → verifying、revoke / expiry） | generic lifecycle factを所有 | task固有の意味を表示するがauthorityを再定義しない |
+| supported Target Surfaceのexact scopeとstale-generation fencing | component matrixでsupportedな範囲を所有 | authorized candidate選択とapplication lifecycleを所有 |
+| 認証destination / origin / step semantics | generic login successを推論しない | 現在のdestination/provider stepをconsumer policyで検証 |
+| credential、OTP/MFA値、secure-form処理 | coreにgeneric credential brokerを持たない | 必要ならreview済みprovider / Human-only surfaceを利用 |
+| browser/profile/session persistence | Handoff continuity stateにしない | consumer/provider責務 |
+| Human `Done` | mutable Human authorityをfenceしverification handoffへ進める | Done自体を認証成功/approvalにしない |
+| post-Human semantic/account verification | handoff boundaryのみ提供 | intended account/service stateを含むfresh verificationを所有 |
+| consequential action approval / replay | Human completionから推論しない | consumer policyで再検証する |
+
+checked support / failure-injection contractは [`component-support-matrix.md`](component-support-matrix.md) を正本とします。synthetic auth-UX gateはreal credentialやprovider固有page dataを使わず、cancel、expiry、transport loss、stale generation、still-at-login、verification failure、post-navigation unknown、verified successを別結果として固定します。secure-form credential brokeringはout of scope、form→direct mode switchは別途review済みproviderが導入されない限りexplicit unsupportedです。
+
 ### Integrated agent sandbox / execution platform
 
 より大きなexecution platformはsandbox / VM / browser / desktop、agent runtime、Human interaction surface、routingをまとめて所有できます。Handoffは意図的に小さく保ち、既存MCP consumer/runtimeへ組み込み、consumerのprocess/profile/authorization ownershipを維持します。execution platformそのものにはなりません。
