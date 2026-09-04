@@ -9,7 +9,7 @@
 1. **GitHub source release** — reviewedな`main` commitにversion tagを付け、GitHub Releaseを公開する。
 2. **npm publication** — 将来の別gate。packageは `private: true` のままで、source releaseを出しても `npm publish` を意味しません。
 
-**v0.3.0** が現在のGitHub/source-release baselineで、`v0.3 — Recovery & Observability`（#127〜#130）完了後、milestone `v0.3.0 — Source Release` とIssue #145で追跡します。non-blockingなv0.3.x maintenance（#141〜#144）は別扱いで、後続のrelay / hosted / desktop maturity（#19 / #12 / #125）もrelease blockerにはしません。
+**v0.4.0** が現在のGitHub/source-release baselineで、milestone `v0.4.0 — Source Release` とIssue #213で追跡します。v0.3 Recovery / Observability contractを維持しつつ、完了済みのbounded WSS/component-maturity line（macOS exact-window WSS / LocalAuthentication、managed recoverable WSS、mobile Human-control parity、executable support/auth-UX conformance、stale secure-frame fencing）をsource baselineへ昇格します。後続のrelay / hosted / desktop authority（#19 / #12 / #161 / #125）は別trackで、release blockerにはしません。
 
 ## Versioning policy
 
@@ -18,6 +18,10 @@ npm未公開の間もSemVerをcompatibility signalとして使います。
 - `0.1.x`: v0.1 public contractを維持するfix / docs更新。
 - `0.2.0`: v0.1.0以降にpublic surfaceが本質的に拡張したことを示すpre-1.0 minor。first-class Browser / Window / Terminal componentとpackage subpathを含む。
 - later `0.2.x`: public-contract milestoneを増やさずに行えるcompatible hardeningやbounded host/transport改善。
+- `0.3.0`: provider-neutral bounded checkpoint、privacy-bounded audit/operator diagnostics、crash/restart conformanceのRecovery / Observability boundary。
+- later `0.3.x`: v0.3 contractを維持するcompatible maintenance / durability hardening。
+- `0.4.0`: implicit Desktop authorityを追加せず、macOS exact-window WSS / LocalAuthentication、managed recoverable WSS、mobile Human-control parity、executable support/auth-UX conformance、lifecycle presentation hardeningをまとめるbounded transport/component-maturity boundary。
+- later `0.4.x`: v0.4のTarget Surface / authority boundaryを維持するcompatible hardening。
 - それ以降のpre-1.0 minor: public contractやdeployment semanticsが再び本質的に拡張する場合に使う。
 
 `v0.2` のようなroadmap familyには、`v0.2.0` 公開後に入るworkも含められます。v0.2方向のIssueだからといって、最初のv0.2 source releaseを自動的にblockするわけではありません。
@@ -46,7 +50,7 @@ final release PRは、blocker修正が必要な場合を除きrelease bookkeepin
 4. source-only releaseでは `private: true` を維持する。
 5. clean installから後述のrelease validationを全部通す。
 
-v0.3.0ではIssue #145をauthoritative checklistとして使います。historicalなv0.2.0はIssue #119でした。
+v0.4.0ではIssue #213をauthoritative checklistとして使います。historicalなv0.3.0はIssue #145、v0.2.0はIssue #119でした。
 
 ## Release validation
 

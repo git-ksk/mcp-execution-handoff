@@ -10,7 +10,7 @@ native helper delivery、Human-visible lifecycleが未成熟ならproduct-ready�
 
 ## 現在のproduct boundary
 
-現在は `private: true` の **GitHub/source release** がbaselineです。
+現在は `private: true` の **v0.4.0 GitHub/source release** がbaselineです。
 
 - committed `dist/` はsource-release JavaScript artifactとしてconsumer-readyです。CIはtracked package
   metadata + `dist/` だけをstageし、TypeScript source/build設定を含めずproduction dependencyだけを導入し、
@@ -105,8 +105,7 @@ connecting -> human_active -> verifying -> closed
 - disconnect/unavailableは`Done`でもAgent resumeでもない。
 - `closed`はHuman surfaceのterminal stateであり、consumer actionのapproval/successではない。
 
-#150はactiveなv0.3.x Product Readiness issueです。backend lifecycleが正しくてもstale decoded
-LocalAuthentication frameでold controlがactiveに見えるならproduct-quality defectとして扱います。
+#150は完了済みのv0.4.0 Product Readiness evidenceです。physical iPhoneのLocalAuthentication OK / Cancel runで、exact target消失時にHuman inputをfenceし、stale secure frameを消去し、non-interactiveなverifying stateへ移行し、consumer-owned verification後だけterminal successへ進むことを確認しました。backend lifecycleが正しくてもold controlをactiveに見せるpresentation defectはproduct-quality defectとして扱います。
 
 ## Diagnostics / resource / supply chain
 

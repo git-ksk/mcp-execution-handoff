@@ -4,7 +4,7 @@
 
 A small, security-oriented TypeScript runtime for pausing an MCP-driven execution flow when a human must take temporary control, then resuming only after explicit verification and policy checks.
 
-**Status:** validated reusable upstream. `v0.3.0` is the current GitHub/source release baseline; it adds the completed Recovery & Observability contract and post-v0.2 bounded hardening. `v0.1.0` was the first source release. The npm-package flag remains `private: true`; this project is not published to npm.
+**Status:** validated reusable upstream. `v0.4.0` is the current GitHub/source release baseline; it keeps the v0.3 Recovery & Observability contract and adds the completed bounded WSS/component-maturity line: macOS exact-window WSS including LocalAuthentication, managed WSS recovery, mobile Human-control parity, executable support/auth-UX conformance, and stale secure-frame fencing. `v0.1.0` was the first source release. The npm-package flag remains `private: true`; this project is not published to npm.
 
 ## Why this exists
 
@@ -278,7 +278,7 @@ The two-real-adapter extraction gate is now satisfied:
 - authority, epoch, ownership, checkpoint, takeover-lease, capability, CSP, and replay invariants remain covered by deterministic tests.
 - both consumers pin an immutable commit from this repository and pass clean-install CI.
 
-This repository is the upstream source of truth. `v0.3.0` is the current **GitHub/source release only** baseline. It retains the first-class Browser, bounded OS Window, and bounded Terminal/PTY components, adds provider-neutral bounded checkpoint storage, privacy-bounded audit/operator diagnostics v1, deterministic crash/restart conformance, and the completed post-v0.2 bounded Window/Linux/media hardening. For source-release JavaScript consumption, the committed `dist/` tree is consumer-ready: CI stages tracked package metadata + `dist/` without `src/`, installs production dependencies only, and smoke-imports the public entry points/consumer-required exports. npm publication is a separate decision and has not been performed; `private: true` remains in effect. Platform-native helper delivery remains documented separately from this JavaScript artifact contract. See [Release process](RELEASING.md).
+This repository is the upstream source of truth. `v0.4.0` is the current **GitHub/source release only** baseline. It retains the first-class Browser, bounded OS Window, and bounded Terminal/PTY components plus the v0.3 Recovery & Observability contract, and promotes the completed bounded WSS/component-maturity work: reusable macOS exact-window WSS and LocalAuthentication WSS, managed recoverable WSS behavior without Human-input replay, mobile Aim/keyboard/scroll parity, executable Target Surface × OS × transport conformance, and stale secure-frame fencing during consumer verification. For source-release JavaScript consumption, the committed `dist/` tree is consumer-ready: CI stages tracked package metadata + `dist/` without `src/`, installs production dependencies only, and smoke-imports the public entry points/consumer-required exports. npm publication is a separate decision and has not been performed; `private: true` remains in effect. Platform-native helper delivery remains documented separately from this JavaScript artifact contract. See [Release process](RELEASING.md).
 
 ## License
 
