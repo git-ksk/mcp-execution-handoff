@@ -11,7 +11,7 @@ Tracked by #151. Target Surface support claims remain governed by the
 
 ## Current product boundary
 
-The current baseline is the **v0.4.0 GitHub/source release** with `private: true`.
+The current baseline is the **v0.4.2 GitHub/source release** with `private: true`.
 
 - The committed JavaScript `dist/` tree is a supported source-release artifact boundary. CI stages
   only tracked package metadata + `dist/`, excludes TypeScript source/build configuration, installs

@@ -6,9 +6,9 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.4.1
+## 現在のbaseline: v0.4.2
 
-`v0.4.1` が現在のGitHub/source-release baselineです。v0.4.0のbounded WSS/component-maturity lineを維持し、既存Physical Window pathの内側にinternal Desktop Session / Display Backend boundaryを追加します。persistent application/sessionとphysical display continuityをviewer/transport generationから分離しますが、Desktop authority、public package surface、virtual/remote backend、Browser/Terminal semantics、physical dynamic resizeは追加せず、既存boundaryを維持します。
+`v0.4.2` が現在のGitHub/source-release baselineです。v0.4.1のDesktop Session / Display Backend boundaryを維持し、credential-safe external Human surfaceのexpiry (#226) を修正します。expired cached locatorはactiveとして返さず、fresh provider issuanceは明示的に行い、expiry cleanupでauthority復活やHuman input replayを起こしません。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -57,7 +57,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #186 | v0.4 WSS successor lineage | **完了。** physical iPhone Safariでbounded same-process successor rotation、stale-generation fencingを実証。 |
 | #211 | Authority Research — Bounded Secure Flow | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
 | #161 | v0.4.1 Desktop Session / Display Backend | **完了 / v0.4.1 boundary。** internalなWindow-only physical backend boundaryでpersistent session/display continuityとviewer/transport generationを分離。viewer scalingとphysical display resizeを別能力にし、後者はunsupported。Desktop authority / public subpath / virtual・remote backendは追加しない。 |
-| #226 | v0.4.2 maintenance | **OPEN / v0.4.2 candidate gate。** authority拡大やHuman-input replayなしでstale/expired credential-safe Human surface再利用を修正する。 |
+| #226 | v0.4.2 maintenance | **完了 / v0.4.2 gate。** expired credential-safe Human surfaceをfenceし、matching stale retryは明示fail、fresh issuanceは別の `begin()` を必須とし、Human input / authorityをreplay・復活させない。 |
 | #227 | Host Parity Backlog — Windows Browser | **OPEN / version未確定。** bounded Windows Browser Handoff parityの将来work。support claim前に専用Windows + mobile physical acceptanceを必須とする。 |
 | #228 | Host Parity Backlog — Linux successor lineage | **OPEN / version未確定。** Linux-native successor-window lineage parityの将来work。現行Linux exact-window supportはblockしない。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
@@ -105,9 +105,15 @@ upgrade/rollbackでstale locator/capability/generation/media/input authorityを�
 
 完了条件: documented security invariantを維持し、既存の2実consumerでgreenであること。
 
+## v0.4.2 source release
+
+`v0.4.2` が現在の **GitHub source release** です。#226だけをrelease-significant scopeとするboundedなv0.4.x maintenance patchです。credential-safe external Human surfaceのdeclared expiryをcached surfaceのhard cutoffとして扱い、stale locatorをactiveとして返さず、already-expired provider grantもrejectし、fresh provider issuanceには別の明示 `begin()` を要求します。stale providerへのbest-effort cleanupでHuman intervention完了、Agent authority復帰、Human input replay、target-service authentication attestationは行いません。
+
+releaseはmilestone `v0.4.2 — Maintenance` (#13) で追跡します。#227（Windows Browser Handoff parity）/ #228（Linux successor-window lineage parity）はversion未確定かつnon-blockingのままです。新しいTarget Surface、OS support claim、Desktop authority、transport provider claim、public package subpath、npm publicationは追加しません。
+
 ## v0.4.1 source release
 
-`v0.4.1` が現在の **GitHub source release** です。compatibleなv0.4.x architecture patchとして、#161で既存Physical Window pathをinternal Desktop Session / Display Backend boundaryへ載せ、application/session continuity、physical display attachment、Human viewer attachment generation、transport/client generationを分離します。viewer disconnect/reconnectでapplication/Desktop Sessionを破棄せず、viewer scalingはphysical display resizeではなく、stale generation / retargetingはfail closed、Human inputはreplayせず、disconnectはDoneを意味せず、semantic successは引き続きconsumer verificationが確定します。
+`v0.4.1` は1つ前の **GitHub source release** です。compatibleなv0.4.x architecture patchとして、#161で既存Physical Window pathをinternal Desktop Session / Display Backend boundaryへ載せ、application/session continuity、physical display attachment、Human viewer attachment generation、transport/client generationを分離します。viewer disconnect/reconnectでapplication/Desktop Sessionを破棄せず、viewer scalingはphysical display resizeではなく、stale generation / retargetingはfail closed、Human inputはreplayせず、disconnectはDoneを意味せず、semantic successは引き続きconsumer verificationが確定します。
 
 releaseはmilestone `v0.4.1 — Desktop Session Boundary` (#8) で追跡します。#220はWSS container acceptanceの全stepを維持したままjob timeoutだけを20分から40分へ延長します。Desktop authority、public package subpath、virtual/remote backend、Browser/Terminal semantic change、physical dynamic-resize supportは追加しません。npm publicationも別gateで、`private: true` を維持します。
 
@@ -204,17 +210,17 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-04時点で `v0.3.x — Maintenance & Durability` milestoneは0 open / 8 closedでclose済みです。旧 `v0.4+ — Transport & Hosted Maturity` catch-allもclose済みです。現在のOPEN 7件は、`v0.4.2 — Maintenance` (#226)、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、`Authority Research — Bounded Secure Flow` (#211)、`Authority Research — Desktop Escalation` (#125)、およびversion未確定のhost parity backlog #227（Windows Browser Handoff）/ #228（Linux successor-window lineage）へ明示的に分類します。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-04時点で `v0.3.x — Maintenance & Durability` milestoneは0 open / 8 closedでclose済みです。旧 `v0.4+ — Transport & Hosted Maturity` catch-allもclose済みです。現在のOPEN 6件は、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、`Authority Research — Bounded Secure Flow` (#211)、`Authority Research — Desktop Escalation` (#125)、およびversion未確定のhost parity backlog #227（Windows Browser Handoff）/ #228（Linux successor-window lineage）へ明示的に分類します。#226はv0.4.2 maintenance lineで完了済みです。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
 ## v0.4.2 — Maintenance
 
-`v0.4.2` は `v0.4.1` の次に置くbounded maintenance source-release candidateです。release-significant scopeは、Maps Browser MCPのdogfoodで見つかったcredential-safe external Human surface lifecycle bug #226だけに意図的に限定します。
+`v0.4.2` は `v0.4.1` の次に置く完了済みbounded maintenance source releaseです。release-significant scopeは、Maps Browser MCPのdogfoodで見つかったcredential-safe external Human surface lifecycle bug #226だけに意図的に限定します。
 
 目的は、expiredまたはprovider側でstaleになったcached Human surfaceをactiveとして再利用しないことです。authorityを広げず、transport roadmapも変更しません。
 
 scope:
 
-- #226 — 既存intervention / epoch / principal / generation contractのまま、expired credential-safe external surfaceをreject/reissueする;
+- #226 — **完了:** 既存intervention / epoch / principal / generation contractのままexpired credential-safe external surfaceをrejectし、fresh issuanceは別の明示callを要求する;
 - no-replay、stale-authority fencing、target/window authority loss時のfail-closed、content-free diagnosticsを維持する;
 - stale/expired provider surfaceに対するdeterministicなconsumer recovery behaviorを文書化する。
 
@@ -225,7 +231,7 @@ scope:
 
 完了条件:
 
-- #226のdeterministic expiry/staleness coverageがexact candidate revisionでgreen;
+- #226のdeterministic expiry/staleness coverageがexact release revisionでgreen;
 - expired cached locatorをactiveとして返さず、Human input/authorityをreplay・復活させない;
 - relevant consumer regression evidenceを紐づける;
 - `v0.4.2` で新しいTarget Surface、OS support、Desktop authority、transport provider claimを追加しない;
@@ -237,7 +243,7 @@ scope:
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` はboundedな `v0.4.2` maintenance candidateの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
+`v0.5.0` はboundedな `v0.4.2` maintenance releaseの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
 
 目的は、WebRTC discovery / relay connectivityを **Handoff-ownedかつprovider-neutralなdeployment boundary** として確立することです。consumer-facing Browser / Window lifecycleは変えず、Human-control authorityも広げません。
 
