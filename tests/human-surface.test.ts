@@ -32,7 +32,7 @@ function providerFixture(extra: Record<string, unknown> = {}) {
       return {
         sessionId: "external-session-1",
         locator: "https://remote.example.test/session/external-session-1",
-        expiresAt: 2_000,
+        expiresAt: 4_102_444_800_000,
         ...extra
       };
     },
@@ -87,6 +87,79 @@ test("credential-safe surface is principal and epoch bound and blocks concurrent
     () => runtime.assertInactive(),
     (error: unknown) => error instanceof ExternalHumanSurfaceError && error.code === "EXTERNAL_SURFACE_ACTIVE"
   );
+});
+
+
+test("expired cached credential-safe surface is fenced and requires explicit fresh begin", async () => {
+  const { state, intervention } = handoffFixture();
+  const human = state.claimHuman(intervention.id);
+  let now = 1_500;
+  let generation = 0;
+  const calls: string[] = [];
+  const provider: ExternalHumanSurfaceProvider = {
+    kind: "system-browser-remote",
+    async begin() {
+      generation += 1;
+      calls.push(`begin:${generation}`);
+      return {
+        sessionId: `external-session-${generation}`,
+        locator: `https://remote.example.test/session/external-session-${generation}`,
+        expiresAt: now + 500
+      };
+    },
+    async revoke(sessionId) {
+      calls.push(`revoke:${sessionId}`);
+      if (sessionId === "external-session-1") throw new Error("provider session already gone");
+    }
+  };
+  const runtime = new CredentialSafeHumanSurfaceRuntime(provider, () => now);
+
+  const first = await runtime.begin(human, "principal-a");
+  assert.equal(first.sessionId, "external-session-1");
+  assert.deepEqual(calls, ["begin:1"]);
+
+  now = first.expiresAt!;
+  assert.equal(runtime.getActive(), undefined);
+  runtime.assertInactive();
+  await assert.rejects(
+    runtime.begin(human, "principal-a"),
+    (error: unknown) => error instanceof ExternalHumanSurfaceError && error.code === "EXTERNAL_SURFACE_EXPIRED"
+  );
+  assert.deepEqual(calls, ["begin:1", "revoke:external-session-1"]);
+  assert.equal(runtime.getActive(), undefined);
+  assert.equal(state.getAuthority(), "human");
+
+  const fresh = await runtime.begin(human, "principal-a");
+  assert.equal(fresh.sessionId, "external-session-2");
+  assert.deepEqual(calls, ["begin:1", "revoke:external-session-1", "begin:2"]);
+});
+
+test("already-expired provider grant is rejected and revoked best-effort", async () => {
+  const { state, intervention } = handoffFixture();
+  const human = state.claimHuman(intervention.id);
+  const calls: string[] = [];
+  const provider: ExternalHumanSurfaceProvider = {
+    kind: "system-browser-remote",
+    async begin() {
+      calls.push("begin");
+      return {
+        sessionId: "expired-session",
+        locator: "https://remote.example.test/session/expired-session",
+        expiresAt: 2_000
+      };
+    },
+    async revoke(sessionId) {
+      calls.push(`revoke:${sessionId}`);
+    }
+  };
+  const runtime = new CredentialSafeHumanSurfaceRuntime(provider, () => 2_000);
+
+  await assert.rejects(
+    runtime.begin(human, "principal-a"),
+    (error: unknown) => error instanceof ExternalHumanSurfaceError && error.code === "EXTERNAL_SURFACE_EXPIRED"
+  );
+  assert.deepEqual(calls, ["begin", "revoke:expired-session"]);
+  assert.equal(runtime.getActive(), undefined);
 });
 
 test("external provider data is narrowed to bounded control-plane fields only", async () => {

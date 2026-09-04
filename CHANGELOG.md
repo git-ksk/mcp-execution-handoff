@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Fix credential-safe external Human-surface cache expiry (#226): expired cached locators are no longer returned as active, matching retries fail explicitly with `EXTERNAL_SURFACE_EXPIRED` and require a separate fresh `begin()`, already-expired provider grants are rejected, and best-effort cleanup never restores authority or replays Human input.
+
 ## [0.4.1] - 2026-09-04
 
 - Introduce the internal v0.4.1 Desktop Session / Display Backend boundary (#161) without adding Desktop authority or a public package surface: the Window facade keeps one physical display/session boundary while managed WebRTC/WSS viewer generations rotate, stale viewer generations and implicit retargeting fail closed, viewer fit/actual/adaptive transforms remain viewer-side, and physical dynamic display resize is explicitly unsupported. Browser/Terminal behavior, existing Target Surface authority, and consumer-owned semantic verification remain unchanged.

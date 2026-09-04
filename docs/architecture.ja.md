@@ -180,11 +180,13 @@ external Human surfaceはcontrol-plane adapterです。完全に外部のnormal 
 
 `HostedBrowserTakeoverProvider` は既存の `TakeoverBroker` と、汎用的な `ExternalHumanSurfaceProvider` contractを橋渡しする小さなproviderです。Handoff側にCDP、Chrome、Maps、target provider固有の概念は追加しません。frame/inputの実装もconsumer adapter側に残します。この方式を使えるのは、target serviceがhosted browserの形を許容し、実際のsign-in acceptanceを通している場合だけです。non-automated browserを要求するproviderの回避策として使ってはいけません。
 
-consumerはまず通常のhandoff lifecycleへ入り、Humanへ排他的なauthorityを渡します。その後にだけ `CredentialSafeHumanSurfaceRuntime.begin()` でexternal operator sessionを開始できます。このsessionはactive intervention id、resource epoch、principal bindingへ紐づきます。同時にactiveにできるsessionは1つだけで、同じbindingによるduplicate beginのみidempotentです。
+consumerはまず通常のhandoff lifecycleへ入り、Humanへ排他的なauthorityを渡します。その後にだけ `CredentialSafeHumanSurfaceRuntime.begin()` でexternal operator sessionを開始できます。このsessionはactive intervention id、resource epoch、principal bindingへ紐づきます。同時にactiveにできるsessionは1つだけで、同じbindingによるduplicate beginがidempotentなのは **cached surfaceがまだexpireしていない間だけ** です。
 
-providerから受け取って保持する情報は、provider kind、intervention id、epoch、principal binding、session id、operator locator、optional expiryに限定します。余分なprovider dataは保持しません。credential、cookie、token、screenshot、DOM/network data、provider固有のopaque metadataをcontinuity dataとして使ってはいけません。
+providerから受け取って保持する情報は、provider kind、intervention id、epoch、principal binding、session id、operator locator、optional expiryに限定します。`expiresAt` がある場合はUnix epoch millisecondsのabsolute timestampとして扱い、cached external surfaceのauthority / liveness cutoffになります。余分なprovider dataは保持しません。credential、cookie、token、screenshot、DOM/network data、provider固有のopaque metadataをcontinuity dataとして使ってはいけません。
 
-automationへ権限を戻す前に、consumerはexternal sessionをrevokeし、その方式に固有のexecution boundaryが閉じたことを確認します。normal-browser providerならbrowser終了と専用profile lockの解放、hosted browser providerならHuman側CDP authorityのdetachとfresh Agent connectionが必要です。その後、既存の `verifying -> ready_to_resume` lifecycleへ進めます。認証成功はfresh browser stateから再検証し、認証前の古いsemantic actionをそのまま再実行しません。
+expired cached surfaceは `getActive()` でもidempotent `begin()`でもactiveとして返しません。同じbindingの `begin()` がcached expiryを検出した場合、stale cacheをclearし、provider revokeはbest-effort cleanupとしてだけ試行し、明示的な `EXTERNAL_SURFACE_EXPIRED` を返します。同じcallの中でreplacement sessionを自動発行しません。consumerはstale locatorを破棄し、同じHuman interventionを継続すると判断した場合だけ、もう一度 `begin()` を明示的に呼んでfresh provider sessionを要求します。providerが最初からexpiredなgrantを返した場合もactive化せず、best-effort revokeしてrejectします。これらのexpiry pathはHuman intervention完了、Agent authority復帰、Human input replay、target-service authenticationのattestationを行いません。
+
+automationへ権限を戻す前に、consumerはexternal sessionをrevokeするか、declared expiryによってcached surfaceがすでにinactiveになったことを確認し、その方式に固有のexecution boundaryが閉じたことを確認します。normal-browser providerならbrowser終了と専用profile lockの解放、hosted browser providerならHuman側CDP authorityのdetachとfresh Agent connectionが必要です。その後、既存の `verifying -> ready_to_resume` lifecycleへ進めます。認証成功はfresh browser stateから再検証し、認証前の古いsemantic actionをそのまま再実行しません。
 
 ### MCP principalとtarget-service identityの分離
 
