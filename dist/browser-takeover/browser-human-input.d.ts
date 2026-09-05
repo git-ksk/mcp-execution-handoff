@@ -9,6 +9,18 @@ export interface BrowserTextReplacementDelta {
     readonly backspaces: number;
     readonly insert: string;
 }
+export type BrowserImeCompositionPhase = "idle" | "composing" | "settling";
+export type BrowserImeCompositionEvent = "composition_start" | "composition_end" | "settled";
+/** Keep Safari/iOS IME confirmation events inside one explicit composition lifecycle. */
+export declare function browserImeNextCompositionPhase(phase: BrowserImeCompositionPhase, event: BrowserImeCompositionEvent): BrowserImeCompositionPhase;
+/**
+ * Safari can report the key that confirms an IME candidate after compositionend with
+ * `isComposing === false`. Treat the settling phase and legacy IME keyCode 229 as
+ * composition-controlled so that confirmation is never forwarded as a remote Enter.
+ */
+export declare function browserImeKeyboardEventIsCompositionControlled(phase: BrowserImeCompositionPhase, eventIsComposing: boolean, keyCode: number): boolean;
+/** Input/beforeinput stays local until the finalized composition can be committed once. */
+export declare function browserImeInputEventIsCompositionControlled(phase: BrowserImeCompositionPhase, eventIsComposing: boolean): boolean;
 export declare function browserTextReplacementDelta(previous: string, current: string): BrowserTextReplacementDelta;
 /** Convert touch/pointer drag motion to wheel semantics on either axis. */
 export declare function browserScrollDelta(pointerDelta: number, scale?: number): number;

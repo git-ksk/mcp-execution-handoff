@@ -831,7 +831,7 @@ export class ManagedWindowHandoffRuntime {
     const helperMarker = "const touchEventsAvailable=('ontouchstart' in window)||(Number(navigator.maxTouchPoints)||0)>0;";
     const failedMarker = "status(finalStatus);failureInProgress=false}";
     const firstFrameMarker = "if(!fired){fired=true;clearFirstFrameTimer();recoveryReconnectUsed=false;";
-    const initialMarker = "resetKeyboardBuffer();resetViewTransform();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});";
+    const initialMarker = "resetKeyboardSession();resetViewTransform();armKeyboardFallback();void connect('claim').catch(function(){closePeer();if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});";
     if (
       !script.includes(helperMarker)
       || !script.includes(failedMarker)
@@ -851,7 +851,7 @@ export class ManagedWindowHandoffRuntime {
     );
     script = script.replace(
       initialMarker,
-      "resetKeyboardBuffer();resetViewTransform();armKeyboardFallback();armManagedReadyTimeout();void connect('claim').catch(async function(){closePeer();if(await managedTransportFallback())return;if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});"
+      "resetKeyboardSession();resetViewTransform();armKeyboardFallback();armManagedReadyTimeout();void connect('claim').catch(async function(){closePeer();if(await managedTransportFallback())return;if(relayState==='unavailable')status('Secure relay unavailable');else status('Session unavailable or connection failed');stopped=true});"
     );
     return cloneResponse(response, script);
   }

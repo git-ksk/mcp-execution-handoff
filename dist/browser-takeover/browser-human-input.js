@@ -1,3 +1,23 @@
+/** Keep Safari/iOS IME confirmation events inside one explicit composition lifecycle. */
+export function browserImeNextCompositionPhase(phase, event) {
+    if (event === "composition_start")
+        return "composing";
+    if (event === "composition_end")
+        return "settling";
+    return phase === "settling" ? "idle" : phase;
+}
+/**
+ * Safari can report the key that confirms an IME candidate after compositionend with
+ * `isComposing === false`. Treat the settling phase and legacy IME keyCode 229 as
+ * composition-controlled so that confirmation is never forwarded as a remote Enter.
+ */
+export function browserImeKeyboardEventIsCompositionControlled(phase, eventIsComposing, keyCode) {
+    return phase !== "idle" || eventIsComposing || keyCode === 229;
+}
+/** Input/beforeinput stays local until the finalized composition can be committed once. */
+export function browserImeInputEventIsCompositionControlled(phase, eventIsComposing) {
+    return phase !== "idle" || eventIsComposing;
+}
 export function browserTextReplacementDelta(previous, current) {
     const before = Array.from(previous);
     const after = Array.from(current);
@@ -34,6 +54,9 @@ export function browserMobileKeyboardAfterRemoteTap(state) {
 /** Emit the pure Browser Human Input helpers shared by WSS and WebRTC browser clients. */
 export function browserHumanInputClientSource() {
     return [
+        `const browserImeNextCompositionPhase=${browserImeNextCompositionPhase.toString()};`,
+        `const browserImeKeyboardEventIsCompositionControlled=${browserImeKeyboardEventIsCompositionControlled.toString()};`,
+        `const browserImeInputEventIsCompositionControlled=${browserImeInputEventIsCompositionControlled.toString()};`,
         `const browserTextReplacementDelta=${browserTextReplacementDelta.toString()};`,
         `const browserScrollDelta=${browserScrollDelta.toString()};`,
         `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`,
