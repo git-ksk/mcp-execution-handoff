@@ -182,6 +182,9 @@ export class ExperimentalWebSocketTakeoverChannel {
     drainTimer;
     sentFramesValue = 0;
     droppedFramesValue = 0;
+    backpressureEventsValue = 0;
+    currentBufferedBytesValue = 0;
+    maxBufferedBytesObservedValue = 0;
     lastFailureValue;
     lastInputStageValue = "none";
     lastFrameSentAt;
@@ -206,6 +209,9 @@ export class ExperimentalWebSocketTakeoverChannel {
             state: this.stateValue,
             sentFrames: this.sentFramesValue,
             droppedFrames: this.droppedFramesValue,
+            backpressureEvents: this.backpressureEventsValue,
+            currentBufferedBytes: this.currentBufferedBytesValue,
+            maxBufferedBytesObserved: this.maxBufferedBytesObservedValue,
             ...(this.lastFailureValue ? { lastFailure: this.lastFailureValue } : {}),
             lastInputStage: this.lastInputStageValue
         };
@@ -508,7 +514,13 @@ export class ExperimentalWebSocketTakeoverChannel {
         if (!boundedNumber(amount, 0, Number.MAX_SAFE_INTEGER)) {
             throw new WebSocketTakeoverError("transport_failure", "WebSocket buffered amount is invalid");
         }
-        return amount > this.maxBufferedBytes;
+        const boundedAmount = Math.min(amount, ABSOLUTE_MAX_BUFFERED_BYTES);
+        this.currentBufferedBytesValue = boundedAmount;
+        this.maxBufferedBytesObservedValue = Math.max(this.maxBufferedBytesObservedValue, boundedAmount);
+        const backpressured = amount > this.maxBufferedBytes;
+        if (backpressured)
+            this.backpressureEventsValue += 1;
+        return backpressured;
     }
     clearDrainTimer() {
         if (!this.drainTimer)

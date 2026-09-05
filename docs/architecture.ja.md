@@ -232,6 +232,9 @@ broker自身はtakeover可能なsurfaceを広げません。consumer browser ada
 
 ## Window handoff
 
+
+Window WSSのhealthy-path frame pumpはdefault 50 ms（約20 fps）です。captureはsingle-flightのままで、authenticated active clientがいない時はcaptureせず、send/backpressure時もWebSocket channelは最新pending frameを最大1枚だけ保持します。content-freeなactive diagnosticsではsent/drop frame数、backpressure観測回数、current/max buffered byte数だけをboundedに公開し、frame byte、target identity、Human input、capability、principalは保持しません。deployment制約がある場合は50〜2000 msの範囲でより遅いintervalを明示設定できます。
+
 **Desktop Session / Display Backend境界（#161 / v0.4.1）。** Window facadeにinternalなphysical-display session boundaryを追加し、persistent application/display continuityとHuman viewer/transport generationを分離します。managed WebRTC/WSS fallbackでrotateするのはviewer generationだけで、同じphysical display boundaryを維持します。viewer scalingとbackend display resizeは別能力で、physical backendは `dynamic_display_resize: false` です。Desktop Target Surface / authorityや新しいpackage surfaceは追加しません。詳細は [Desktop Session / Display Backend境界](desktop-session-display-backend.ja.md) を参照してください。
 
 `WindowHandoffAdapter` はnon-browserのbounded window向けfirst-class componentです。BrowserとWindowは、exact process/window binding、short-lived locator/session lifecycle、direct-first ICE + optional TURN fallback、reconnect/client-generation fencing、revoke、privacy-bounded transport diagnosticsという最小のinternal bounded-window WebRTC/session coreだけを共有します。browser profile / authentication policyはBrowser facadeに残し、Window componentへ漏らしません。

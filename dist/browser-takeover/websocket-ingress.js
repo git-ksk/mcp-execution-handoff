@@ -185,6 +185,9 @@ export class ExperimentalWebSocketTakeoverIngress {
         channelState: "none",
         sentFrames: 0,
         droppedFrames: 0,
+        backpressureEvents: 0,
+        currentBufferedBytes: 0,
+        maxBufferedBytesObserved: 0,
         lastFailure: "none",
         lastInputStage: "none",
         failureDisconnectKind: "none",
@@ -324,7 +327,22 @@ export class ExperimentalWebSocketTakeoverIngress {
     }
     /** @internal Content-free WebSocket transport diagnostics for managed physical acceptance. */
     diagnosticsSnapshot() {
-        return { ...this.#lastDiagnostics };
+        const active = [...this.#active.values()].at(-1);
+        if (!active || active.channel.state !== "open")
+            return { ...this.#lastDiagnostics };
+        const channel = active.channel.diagnostics;
+        return {
+            ...this.#lastDiagnostics,
+            disconnectKind: "none",
+            channelState: channel.state,
+            sentFrames: Math.min(channel.sentFrames, 1_000_000),
+            droppedFrames: Math.min(channel.droppedFrames, 1_000_000),
+            backpressureEvents: Math.min(channel.backpressureEvents, 1_000_000),
+            currentBufferedBytes: Math.min(channel.currentBufferedBytes, 4 * 1024 * 1024),
+            maxBufferedBytesObserved: Math.min(channel.maxBufferedBytesObserved, 4 * 1024 * 1024),
+            lastFailure: channel.lastFailure ?? "none",
+            lastInputStage: channel.lastInputStage
+        };
     }
     async pushFrame(sessionId, frame) {
         const active = this.#active.get(sessionId);
@@ -397,6 +415,9 @@ export class ExperimentalWebSocketTakeoverIngress {
             channelState: channel.state,
             sentFrames: Math.min(channel.sentFrames, 1_000_000),
             droppedFrames: Math.min(channel.droppedFrames, 1_000_000),
+            backpressureEvents: Math.min(channel.backpressureEvents, 1_000_000),
+            currentBufferedBytes: Math.min(channel.currentBufferedBytes, 4 * 1024 * 1024),
+            maxBufferedBytesObserved: Math.min(channel.maxBufferedBytesObserved, 4 * 1024 * 1024),
             lastFailure: channel.lastFailure ?? "none",
             lastInputStage: channel.lastInputStage,
             failureDisconnectKind: captureFailure

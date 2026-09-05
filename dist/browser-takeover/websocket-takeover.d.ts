@@ -112,6 +112,9 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private drainTimer;
     private sentFramesValue;
     private droppedFramesValue;
+    private backpressureEventsValue;
+    private currentBufferedBytesValue;
+    private maxBufferedBytesObservedValue;
     private lastFailureValue?;
     private lastInputStageValue;
     private lastFrameSentAt;
@@ -121,6 +124,9 @@ export declare class ExperimentalWebSocketTakeoverChannel {
         state: WebSocketTakeoverState;
         sentFrames: number;
         droppedFrames: number;
+        backpressureEvents: number;
+        currentBufferedBytes: number;
+        maxBufferedBytesObserved: number;
         lastFailure?: WebSocketTakeoverFailureCode;
         lastInputStage: WebSocketTakeoverInputStage;
     }>;
