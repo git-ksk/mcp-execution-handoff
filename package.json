@@ -1,6 +1,6 @@
 {
   "name": "mcp-execution-handoff",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "description": "Security-oriented execution handoff primitives for MCP workflows that require explicit human intervention.",
   "type": "module",

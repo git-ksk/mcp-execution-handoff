@@ -6,9 +6,9 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.4.3
+## 現在のbaseline: v0.4.4
 
-`v0.4.3` が現在のGitHub/source-release baselineです。v0.4.2のcredential-safe expiry boundaryを維持したまま、短期のPublic WSS Reliability lineを完了しました。authorized bodyless HEAD probeを維持し (#235)、committed `dist` を使うpublic managed-WSS lifecycle E2E gateを追加し (#240)、physical iPhone Safariの純正キーボードでSafari-owned composition stateを壊さないIME/text semanticsを復旧しています (#232)。Simejiなどthird-party iOS keyboardのreplacement streamは #244 で別途追跡します。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
+`v0.4.4` が現在のGitHub/source-release baselineです。v0.4.3のpublic-WSS correctness boundaryを維持しつつ、Immediate Hardeningを完了しました。deterministic immutable consumer refresh/staging (#237)、first-valid-frame startupの分離計測とpresentation改善 (#233)、bounded backpressure diagnosticsを伴うhealthy-path 50 ms WSS frame pump (#234)、純正キーボードとSimejiのphysical acceptanceを含むthird-party iOS keyboard replacement-stream互換 (#244)、cadence acceptance中に見つかったstatic-window reconnect blocker (#250) を完了しています。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -61,10 +61,11 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #232 | v0.4.3 public WSS reliability | **完了 / v0.4.3。** physical iPhone Safari managed-WSSの純正キーボードで日本語IME replacement、通常文字、Backspace、Enter 1回=改行1回、scroll、DoneまでHuman textをlogせずacceptance済み。 |
 | #235 | v0.4.3 public WSS reliability | **完了 / v0.4.3へcarry。** bodyless authorized `HEAD` takeover probeを維持し、managed client patchingをGET-onlyのままにする。 |
 | #240 | v0.4.3 public WSS reliability | **完了 / v0.4.3 gate。** public HTTPS gateway probe、GET、bootstrap、WSS upgrade、first frame、benign input、Done、stale fencingをcommitted consumer-ready `dist` で一体検証済み。 |
-| #233 | v0.4.4 Immediate Hardening | **OPEN / v0.4.4。** physical iPhone Safari WSS takeoverのfirst-valid-frame遅延を切り分けてstartup presentationを改善する。 |
-| #234 | v0.4.4 Immediate Hardening | **OPEN / v0.4.4。** latest-frame-wins/backpressure境界を維持しながらsteady-state iPhone Safari WSS frame cadenceを計測・改善する。 |
-| #237 | v0.4.4 Immediate Hardening | **OPEN / v0.4.4 operational contract。** source pin consumerがrepo固有の手作業なしでimmutable Handoff revisionをrefresh/stageできるdeterministic mechanismを追加する。deploy/trafficはconsumer-ownedのまま。 |
-| #244 | v0.4.4 Immediate Hardening | **OPEN / v0.4.4。** Simeji等third-party iOS keyboardのreplacement streamを明示対応し、acceptance済み純正キーボードcomposition pathを退行させない。 |
+| #233 | v0.4.4 Immediate Hardening | **完了 / v0.4.4。** startupをtransport ready、host first-valid-frame、Safari decode/presentationへ分離計測し、最初のvalidated macOS JPEGを再利用。physical iPhone startup acceptance済み。 |
+| #234 | v0.4.4 Immediate Hardening | **完了 / v0.4.4。** healthy-path defaultを50 ms pumpへ改善し、single-flight/latest-frame-winsを維持。physical iPhone acceptance runではdropped frame 0 / backpressure 0。 |
+| #237 | v0.4.4 Immediate Hardening | **完了 / v0.4.4 operational contract。** source-checkout / npm-archive consumerをdeterministicにrefresh/stageし、pin/lock不一致はfail closed、失敗時rollback、native-helper rebuild signalを提供。deploy/trafficはconsumer-ownedのまま。 |
+| #244 | v0.4.4 Immediate Hardening | **完了 / v0.4.4。** shared WebRTC/WSS Browser input normalizationでthird-party `insertText` replacementを扱い、`keyCode=229`単独では正しさを推定しない。純正キーボード＋Simejiをphysical acceptance済み。 |
+| #250 | v0.4.4 reconnect blocker | **完了 / v0.4.4。** fresh WSS generationではauthority-bound helperのlatest exact-window frameを即時再利用し、旧generationのnext-frame waitをcancel。静止画面でもcontent change待ちせずreconnect復帰する。 |
 | #227 | Host Parity Backlog — Windows Browser | **OPEN / version未確定。** bounded Windows Browser Handoff parityの将来work。support claim前に専用Windows + mobile physical acceptanceを必須とする。 |
 | #228 | Host Parity Backlog — Linux successor lineage | **OPEN / version未確定。** Linux-native successor-window lineage parityの将来work。現行Linux exact-window supportはblockしない。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
@@ -84,7 +85,7 @@ Linux deploymentはpin済みOS/runtime dependency baselineと対応するexact-w
 binaryを配布する場合はsigning/notarizationまたはdistro/ABI/provenance/rollbackをproduct-ready claim前のgateにします。
 
 upgrade/rollbackでstale locator/capability/generation/media/input authorityを復元しません。durable recoveryは
-`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。#237を次の優先operational Product Readiness itemとして、immutable consumer refresh/stagingをdeterministicに標準化しますが、deploy、readiness、traffic switch、credential、consumer semanticsはHandoffへ移しません。Human-visible lifecycle品質も
+`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。#237は完了し、immutable consumer refresh/stagingをdeterministicに標準化しました。deploy、readiness、traffic switch、credential、consumer semanticsはHandoffへ移していません。次のplanned release workは #19 のprovider-neutral connectivity boundaryです。Human-visible lifecycle品質も
 このtrackに含め、#150は完了済みです。physical OK / Cancel evidenceでexact target消失時にstale LocalAuthentication presentationを消去し、semantic successはconsumer-ownedのまま維持することを確認しました。
 
 詳細は [Product Readiness / consumer compatibility](docs/product-readiness.ja.md) を参照してください。
@@ -217,7 +218,7 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-05時点で `v0.3.x — Maintenance & Durability`、`v0.4.2 — Maintenance`、`v0.4.3 — Public WSS Reliability` は完了済みです。OPEN 10件は明示分類済みで、`v0.4.4 — Immediate Hardening` のrelease 4件 (#233/#234/#237/#244)、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228) です。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-05時点で `v0.3.x — Maintenance & Durability`、`v0.4.2 — Maintenance`、`v0.4.3 — Public WSS Reliability`、`v0.4.4 — Immediate Hardening` のrelease lineは完了済みです。OPENは6件で、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228) に明示分類済みです。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
 ## v0.4.2 — Maintenance
 
@@ -266,16 +267,17 @@ release結果として #235 / #240 / #232 はすべて完了しました。physi
 
 ## v0.4.4 — Immediate Hardening
 
-`v0.4.4` は `v0.4.3` の次、`v0.5.0` の前に置くbounded hardening source-release lineです。milestone `v0.4.4 — Immediate Hardening` が明示4件を所有し、upgrade運用、WSS startup/steady-state品質、third-party iOS keyboard互換を改善します。Target Surface、authority、transport provider、npm publicationのscopeは広げません。
+`v0.4.4` は `v0.4.3` の次、`v0.5.0` の前に置く完了済みbounded hardening source-release lineです。milestone `v0.4.4 — Immediate Hardening` はplanned 4件に加え、physical cadence acceptance中に見つかったreconnect correctness blocker 1件も完了しました。upgrade運用、WSS startup/steady-state品質、third-party iOS keyboard互換を改善しつつ、Target Surface、authority、transport provider、npm publicationのscopeは広げていません。
 
-優先scope:
+release結果:
 
-1. #237 — immutable Handoff upgrade向けdeterministic consumer refresh/staging contract。現状はsource patchごとに各consumerでpin / lock / policy refreshを手作業で繰り返すため運用上の優先度が高い。consumer rebuild、candidate deploy、readiness、traffic switchはconsumer-ownedを維持する。
-2. #233 — physical iPhone Safari WSS takeoverのfirst-valid-frame/startup latencyとinitialization presentation。transportとcapture startupを分離計測してから最適化する。
-3. #234 — startup後のsteady-state WSS frame cadence。capture/encode、WSS/backpressure、Safari decodeを分離し、bounded latest-frame-winsを維持する。
-4. #244 — Simejiで観測したthird-party iOS keyboardのreplacement stream互換。純正キーボードのcomposition pathとは異なる `keyCode=229` / `insertText` / delete系列を明示coverageし、今回のsystem-keyboard fixを崩さず対応する。
+1. #237 — **完了:** deterministic consumer refresh/stagingでdeclared immutable source/package identityを更新し、stale/mismatched pinはfail closed、lock refresh失敗はrollback、native-helper rebuildを明示signal。Maps Browser MCPのnpm-archive型とCUMGのsource-checkout型で実consumer staging evidenceを取得し、deploy/trafficはconsumer-ownedを維持。
+2. #233 — **完了:** first-valid-frame startupをconnect→ready、host capture、Safari ready→first `img.onload`へcontent-freeに分離計測し、最初のvalidated macOS JPEGを捨てず初回frameへ再利用。physical iPhone Safari startup acceptance済み。
+3. #234 — **完了:** Window WSS healthy pathをdefault 50 ms pumpへ改善し、single-flight/latest-frame-winsとbounded active backpressure diagnosticsを維持。physical iPhone acceptanceではdropped frame 0 / backpressure event 0。
+4. #244 — **完了:** shared WebRTC/WSS Browser input normalizationでthird-party ordinary `insertText` replacement streamを扱い、`keyCode=229`をcorrectness根拠にしない。physical iPhone Safariで純正日本語キーボードとSimejiを同一verified runでacceptance済み。
+5. #250 — **完了 blocker:** reconnectで旧generationのpending next-frame waitをcancelし、latest still-authoritative exact-window frameをfresh generationへ即時再利用。静止画面でもcontent mutationを待たず表示復帰する。
 
-実装順はdeterministic consumer refresh contractの #237 を先頭にし、その後 #233/#234 でWSS startup/steady-state品質、最後に #244 でbounded keyboard compatibilityをcloseします。#233と#234で共有できるcontent-free計測基盤は同時にlandして構いません。releaseは `private: true` のsource-onlyを維持します。
+releaseは `private: true` のsource-onlyを維持し、npm publication、consumer deploy/readiness/traffic switchは別decisionのままです。
 
 ## Host Parity Backlog — version未確定
 
