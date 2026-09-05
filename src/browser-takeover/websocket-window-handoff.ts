@@ -430,7 +430,8 @@ function unavailableHttpSurface(): TakeoverBrowserAdapter {
 }
 
 function boundedFrameInterval(value: number | undefined): number {
-  const resolved = value ?? 75;
+  // ~20 fps healthy-path default; capture remains single-flight and channel backpressure stays latest-only.
+  const resolved = value ?? 50;
   if (!Number.isInteger(resolved) || resolved < 50 || resolved > 2_000) {
     throw new Error("Window WSS frame interval must be an integer between 50ms and 2000ms");
   }

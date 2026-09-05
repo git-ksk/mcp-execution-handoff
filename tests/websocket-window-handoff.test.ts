@@ -79,7 +79,6 @@ function fixture(options: {
     },
     allowedOrigins: [ORIGIN],
     surface,
-    frameIntervalMs: 50,
     onDiagnosticEvent(kind) { diagnosticEvents.push(kind); },
     onComplete(event) {
       completed.push(event);

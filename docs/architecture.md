@@ -221,6 +221,9 @@ The broker cannot widen the set of surfaces eligible for takeover. The consumer 
 
 ## Window handoff
 
+
+Window WSS uses a 50 ms (~20 fps) healthy-path pump by default. Capture remains single-flight, no capture runs without an authenticated active client, and the WebSocket channel still keeps at most one newest pending frame under send/backpressure. Content-free active diagnostics expose bounded sent/dropped frame counts, backpressure observations, and current/maximum buffered byte counts; they contain no frame bytes, target identity, Human input, capability, or principal data. Consumers may still configure a slower 50–2000 ms interval when deployment constraints require it.
+
 **Desktop Session / Display Backend boundary (#161, v0.4.1).** The Window facade now has an internal physical-display session boundary that separates persistent application/display continuity from Human viewer/transport generations. Managed WebRTC/WSS fallback rotates only the viewer generation while the same physical display boundary stays active; viewer scaling is separate from backend display resize, and the physical backend advertises `dynamic_display_resize: false`. This adds no Desktop Target Surface or authority and is not exported as a new package surface. See [Desktop Session / Display Backend boundary](desktop-session-display-backend.md).
 
 `WindowHandoffAdapter` is the first-class non-browser bounded-window component. Browser and Window share the smallest internal bounded-window WebRTC/session core: exact process/window binding, short-lived locator/session lifecycle, direct-first ICE with optional TURN fallback, reconnect/client-generation fencing, revoke, and privacy-bounded transport diagnostics. Browser profile/authentication policy remains in the Browser facade rather than leaking into the Window component.

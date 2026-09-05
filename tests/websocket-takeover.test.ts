@@ -329,6 +329,9 @@ test("WebSocket slow-client stress keeps one latest pending frame across a long 
   assert.deepEqual(h.frames, []);
   assert.equal(h.channel.diagnostics.sentFrames, 0);
   assert.equal(h.channel.diagnostics.droppedFrames, backlogFrames - 1);
+  assert.ok(h.channel.diagnostics.backpressureEvents >= backlogFrames);
+  assert.equal(h.channel.diagnostics.currentBufferedBytes, 99);
+  assert.equal(h.channel.diagnostics.maxBufferedBytesObserved, 99);
   assert.equal(h.channel.state, "open");
 
   h.setBuffered(0);

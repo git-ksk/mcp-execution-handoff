@@ -267,6 +267,9 @@ test("WSS clean disconnect reconnects with a fresh server-derived generation", a
       channelState: "closed",
       sentFrames: 0,
       droppedFrames: 0,
+      backpressureEvents: 0,
+      currentBufferedBytes: 0,
+      maxBufferedBytesObserved: 0,
       lastFailure: "none",
       lastInputStage: "none",
       failureDisconnectKind: "none",
@@ -419,6 +422,13 @@ test("WSS ingress carries bounded binary frame envelopes without identifiers", a
     assert.deepEqual([...bytes.subarray(16)], [1, 2, 3]);
     assert.equal(bytes.includes(Buffer.from(PRINCIPAL)), false);
     assert.equal(bytes.includes(Buffer.from(locator.id)), false);
+    const activeDiagnostics = ingress.diagnosticsSnapshot();
+    assert.equal(activeDiagnostics.channelState, "open");
+    assert.equal(activeDiagnostics.sentFrames, 1);
+    assert.equal(activeDiagnostics.droppedFrames, 0);
+    assert.equal(activeDiagnostics.backpressureEvents, 0);
+    assert.equal(activeDiagnostics.currentBufferedBytes, 0);
+    assert.equal(activeDiagnostics.maxBufferedBytesObserved, 0);
     socket.close();
     await onceClose(socket);
   } finally {

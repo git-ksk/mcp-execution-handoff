@@ -53,6 +53,9 @@ export interface ExperimentalWebSocketIngressDiagnostics {
     channelState: WebSocketTakeoverState | "none";
     sentFrames: number;
     droppedFrames: number;
+    backpressureEvents: number;
+    currentBufferedBytes: number;
+    maxBufferedBytesObserved: number;
     lastFailure: WebSocketTakeoverFailureCode | "none";
     lastInputStage: WebSocketTakeoverInputStage;
     failureDisconnectKind: ExperimentalWebSocketIngressDisconnectKind;
