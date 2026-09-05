@@ -594,7 +594,6 @@ export class ManagedWindowHandoffRuntime {
       : await current.core.handle(request, boundPrincipal);
     if (
       request.method !== "GET"
-      && request.method !== "HEAD"
       || pathname !== `/takeover/${sessionId}`
       || response.status !== 200
       || session.completed

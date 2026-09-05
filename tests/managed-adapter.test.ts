@@ -92,6 +92,10 @@ test("managed transport policy supports explicit WSS-only without constructing W
     target: { processId: 4242, windowId: 7331 },
     inputPolicy: ALL_INPUT
   });
+  const head = await adapter.handle(new Request(locator, { method: "HEAD" }), PRINCIPAL);
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+
   const page = await adapter.handle(new Request(locator), PRINCIPAL);
   assert.equal(page.status, 200);
   const html = await page.text();
