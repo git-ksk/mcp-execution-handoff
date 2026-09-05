@@ -3,6 +3,7 @@ import type { ManagedOperatorDiagnosticEventKind } from "./managed-operator-diag
 import type { ManagedWindowWebSocketSurfaceDiagnostics } from "./websocket-window-surface-diagnostics.js";
 import type { ExperimentalWebSocketWindowCaptureFailureDisposition, ExperimentalWebSocketWindowInputFailureDisposition, ExperimentalWebSocketWindowSurface } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 export interface MacOSWebSocketWindowSurfaceConfig {
     /** Absolute built `takeover-webrtc-host` path. The helper is local-only; WSS is owned by Node. */
     hostExecutable: string;
@@ -18,6 +19,8 @@ export interface MacOSWebSocketWindowSurfaceConfig {
     };
     /** Content-free bounded event hook owned by Handoff diagnostics. */
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+    /** Shared content-free WSS latency tracker; never stores frame bytes or target identity. */
+    latencyTracker?: WebSocketLatencyTracker;
 }
 export type MacOSWebSocketSurfaceFailure = "none" | "frame_timeout" | "helper_closed" | "helper_error" | "frame_protocol" | "diagnostics_bounds" | "input_failure" | "input_timeout" | "input_rejected" | "authority_lost";
 export type MacOSWebSocketInputStage = "none" | "requested" | "command_sent" | "applied" | "rejected";

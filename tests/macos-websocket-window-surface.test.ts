@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { MacOSWebSocketWindowSurface } from "../src/browser-takeover/macos-websocket-window-surface.js";
 import { WindowWebSocketHandoffAdapter } from "../src/window-takeover/window-websocket-handoff-adapter.js";
+import { WebSocketLatencyTracker } from "../src/browser-takeover/websocket-latency.js";
 
 const macOSExecutionTest = process.platform === "darwin" ? test : test.skip;
 
@@ -24,11 +25,20 @@ function fakeHost(authorityLoss = false, helperExit = false) {
 
 macOSExecutionTest("macOS WSS exact-window surface is JPEG-only without ICE STUN or TURN", async () => {
   const host = fakeHost();
-  const surface = new MacOSWebSocketWindowSurface({ hostExecutable: host.executable, helperTtlMs: 30_000 });
+  const latencyTracker = new WebSocketLatencyTracker();
+  const surface = new MacOSWebSocketWindowSurface({
+    hostExecutable: host.executable,
+    helperTtlMs: 30_000,
+    latencyTracker
+  });
   try {
     const target = { processId: process.pid, windowId: 7331 };
     const frame = await surface.captureExactWindow(target);
     assert.equal(frame.mimeType, "image/jpeg");
+    const startupLatency = latencyTracker.snapshot();
+    assert.equal(startupLatency.capturePrepare.count, 1);
+    assert.equal(startupLatency.captureFrameWait.count, 1);
+    assert.equal(startupLatency.captureFrameWait.p50Ms, 0, "first valid helper JPEG must be reused instead of waiting for a second frame");
     assert.equal(frame.width, 640);
     assert.equal(frame.height, 480);
     await surface.tapExactWindow(target, 0.25, 0.75);

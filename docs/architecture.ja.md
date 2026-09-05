@@ -224,6 +224,8 @@ touch対応SafariではTouch Eventsをgestureの基準とし、touch Pointer Eve
 
 限定されたWindow WSSでは、exact target authorityが有効なままの場合に限り、OS surfaceがhelper/ack failureを **recoverable** と分類できます。この失敗でも現在のbound input useは必ず終了し、`dispatch_rejected` とcontent-freeな `input_dispatch_failure` / `session_retained` diagnosticsを記録したうえでWSS generationだけを維持します。失敗したHuman inputをHandoffが自動replayすることはなく、retryには新しいHuman gestureが必要です。target/process消失、visibility/ownership/geometry loss、stale generation、未分類failureは従来どおりfail closedでsessionをrevokeします。
 
+WSSのfirst-frame startupはcontent/identityを保持せず計測します。browser clockでは初回connect→`ready`、`ready`→最初の`img.onload`、frame受信→decode、connect→first frame全体を分離します。macOS exact-window surfaceではhost clockでhelper prepareとnext-frame waitを計測し、新規helper起動時にすでにexact targetとして検証済みの最初のJPEGを捨てず初回captureへ再利用します。したがって`ready`はtransport/authority readinessでありpixel表示完了を意味しません。Human pageは最初のvalid frame loadが終わるまで `Human authority active · preparing view…` を表示します。計測はbounded distributionだけで、frame byte、target/process/window identity、principal、URL、Human inputは保持しません。
+
 broker自身はtakeover可能なsurfaceを広げません。consumer browser adapterが自身のallowlistと現在のepochに基づいて各操作を検証します。
 
 ## Window handoff

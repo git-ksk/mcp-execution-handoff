@@ -695,7 +695,7 @@ export class ManagedWindowHandoffRuntime {
         const disconnectHookMarker = "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;if(browserWssCloseIsReconnectable(event.code)){scheduleReconnect();return}stopped=true;resetViewTransform();setStatus('Connection closed')}";
         const initialFailureHookMarker = "function onInitialWebSocketConnectFailure(){scheduleReconnect()}";
         const errorMarker = "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}";
-        const readyMarker = "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();";
+        const readyMarker = "if(message.kind==='ready'){ready=true;noteFirstReady();flushFirstFrameLatency();";
         const frameLoadedMarker = "lastFrameLoadedAt=loadedAt;if(currentUrl)";
         const initialMarker = "controls();resetViewTransform();window.addEventListener('orientationchange',scheduleOrientationReset);void connect().catch(()=>onInitialWebSocketConnectFailure())";
         if (!html.includes(appMarker)
@@ -710,7 +710,7 @@ export class ManagedWindowHandoffRuntime {
         }
         html = html.replace(appMarker, `<main id="app" data-fallback="${session.fallbackCapability}" `);
         html = html.replace(helperMarker, `${helperMarker}${managedWebSocketFallbackHelper()}`);
-        html = html.replace(readyMarker, "if(message.kind==='ready'){ready=true;flushFirstFrameLatency();managedWebSocketReady();");
+        html = html.replace(readyMarker, "if(message.kind==='ready'){ready=true;noteFirstReady();flushFirstFrameLatency();managedWebSocketReady();");
         html = html.replace(frameLoadedMarker, "lastFrameLoadedAt=loadedAt;managedWebSocketFrameLoaded(loadedAt);if(currentUrl)");
         html = html.replace(disconnectHookMarker, "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;resetViewTransform();void managedWebSocketDisconnected(ws,event)}");
         html = html.replace(initialFailureHookMarker, "function onInitialWebSocketConnectFailure(){if(!stopped&&!terminalPending)void managedTransportFallback()}");

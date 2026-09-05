@@ -25,6 +25,7 @@ export class MacOSWebSocketWindowSurface {
     #secureWindow;
     #successorTransitionWindowMs;
     #onDiagnosticEvent;
+    #latencyTracker;
     #active;
     #transition;
     #lastFailure = "none";
@@ -64,6 +65,7 @@ export class MacOSWebSocketWindowSurface {
         this.#secureWindow = config.initialSecureWindowPolicy?.mode === "macos_local_authentication";
         this.#successorTransitionWindowMs = successorTransitionWindowMs;
         this.#onDiagnosticEvent = config.onDiagnosticEvent;
+        this.#latencyTracker = config.latencyTracker;
     }
     diagnosticsSnapshot() {
         return {
@@ -117,10 +119,24 @@ export class MacOSWebSocketWindowSurface {
         return this.#editableRegions.map((region) => [...region]);
     }
     async captureExactWindow(target) {
+        const previous = this.#active;
+        const prepareStartedAt = performance.now();
         const active = await this.#ensure(target);
-        const before = active.sequence;
+        this.#latencyTracker?.record("capture_prepare", performance.now() - prepareStartedAt);
         try {
-            const frame = await this.#frameAfter(active, before);
+            let frame;
+            if (active !== previous && active.latest && active.sequence > 0) {
+                // #ensure/#replace already waited for one exact-target JPEG. Reuse that first valid frame
+                // instead of discarding it and waiting for a second helper frame during startup.
+                frame = active.latest;
+                this.#latencyTracker?.record("capture_frame_wait", 0);
+            }
+            else {
+                const before = active.sequence;
+                const frameWaitStartedAt = performance.now();
+                frame = await this.#frameAfter(active, before);
+                this.#latencyTracker?.record("capture_frame_wait", performance.now() - frameWaitStartedAt);
+            }
             return {
                 data: Buffer.from(frame.data),
                 width: frame.width,

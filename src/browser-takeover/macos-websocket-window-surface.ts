@@ -11,6 +11,7 @@ import type {
   ExperimentalWebSocketWindowSurface
 } from "./websocket-window-handoff.js";
 import type { WebSocketTakeoverEditableRegion, WebSocketTakeoverFrame } from "./websocket-takeover.js";
+import type { WebSocketLatencyTracker } from "./websocket-latency.js";
 import {
   WebSocketWindowHostRecordParser,
   type WebSocketWindowJpegFrame
@@ -31,6 +32,8 @@ export interface MacOSWebSocketWindowSurfaceConfig {
   successorWindowPolicy?: { mode: "same_process"; transitionWindowMs?: number };
   /** Content-free bounded event hook owned by Handoff diagnostics. */
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
+  /** Shared content-free WSS latency tracker; never stores frame bytes or target identity. */
+  latencyTracker?: WebSocketLatencyTracker;
 }
 
 export type MacOSWebSocketSurfaceFailure =
@@ -95,6 +98,7 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
   readonly #secureWindow: boolean;
   readonly #successorTransitionWindowMs: number | undefined;
   readonly #onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined;
+  readonly #latencyTracker: WebSocketLatencyTracker | undefined;
   #active: ActiveMacOSSurface | undefined;
   #transition: Promise<void> | undefined;
   #lastFailure: MacOSWebSocketSurfaceFailure = "none";
@@ -141,6 +145,7 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
     this.#secureWindow = config.initialSecureWindowPolicy?.mode === "macos_local_authentication";
     this.#successorTransitionWindowMs = successorTransitionWindowMs;
     this.#onDiagnosticEvent = config.onDiagnosticEvent;
+    this.#latencyTracker = config.latencyTracker;
   }
 
   diagnosticsSnapshot(): {
@@ -207,10 +212,23 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
   }
 
   async captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame> {
+    const previous = this.#active;
+    const prepareStartedAt = performance.now();
     const active = await this.#ensure(target);
-    const before = active.sequence;
+    this.#latencyTracker?.record("capture_prepare", performance.now() - prepareStartedAt);
     try {
-      const frame = await this.#frameAfter(active, before);
+      let frame: WebSocketWindowJpegFrame;
+      if (active !== previous && active.latest && active.sequence > 0) {
+        // #ensure/#replace already waited for one exact-target JPEG. Reuse that first valid frame
+        // instead of discarding it and waiting for a second helper frame during startup.
+        frame = active.latest;
+        this.#latencyTracker?.record("capture_frame_wait", 0);
+      } else {
+        const before = active.sequence;
+        const frameWaitStartedAt = performance.now();
+        frame = await this.#frameAfter(active, before);
+        this.#latencyTracker?.record("capture_frame_wait", performance.now() - frameWaitStartedAt);
+      }
       return {
         data: Buffer.from(frame.data),
         width: frame.width,

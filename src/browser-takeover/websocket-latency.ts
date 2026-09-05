@@ -8,6 +8,8 @@ export type WebSocketLatencyMetric =
   | "client_frame_decode"
   | "client_frame_cadence"
   | "client_first_frame"
+  | "client_first_ready"
+  | "client_ready_to_first_frame"
   | "client_reconnect_frame"
   | "client_reconnect_ready"
   | "input_apply"
@@ -38,7 +40,9 @@ export interface WebSocketLatencyDistribution {
  *
  * `clientFrameDecode` is browser receive-to-`img.onload`, not compositor latency.
  * `clientFrameCadence` is spacing between those browser load completions. `clientFirstFrame` is
- * initial client connect start-to-first-`img.onload`; `clientReconnectFrame` is managed WSS
+ * initial client connect start-to-first-`img.onload`; `clientFirstReady` is initial connect start to
+ * fresh WSS `ready`; `clientReadyToFirstFrame` is that `ready` to first `img.onload`. Together they
+ * separate transport/control-plane readiness from post-ready capture/decode startup. `clientReconnectFrame` is managed WSS
  * disconnect detection-to-first post-reconnect `img.onload`; `clientReconnectReady` is managed
  * WSS disconnect detection-to-fresh-generation `ready`. All client metrics use only the
  * browser clock and none are cross-clock capture-to-display or compositor measurements.
@@ -54,6 +58,8 @@ export interface WebSocketLatencySnapshot {
   clientFrameDecode: WebSocketLatencyDistribution;
   clientFrameCadence: WebSocketLatencyDistribution;
   clientFirstFrame: WebSocketLatencyDistribution;
+  clientFirstReady: WebSocketLatencyDistribution;
+  clientReadyToFirstFrame: WebSocketLatencyDistribution;
   clientReconnectFrame: WebSocketLatencyDistribution;
   clientReconnectReady: WebSocketLatencyDistribution;
   inputApply: WebSocketLatencyDistribution;
@@ -78,6 +84,8 @@ const METRICS = [
   "client_frame_decode",
   "client_frame_cadence",
   "client_first_frame",
+  "client_first_ready",
+  "client_ready_to_first_frame",
   "client_reconnect_frame",
   "client_reconnect_ready",
   "input_apply",
@@ -114,6 +122,8 @@ export class WebSocketLatencyTracker {
     const clientFrameDecode = distribution(this.#samples.get("client_frame_decode")!);
     const clientFrameCadence = distribution(this.#samples.get("client_frame_cadence")!);
     const clientFirstFrame = distribution(this.#samples.get("client_first_frame")!);
+    const clientFirstReady = distribution(this.#samples.get("client_first_ready")!);
+    const clientReadyToFirstFrame = distribution(this.#samples.get("client_ready_to_first_frame")!);
     const clientReconnectFrame = distribution(this.#samples.get("client_reconnect_frame")!);
     const clientReconnectReady = distribution(this.#samples.get("client_reconnect_ready")!);
     const inputApply = distribution(this.#samples.get("input_apply")!);
@@ -133,6 +143,8 @@ export class WebSocketLatencyTracker {
         + clientFrameDecode.count
         + clientFrameCadence.count
         + clientFirstFrame.count
+        + clientFirstReady.count
+        + clientReadyToFirstFrame.count
         + clientReconnectFrame.count
         + clientReconnectReady.count
         + inputApply.count
@@ -151,6 +163,8 @@ export class WebSocketLatencyTracker {
       clientFrameDecode,
       clientFrameCadence,
       clientFirstFrame,
+      clientFirstReady,
+      clientReadyToFirstFrame,
       clientReconnectFrame,
       clientReconnectReady,
       inputApply,
@@ -170,10 +184,12 @@ export function emptyWebSocketLatencySnapshot(): WebSocketLatencySnapshot {
 
 export function isWebSocketClientLatencyMetric(
   value: unknown
-): value is "client_frame_decode" | "client_frame_cadence" | "client_first_frame" | "client_reconnect_frame" | "client_reconnect_ready" {
+): value is "client_frame_decode" | "client_frame_cadence" | "client_first_frame" | "client_first_ready" | "client_ready_to_first_frame" | "client_reconnect_frame" | "client_reconnect_ready" {
   return value === "client_frame_decode"
     || value === "client_frame_cadence"
     || value === "client_first_frame"
+    || value === "client_first_ready"
+    || value === "client_ready_to_first_frame"
     || value === "client_reconnect_frame"
     || value === "client_reconnect_ready";
 }

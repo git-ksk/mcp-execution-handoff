@@ -19,9 +19,10 @@ import {
 import type { ManagedOperatorDiagnosticEventKind } from "../browser-takeover/managed-operator-diagnostics.js";
 import type { WebSocketTakeoverInputPolicy } from "../browser-takeover/websocket-takeover.js";
 import type { ExperimentalWebSocketWindowSurface } from "../browser-takeover/websocket-window-handoff.js";
+import { WebSocketLatencyTracker, type WebSocketLatencySnapshot } from "../browser-takeover/websocket-latency.js";
 
 export interface MacOSWindowWebSocketHostConfig
-  extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent" | "successorWindowPolicy"> {
+  extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent" | "successorWindowPolicy" | "latencyTracker"> {
   platform: "macos";
 }
 
@@ -70,12 +71,14 @@ export class WindowWebSocketHandoffAdapter {
   readonly #surface: ExperimentalWebSocketWindowSurface;
   readonly #handoff: WebSocketBrowserHandoff;
   readonly #secureLocalAuthentication: boolean;
+  readonly #latencyTracker = new WebSocketLatencyTracker();
 
   constructor(config: WindowWebSocketHandoffAdapterConfig) {
     this.#surface = makeSurface(
       config.host,
       config.successorWindowPolicy,
-      config.onOperatorDiagnosticEvent
+      config.onOperatorDiagnosticEvent,
+      this.#latencyTracker
     );
     this.#secureLocalAuthentication = config.host.platform === "macos"
       && config.host.initialSecureWindowPolicy?.mode === "macos_local_authentication";
@@ -88,7 +91,8 @@ export class WindowWebSocketHandoffAdapter {
       ...(config.onOperatorDiagnosticEvent
         ? { onDiagnosticEvent: config.onOperatorDiagnosticEvent }
         : {}),
-      ...(config.onComplete ? { onComplete: config.onComplete } : {})
+      ...(config.onComplete ? { onComplete: config.onComplete } : {}),
+      latencyTracker: this.#latencyTracker
     });
   }
 
@@ -127,13 +131,19 @@ export class WindowWebSocketHandoffAdapter {
     return this.#handoff.diagnosticsSnapshot();
   }
 
+  /** @internal Content-free startup/cadence latency evidence for WSS-only physical acceptance. */
+  latencySnapshot(): WebSocketLatencySnapshot {
+    return this.#handoff.latencySnapshot();
+  }
+
   async close(): Promise<void> { await this.#surface.close?.(); }
 }
 
 function makeSurface(
   host: WindowWebSocketHostConfig,
   successorWindowPolicy: { mode: "same_process"; transitionWindowMs?: number } | undefined,
-  onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined
+  onDiagnosticEvent: ((kind: ManagedOperatorDiagnosticEventKind) => void) | undefined,
+  latencyTracker: WebSocketLatencyTracker
 ): ExperimentalWebSocketWindowSurface {
   if (host.platform === "macos") {
     return new MacOSWebSocketWindowSurface({
@@ -143,7 +153,8 @@ function makeSurface(
         ? { initialSecureWindowPolicy: host.initialSecureWindowPolicy }
         : {}),
       ...(successorWindowPolicy ? { successorWindowPolicy } : {}),
-      ...(onDiagnosticEvent ? { onDiagnosticEvent } : {})
+      ...(onDiagnosticEvent ? { onDiagnosticEvent } : {}),
+      latencyTracker
     });
   }
   if (successorWindowPolicy) {
@@ -157,7 +168,8 @@ function makeSurface(
       ? {}
       : { authorityHelperExecutable: host.authorityHelperExecutable }),
     ...(host.helperTtlMs === undefined ? {} : { helperTtlMs: host.helperTtlMs }),
-    ...(onDiagnosticEvent ? { onDiagnosticEvent } : {})
+    ...(onDiagnosticEvent ? { onDiagnosticEvent } : {}),
+    latencyTracker
   });
 }
 

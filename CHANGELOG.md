@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Improve physical iPhone Safari WSS first-frame startup observability and presentation (#233): split browser startup into connect-to-`ready` and `ready`-to-first-`img.onload` content-free latency metrics, expose macOS helper prepare/frame-wait timing through the existing bounded tracker, show `Human authority active · preparing view…` until a valid remote frame is actually decoded, and reuse the first exact-target JPEG already produced while starting the macOS helper instead of discarding it and waiting for a second frame. Exact-window authority, transport ordering, Human-input semantics, and steady-state frame cadence remain unchanged.
+
 - Add a deterministic consumer refresh/staging contract (#237): exact Handoff Git revisions can be projected into a reproducible source-artifact manifest and applied through a consumer-declared config for immutable GitHub-archive or exact source-checkout consumers. The CLI fails closed on stale/mismatched lock or pin-policy state, rolls back touched files on apply failure, marks native-helper source changes as rebuild-required with exact Git tree identities, and never deploys, switches traffic, mutates a running service, or requires npm publication.
 
 ## [0.4.3] - 2026-09-05
