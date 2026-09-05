@@ -49,7 +49,8 @@ test("WSS latency tracker is bounded, rounded and contains distributions only", 
   assert.equal(snapshot.samples, 128);
   assert.deepEqual(Object.keys(snapshot).sort(), [
     "capture", "captureFrameWait", "capturePrepare", "captureRevalidate", "clientFirstFrame",
-    "clientFrameCadence", "clientFrameDecode", "clientReconnectFrame", "clientReconnectReady", "completionFence",
+    "clientFirstReady", "clientFrameCadence", "clientFrameDecode", "clientReadyToFirstFrame",
+    "clientReconnectFrame", "clientReconnectReady", "completionFence",
     "frameCadence", "frameSend", "inputApply",
     "inputHostAck", "inputPrepare", "inputQueueWait",
     "inputRevalidate", "revokeFence", "samples"
@@ -77,6 +78,8 @@ test("WSS channel records server stages plus validated browser frame diagnostics
   await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_frame_decode", valueMs: 3.26 }));
   await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_frame_cadence", valueMs: 76.14 }));
   await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_first_frame", valueMs: 118.26 }));
+  await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_first_ready", valueMs: 42.14 }));
+  await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_ready_to_first_frame", valueMs: 76.12 }));
   await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_reconnect_frame", valueMs: 742.34 }));
   await channel.receiveText(JSON.stringify({ kind: "latency", metric: "client_reconnect_ready", valueMs: 611.26 }));
   await channel.receiveText(JSON.stringify({ kind: "tap", x: 0.5, y: 0.5 }));
@@ -87,6 +90,8 @@ test("WSS channel records server stages plus validated browser frame diagnostics
   assert.equal(snapshot.clientFrameDecode.count, 1);
   assert.equal(snapshot.clientFrameCadence.count, 1);
   assert.equal(snapshot.clientFirstFrame.count, 1);
+  assert.equal(snapshot.clientFirstReady.count, 1);
+  assert.equal(snapshot.clientReadyToFirstFrame.count, 1);
   assert.equal(snapshot.clientReconnectFrame.count, 1);
   assert.equal(snapshot.clientReconnectReady.count, 1);
   assert.equal(snapshot.inputApply.count, 1);
@@ -94,6 +99,8 @@ test("WSS channel records server stages plus validated browser frame diagnostics
   assert.equal(snapshot.clientFrameDecode.p50Ms, 3.3);
   assert.equal(snapshot.clientFrameCadence.p50Ms, 76.1);
   assert.equal(snapshot.clientFirstFrame.p50Ms, 118.3);
+  assert.equal(snapshot.clientFirstReady.p50Ms, 42.1);
+  assert.equal(snapshot.clientReadyToFirstFrame.p50Ms, 76.1);
   assert.equal(snapshot.clientReconnectFrame.p50Ms, 742.3);
   assert.equal(snapshot.clientReconnectReady.p50Ms, 611.3);
 });

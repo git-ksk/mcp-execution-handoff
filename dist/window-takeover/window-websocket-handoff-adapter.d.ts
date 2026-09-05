@@ -6,7 +6,8 @@ import { ExperimentalWebSocketBrowserHandoff as WebSocketBrowserHandoff } from "
 import { type MacOSWebSocketWindowSurfaceConfig } from "../browser-takeover/macos-websocket-window-surface.js";
 import type { ManagedOperatorDiagnosticEventKind } from "../browser-takeover/managed-operator-diagnostics.js";
 import type { WebSocketTakeoverInputPolicy } from "../browser-takeover/websocket-takeover.js";
-export interface MacOSWindowWebSocketHostConfig extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent" | "successorWindowPolicy"> {
+import { type WebSocketLatencySnapshot } from "../browser-takeover/websocket-latency.js";
+export interface MacOSWindowWebSocketHostConfig extends Omit<MacOSWebSocketWindowSurfaceConfig, "onDiagnosticEvent" | "successorWindowPolicy" | "latencyTracker"> {
     platform: "macos";
 }
 export interface LinuxWindowWebSocketHostConfig {
@@ -59,6 +60,8 @@ export declare class WindowWebSocketHandoffAdapter {
     completeAfterVerification(intervention: TakeoverInterventionRef): Promise<boolean>;
     /** Content-free WSS authority/transport diagnostics. */
     diagnosticsSnapshot(): ReturnType<WebSocketBrowserHandoff["diagnosticsSnapshot"]>;
+    /** @internal Content-free startup/cadence latency evidence for WSS-only physical acceptance. */
+    latencySnapshot(): WebSocketLatencySnapshot;
     close(): Promise<void>;
 }
 //# sourceMappingURL=window-websocket-handoff-adapter.d.ts.map

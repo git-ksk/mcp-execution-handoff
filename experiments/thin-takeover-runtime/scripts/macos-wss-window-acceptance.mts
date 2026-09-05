@@ -159,7 +159,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/__diag") {
       if (!localOnly(req)) { res.writeHead(404, { "cache-control": "no-store" }); res.end("Not Found"); return; }
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-      res.end(JSON.stringify({ diagnostics: handoff.diagnosticsSnapshot() }));
+      res.end(JSON.stringify({ diagnostics: handoff.diagnosticsSnapshot(), latency: handoff.latencySnapshot() }));
       return;
     }
     if (url.pathname === "/__verified_complete") {

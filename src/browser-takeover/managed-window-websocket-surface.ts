@@ -66,7 +66,8 @@ export function createManagedWindowWebSocketSurface(
       ...(config.successorWindowPolicy
         ? { successorWindowPolicy: config.successorWindowPolicy }
         : {}),
-      ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {})
+      ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
+      ...(config.latencyTracker ? { latencyTracker: config.latencyTracker } : {})
     });
   }
   if (config.initialSecureWindowPolicy) {

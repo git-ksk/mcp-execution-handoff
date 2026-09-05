@@ -1,6 +1,7 @@
 import { ExperimentalWebSocketBrowserHandoff as WebSocketBrowserHandoff } from "../browser-takeover/websocket-browser-handoff.js";
 import { ExperimentalLinuxWebSocketWindowSurface as LinuxWebSocketWindowSurface } from "../browser-takeover/linux-websocket-window-surface.js";
 import { MacOSWebSocketWindowSurface } from "../browser-takeover/macos-websocket-window-surface.js";
+import { WebSocketLatencyTracker } from "../browser-takeover/websocket-latency.js";
 /**
  * Explicit WSS-only bounded Window component for acceptance and deployments that intentionally do
  * not want ICE/STUN/TURN. It composes the same Handoff authority/session/generation machinery with
@@ -14,8 +15,9 @@ export class WindowWebSocketHandoffAdapter {
     #surface;
     #handoff;
     #secureLocalAuthentication;
+    #latencyTracker = new WebSocketLatencyTracker();
     constructor(config) {
-        this.#surface = makeSurface(config.host, config.successorWindowPolicy, config.onOperatorDiagnosticEvent);
+        this.#surface = makeSurface(config.host, config.successorWindowPolicy, config.onOperatorDiagnosticEvent, this.#latencyTracker);
         this.#secureLocalAuthentication = config.host.platform === "macos"
             && config.host.initialSecureWindowPolicy?.mode === "macos_local_authentication";
         this.#handoff = new WebSocketBrowserHandoff({
@@ -27,7 +29,8 @@ export class WindowWebSocketHandoffAdapter {
             ...(config.onOperatorDiagnosticEvent
                 ? { onDiagnosticEvent: config.onOperatorDiagnosticEvent }
                 : {}),
-            ...(config.onComplete ? { onComplete: config.onComplete } : {})
+            ...(config.onComplete ? { onComplete: config.onComplete } : {}),
+            latencyTracker: this.#latencyTracker
         });
     }
     start(request) {
@@ -60,9 +63,13 @@ export class WindowWebSocketHandoffAdapter {
     diagnosticsSnapshot() {
         return this.#handoff.diagnosticsSnapshot();
     }
+    /** @internal Content-free startup/cadence latency evidence for WSS-only physical acceptance. */
+    latencySnapshot() {
+        return this.#handoff.latencySnapshot();
+    }
     async close() { await this.#surface.close?.(); }
 }
-function makeSurface(host, successorWindowPolicy, onDiagnosticEvent) {
+function makeSurface(host, successorWindowPolicy, onDiagnosticEvent, latencyTracker) {
     if (host.platform === "macos") {
         return new MacOSWebSocketWindowSurface({
             hostExecutable: host.hostExecutable,
@@ -71,7 +78,8 @@ function makeSurface(host, successorWindowPolicy, onDiagnosticEvent) {
                 ? { initialSecureWindowPolicy: host.initialSecureWindowPolicy }
                 : {}),
             ...(successorWindowPolicy ? { successorWindowPolicy } : {}),
-            ...(onDiagnosticEvent ? { onDiagnosticEvent } : {})
+            ...(onDiagnosticEvent ? { onDiagnosticEvent } : {}),
+            latencyTracker
         });
     }
     if (successorWindowPolicy) {
@@ -85,7 +93,8 @@ function makeSurface(host, successorWindowPolicy, onDiagnosticEvent) {
             ? {}
             : { authorityHelperExecutable: host.authorityHelperExecutable }),
         ...(host.helperTtlMs === undefined ? {} : { helperTtlMs: host.helperTtlMs }),
-        ...(onDiagnosticEvent ? { onDiagnosticEvent } : {})
+        ...(onDiagnosticEvent ? { onDiagnosticEvent } : {}),
+        latencyTracker
     });
 }
 function localAuthenticationInputPolicy(policy) {

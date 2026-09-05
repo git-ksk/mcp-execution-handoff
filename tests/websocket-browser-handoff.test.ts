@@ -121,6 +121,9 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /client_keyboard_focus_inactive/);
   assert.match(html, /client_editable_regions_available/);
   assert.match(html, /client_first_frame/);
+  assert.match(html, /client_first_ready/);
+  assert.match(html, /client_ready_to_first_frame/);
+  assert.match(html, /Human authority active · preparing view…/);
   assert.match(html, /document\.activeElement===keyboard/);
   assert.doesNotMatch(html, /diagnostic\([^)]*(?:text|value|processId|windowId)/);
   assert.match(html, /setKeyboardMode\(!keyboardMode\)/);
@@ -226,6 +229,11 @@ test("Generic Browser WSS Aim keeps pan local and emits only one explicit mapped
     close(): void { this.readyState = 3; }
   }
   const timers: Array<{ callback: () => void; delay: number }> = [];
+  class BrowserTestUrl extends URL {
+    static createObjectURL(): string { return "blob:fixture-frame"; }
+    static revokeObjectURL(): void {}
+  }
+  class BrowserTestBlob {}
   const context = vm.createContext({
     document,
     location: { pathname: new URL(locator).pathname, href: locator, protocol: "https:" },
@@ -234,8 +242,10 @@ test("Generic Browser WSS Aim keeps pan local and emits only one explicit mapped
       async json() { return { protocols: ["mcp-handoff.websocket.v1", `mcp-handoff-auth.${"x".repeat(32)}`] }; }
     }),
     WebSocket: FakeWebSocket,
-    URL,
-    Blob,
+    URL: BrowserTestUrl,
+    Blob: BrowserTestBlob,
+    ArrayBuffer,
+    DataView,
     TextEncoder,
     performance: { now: () => 1 },
     queueMicrotask,
@@ -246,6 +256,27 @@ test("Generic Browser WSS Aim keeps pan local and emits only one explicit mapped
   new vm.Script(match[1]).runInContext(context);
   await new Promise<void>((resolve) => setImmediate(resolve));
   socket?.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
+  assert.equal(status.textContent, "Human authority active · preparing view…");
+  assert.equal(sent.length, 1);
+  assert.deepEqual(JSON.parse(sent.shift()!), { kind: "latency", metric: "client_first_ready", valueMs: 0 });
+
+  const firstFrame = new ArrayBuffer(17);
+  const firstFrameView = new DataView(firstFrame);
+  firstFrameView.setUint32(0, 0x484f4631);
+  firstFrameView.setUint8(4, 1);
+  firstFrameView.setUint8(5, 0);
+  firstFrameView.setUint16(6, 640);
+  firstFrameView.setUint16(8, 480);
+  firstFrameView.setUint32(10, 1);
+  firstFrameView.setUint16(14, 0);
+  socket?.onmessage?.({ data: firstFrame });
+  assert.ok(frame.onload);
+  frame.onload();
+  assert.equal(status.textContent, "Human authority active");
+  assert.deepEqual(
+    sent.splice(0).map((value) => (JSON.parse(value) as { metric?: string }).metric).sort(),
+    ["client_first_frame", "client_frame_decode", "client_ready_to_first_frame"].sort()
+  );
 
   assert.equal(aim.style.display, "block");
   aim.onclick?.();
@@ -418,7 +449,7 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
   assert.equal(sockets.length, 1);
 
   sockets[0]!.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
-  assert.equal(status.textContent, "Human authority active");
+  assert.equal(status.textContent, "Human authority active · preparing view…");
   frame.src = "blob:stale-generation-1";
   frame.style.opacity = "1";
   sockets[0]!.onclose?.({ code: 1006 });
@@ -433,7 +464,7 @@ test("Generic Browser WSS retries an abnormal close with a fresh bootstrap but n
   assert.equal(bootstrapCalls, 2);
   assert.equal(sockets.length, 2);
   sockets[1]!.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
-  assert.equal(status.textContent, "Human authority active");
+  assert.equal(status.textContent, "Human authority active · preparing view…");
   frame.src = "blob:stale-generation-2";
   frame.style.opacity = "1";
 

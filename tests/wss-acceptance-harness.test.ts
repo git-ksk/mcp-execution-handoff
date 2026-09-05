@@ -26,7 +26,8 @@ test("macOS ordinary WSS physical harness is self-contained and HTTPS/WSS-only",
   assert.match(script, /server\.listen\(PORT, "127\.0\.0\.1"/);
   assert.match(script, /stopWssAcceptanceTunnel/);
   assert.match(script, /stopChild\(fixtureProcess\)/);
-  assert.doesNotMatch(script, /latencySnapshot/);
+  assert.match(script, /latency: handoff\.latencySnapshot\(\)/);
+  assert.match(script, /if \(!localOnly\(req\)\).*404/);
   assert.doesNotMatch(script, /server\.listen\(PORT, "0\.0\.0\.0"/);
   assert.doesNotMatch(script, /HANDOFF_LAN_HOST/);
 });
