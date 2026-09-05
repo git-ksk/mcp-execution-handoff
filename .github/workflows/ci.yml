@@ -226,6 +226,22 @@ jobs:
         run: test "${{ steps.wss_acceptance.outcome }}" = success
       - name: Build managed Cloud Run physical acceptance image
         run: docker build -f experiments/websocket-cloud-run/Dockerfile.managed -t handoff-managed-acceptance:local .
+      - name: Verify committed consumer-ready dist before public WSS gate
+        run: |
+          npm run build
+          git diff --exit-code -- dist
+      - name: Build committed-dist public WSS acceptance image
+        run: docker build -f experiments/websocket-cloud-run/Dockerfile.public-wss -t handoff-managed-public-wss-acceptance:local .
+      - name: Run public Linux/Cloud Run WSS-only lifecycle gate
+        id: managed_public_wss
+        continue-on-error: true
+        run: HANDOFF_ACCEPTANCE_REVISION=${{ github.sha }} npm run accept:websocket:managed-public-wss
+      - name: Report public WSS failure stage
+        if: always() && steps.managed_public_wss.outcome != 'success'
+        run: echo "::notice::Managed public WSS acceptance stage=$(cat /tmp/handoff-managed-public-wss-stage 2>/dev/null || echo unavailable)"
+      - name: Require public Linux/Cloud Run WSS-only lifecycle gate
+        if: always()
+        run: test "${{ steps.managed_public_wss.outcome }}" = success
       - name: Smoke managed exact-window target
         run: |
           docker run --rm -d --name handoff-managed-smoke \
