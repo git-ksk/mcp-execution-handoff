@@ -27,7 +27,7 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the completed v0.4.2 expiry maintenance (#226), the completed v0.4.3 public-WSS correctness line (#232/#235/#240), a separate pre-v0.5 immediate-hardening lane (#233/#234/#237/#244), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the completed v0.4.2 expiry maintenance (#226), the completed v0.4.3 public-WSS correctness line (#232/#235/#240), the v0.4.4 Immediate Hardening release line (#233/#234/#237/#244), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. #211 is now the narrow bounded secure-flow research step; broader Desktop authority remains a separate #125 research escalation only if bounded authority is physically proven insufficient, and never a hidden fallback.
 
@@ -56,12 +56,13 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #211 | Authority Research — Bounded Secure Flow | **Open.** Investigate a narrowly proven System Settings authorization → independently admitted successor flow; no generic secure-UI or desktop fallback. |
 | #161 | v0.4.1 Desktop Session / Display Backend | **Complete / v0.4.1 boundary.** Internal Window-only physical backend boundary separates persistent session/display continuity from viewer/transport generations; viewer scaling is distinct from unsupported physical display resize. No Desktop authority/public subpath/virtual or remote backend is added. |
 | #226 | v0.4.2 maintenance | **Complete / v0.4.2 gate.** Expired credential-safe Human surfaces are fenced, matching stale retries fail explicitly, fresh issuance requires a separate `begin()`, and no Human input/authority is replayed or restored. |
-| #232 | v0.4.3 public WSS reliability | **Open / release-significant.** Fix the physical iPhone Safari managed-WSS Japanese IME replacement regression in the transport-neutral/browser-input layer and re-run physical acceptance. |
+| #232 | v0.4.3 public WSS reliability | **Complete / v0.4.3.** Physical iPhone Safari managed-WSS system-keyboard IME replacement, normal text, Backspace, exactly-one Enter newline, scroll, and Done passed without Human-text logging. |
 | #235 | v0.4.3 public WSS reliability | **Complete / carried into v0.4.3.** Preserve bodyless authorized `HEAD` takeover probes and keep GET-only managed client patching. |
-| #240 | v0.4.3 public WSS reliability | **Open / release-significant gate.** Compose public HTTPS gateway probe, GET, bootstrap, WSS upgrade, first frame, benign input, Done, and stale fencing against committed consumer-ready `dist`. |
-| #233 | Immediate Hardening — before v0.5.0 | **Open / prioritized, non-blocking for v0.4.3.** Attribute and improve delayed first valid frame / startup presentation on physical iPhone Safari WSS takeover. |
-| #234 | Immediate Hardening — before v0.5.0 | **Open / prioritized, non-blocking for v0.4.3.** Measure and smooth steady-state iPhone Safari WSS frame cadence while retaining latest-frame-wins/backpressure bounds. |
-| #237 | Immediate Hardening — before v0.5.0 | **Open / prioritized operational contract.** Add a deterministic immutable consumer refresh/staging mechanism so source-pinned consumers can upgrade without repository-specific pin surgery; deployment and traffic remain consumer-owned. |
+| #240 | v0.4.3 public WSS reliability | **Complete / v0.4.3 gate.** Public HTTPS gateway probe, GET, bootstrap, WSS upgrade, first frame, benign input, Done, and stale fencing are composed against committed consumer-ready `dist`. |
+| #233 | v0.4.4 Immediate Hardening | **Open / v0.4.4.** Attribute and improve delayed first-valid-frame/startup presentation on physical iPhone Safari WSS takeover. |
+| #234 | v0.4.4 Immediate Hardening | **Open / v0.4.4.** Measure and smooth steady-state iPhone Safari WSS frame cadence while retaining latest-frame-wins/backpressure bounds. |
+| #237 | v0.4.4 Immediate Hardening | **Open / v0.4.4 operational contract.** Add a deterministic immutable consumer refresh/staging mechanism so source-pinned consumers can upgrade without repository-specific pin surgery; deployment and traffic remain consumer-owned. |
+| #244 | v0.4.4 Immediate Hardening | **Open / v0.4.4.** Add explicit compatibility for third-party iOS keyboard replacement streams such as Simeji without regressing the accepted system-keyboard composition path. |
 | #227 | Host Parity Backlog — Windows Browser | **Open / version uncommitted.** Future bounded Windows Browser Handoff parity; requires dedicated Windows + mobile physical acceptance before support claim. |
 | #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
@@ -216,7 +217,7 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-05, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, and `v0.4.3 — Public WSS Reliability` milestones are complete. Ten Issues remain open and explicitly classified: four prioritized `Immediate Hardening — before v0.5.0` issues (#233/#234/#237/#244), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), and two version-uncommitted host-parity issues (#227/#228). New work must be classified when created rather than left outside roadmap accounting.
+As of 2026-09-05, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, and `v0.4.3 — Public WSS Reliability` milestones are complete. Ten Issues remain open and explicitly classified: four `v0.4.4 — Immediate Hardening` release issues (#233/#234/#237/#244), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), and two version-uncommitted host-parity issues (#227/#228). New work must be classified when created rather than left outside roadmap accounting.
 
 ## v0.4.2 — Maintenance
 
@@ -263,9 +264,9 @@ Exit criteria:
 - no Human-input replay, credential/content logging, authority widening, hidden WebRTC insertion, or new Target Surface/OS claim;
 - source-release consumer artifact checks remain green and npm publication remains separate.
 
-## Immediate Hardening — before v0.5.0
+## v0.4.4 — Immediate Hardening
 
-This is a **prioritized execution lane**, not a blocker for the v0.4.3 correctness release. These issues should be worked immediately after or in parallel with the v0.4.3 blockers and should not be allowed to drift behind v0.5.0 feature work.
+`v0.4.4` is the bounded hardening source-release line after `v0.4.3` and before `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` owns four explicitly scoped issues. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
 
 Priority scope:
 
@@ -274,15 +275,15 @@ Priority scope:
 3. #234 — steady-state WSS frame cadence quality after startup. Measure capture/encode, WSS/backpressure, and Safari decode separately; preserve bounded latest-frame-wins semantics.
 4. #244 — third-party iOS keyboard replacement streams (observed with Simeji) that use a different `keyCode=229` / `insertText` / delete sequence than the accepted system-keyboard composition path. Preserve the system-keyboard fix while adding explicit compatibility coverage.
 
-#237 may land before or after the v0.4.3 tag if its generic contract is ready, but it is not permitted to delay the correctness release. #233/#234 likewise remain quality hardening rather than authority/release correctness gates unless new evidence shows they prevent a real Human handoff from completing.
+Execution order is #237 first for the deterministic consumer-refresh contract, then #233/#234 for WSS startup and steady-state quality, with #244 as the bounded keyboard-compatibility closeout. Measurement support for #234 may land alongside #233 when it is shared and content-free. The release remains source-only with `private: true`.
 
 ## Host Parity Backlog — version uncommitted
 
-#227 and #228 are classified roadmap work but remain version-uncommitted until concrete consumer need and the required physical acceptance justify scheduling them. They do not block `v0.4.3`, the immediate-hardening lane, `v0.5.0`, or `v0.6.0`.
+#227 and #228 are classified roadmap work but remain version-uncommitted until concrete consumer need and the required physical acceptance justify scheduling them. They do not block `v0.4.4`, `v0.5.0`, or `v0.6.0`.
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` remains the next planned feature source-release line after the short v0.4.3 correctness release and the prioritized immediate-hardening lane. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
+`v0.5.0` remains the next planned feature source-release line after the bounded `v0.4.4` hardening release. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
