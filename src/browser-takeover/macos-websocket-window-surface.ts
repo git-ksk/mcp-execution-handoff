@@ -67,6 +67,7 @@ interface ActiveMacOSSurface {
     resolve: (frame: WebSocketWindowJpegFrame) => void;
     reject: (error: Error) => void;
     timer: NodeJS.Timeout;
+    cleanupAbort?: () => void;
   }>;
   stderrBuffer: string;
   pendingInputAck: {
@@ -211,7 +212,7 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
     return this.#editableRegions.map((region) => [...region] as WebSocketTakeoverEditableRegion);
   }
 
-  async captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame> {
+  async captureExactWindow(target: Readonly<TakeoverHostTarget>, signal?: AbortSignal): Promise<WebSocketTakeoverFrame> {
     const previous = this.#active;
     const prepareStartedAt = performance.now();
     const active = await this.#ensure(target);
@@ -226,7 +227,7 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
       } else {
         const before = active.sequence;
         const frameWaitStartedAt = performance.now();
-        frame = await this.#frameAfter(active, before);
+        frame = await this.#frameAfter(active, before, signal);
         this.#latencyTracker?.record("capture_frame_wait", performance.now() - frameWaitStartedAt);
       }
       return {
@@ -242,6 +243,21 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
       }
       throw error;
     }
+  }
+
+  async captureLatestExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame> {
+    const prepareStartedAt = performance.now();
+    const active = await this.#ensure(target);
+    this.#latencyTracker?.record("capture_prepare", performance.now() - prepareStartedAt);
+    const frameWaitStartedAt = performance.now();
+    const frame = active.latest ?? await this.#frameAfter(active, 0);
+    this.#latencyTracker?.record("capture_frame_wait", performance.now() - frameWaitStartedAt);
+    return {
+      data: Buffer.from(frame.data),
+      width: frame.width,
+      height: frame.height,
+      mimeType: "image/jpeg"
+    };
   }
 
   tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void> {
@@ -375,6 +391,7 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
         state.frameWaiters = state.frameWaiters.filter((waiter) => state.sequence <= waiter.afterSequence);
         for (const waiter of ready) {
           clearTimeout(waiter.timer);
+          waiter.cleanupAbort?.();
           waiter.resolve(frame);
         }
       },
@@ -458,18 +475,37 @@ export class MacOSWebSocketWindowSurface implements ExperimentalWebSocketWindowS
     }
   }
 
-  #frameAfter(active: ActiveMacOSSurface, afterSequence: number): Promise<WebSocketWindowJpegFrame> {
+  #frameAfter(
+    active: ActiveMacOSSurface,
+    afterSequence: number,
+    signal?: AbortSignal
+  ): Promise<WebSocketWindowJpegFrame> {
     if (active.failed || this.#active !== active) {
       return Promise.reject(new MacOSWebSocketWindowSurfaceError("HELPER_FAILURE", "macOS WSS helper is unavailable"));
     }
+    if (signal?.aborted) return Promise.reject(new Error("macOS WSS exact-window frame cancelled"));
     if (active.latest && active.sequence > afterSequence) return Promise.resolve(active.latest);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let cleanupAbort: (() => void) | undefined;
+      const removeWaiter = () => {
         active.frameWaiters = active.frameWaiters.filter((waiter) => waiter.timer !== timer);
+        cleanupAbort?.();
+      };
+      const timer = setTimeout(() => {
+        removeWaiter();
         reject(new Error("macOS WSS exact-window frame timed out"));
       }, FRAME_WAIT_TIMEOUT_MS);
       timer.unref();
-      active.frameWaiters.push({ afterSequence, resolve, reject, timer });
+      if (signal) {
+        const onAbort = () => {
+          clearTimeout(timer);
+          removeWaiter();
+          reject(new Error("macOS WSS exact-window frame cancelled"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        cleanupAbort = () => signal.removeEventListener("abort", onAbort);
+      }
+      active.frameWaiters.push({ afterSequence, resolve, reject, timer, ...(cleanupAbort ? { cleanupAbort } : {}) });
     });
   }
 
@@ -574,6 +610,7 @@ function failActive(active: ActiveMacOSSurface, message: string): void {
   const error = new MacOSWebSocketWindowSurfaceError("HELPER_FAILURE", message);
   for (const waiter of active.frameWaiters.splice(0)) {
     clearTimeout(waiter.timer);
+    waiter.cleanupAbort?.();
     waiter.reject(error);
   }
   settleInput(active, false, error);

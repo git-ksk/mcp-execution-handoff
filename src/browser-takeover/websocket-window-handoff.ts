@@ -35,7 +35,9 @@ export interface ExperimentalWebSocketWindowSurface {
    * the target is missing, ambiguous, moved outside the authorized boundary, or otherwise cannot
    * be revalidated. They must never widen to a display/desktop capture.
    */
-  captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
+  captureExactWindow(target: Readonly<TakeoverHostTarget>, signal?: AbortSignal): Promise<WebSocketTakeoverFrame>;
+  /** Latest still-authoritative exact-window frame for the first frame of a fresh client generation. */
+  captureLatestExactWindow?(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
   /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
   captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
   /** Recoverable input failures are never replayed automatically; the Human may retry manually. Unknown failures fail closed. */
@@ -95,6 +97,9 @@ interface ActiveWindowSession {
   readonly inputPolicy: WebSocketTakeoverInputPolicy;
   readonly timer: NodeJS.Timeout;
   captureInFlight: boolean;
+  captureAbort: AbortController | undefined;
+  activeClientGeneration: number | undefined;
+  connectionNeedsFrame: boolean;
   editableRegionsFingerprint: string;
   editableRegionsLastSentAt: number;
 }
@@ -224,6 +229,9 @@ export class ExperimentalWebSocketWindowHandoff {
       inputPolicy,
       timer,
       captureInFlight: false,
+      captureAbort: undefined,
+      activeClientGeneration: undefined,
+      connectionNeedsFrame: true,
       editableRegionsFingerprint: "",
       editableRegionsLastSentAt: 0
     };
@@ -271,15 +279,32 @@ export class ExperimentalWebSocketWindowHandoff {
   }
 
   async #pumpFrame(state: ActiveWindowSession): Promise<void> {
-    if (state.captureInFlight || this.#sessionsById.get(state.sessionId) !== state) return;
-    if (!this.#binding.hasActiveConnection(state.sessionId)) return;
+    if (this.#sessionsById.get(state.sessionId) !== state) return;
+    const activeClientGeneration = this.#binding.activeConnectionGeneration(state.sessionId);
+    if (activeClientGeneration === undefined) {
+      state.activeClientGeneration = undefined;
+      state.connectionNeedsFrame = true;
+      state.captureAbort?.abort();
+      return;
+    }
+    if (state.activeClientGeneration !== activeClientGeneration) {
+      state.activeClientGeneration = activeClientGeneration;
+      state.connectionNeedsFrame = true;
+      state.captureAbort?.abort();
+    }
+    if (state.captureInFlight) return;
+    const captureAbort = new AbortController();
+    state.captureAbort = captureAbort;
     state.captureInFlight = true;
     let frame: WebSocketTakeoverFrame;
     try {
       const captureStartedAt = performance.now();
-      frame = await this.#surface.captureExactWindow(state.target);
+      frame = state.connectionNeedsFrame && this.#surface.captureLatestExactWindow
+        ? await this.#surface.captureLatestExactWindow(state.target)
+        : await this.#surface.captureExactWindow(state.target, captureAbort.signal);
       this.#latencyTracker.record("capture", performance.now() - captureStartedAt);
     } catch (error) {
+      if (captureAbort.signal.aborted) return;
       const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
       if (disposition === "recoverable") {
         this.#onDiagnosticEvent?.("session_retained");
@@ -294,6 +319,7 @@ export class ExperimentalWebSocketWindowHandoff {
       })).catch(() => undefined);
       return;
     } finally {
+      if (state.captureAbort === captureAbort) state.captureAbort = undefined;
       state.captureInFlight = false;
     }
     if (this.#sessionsById.get(state.sessionId) !== state) return;
@@ -314,7 +340,8 @@ export class ExperimentalWebSocketWindowHandoff {
       }
     }
     try {
-      await this.#binding.pushFrame(state.sessionId, frame);
+      const pushed = await this.#binding.pushFrame(state.sessionId, frame);
+      if (pushed) state.connectionNeedsFrame = false;
     } catch {
       // The channel itself fails closed and releases the generation on transport/backpressure
       // failure. A later authenticated reconnect may claim only a fresh generation.
@@ -381,6 +408,7 @@ export class ExperimentalWebSocketWindowHandoff {
       this.#sessionsByIntervention.delete(state.interventionId);
     }
     if (this.#sessionsById.get(state.sessionId) === state) this.#sessionsById.delete(state.sessionId);
+    state.captureAbort?.abort();
     clearInterval(state.timer);
   }
 }

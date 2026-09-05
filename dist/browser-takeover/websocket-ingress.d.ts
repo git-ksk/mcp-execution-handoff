@@ -80,6 +80,7 @@ export declare class ExperimentalWebSocketTakeoverIngress {
      */
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     hasActiveConnection(sessionId: string): boolean;
+    activeConnectionGeneration(sessionId: string): number | undefined;
     /** @internal Content-free WebSocket transport diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ExperimentalWebSocketIngressDiagnostics;
     pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean>;

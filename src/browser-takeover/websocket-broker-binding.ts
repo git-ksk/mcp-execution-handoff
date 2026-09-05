@@ -136,6 +136,10 @@ export class ExperimentalWebSocketBrokerBinding {
     return this.#ingress.hasActiveConnection(sessionId);
   }
 
+  activeConnectionGeneration(sessionId: string): number | undefined {
+    return this.#ingress.activeConnectionGeneration(sessionId);
+  }
+
   /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
   diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketTakeoverIngress["diagnosticsSnapshot"]> {
     return this.#ingress.diagnosticsSnapshot();
