@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Normalize third-party iOS keyboard ordinary `insertText` replacement streams (#244): when a bounded InputEvent payload is a strict extension of the hidden textarea DOM insertion, complete only the missing suffix and normalize the hidden mirror before subsequent edits. System `insertFromComposition` remains DOM-authoritative, `keyCode=229` does not establish correctness, WSS/WebRTC continue to share one Browser Human Input helper, and no Human payload is added to diagnostics or durable state.
+
 - Fix macOS Window WSS reconnects so a fresh client generation receives the latest still-authoritative exact-window frame without waiting for a content change; disconnect also cancels the old generation's pending next-frame wait. (#250)
 
 - Smooth healthy-path Window WSS rendering (#234): lower the default single-flight frame pump from 75 ms (~13.3 fps) to 50 ms (~20 fps) while retaining latest-frame-wins backpressure, and expose bounded active-channel sent/drop/backpressure/current/max-buffer counters so physical acceptance can prove that higher cadence does not create an unbounded frame queue.

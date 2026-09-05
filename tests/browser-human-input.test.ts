@@ -11,6 +11,7 @@ import {
   browserScrollDelta,
   browserScrollDeltaY,
   browserTextReplacementDelta,
+  browserTextReplacementMutation,
   browserWebRtcScrollDelta
 } from "../src/browser-takeover/browser-human-input.js";
 
@@ -18,6 +19,23 @@ test("Browser Human Input replaces an IME preedit instead of appending the commi
   assert.deepEqual(browserTextReplacementDelta("てす", "テスト"), { backspaces: 2, insert: "テスト" });
   assert.deepEqual(browserTextReplacementDelta("test", "testing"), { backspaces: 0, insert: "ing" });
   assert.deepEqual(browserTextReplacementDelta("😀a", "😀b"), { backspaces: 1, insert: "b" });
+});
+
+test("Browser Human Input normalizes third-party insertText truncation without changing composition semantics", () => {
+  assert.deepEqual(
+    browserTextReplacementMutation("", "テス", "insertText", "テスト"),
+    { backspaces: 0, insert: "テスト", next: "テスト" }
+  );
+  assert.deepEqual(
+    browserTextReplacementMutation("abcde", "abXYde", "insertText", "XY"),
+    { backspaces: 3, insert: "XYde", next: "abXYde" },
+    "selection-style middle replacement must rebuild the changed suffix instead of assuming append-only input"
+  );
+  assert.deepEqual(
+    browserTextReplacementMutation("", "テス", "insertFromComposition", "テスト"),
+    { backspaces: 0, insert: "テス", next: "テス" },
+    "system composition commits remain DOM-authoritative"
+  );
 });
 
 test("Browser Human Input keeps Safari IME confirmation inside a settling phase", () => {

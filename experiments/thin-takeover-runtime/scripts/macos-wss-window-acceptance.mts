@@ -12,6 +12,7 @@ import { resolveWssAcceptanceIngress, stopWssAcceptanceTunnel } from "./wss-publ
 const EXPECTED_MARKER = "WSS_ACCEPT_OK";
 const EXPECTED_IME_MARKER = "テスト";
 const REJECTED_IME_PREEDIT = "てすと";
+const REQUIRE_THIRD_PARTY_IME = process.env.HANDOFF_ACCEPT_THIRD_PARTY_IME === "1";
 const RELAY_ENV = [
   "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
   "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
@@ -172,11 +173,12 @@ const server = createServer(async (req, res) => {
         return;
       }
       const current = await readFixtureState(fixtureStatePath);
+      const imeMarkerCount = current ? current.text.split(EXPECTED_IME_MARKER).length - 1 : 0;
       const verified = current?.pid === TARGET_PID
         && current.windowId === TARGET_WINDOW_ID
         && current.aimActivated === true
         && current.text.includes(EXPECTED_MARKER)
-        && current.text.includes(EXPECTED_IME_MARKER)
+        && imeMarkerCount >= (REQUIRE_THIRD_PARTY_IME ? 2 : 1)
         && !current.text.includes(REJECTED_IME_PREEDIT);
       const completed = verified
         ? await handoff.completeAfterVerification({ id: interventionId, epoch: 1 })
@@ -234,7 +236,10 @@ console.log(`Local diagnostics: http://127.0.0.1:${PORT}/__diag`);
 console.log(`Local verified-complete control: POST http://127.0.0.1:${PORT}/__verified_complete`);
 if (initialFixture) {
   console.log(`Fixture tap hint: x=${initialFixture.tapX.toFixed(4)} y=${initialFixture.tapY.toFixed(4)}`);
-  console.log(`Expected action: enable Aim, locally pan the 4× view until the tiny · button at the upper-right is under the crosshair, press the WSS Tap control once and confirm it changes to ✓; then disable Aim, press 4× once to return to 1×, tap the text area, enable ⌨︎, type WSS_ACCEPT_OKX, Backspace once, press Enter, then use Japanese IME to enter ${REJECTED_IME_PREEDIT} and commit the candidate ${EXPECTED_IME_MARKER}; scroll the text view and Done. Verification accepts only the fixed harmless markers and rejects leaked preedit text.`);
+  const thirdPartyStep = REQUIRE_THIRD_PARTY_IME
+    ? ` then switch to one third-party iOS keyboard and independently commit ${EXPECTED_IME_MARKER} once more`
+    : "";
+  console.log(`Expected action: enable Aim, locally pan the 4× view until the tiny · button at the upper-right is under the crosshair, press the WSS Tap control once and confirm it changes to ✓; then disable Aim, press 4× once to return to 1×, tap the text area, enable ⌨︎, type WSS_ACCEPT_OKX, Backspace once, press Enter, then use the iOS system Japanese IME to enter ${REJECTED_IME_PREEDIT} and commit the candidate ${EXPECTED_IME_MARKER}${thirdPartyStep}; scroll the text view and Done. Verification accepts only the fixed harmless markers and rejects leaked preedit text.`);
 } else {
   console.log("External target mode: verify exact bounded Window display, tap, text, Backspace, Enter, scroll, then Done; semantic verification remains external.");
 }

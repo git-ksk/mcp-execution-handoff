@@ -10,6 +10,11 @@ export interface BrowserTextReplacementDelta {
   readonly insert: string;
 }
 
+export interface BrowserTextReplacementMutation extends BrowserTextReplacementDelta {
+  /** Logical hidden-textarea mirror after the remote suffix replacement is applied. */
+  readonly next: string;
+}
+
 export type BrowserImeCompositionPhase = "idle" | "composing" | "settling";
 export type BrowserImeCompositionEvent = "composition_start" | "composition_end" | "settled";
 
@@ -55,6 +60,43 @@ export function browserTextReplacementDelta(previous: string, current: string): 
   };
 }
 
+/**
+ * Normalize an ordinary DOM text mutation to the suffix-only remote editing contract.
+ *
+ * Hidden mobile textareas occasionally expose a third-party keyboard `insertText` payload before
+ * their DOM value contains the payload's final code point(s). When the DOM insertion is a strict
+ * prefix of the bounded InputEvent.data payload, extend only that insertion suffix and normalize
+ * the hidden mirror to the resulting value. All other replacements stay DOM-authoritative.
+ * Composition commits deliberately bypass this correction and retain #232 semantics.
+ */
+export function browserTextReplacementMutation(
+  previous: string,
+  current: string,
+  inputType: string,
+  inputData: string | null | undefined
+): BrowserTextReplacementMutation {
+  const delta = browserTextReplacementDelta(previous, current);
+  let insert = delta.insert;
+  let next = current;
+  if (
+    inputType === "insertText"
+    && typeof inputData === "string"
+    && inputData.length > 0
+    && insert.length > 0
+    && insert !== inputData
+    && inputData.startsWith(insert)
+  ) {
+    const before = Array.from(previous);
+    const retained = before.slice(0, Math.max(0, before.length - delta.backspaces)).join("");
+    const candidate = retained + inputData;
+    if (candidate.startsWith(current) && Array.from(candidate).length > Array.from(current).length) {
+      insert = inputData;
+      next = candidate;
+    }
+  }
+  return { backspaces: delta.backspaces, insert, next };
+}
+
 /** Convert touch/pointer drag motion to wheel semantics on either axis. */
 export function browserScrollDelta(pointerDelta: number, scale = 3): number {
   if (!Number.isFinite(pointerDelta) || !Number.isFinite(scale) || scale <= 0) return 0;
@@ -92,6 +134,7 @@ export function browserHumanInputClientSource(): string {
     `const browserImeKeyboardEventIsCompositionControlled=${browserImeKeyboardEventIsCompositionControlled.toString()};`,
     `const browserImeInputEventIsCompositionControlled=${browserImeInputEventIsCompositionControlled.toString()};`,
     `const browserTextReplacementDelta=${browserTextReplacementDelta.toString()};`,
+    `const browserTextReplacementMutation=${browserTextReplacementMutation.toString()};`,
     `const browserScrollDelta=${browserScrollDelta.toString()};`,
     `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`,
     `const browserPhysicalSwipeScrollDelta=${browserPhysicalSwipeScrollDelta.toString()};`,

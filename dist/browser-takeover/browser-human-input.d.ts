@@ -9,6 +9,10 @@ export interface BrowserTextReplacementDelta {
     readonly backspaces: number;
     readonly insert: string;
 }
+export interface BrowserTextReplacementMutation extends BrowserTextReplacementDelta {
+    /** Logical hidden-textarea mirror after the remote suffix replacement is applied. */
+    readonly next: string;
+}
 export type BrowserImeCompositionPhase = "idle" | "composing" | "settling";
 export type BrowserImeCompositionEvent = "composition_start" | "composition_end" | "settled";
 /** Keep Safari/iOS IME confirmation events inside one explicit composition lifecycle. */
@@ -22,6 +26,16 @@ export declare function browserImeKeyboardEventIsCompositionControlled(phase: Br
 /** Input/beforeinput stays local until the finalized composition can be committed once. */
 export declare function browserImeInputEventIsCompositionControlled(phase: BrowserImeCompositionPhase, eventIsComposing: boolean): boolean;
 export declare function browserTextReplacementDelta(previous: string, current: string): BrowserTextReplacementDelta;
+/**
+ * Normalize an ordinary DOM text mutation to the suffix-only remote editing contract.
+ *
+ * Hidden mobile textareas occasionally expose a third-party keyboard `insertText` payload before
+ * their DOM value contains the payload's final code point(s). When the DOM insertion is a strict
+ * prefix of the bounded InputEvent.data payload, extend only that insertion suffix and normalize
+ * the hidden mirror to the resulting value. All other replacements stay DOM-authoritative.
+ * Composition commits deliberately bypass this correction and retain #232 semantics.
+ */
+export declare function browserTextReplacementMutation(previous: string, current: string, inputType: string, inputData: string | null | undefined): BrowserTextReplacementMutation;
 /** Convert touch/pointer drag motion to wheel semantics on either axis. */
 export declare function browserScrollDelta(pointerDelta: number, scale?: number): number;
 /** Vertical compatibility helper for existing Browser Human Input callers. */
