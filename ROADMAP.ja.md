@@ -29,7 +29,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、完了したv0.4.2 expiry maintenance (#226)、直近のv0.4.3 public-WSS correctness line (#232/#235/#240)、v0.5前に優先して進めるimmediate-hardening lane (#233/#234/#237)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 #94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。現在は#211をnarrow bounded secure-flow researchとして先行し、bounded authority不足がphysical evidenceで証明された場合だけ#125 broader Desktop authorityを検討します。hidden fallbackにはしません。
 
@@ -58,6 +58,12 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #211 | Authority Research — Bounded Secure Flow | **OPEN。** System Settings authorization → independently admitted successorをnarrowに検証。generic secure-UI / desktop fallbackは禁止。 |
 | #161 | v0.4.1 Desktop Session / Display Backend | **完了 / v0.4.1 boundary。** internalなWindow-only physical backend boundaryでpersistent session/display continuityとviewer/transport generationを分離。viewer scalingとphysical display resizeを別能力にし、後者はunsupported。Desktop authority / public subpath / virtual・remote backendは追加しない。 |
 | #226 | v0.4.2 maintenance | **完了 / v0.4.2 gate。** expired credential-safe Human surfaceをfenceし、matching stale retryは明示fail、fresh issuanceは別の `begin()` を必須とし、Human input / authorityをreplay・復活させない。 |
+| #232 | v0.4.3 public WSS reliability | **OPEN / release-significant。** physical iPhone Safari managed-WSSの日本語IME replacement regressionをtransport-neutral/browser-input layerで修正し、physical acceptanceを再実施する。 |
+| #235 | v0.4.3 public WSS reliability | **完了 / v0.4.3へcarry。** bodyless authorized `HEAD` takeover probeを維持し、managed client patchingをGET-onlyのままにする。 |
+| #240 | v0.4.3 public WSS reliability | **OPEN / release-significant gate。** public HTTPS gateway probe、GET、bootstrap、WSS upgrade、first frame、benign input、Done、stale fencingをcommitted consumer-ready `dist` で一体検証する。 |
+| #233 | Immediate Hardening — before v0.5.0 | **OPEN / 優先、v0.4.3 non-blocking。** physical iPhone Safari WSS takeoverのfirst valid frame遅延を切り分けてstartup presentationを改善する。 |
+| #234 | Immediate Hardening — before v0.5.0 | **OPEN / 優先、v0.4.3 non-blocking。** latest-frame-wins/backpressure境界を維持しながらsteady-state iPhone Safari WSS frame cadenceを計測・改善する。 |
+| #237 | Immediate Hardening — before v0.5.0 | **OPEN / 優先operational contract。** source pin consumerがrepo固有の手作業なしでimmutable Handoff revisionをrefresh/stageできるdeterministic mechanismを追加する。deploy/trafficはconsumer-ownedのまま。 |
 | #227 | Host Parity Backlog — Windows Browser | **OPEN / version未確定。** bounded Windows Browser Handoff parityの将来work。support claim前に専用Windows + mobile physical acceptanceを必須とする。 |
 | #228 | Host Parity Backlog — Linux successor lineage | **OPEN / version未確定。** Linux-native successor-window lineage parityの将来work。現行Linux exact-window supportはblockしない。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
@@ -77,7 +83,7 @@ Linux deploymentはpin済みOS/runtime dependency baselineと対応するexact-w
 binaryを配布する場合はsigning/notarizationまたはdistro/ABI/provenance/rollbackをproduct-ready claim前のgateにします。
 
 upgrade/rollbackでstale locator/capability/generation/media/input authorityを復元しません。durable recoveryは
-`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。Human-visible lifecycle品質も
+`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。#237を次の優先operational Product Readiness itemとして、immutable consumer refresh/stagingをdeterministicに標準化しますが、deploy、readiness、traffic switch、credential、consumer semanticsはHandoffへ移しません。Human-visible lifecycle品質も
 このtrackに含め、#150は完了済みです。physical OK / Cancel evidenceでexact target消失時にstale LocalAuthentication presentationを消去し、semantic successはconsumer-ownedのまま維持することを確認しました。
 
 詳細は [Product Readiness / consumer compatibility](docs/product-readiness.ja.md) を参照してください。
@@ -210,7 +216,7 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-04時点で `v0.3.x — Maintenance & Durability` milestoneは0 open / 8 closedでclose済みです。旧 `v0.4+ — Transport & Hosted Maturity` catch-allもclose済みです。現在のOPEN 6件は、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、`Authority Research — Bounded Secure Flow` (#211)、`Authority Research — Desktop Escalation` (#125)、およびversion未確定のhost parity backlog #227（Windows Browser Handoff）/ #228（Linux successor-window lineage）へ明示的に分類します。#226はv0.4.2 maintenance lineで完了済みです。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-05時点で `v0.3.x — Maintenance & Durability` と `v0.4.2 — Maintenance` はclose済みです。OPEN 11件は明示分類済みで、`v0.4.3 — Public WSS Reliability` のrelease-significant 2件 (#232/#240、#235は完了済みcarry)、`Immediate Hardening — before v0.5.0` の優先3件 (#233/#234/#237)、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228) です。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
 ## v0.4.2 — Maintenance
 
@@ -237,13 +243,45 @@ scope:
 - `v0.4.2` で新しいTarget Surface、OS support、Desktop authority、transport provider claimを追加しない;
 - npm publicationは別decisionのまま維持する。
 
+## v0.4.3 — Public WSS Reliability
+
+`v0.4.3` は `v0.4.2` 直後の短期source-release lineです。post-releaseのconsumer dogfoodでpublic managed-WSS correctness gapが見つかったため、v0.5 connectivityへ進む前に上流で修正・gate化します。milestone `v0.4.3 — Public WSS Reliability` は意図的に狭く保ちます。
+
+release-significant scope:
+
+- #235 — **完了・すでに `main`:** authorized bodyless HEAD takeover probeを維持し、GET-only client patchingを保つ。
+- #240 — public Linux/Cloud Run-equivalent WSS-onlyで HEAD -> GET -> bootstrap -> WSS -> first frame -> benign input -> Done -> stale fencing を1本のdeterministic gateにし、committed consumer-ready `dist` artifactで実行する。
+- #232 — physical iPhone Safari managed-WSSの日本語IME replacement regressionをshared/browser-input layerで修正し、Human textをlogせずphysical acceptanceを再実施する。
+
+優先実行は#240と#232を即着手です。#240でpublic boundaryの上流gateを作り、#232でaccepted mobile-input semanticsを戻します。#235はmerge済みでreleaseへcarryします。
+
+完了条件:
+
+- #232 / #240がexact candidate revisionで完了し、#235相当regressionがcomposed public WSS gateで検知できる;
+- physical iPhone Safari managed-WSSでnormal text、日本語composition replacement、Enter、Backspaceがgreen;
+- public HEAD / GET / bootstrap / WSS lifecycleがdeterministicで、stale/wrong-principal pathはfail closed;
+- Human-input replay、credential/content logging、authority拡大、hidden WebRTC insertion、新しいTarget Surface/OS claimを追加しない;
+- source-release consumer artifact gateを維持し、npm publicationは別decisionのまま。
+
+## Immediate Hardening — before v0.5.0
+
+これは **優先実行lane** であり、v0.4.3 correctness releaseのblockerではありません。v0.4.3 blockerと並行または直後に着手し、v0.5.0 feature workの後ろへ流さない方針です。
+
+優先scope:
+
+1. #237 — immutable Handoff upgrade向けdeterministic consumer refresh/staging contract。現状はsource patchごとに各consumerでpin / lock / policy refreshを手作業で繰り返すため運用上の優先度が高い。consumer rebuild、candidate deploy、readiness、traffic switchはconsumer-ownedを維持する。
+2. #233 — physical iPhone Safari WSS takeoverのfirst-valid-frame/startup latencyとinitialization presentation。transportとcapture startupを分離計測してから最適化する。
+3. #234 — startup後のsteady-state WSS frame cadence。capture/encode、WSS/backpressure、Safari decodeを分離し、bounded latest-frame-winsを維持する。
+
+#237はgeneric contractが早く固まればv0.4.3 tag前にlandしてもよいですが、v0.4.3 correctness releaseを遅らせません。#233/#234も、real Human handoff完了を阻害する新しいevidenceが出ない限りquality hardeningとして扱います。
+
 ## Host Parity Backlog — version未確定
 
-#227 / #228はroadmap上で分類済みworkとして維持しますが、具体的consumer needと必要なphysical acceptanceが揃ってreleaseへ載せる根拠ができるまでversion未確定とします。`v0.4.2` / `v0.5.0` / `v0.6.0` はblockしません。
+#227 / #228はroadmap上で分類済みworkとして維持しますが、具体的consumer needと必要なphysical acceptanceが揃ってreleaseへ載せる根拠ができるまでversion未確定とします。`v0.4.3` / immediate-hardening lane / `v0.5.0` / `v0.6.0` はblockしません。
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` はboundedな `v0.4.2` maintenance releaseの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
+`v0.5.0` は短期v0.4.3 correctness releaseと優先immediate-hardening laneの後に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
 
 目的は、WebRTC discovery / relay connectivityを **Handoff-ownedかつprovider-neutralなdeployment boundary** として確立することです。consumer-facing Browser / Window lifecycleは変えず、Human-control authorityも広げません。
 
