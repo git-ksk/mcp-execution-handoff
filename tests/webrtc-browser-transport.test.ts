@@ -956,9 +956,9 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.doesNotMatch(script, /const MARK='_'/);
   assert.match(script, /let .*keyboardMirror=''/);
   assert.match(script, /function resetKeyboardSession\(\)/);
-  assert.match(script, /function sendKeyboardDelta\(current,inputType\)/);
-  assert.match(script, /browserTextReplacementDelta\(keyboardMirror,current\)/);
-  assert.match(script, /keyboardMirror=current/);
+  assert.match(script, /function sendKeyboardDelta\(current,inputType,inputData\)/);
+  assert.match(script, /browserTextReplacementMutation\(keyboardMirror,current,inputType,inputData\)/);
+  assert.match(script, /keyboardMirror=delta\.next/);
   assert.match(script, /pendingKeyTimer=setTimeout\(function\(\)\{pendingKeyTimer=0;if\(compositionPhase==='idle'\)sendCritical\(\{kind:'key',key:key\}\)\},250\)/);
   assert.match(script, /keyboard\.addEventListener\('input',[\s\S]*clearPendingKeyboardKey\(\)/);
   assert.match(script, /compositionPhase='idle'/);
@@ -966,7 +966,7 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /keyboard\.addEventListener\('input'/);
   assert.match(script, /inputType==='insertCompositionText'\|\|inputType==='deleteCompositionText'/);
   assert.match(script, /inputType==='insertFromComposition'/);
-  assert.match(script, /sendKeyboardDelta\(keyboard\.value,inputType\)/);
+  assert.match(script, /sendKeyboardDelta\(keyboard\.value,inputType,typeof event\.data==='string'\?event\.data:null\)/);
   assert.doesNotMatch(script, /suppressKeyboardInput|suppressTrailingKeyboardInput|settleKeyboardComposition/);
   assert.match(script, /visibilitychange/);
   assert.match(script, /webrtc-suspend/);

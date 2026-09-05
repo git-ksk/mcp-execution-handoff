@@ -96,9 +96,9 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /maxlength="512"/);
   assert.match(html, /let keyboardMirror=''/);
   assert.match(html, /function resetKeyboardSession\(\)/);
-  assert.match(html, /function sendKeyboardDelta\(current,inputType\)/);
-  assert.match(html, /browserTextReplacementDelta\(keyboardMirror,current\)/);
-  assert.match(html, /keyboardMirror=current/);
+  assert.match(html, /function sendKeyboardDelta\(current,inputType,inputData\)/);
+  assert.match(html, /browserTextReplacementMutation\(keyboardMirror,current,inputType,inputData\)/);
+  assert.match(html, /keyboardMirror=delta\.next/);
   assert.match(html, /pendingKeyTimer=setTimeout\(\(\)=>\{pendingKeyTimer=0;if\(compositionPhase==='idle'\)send\(\{kind:'key',key\}\)\},250\)/);
   assert.match(html, /keyboard\.addEventListener\('input',[\s\S]*clearPendingKeyboardKey\(\)/);
   assert.match(html, /compositionPhase='idle'/);
@@ -106,7 +106,7 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /keyboard\.addEventListener\('input'/);
   assert.match(html, /inputType==='insertCompositionText'\|\|inputType==='deleteCompositionText'/);
   assert.match(html, /inputType==='insertFromComposition'/);
-  assert.match(html, /sendKeyboardDelta\(keyboard\.value,inputType\)/);
+  assert.match(html, /sendKeyboardDelta\(keyboard\.value,inputType,typeof event\.data==='string'\?event\.data:null\)/);
   assert.doesNotMatch(html, /suppressKeyboardInput|suppressTrailingKeyboardInput|settleKeyboardComposition/);
   assert.doesNotMatch(html, /keyboard\.addEventListener\('beforeinput'/);
   assert.match(html, /kind==='editableRegions'/);
@@ -149,6 +149,125 @@ test("Generic Browser WSS emits syntactically valid client JavaScript", async ()
   const match = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
   assert.ok(match?.[1]);
   assert.doesNotThrow(() => new vm.Script(match[1]));
+  handoff.revoke("generic-browser-wss");
+});
+
+test("Generic Browser WSS normalizes a third-party iOS replacement stream without dropping the final code point", async () => {
+  const handoff = fixture();
+  const locator = start(handoff);
+  const html = await (await handoff.handle(new Request(locator), PRINCIPAL)).text();
+  const match = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
+  assert.ok(match?.[1]);
+
+  const keyboardListeners = new Map<string, (event: any) => void>();
+  const app = { dataset: { tap: "1", scroll: "1", text: "1", key: "1" } };
+  const screen = {
+    addEventListener() {},
+    setPointerCapture() {},
+    getBoundingClientRect() { return { left: 0, top: 0, width: 320, height: 240 }; }
+  };
+  const frame = { naturalWidth: 640, naturalHeight: 480, onload: null, src: "", style: {} as Record<string, string> };
+  const status = { textContent: "" };
+  const button = () => ({ style: {} as Record<string, string>, disabled: false, textContent: "", onclick: null as (() => void) | null, setAttribute() {} });
+  const zoom = button();
+  const aim = button();
+  const aimTap = button();
+  const aimCrosshair = { style: {} as Record<string, string> };
+  const keyboardOpen = button();
+  const backspace = button();
+  const done = button();
+  const documentState: { activeElement: unknown } = { activeElement: null };
+  const keyboard = {
+    value: "",
+    selectionStart: 0,
+    selectionEnd: 0,
+    addEventListener(name: string, listener: (event: any) => void) { keyboardListeners.set(name, listener); },
+    focus() { documentState.activeElement = keyboard; },
+    blur() { documentState.activeElement = null; },
+    setAttribute() {},
+    setSelectionRange(start: number, end: number) { keyboard.selectionStart = start; keyboard.selectionEnd = end; }
+  };
+  const document = {
+    get activeElement() { return documentState.activeElement; },
+    querySelector(selector: string) {
+      return ({
+        "#app": app, "#screen": screen, "#frame": frame, "#status": status, "#done": done,
+        "#zoom": zoom, "#aim": aim, "#aim-tap": aimTap, "#aim-crosshair": aimCrosshair,
+        "#keyboard-open": keyboardOpen, "#backspace": backspace, "#keyboard-input": keyboard
+      } as Record<string, unknown>)[selector] ?? null;
+    }
+  };
+  const sent: string[] = [];
+  let socket: FakeWebSocket | undefined;
+  class FakeWebSocket {
+    static OPEN = 1;
+    readyState = 1;
+    binaryType = "";
+    onmessage?: (event: { data: unknown }) => void;
+    onclose?: (event: { code: number }) => void;
+    onerror?: () => void;
+    constructor(_url: URL, _protocols: string[]) { socket = this; }
+    send(value: string): void { sent.push(value); }
+    close(): void { this.readyState = 3; }
+  }
+  let nextTimer = 1;
+  const timers = new Map<number, () => void>();
+  const context = vm.createContext({
+    document,
+    location: { pathname: new URL(locator).pathname, href: locator, protocol: "https:" },
+    fetch: async () => ({ ok: true, async json() { return { protocols: ["mcp-handoff.websocket.v1", `mcp-handoff-auth.${"x".repeat(32)}`] }; } }),
+    WebSocket: FakeWebSocket,
+    URL,
+    Blob,
+    TextEncoder,
+    performance: { now: () => 1 },
+    queueMicrotask,
+    setTimeout(callback: () => void) { const id = nextTimer++; timers.set(id, callback); return id; },
+    clearTimeout(id: number) { timers.delete(Number(id)); },
+    window: { addEventListener() {} }
+  });
+  new vm.Script(match[1]).runInContext(context);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  socket?.onmessage?.({ data: JSON.stringify({ kind: "ready" }) });
+  sent.splice(0); // content-free first-ready latency
+  keyboardOpen.onclick?.();
+
+  const input = (value: string, inputType: string, data: string | null) => {
+    keyboard.value = value;
+    keyboard.selectionStart = value.length;
+    keyboard.selectionEnd = value.length;
+    keyboardListeners.get("input")?.({ inputType, data, isComposing: false });
+  };
+  const keydown = (key: string, keyCode: number) => {
+    keyboardListeners.get("keydown")?.({ key, keyCode, isComposing: false });
+  };
+
+  input("て", "insertText", "て");
+  input("てす", "insertText", "す");
+  input("てすと", "insertText", "と");
+  for (const value of ["てす", "て", ""]) {
+    keydown("Backspace", 8);
+    input(value, "deleteContentBackward", null);
+  }
+  keydown("Unidentified", 229);
+  input("テス", "insertText", "テスト");
+  assert.equal(keyboard.value, "テスト", "the hidden DOM mirror must be normalized to the complete bounded insertText payload");
+  input("テスト\n", "insertLineBreak", null);
+  keydown("Backspace", 8);
+  input("テスト", "deleteContentBackward", null);
+
+  assert.deepEqual(sent.map((value) => JSON.parse(value)), [
+    { kind: "text", text: "て" },
+    { kind: "text", text: "す" },
+    { kind: "text", text: "と" },
+    { kind: "key", key: "Backspace" },
+    { kind: "key", key: "Backspace" },
+    { kind: "key", key: "Backspace" },
+    { kind: "text", text: "テスト" },
+    { kind: "key", key: "Enter" },
+    { kind: "key", key: "Backspace" }
+  ]);
+  assert.equal(timers.size, 0, "DOM input must cancel every delayed key fallback instead of replaying it");
   handoff.revoke("generic-browser-wss");
 });
 

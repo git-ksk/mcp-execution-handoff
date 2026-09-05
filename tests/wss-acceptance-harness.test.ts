@@ -17,7 +17,8 @@ test("macOS ordinary WSS physical harness is self-contained and HTTPS/WSS-only",
   assert.match(script, /WSS_ACCEPT_OK/);
   assert.match(script, /EXPECTED_IME_MARKER = "テスト"/);
   assert.match(script, /REJECTED_IME_PREEDIT = "てすと"/);
-  assert.match(script, /current\.text\.includes\(EXPECTED_IME_MARKER\)/);
+  assert.match(script, /HANDOFF_ACCEPT_THIRD_PARTY_IME/);
+  assert.match(script, /imeMarkerCount >= \(REQUIRE_THIRD_PARTY_IME \? 2 : 1\)/);
   assert.match(script, /!current\.text\.includes\(REJECTED_IME_PREEDIT\)/);
   assert.match(script, /aimActivated === true/);
   assert.match(script, /enable Aim/);
