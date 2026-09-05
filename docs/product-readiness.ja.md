@@ -10,7 +10,7 @@ native helper delivery、Human-visible lifecycleが未成熟ならproduct-ready�
 
 ## 現在のproduct boundary
 
-現在は `private: true` の **v0.4.2 GitHub/source release** がbaselineです。
+現在は `private: true` の **v0.4.3 GitHub/source release** がbaselineです。
 
 - committed `dist/` はsource-release JavaScript artifactとしてconsumer-readyです。CIはtracked package
   metadata + `dist/` だけをstageし、TypeScript source/build設定を含めずproduction dependencyだけを導入し、
