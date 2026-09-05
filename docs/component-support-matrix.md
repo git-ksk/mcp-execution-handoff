@@ -132,8 +132,16 @@ This is a shared WSS authority gate, not proof of every Browser/Window host or o
 It does not exercise TLS/proxy delivery, exact-target capture/input helpers, consumer semantic
 verification, or physical iPhone Safari behavior. Completion grace is not permission to reconnect
 or resume input, and a channel already failed/closed by stale input does not reopen for Done.
-Platform support states and pending physical acceptance above remain unchanged; #184 remains open
-for the rest of the component/failure matrix.
+
+The public Linux/Cloud Run-equivalent WSS-only composition is additionally gated by
+`npm run accept:websocket:managed-public-wss` (#240). That acceptance runs a container built from
+the committed consumer-ready `dist/` tree rather than rebuilding TypeScript source, then composes
+the authenticated top-level gateway flow (`HEAD`/`GET`), WSS bootstrap/upgrade, first exact-window
+frame, one bounded benign Human input, `Done`, exactly-once completion, and stale locator/bootstrap
+fencing. It explicitly configures WSS-only transport and asserts that no WebRTC/TURN path is inserted.
+It is generic Handoff evidence only: provider login semantics and physical iPhone Safari remain separate.
+
+Platform support states and pending physical acceptance above remain unchanged.
 
 ## High-risk conformance gaps
 

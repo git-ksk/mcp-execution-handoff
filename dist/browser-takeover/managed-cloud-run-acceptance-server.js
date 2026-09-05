@@ -29,6 +29,7 @@ assertNoTurnEnvironment();
 const port = boundedPort(process.env.PORT);
 const publicBaseUrl = requiredHttpsOrigin(process.env.HANDOFF_WSS_PUBLIC_BASE_URL);
 const acceptanceRevision = requiredGitRevision(process.env.HANDOFF_ACCEPTANCE_REVISION);
+const wssOnlyConfigured = process.env.HANDOFF_ACCEPTANCE_WSS_ONLY === "1";
 const hostScript = path.resolve("dist/browser-takeover/linux-webrtc-host-cli.js");
 const targetState = {
     ready: false,
@@ -43,6 +44,7 @@ const targetState = {
     submitted: false
 };
 let doneObserved = false;
+let completionCount = 0;
 let verificationStartedObserved = false;
 let teardownCompleted = false;
 let staleDirectLocatorRejected = false;
@@ -271,7 +273,7 @@ async function handleHttp(req, res) {
     if (principal === activePrincipal
         && managedEvidence.currentTransport === "websocket_relay"
         && /^\/takeover\/[A-Za-z0-9-]{8,100}$/.test(url.pathname)
-        && url.pathname !== initialDirectPath) {
+        && (wssOnlyConfigured || url.pathname !== initialDirectPath)) {
         observedWebSocketPath = url.pathname;
     }
     await probeStaleLocators();
@@ -294,7 +296,9 @@ function createManagedHandoff() {
             linuxHostScript: hostScript,
             displayName: DISPLAY
         },
+        ...(wssOnlyConfigured ? { transportPolicy: { order: ["websocket_relay"] } } : {}),
         onComplete: () => {
+            completionCount += 1;
             doneObserved = true;
             verificationStartedObserved = true;
             activeLocator = undefined;
@@ -399,6 +403,7 @@ function acceptanceSnapshot() {
         wssFailureInputStage: handoff?.managedWebSocketDiagnosticsSnapshot().failureInputStage ?? "none",
         wssLatency: handoff?.managedWebSocketLatencySnapshot() ?? null,
         turnConfigured: false,
+        wssOnlyConfigured,
         currentTransport: managedEvidence.currentTransport,
         lastTransport: managedEvidence.lastTransport,
         generation: managedEvidence.generation,
@@ -418,12 +423,14 @@ function acceptanceSnapshot() {
         enterKeyUpObserved: targetState.enterKeyUpObserved,
         submitObserved: targetState.submitted,
         doneObserved,
+        completionCount,
         verificationStartedObserved,
         teardownCompleted
     };
 }
 function resetAcceptanceState() {
     doneObserved = false;
+    completionCount = 0;
     verificationStartedObserved = false;
     teardownCompleted = false;
     staleDirectLocatorRejected = false;
