@@ -89,6 +89,8 @@ upgradeは「fileを置き換えて古いHuman sessionを継続する」処理�
 
 CUMGのgeneration staging/preflightはこのmodelの有用なconsumer evidenceですが、全consumerにCUMG topologyを要求しません。
 
+v0.4.4の [deterministic consumer refresh contract](consumer-refresh.ja.md) は、deployment topologyを共通化せずimmutable-pin stagingだけをgeneralizeします。exact Handoff revisionとconsumer-declared configからcurrent pin/lock一致を検証し、宣言されたsource/package identityだけを更新し、必要ならnpm lock metadataをrefreshし、native-helper source-tree identityと明示的なrebuild-required signalを返します。これだけでconsumer candidateをproduct-readyとは扱わず、通常のconsumer test、rebuild、readiness/preflight、deploy/traffic gateは引き続き必須です。
+
 ## Human-visible lifecycle quality
 
 stale UIがauthorityを誤認させる場合、presentationもproduct correctnessです。

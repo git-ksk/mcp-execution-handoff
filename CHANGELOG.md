@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Add a deterministic consumer refresh/staging contract (#237): exact Handoff Git revisions can be projected into a reproducible source-artifact manifest and applied through a consumer-declared config for immutable GitHub-archive or exact source-checkout consumers. The CLI fails closed on stale/mismatched lock or pin-policy state, rolls back touched files on apply failure, marks native-helper source changes as rebuild-required with exact Git tree identities, and never deploys, switches traffic, mutates a running service, or requires npm publication.
+
 ## [0.4.3] - 2026-09-05
 
 - Fix managed mobile Browser IME/text commit sequencing (#232): WebRTC and WSS now let Safari own the hidden textarea for the lifetime of an explicit keyboard session, keep composition preedit local, and mirror only committed DOM deltas to the remote target. `insertCompositionText` / `deleteCompositionText` are never forwarded; `insertFromComposition` commits the finalized replacement once, while ordinary non-composing `input` mirrors Latin text, Backspace, and Enter without clearing Safari's keyboard buffer between edits. Physical iPhone Safari acceptance is scoped to the iOS system keyboard; third-party keyboard replacement streams are tracked separately in #244. Enter/Backspace keydown is kept only as a 250 ms pending-key fallback and is cancelled by the corresponding DOM input mutation, preventing duplicate newline/delete delivery on iOS Safari. Human text remains excluded from diagnostics/durable state.

@@ -52,7 +52,7 @@ final release PRは、blocker修正が必要な場合を除きrelease bookkeepin
 4. source-only releaseでは `private: true` を維持する。
 5. clean installから後述のrelease validationを全部通す。
 
-v0.4.2ではmilestone #13 (`v0.4.2 — Maintenance`) をauthoritative release gateとし、final release PR前に#226がclose済みであることを確認します。#227 / #228は明示的にnon-blockingなversion未確定host parity workです。historicalなv0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
+v0.4.4ではmilestone #15 (`v0.4.4 — Immediate Hardening`) をauthoritative release gateとし、#237 / #233 / #234 / #244をexact release scopeとします。#227 / #228は明示的にnon-blockingなversion未確定host parity workです。historicalなv0.4.3はmilestone #14、v0.4.2はmilestone #13、v0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
 
 ## Release validation
 
@@ -95,6 +95,8 @@ NODE
 ```
 
 `npm run verify:consumer-dist` は、**git tracked** な `package.json` / `package-lock.json` / `dist/` だけをtemporary consumer stagingへコピーします。`src/` とTypeScript build設定は意図的に含めず、`npm ci --omit=dev --ignore-scripts` でproduction dependencyだけをinstallした後、public root/subpath entry pointと現行consumerが必要とするexportをimport検証します。これをGitHub/source releaseのJavaScript artifact boundaryとし、committed `dist/` をstageするconsumerは事前にTypeScript compileする必要がありません。ただし、これはnpm publicationを有効化するものでも、全platform native helperをprebuilt binaryとして配布済みと主張するものでもありません。
+
+source-pin downstream upgradeには [deterministic consumer refresh contract](docs/consumer-refresh.ja.md) を使います。変更前のimmutable pin/lock整合を検証し、consumerが明示した場所だけを更新し、必要なnpm lock metadataをrefreshし、native-helper rebuild requirementを明示します。自動化するのはrefresh/stagingまでで、consumer test、immutable image/native rebuild、candidate deploy/readiness、traffic切替はconsumer-ownedのままです。
 
 final PRではGitHubのrequired checksもすべてgreenにします。local greenをprotected-branch checkの代用にはしません。
 
