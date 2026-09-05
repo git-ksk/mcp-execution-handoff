@@ -10,7 +10,19 @@ const repository = "git-ksk/mcp-execution-handoff";
 const archive = (revision: string) => `https://github.com/${repository}/archive/${revision}.tar.gz`;
 const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" }).trim();
 const head = git("rev-parse", "HEAD");
-const parent = git("rev-parse", "HEAD^");
+const previous = execFileSync("git", ["commit-tree", git("rev-parse", "HEAD^{tree}")], {
+  encoding: "utf8",
+  input: "consumer refresh fixture\n",
+  env: {
+    ...process.env,
+    GIT_AUTHOR_NAME: "consumer-refresh-test",
+    GIT_AUTHOR_EMAIL: "consumer-refresh-test@example.invalid",
+    GIT_COMMITTER_NAME: "consumer-refresh-test",
+    GIT_COMMITTER_EMAIL: "consumer-refresh-test@example.invalid",
+    GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
+    GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z"
+  }
+}).trim();
 const packageVersion = (revision: string) => JSON.parse(git("show", `${revision}:package.json`)).version as string;
 
 function run(args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
@@ -53,10 +65,10 @@ test("source-checkout refresh updates all declared identities and marks native h
   const root = tempConsumer(t);
   writeFileSync(join(root, "pin.json"), `${JSON.stringify({
     schema_version: 1,
-    source_commit: parent,
-    package_version: packageVersion(parent)
+    source_commit: previous,
+    package_version: packageVersion(previous)
   }, null, 2)}\n`);
-  writeFileSync(join(root, "release.yml"), `env:\n  HANDOFF_SOURCE_COMMIT: ${parent}\n`);
+  writeFileSync(join(root, "release.yml"), `env:\n  HANDOFF_SOURCE_COMMIT: ${previous}\n`);
   writeFileSync(join(root, "consumer-refresh.json"), `${JSON.stringify({
     schemaVersion: 1,
     dependency: { kind: "source-checkout" },
@@ -81,7 +93,7 @@ test("source-checkout refresh updates all declared identities and marks native h
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
   assert.equal(output.status, "updated");
-  assert.equal(output.previousRevision, parent);
+  assert.equal(output.previousRevision, previous);
   assert.equal(output.requestedRevision, head);
   assert.equal(output.nativeHelpers.rebuildRequired, true);
   assert.deepEqual(output.nativeHelpers.sourceTrees.map((entry: { path: string }) => entry.path), [
@@ -102,7 +114,7 @@ test("source-checkout refresh updates all declared identities and marks native h
 
 test("source-checkout refresh fails closed when declared revision pins disagree", (t) => {
   const root = tempConsumer(t);
-  writeFileSync(join(root, "pin.json"), `${JSON.stringify({ source_commit: parent }, null, 2)}\n`);
+  writeFileSync(join(root, "pin.json"), `${JSON.stringify({ source_commit: previous }, null, 2)}\n`);
   writeFileSync(join(root, "release.yml"), `env:\n  HANDOFF_SOURCE_COMMIT: ${head}\n`);
   writeFileSync(join(root, "consumer-refresh.json"), `${JSON.stringify({
     schemaVersion: 1,
@@ -131,13 +143,13 @@ test("source-checkout refresh fails closed when declared revision pins disagree"
 
 test("npm archive refresh updates package and lock through npm then verifies exact resolution", (t) => {
   const root = tempConsumer(t);
-  const oldVersion = packageVersion(parent);
+  const oldVersion = packageVersion(previous);
   const nextVersion = packageVersion(head);
   writeFileSync(join(root, "package.json"), `${JSON.stringify({
     name: "fixture-consumer",
     version: "1.0.0",
     private: true,
-    dependencies: { "mcp-execution-handoff": archive(parent) }
+    dependencies: { "mcp-execution-handoff": archive(previous) }
   }, null, 2)}\n`);
   writeFileSync(join(root, "package-lock.json"), `${JSON.stringify({
     name: "fixture-consumer",
@@ -145,8 +157,8 @@ test("npm archive refresh updates package and lock through npm then verifies exa
     lockfileVersion: 3,
     requires: true,
     packages: {
-      "": { name: "fixture-consumer", version: "1.0.0", dependencies: { "mcp-execution-handoff": archive(parent) } },
-      "node_modules/mcp-execution-handoff": { version: oldVersion, resolved: archive(parent) }
+      "": { name: "fixture-consumer", version: "1.0.0", dependencies: { "mcp-execution-handoff": archive(previous) } },
+      "node_modules/mcp-execution-handoff": { version: oldVersion, resolved: archive(previous) }
     }
   }, null, 2)}\n`);
   writeFileSync(join(root, "consumer-refresh.json"), `${JSON.stringify({
@@ -190,15 +202,15 @@ test("npm archive refresh rejects stale lock state before mutation", (t) => {
     name: "fixture-consumer",
     version: "1.0.0",
     private: true,
-    dependencies: { "mcp-execution-handoff": archive(parent) }
+    dependencies: { "mcp-execution-handoff": archive(previous) }
   }, null, 2)}\n`);
   writeFileSync(join(root, "package-lock.json"), `${JSON.stringify({
     name: "fixture-consumer",
     version: "1.0.0",
     lockfileVersion: 3,
     packages: {
-      "": { dependencies: { "mcp-execution-handoff": archive(parent) } },
-      "node_modules/mcp-execution-handoff": { version: packageVersion(parent), resolved: archive(head) }
+      "": { dependencies: { "mcp-execution-handoff": archive(previous) } },
+      "node_modules/mcp-execution-handoff": { version: packageVersion(previous), resolved: archive(head) }
     }
   }, null, 2)}\n`);
   writeFileSync(join(root, "consumer-refresh.json"), `${JSON.stringify({
@@ -228,15 +240,15 @@ test("npm archive refresh rolls back package metadata when lock refresh fails", 
     name: "fixture-consumer",
     version: "1.0.0",
     private: true,
-    dependencies: { "mcp-execution-handoff": archive(parent) }
+    dependencies: { "mcp-execution-handoff": archive(previous) }
   }, null, 2)}\n`;
   const oldLock = `${JSON.stringify({
     name: "fixture-consumer",
     version: "1.0.0",
     lockfileVersion: 3,
     packages: {
-      "": { dependencies: { "mcp-execution-handoff": archive(parent) } },
-      "node_modules/mcp-execution-handoff": { version: packageVersion(parent), resolved: archive(parent) }
+      "": { dependencies: { "mcp-execution-handoff": archive(previous) } },
+      "node_modules/mcp-execution-handoff": { version: packageVersion(previous), resolved: archive(previous) }
     }
   }, null, 2)}\n`;
   writeFileSync(join(root, "package.json"), oldPackage);
