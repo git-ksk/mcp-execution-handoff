@@ -13,7 +13,9 @@ export interface ExperimentalWebSocketWindowSurface {
      * the target is missing, ambiguous, moved outside the authorized boundary, or otherwise cannot
      * be revalidated. They must never widen to a display/desktop capture.
      */
-    captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
+    captureExactWindow(target: Readonly<TakeoverHostTarget>, signal?: AbortSignal): Promise<WebSocketTakeoverFrame>;
+    /** Latest still-authoritative exact-window frame for the first frame of a fresh client generation. */
+    captureLatestExactWindow?(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     /** Unknown failures default to authority_lost so generic surfaces remain fail closed. */
     captureFailureDisposition?(error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     /** Recoverable input failures are never replayed automatically; the Human may retry manually. Unknown failures fail closed. */

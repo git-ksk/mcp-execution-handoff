@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import test from "node:test";
 import WebSocket from "ws";
 import type { TakeoverHostTarget } from "../src/browser-takeover/broker.js";
+import type { WebSocketTakeoverFrame } from "../src/browser-takeover/websocket-takeover.js";
 import {
   ExperimentalWebSocketWindowHandoff,
   ExperimentalWebSocketWindowHandoffError,
@@ -230,6 +231,81 @@ test("Generic Window WSS captures and inputs only through the exact trusted proc
   assert.equal(handoff.ownsPath(`/takeover/ws/${sessionId}`), false);
   assert.equal(await handoff.completeAfterVerification(intervention), true);
   assert.equal(await handoff.completeAfterVerification(intervention), false);
+});
+
+test("Generic Window WSS reconnect sends the latest exact frame without waiting for a static content change", async (t) => {
+  let latestCaptures = 0;
+  let nextCaptures = 0;
+  let cancelledCaptures = 0;
+  const surface: ExperimentalWebSocketWindowSurface = {
+    captureLatestExactWindow: async () => {
+      latestCaptures += 1;
+      return {
+        data: Buffer.from("static-exact-window"),
+        width: 640,
+        height: 480,
+        mimeType: "image/jpeg"
+      };
+    },
+    captureExactWindow: async (_target, signal) => {
+      nextCaptures += 1;
+      return await new Promise<WebSocketTakeoverFrame>((_resolve, reject) => {
+        const onAbort = () => {
+          cancelledCaptures += 1;
+          reject(new Error("static next-frame wait cancelled"));
+        };
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    },
+    captureFailureDisposition: () => "recoverable",
+    async tapExactWindow() {},
+    async scrollExactWindow() {},
+    async insertExactWindowText() {},
+    async pressExactWindowKey() {}
+  };
+  const handoff = new ExperimentalWebSocketWindowHandoff({
+    takeover: { enabled: true, publicBaseUrl: ORIGIN, ttlMs: 60_000, reconnectIdleMs: 250 },
+    allowedOrigins: [ORIGIN],
+    surface,
+    frameIntervalMs: 50
+  });
+  const locator = handoff.start({
+    intervention: { id: "static-reconnect", epoch: 1 },
+    principalBinding: PRINCIPAL,
+    target: TARGET,
+    inputPolicy: POLICY
+  });
+  const sessionId = sessionIdFrom(locator);
+  const server = await startServer(handoff);
+  t.after(async () => closeServer(server));
+
+  const firstProtocols = await bootstrapProtocols(handoff, sessionId);
+  const first = new WebSocket(socketUrl(server, sessionId), firstProtocols, { origin: ORIGIN });
+  const firstReady = await nextMessage(first);
+  assert.deepEqual(JSON.parse(firstReady.data.toString()), { kind: "ready" });
+  const firstFrame = await nextMessage(first);
+  assert.equal(firstFrame.isBinary, true);
+  assert.equal(Buffer.from(firstFrame.data as Buffer).subarray(16).toString(), "static-exact-window");
+  await waitFor(() => nextCaptures > 0);
+
+  first.terminate();
+  await new Promise<void>((resolve) => first.once("close", () => resolve()));
+  await waitFor(() => handoff.diagnosticsSnapshot().channelState === "closed");
+  await waitFor(() => cancelledCaptures > 0);
+
+  const secondProtocols = await bootstrapProtocols(handoff, sessionId);
+  const second = new WebSocket(socketUrl(server, sessionId), secondProtocols, { origin: ORIGIN });
+  const secondReady = await nextMessage(second);
+  assert.deepEqual(JSON.parse(secondReady.data.toString()), { kind: "ready" });
+  const secondFrame = await nextMessage(second);
+  assert.equal(secondFrame.isBinary, true);
+  assert.equal(Buffer.from(secondFrame.data as Buffer).subarray(16).toString(), "static-exact-window");
+  assert.ok(latestCaptures >= 2, "each fresh WSS generation needs one latest exact frame");
+
+  second.close();
+  await new Promise<void>((resolve) => second.once("close", () => resolve()));
+  handoff.revoke("static-reconnect");
 });
 
 test("Generic Window WSS retains the generation after a recoverable input helper failure", async (t) => {

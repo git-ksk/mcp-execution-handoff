@@ -318,6 +318,10 @@ export class ExperimentalWebSocketTakeoverIngress {
     hasActiveConnection(sessionId) {
         return this.#active.get(sessionId)?.channel.state === "open";
     }
+    activeConnectionGeneration(sessionId) {
+        const active = this.#active.get(sessionId);
+        return active?.channel.state === "open" ? active.binding.clientGeneration : undefined;
+    }
     /** @internal Content-free WebSocket transport diagnostics for managed physical acceptance. */
     diagnosticsSnapshot() {
         return { ...this.#lastDiagnostics };

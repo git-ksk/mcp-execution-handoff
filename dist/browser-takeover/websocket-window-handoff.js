@@ -102,6 +102,9 @@ export class ExperimentalWebSocketWindowHandoff {
             inputPolicy,
             timer,
             captureInFlight: false,
+            captureAbort: undefined,
+            activeClientGeneration: undefined,
+            connectionNeedsFrame: true,
             editableRegionsFingerprint: "",
             editableRegionsLastSentAt: 0
         };
@@ -141,18 +144,36 @@ export class ExperimentalWebSocketWindowHandoff {
         return await this.#broker.completeWebSocketAfterVerification(intervention);
     }
     async #pumpFrame(state) {
-        if (state.captureInFlight || this.#sessionsById.get(state.sessionId) !== state)
+        if (this.#sessionsById.get(state.sessionId) !== state)
             return;
-        if (!this.#binding.hasActiveConnection(state.sessionId))
+        const activeClientGeneration = this.#binding.activeConnectionGeneration(state.sessionId);
+        if (activeClientGeneration === undefined) {
+            state.activeClientGeneration = undefined;
+            state.connectionNeedsFrame = true;
+            state.captureAbort?.abort();
             return;
+        }
+        if (state.activeClientGeneration !== activeClientGeneration) {
+            state.activeClientGeneration = activeClientGeneration;
+            state.connectionNeedsFrame = true;
+            state.captureAbort?.abort();
+        }
+        if (state.captureInFlight)
+            return;
+        const captureAbort = new AbortController();
+        state.captureAbort = captureAbort;
         state.captureInFlight = true;
         let frame;
         try {
             const captureStartedAt = performance.now();
-            frame = await this.#surface.captureExactWindow(state.target);
+            frame = state.connectionNeedsFrame && this.#surface.captureLatestExactWindow
+                ? await this.#surface.captureLatestExactWindow(state.target)
+                : await this.#surface.captureExactWindow(state.target, captureAbort.signal);
             this.#latencyTracker.record("capture", performance.now() - captureStartedAt);
         }
         catch (error) {
+            if (captureAbort.signal.aborted)
+                return;
             const disposition = this.#surface.captureFailureDisposition?.(error) ?? "authority_lost";
             if (disposition === "recoverable") {
                 this.#onDiagnosticEvent?.("session_retained");
@@ -168,6 +189,8 @@ export class ExperimentalWebSocketWindowHandoff {
             return;
         }
         finally {
+            if (state.captureAbort === captureAbort)
+                state.captureAbort = undefined;
             state.captureInFlight = false;
         }
         if (this.#sessionsById.get(state.sessionId) !== state)
@@ -190,7 +213,9 @@ export class ExperimentalWebSocketWindowHandoff {
             }
         }
         try {
-            await this.#binding.pushFrame(state.sessionId, frame);
+            const pushed = await this.#binding.pushFrame(state.sessionId, frame);
+            if (pushed)
+                state.connectionNeedsFrame = false;
         }
         catch {
             // The channel itself fails closed and releases the generation on transport/backpressure
@@ -251,6 +276,7 @@ export class ExperimentalWebSocketWindowHandoff {
         }
         if (this.#sessionsById.get(state.sessionId) === state)
             this.#sessionsById.delete(state.sessionId);
+        state.captureAbort?.abort();
         clearInterval(state.timer);
     }
 }

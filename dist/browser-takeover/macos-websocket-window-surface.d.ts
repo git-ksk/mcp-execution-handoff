@@ -45,7 +45,8 @@ export declare class MacOSWebSocketWindowSurface implements ExperimentalWebSocke
     captureFailureDisposition(_error: unknown): ExperimentalWebSocketWindowCaptureFailureDisposition;
     inputFailureDisposition(error: unknown): ExperimentalWebSocketWindowInputFailureDisposition;
     editableRegionsSnapshot(): WebSocketTakeoverEditableRegion[];
-    captureExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
+    captureExactWindow(target: Readonly<TakeoverHostTarget>, signal?: AbortSignal): Promise<WebSocketTakeoverFrame>;
+    captureLatestExactWindow(target: Readonly<TakeoverHostTarget>): Promise<WebSocketTakeoverFrame>;
     tapExactWindow(target: Readonly<TakeoverHostTarget>, x: number, y: number): Promise<void>;
     scrollExactWindow(target: Readonly<TakeoverHostTarget>, deltaY: number): Promise<void>;
     insertExactWindowText(target: Readonly<TakeoverHostTarget>, text: string): Promise<void>;

@@ -27,6 +27,7 @@ export declare class ExperimentalWebSocketBrokerBinding {
     handleBootstrap(request: Request, boundPrincipal: string | undefined): Response | undefined;
     handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
     hasActiveConnection(sessionId: string): boolean;
+    activeConnectionGeneration(sessionId: string): number | undefined;
     /** @internal Content-free WSS ingress diagnostics for managed physical acceptance. */
     diagnosticsSnapshot(): ReturnType<ExperimentalWebSocketTakeoverIngress["diagnosticsSnapshot"]>;
     pushFrame(sessionId: string, frame: WebSocketTakeoverFrame): Promise<boolean>;

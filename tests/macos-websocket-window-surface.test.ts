@@ -9,13 +9,13 @@ import { WebSocketLatencyTracker } from "../src/browser-takeover/websocket-laten
 
 const macOSExecutionTest = process.platform === "darwin" ? test : test.skip;
 
-function fakeHost(authorityLoss = false, helperExit = false) {
+function fakeHost(authorityLoss = false, helperExit = false, continuousFrames = true) {
   const dir = mkdtempSync(join(tmpdir(), "handoff-macos-wss-"));
   const executable = join(dir, "fake-host");
   const stateFile = join(dir, "state.json");
   const inputsFile = join(dir, "inputs.json");
   const startsFile = join(dir, "starts.txt");
-  writeFileSync(executable, `#!${process.execPath}\nconst fs=require("node:fs");\nconst stateFile=${JSON.stringify(stateFile)};\nconst inputsFile=${JSON.stringify(inputsFile)};\nconst startsFile=${JSON.stringify(startsFile)};\nconst starts=fs.existsSync(startsFile)?Number(fs.readFileSync(startsFile,"utf8")):0;fs.writeFileSync(startsFile,String(starts+1));\nfs.writeFileSync(stateFile,JSON.stringify({env:process.env}));\nfs.writeFileSync(inputsFile,"[]");\nconst jpeg=Buffer.from([0xff,0xd8,1,2,0xff,0xd9]);\nconst payload=Buffer.allocUnsafe(4+jpeg.length);payload.writeUInt16BE(640,0);payload.writeUInt16BE(480,2);jpeg.copy(payload,4);\nconst record=Buffer.allocUnsafe(5+payload.length);record[0]=2;record.writeUInt32BE(payload.length,1);payload.copy(record,5);\nprocess.stdout.write(record);const timer=setInterval(()=>process.stdout.write(record),25);\nprocess.stderr.write("MCP_HANDOFF_CONTROL editable_regions=1000,2000,3000,1000\\n");\n${authorityLoss ? 'setTimeout(()=>{process.stderr.write("MCP_HANDOFF_DIAGNOSTIC capture_stage=authority_lost\\n");clearInterval(timer);process.exit(2)},90);' : ''}\n${helperExit ? 'setTimeout(()=>{clearInterval(timer);process.exit(2)},90);' : ''}\nlet pending="";process.stdin.setEncoding("utf8");process.stdin.on("data",chunk=>{pending+=chunk;for(;;){const at=pending.indexOf("\\n");if(at<0)break;const line=pending.slice(0,at);pending=pending.slice(at+1);let command;try{command=JSON.parse(line)}catch{continue}if(command.kind==="stop"){clearInterval(timer);process.exit(0)}const kinds=JSON.parse(fs.readFileSync(inputsFile,"utf8"));kinds.push(command.kind);fs.writeFileSync(inputsFile,JSON.stringify(kinds));process.stderr.write("MCP_HANDOFF_DIAGNOSTIC input_stage=applied\\n")}});\n`);
+  writeFileSync(executable, `#!${process.execPath}\nconst fs=require("node:fs");\nconst stateFile=${JSON.stringify(stateFile)};\nconst inputsFile=${JSON.stringify(inputsFile)};\nconst startsFile=${JSON.stringify(startsFile)};\nconst starts=fs.existsSync(startsFile)?Number(fs.readFileSync(startsFile,"utf8")):0;fs.writeFileSync(startsFile,String(starts+1));\nfs.writeFileSync(stateFile,JSON.stringify({env:process.env}));\nfs.writeFileSync(inputsFile,"[]");\nconst jpeg=Buffer.from([0xff,0xd8,1,2,0xff,0xd9]);\nconst payload=Buffer.allocUnsafe(4+jpeg.length);payload.writeUInt16BE(640,0);payload.writeUInt16BE(480,2);jpeg.copy(payload,4);\nconst record=Buffer.allocUnsafe(5+payload.length);record[0]=2;record.writeUInt32BE(payload.length,1);payload.copy(record,5);\nprocess.stdout.write(record);${continuousFrames ? 'const timer=setInterval(()=>process.stdout.write(record),25);' : 'const timer=setInterval(()=>{},60000);'}\nprocess.stderr.write("MCP_HANDOFF_CONTROL editable_regions=1000,2000,3000,1000\\n");\n${authorityLoss ? 'setTimeout(()=>{process.stderr.write("MCP_HANDOFF_DIAGNOSTIC capture_stage=authority_lost\\n");clearInterval(timer);process.exit(2)},90);' : ''}\n${helperExit ? 'setTimeout(()=>{clearInterval(timer);process.exit(2)},90);' : ''}\nlet pending="";process.stdin.setEncoding("utf8");process.stdin.on("data",chunk=>{pending+=chunk;for(;;){const at=pending.indexOf("\\n");if(at<0)break;const line=pending.slice(0,at);pending=pending.slice(at+1);let command;try{command=JSON.parse(line)}catch{continue}if(command.kind==="stop"){clearInterval(timer);process.exit(0)}const kinds=JSON.parse(fs.readFileSync(inputsFile,"utf8"));kinds.push(command.kind);fs.writeFileSync(inputsFile,JSON.stringify(kinds));process.stderr.write("MCP_HANDOFF_DIAGNOSTIC input_stage=applied\\n")}});\n`);
   chmodSync(executable, 0o755);
   return {
     dir, executable, stateFile, inputsFile, startsFile,
@@ -54,6 +54,29 @@ macOSExecutionTest("macOS WSS exact-window surface is JPEG-only without ICE STUN
     assert.deepEqual(JSON.parse(readFileSync(host.inputsFile, "utf8")), ["tap", "text", "key", "key", "scroll"]);
     assert.deepEqual(surface.editableRegionsSnapshot(), [[1000, 2000, 3000, 1000]]);
     assert.equal(JSON.stringify(surface.diagnosticsSnapshot()).includes("fixture-text"), false);
+  } finally {
+    await surface.close();
+    host.cleanup();
+  }
+});
+
+macOSExecutionTest("macOS WSS can abort a stale next-frame wait and reuse the latest exact static frame", async () => {
+  const host = fakeHost(false, false, false);
+  const surface = new MacOSWebSocketWindowSurface({ hostExecutable: host.executable, helperTtlMs: 30_000 });
+  try {
+    const target = { processId: process.pid, windowId: 7331 };
+    const first = await surface.captureLatestExactWindow(target);
+    assert.equal(first.mimeType, "image/jpeg");
+
+    const abort = new AbortController();
+    const pending = surface.captureExactWindow(target, abort.signal);
+    setTimeout(() => abort.abort(), 20);
+    await assert.rejects(pending, /frame cancelled/);
+
+    const startedAt = performance.now();
+    const latest = await surface.captureLatestExactWindow(target);
+    assert.equal(latest.width, 640);
+    assert.ok(performance.now() - startedAt < 200, "cached exact frame should not wait for a content change");
   } finally {
     await surface.close();
     host.cleanup();
