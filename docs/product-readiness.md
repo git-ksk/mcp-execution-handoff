@@ -126,6 +126,8 @@ that an old Human session continues".
 CUMG's generation-staging/preflight design is useful consumer evidence for this model, but it is not
 a requirement that every consumer adopt CUMG's deployment topology.
 
+The v0.4.4 [deterministic consumer refresh contract](consumer-refresh.md) generalizes the immutable-pin staging step without generalizing deployment topology. Given one exact Handoff revision and a consumer-declared config, it verifies current pin/lock agreement, applies only declared source/package identities, refreshes npm lock metadata when required, and emits exact native-helper source-tree identities plus an explicit rebuild-required signal. It does not make the resulting consumer candidate product-ready by itself; normal consumer tests, rebuild, readiness/preflight, and deployment/traffic gates still apply.
+
 ## Human-visible lifecycle quality
 
 Human-visible state is part of product correctness whenever stale presentation could misrepresent

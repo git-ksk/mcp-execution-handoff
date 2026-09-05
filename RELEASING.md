@@ -50,7 +50,7 @@ The final release PR should contain only release bookkeeping unless a blocker re
 4. Keep `private: true` for source-only releases.
 5. Run the complete release validation below from a clean install.
 
-For v0.4.2, the authoritative release gate is milestone #13 (`v0.4.2 — Maintenance`), with #226 closed before the final release PR. #227/#228 are explicitly non-blocking version-uncommitted host-parity work. Historical v0.4.1 used milestone #8; v0.4.0 used Issue #213; v0.3.0 used Issue #145; v0.2.0 used Issue #119.
+For v0.4.4, the authoritative release gate is milestone #15 (`v0.4.4 — Immediate Hardening`): #237, #233, #234, and #244 are the exact release scope. #227/#228 remain explicitly non-blocking version-uncommitted host-parity work. Historical v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
 
 ## Release validation
 
@@ -93,6 +93,8 @@ NODE
 ```
 
 `npm run verify:consumer-dist` creates a temporary consumer staging directory from **tracked** `package.json`, `package-lock.json`, and `dist/` artifacts only. It intentionally excludes `src/` and TypeScript build configuration, installs production dependencies with `npm ci --omit=dev --ignore-scripts`, then imports the public root/subpath entry points and verifies the exports required by current consumers. This is the supported GitHub/source-release JavaScript artifact boundary: a consumer staging committed `dist/` does not need to compile TypeScript first. It does **not** enable npm publication or claim that every platform-native helper is distributed as a prebuilt binary.
+
+For source-pinned downstream upgrades, use the [deterministic consumer refresh contract](docs/consumer-refresh.md). It verifies the existing immutable pin/lock state before mutation, updates only consumer-declared locations, refreshes npm lock metadata where applicable, and returns an explicit native-helper rebuild requirement. It automates refresh/staging only: consumer tests, immutable image/native rebuild, candidate deployment/readiness, and traffic switching remain consumer-owned.
 
 The final PR must also pass the repository's required GitHub checks. Do not treat a local green run as a substitute for protected-branch checks.
 
