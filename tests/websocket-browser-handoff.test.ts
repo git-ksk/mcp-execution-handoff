@@ -99,6 +99,8 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /function sendKeyboardDelta\(current,inputType\)/);
   assert.match(html, /browserTextReplacementDelta\(keyboardMirror,current\)/);
   assert.match(html, /keyboardMirror=current/);
+  assert.match(html, /pendingKeyTimer=setTimeout\(\(\)=>\{pendingKeyTimer=0;if\(compositionPhase==='idle'\)send\(\{kind:'key',key\}\)\},250\)/);
+  assert.match(html, /keyboard\.addEventListener\('input',[\s\S]*clearPendingKeyboardKey\(\)/);
   assert.match(html, /compositionPhase='idle'/);
   assert.match(html, /browserImeKeyboardEventIsCompositionControlled\(compositionPhase,event\.isComposing,Number\(event\.keyCode\)\|\|0\)/);
   assert.match(html, /keyboard\.addEventListener\('input'/);
