@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-09-05
+
 - Normalize third-party iOS keyboard ordinary `insertText` replacement streams (#244): when a bounded InputEvent payload is a strict extension of the hidden textarea DOM insertion, complete only the missing suffix and normalize the hidden mirror before subsequent edits. System `insertFromComposition` remains DOM-authoritative, `keyCode=229` does not establish correctness, WSS/WebRTC continue to share one Browser Human Input helper, and no Human payload is added to diagnostics or durable state.
 
 - Fix macOS Window WSS reconnects so a fresh client generation receives the latest still-authoritative exact-window frame without waiting for a content change; disconnect also cancels the old generation's pending next-frame wait. (#250)

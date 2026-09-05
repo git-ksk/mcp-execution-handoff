@@ -4,9 +4,9 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.4.3
+## Current baseline: v0.4.4
 
-`v0.4.3` is the current GitHub/source-release baseline. It retains the v0.4.2 credential-safe expiry boundary and completes the narrow Public WSS Reliability line: authorized bodyless HEAD probes remain intact (#235), the committed-dist public managed-WSS lifecycle has an end-to-end gate (#240), and physical iPhone Safari system-keyboard IME/text semantics are restored without clearing Safari-owned composition state (#232). Third-party iOS keyboard replacement streams remain separate follow-up work in #244. No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
+`v0.4.4` is the current GitHub/source-release baseline. It keeps the v0.4.3 public-WSS correctness boundary and completes Immediate Hardening: deterministic immutable consumer refresh/staging (#237), measured first-valid-frame startup presentation (#233), a 50 ms healthy-path WSS frame pump with bounded backpressure diagnostics (#234), third-party iOS keyboard replacement-stream compatibility including physical system-keyboard + Simeji acceptance (#244), and the static-window reconnect correctness blocker discovered during cadence acceptance (#250). No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -59,10 +59,11 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #232 | v0.4.3 public WSS reliability | **Complete / v0.4.3.** Physical iPhone Safari managed-WSS system-keyboard IME replacement, normal text, Backspace, exactly-one Enter newline, scroll, and Done passed without Human-text logging. |
 | #235 | v0.4.3 public WSS reliability | **Complete / carried into v0.4.3.** Preserve bodyless authorized `HEAD` takeover probes and keep GET-only managed client patching. |
 | #240 | v0.4.3 public WSS reliability | **Complete / v0.4.3 gate.** Public HTTPS gateway probe, GET, bootstrap, WSS upgrade, first frame, benign input, Done, and stale fencing are composed against committed consumer-ready `dist`. |
-| #233 | v0.4.4 Immediate Hardening | **Open / v0.4.4.** Attribute and improve delayed first-valid-frame/startup presentation on physical iPhone Safari WSS takeover. |
-| #234 | v0.4.4 Immediate Hardening | **Open / v0.4.4.** Measure and smooth steady-state iPhone Safari WSS frame cadence while retaining latest-frame-wins/backpressure bounds. |
-| #237 | v0.4.4 Immediate Hardening | **Open / v0.4.4 operational contract.** Add a deterministic immutable consumer refresh/staging mechanism so source-pinned consumers can upgrade without repository-specific pin surgery; deployment and traffic remain consumer-owned. |
-| #244 | v0.4.4 Immediate Hardening | **Open / v0.4.4.** Add explicit compatibility for third-party iOS keyboard replacement streams such as Simeji without regressing the accepted system-keyboard composition path. |
+| #233 | v0.4.4 Immediate Hardening | **Complete / v0.4.4.** Startup timing is split across transport ready, host first-valid-frame, and Safari decode/presentation; the first validated macOS JPEG is reused and physical iPhone startup acceptance passed. |
+| #234 | v0.4.4 Immediate Hardening | **Complete / v0.4.4.** Default healthy-path pump is 50 ms with single-flight/latest-frame-wins preserved; physical iPhone acceptance showed no dropped frames or backpressure in the accepted run. |
+| #237 | v0.4.4 Immediate Hardening | **Complete / v0.4.4 operational contract.** Deterministic immutable consumer refresh/staging supports source-checkout and npm-archive consumers with fail-closed pin/lock verification, rollback, and native-helper rebuild signaling; deploy/traffic remain consumer-owned. |
+| #244 | v0.4.4 Immediate Hardening | **Complete / v0.4.4.** Shared WebRTC/WSS Browser input normalization handles third-party ordinary `insertText` replacement streams without relying on `keyCode=229`; physical iPhone system-keyboard + Simeji acceptance passed. |
+| #250 | v0.4.4 reconnect blocker | **Complete / v0.4.4.** Fresh WSS generations receive the latest still-authoritative exact-window frame and cancel stale next-frame waits, so static windows recover after reconnect without waiting for content mutation. |
 | #227 | Host Parity Backlog — Windows Browser | **Open / version uncommitted.** Future bounded Windows Browser Handoff parity; requires dedicated Windows + mobile physical acceptance before support claim. |
 | #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
@@ -85,7 +86,7 @@ explicit signing/notarization or distro/ABI/provenance/rollback gates before pro
 
 Upgrade/rollback never restores stale locator/capability/generation/media/input authority. Durable
 recovery remains `reissue_and_revalidate`, and consumer semantic verification/replay policy remains
-consumer-owned. #237 is the prioritized next operational Product Readiness item: standardize deterministic immutable consumer refresh/staging without moving deployment, readiness, traffic switching, credentials, or consumer semantics into Handoff. Human-visible lifecycle quality is also part of this track: #150 is complete, with physical OK/Cancel evidence that stale LocalAuthentication presentation is cleared as soon as the exact target disappears while semantic success remains consumer-owned.
+consumer-owned. #237 is complete: deterministic immutable consumer refresh/staging now standardizes source-pinned upgrades without moving deployment, readiness, traffic switching, credentials, or consumer semantics into Handoff. The next planned release work is the provider-neutral connectivity boundary in #19. Human-visible lifecycle quality is also part of this track: #150 is complete, with physical OK/Cancel evidence that stale LocalAuthentication presentation is cleared as soon as the exact target disappears while semantic success remains consumer-owned.
 
 See [Product readiness and consumer compatibility](docs/product-readiness.md).
 
@@ -217,7 +218,7 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-05, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, and `v0.4.3 — Public WSS Reliability` milestones are complete. Ten Issues remain open and explicitly classified: four `v0.4.4 — Immediate Hardening` release issues (#233/#234/#237/#244), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), and two version-uncommitted host-parity issues (#227/#228). New work must be classified when created rather than left outside roadmap accounting.
+As of 2026-09-05, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, `v0.4.3 — Public WSS Reliability`, and `v0.4.4 — Immediate Hardening` release lines are complete. Six Issues remain open and explicitly classified: `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), and two version-uncommitted host-parity issues (#227/#228). New work must be classified when created rather than left outside roadmap accounting.
 
 ## v0.4.2 — Maintenance
 
@@ -266,16 +267,17 @@ Exit criteria:
 
 ## v0.4.4 — Immediate Hardening
 
-`v0.4.4` is the bounded hardening source-release line after `v0.4.3` and before `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` owns four explicitly scoped issues. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
+`v0.4.4` is the completed bounded hardening source-release line after `v0.4.3` and before `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` completed its four planned issues plus one reconnect correctness blocker discovered during physical cadence acceptance. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
 
-Priority scope:
+Release result:
 
-1. #237 — deterministic consumer refresh/staging contract for immutable Handoff upgrades. This is operationally urgent because every source patch currently causes manual pin/lock/policy refresh in each consumer. The mechanism must keep consumer rebuild, candidate deployment, readiness, and traffic switching consumer-owned.
-2. #233 — first-valid-frame/startup latency and explicit initialization presentation for physical iPhone Safari WSS takeover. Measure transport vs capture startup before optimizing.
-3. #234 — steady-state WSS frame cadence quality after startup. Measure capture/encode, WSS/backpressure, and Safari decode separately; preserve bounded latest-frame-wins semantics.
-4. #244 — third-party iOS keyboard replacement streams (observed with Simeji) that use a different `keyCode=229` / `insertText` / delete sequence than the accepted system-keyboard composition path. Preserve the system-keyboard fix while adding explicit compatibility coverage.
+1. #237 — **complete:** deterministic consumer refresh/staging now updates declared immutable source/package identities, validates stale/mismatched pins fail-closed, rolls back failed lock refresh, and signals native-helper rebuilds. Real Maps Browser MCP npm-archive and CUMG source-checkout staging evidence passed without Handoff owning deploy/traffic.
+2. #233 — **complete:** first-valid-frame startup is content-free and separately measured across connect→ready, host capture, and Safari ready→first `img.onload`; the first validated macOS JPEG is reused rather than discarded. Physical iPhone Safari startup acceptance passed.
+3. #234 — **complete:** healthy-path Window WSS defaults to a 50 ms pump while retaining single-flight/latest-frame-wins semantics and exposing bounded active backpressure counters. Physical iPhone acceptance passed with dropped frames 0 and backpressure events 0.
+4. #244 — **complete:** shared WebRTC/WSS Browser input normalization handles third-party ordinary `insertText` replacement streams without treating `keyCode=229` as proof. Physical iPhone Safari acceptance passed for both the iOS system Japanese keyboard and Simeji in one verified run.
+5. #250 — **complete blocker:** reconnect now cancels the stale generation's pending next-frame wait and immediately reuses the latest still-authoritative exact-window frame, restoring static views after an abnormal reconnect without content mutation.
 
-Execution order is #237 first for the deterministic consumer-refresh contract, then #233/#234 for WSS startup and steady-state quality, with #244 as the bounded keyboard-compatibility closeout. Measurement support for #234 may land alongside #233 when it is shared and content-free. The release remains source-only with `private: true`.
+The release remains source-only with `private: true`; npm publication, consumer deployment, readiness, and traffic switching remain separate decisions.
 
 ## Host Parity Backlog — version uncommitted
 
