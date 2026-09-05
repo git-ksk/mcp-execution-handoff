@@ -97,9 +97,12 @@ test("Generic Browser WSS serves a principal-bound Handoff-owned browser page wi
   assert.match(html, /let keyboardMirror=''/);
   assert.match(html, /function syncKeyboardValue\(\)/);
   assert.match(html, /function focusKeyboard\(\)\{if\(document\.activeElement===keyboard\)return/);
-  assert.match(html, /const remove=mirrored\.length-prefix,insert=current\.slice\(prefix\)\.join\(''\)/);
+  assert.match(html, /browserTextReplacementDelta\(keyboardMirror,keyboard\.value\)/);
   assert.match(html, /for\(let i=0;i<remove;i\+=1\).*Backspace/);
-  assert.match(html, /compositionend.*queueMicrotask/);
+  assert.match(html, /compositionend.*settleKeyboardComposition/);
+  assert.match(html, /compositionPhase='idle'/);
+  assert.match(html, /setTimeout\(\(\)=>\{compositionSettleTimer=0/);
+  assert.match(html, /browserImeKeyboardEventIsCompositionControlled\(compositionPhase,event\.isComposing,Number\(event\.keyCode\)\|\|0\)/);
   assert.match(html, /keyboard\.addEventListener\('input'/);
   assert.doesNotMatch(html, /compositionend',event=>.*event\.data.*kind:'text'/);
   assert.doesNotMatch(html, /insertReplacementText'.*kind:'text'/);

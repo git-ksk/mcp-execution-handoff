@@ -962,7 +962,10 @@ test("WebRTC locator renders direct touch UI and direct-first relay-capable clie
   assert.match(script, /function resetKeyboardBuffer\(\)/);
   assert.match(script, /function syncKeyboardValue\(\)/);
   assert.match(script, /browserTextReplacementDelta\(keyboardMirror,keyboard\.value\)/);
-  assert.match(script, /compositionend',[\s\S]*queueMicrotask/);
+  assert.match(script, /compositionend',[\s\S]*settleKeyboardComposition/);
+  assert.match(script, /compositionPhase='idle'/);
+  assert.match(script, /setTimeout\(function\(\)\{compositionSettleTimer=0/);
+  assert.match(script, /browserImeKeyboardEventIsCompositionControlled\(compositionPhase,event\.isComposing,Number\(event\.keyCode\)\|\|0\)/);
   assert.match(script, /keyboard\.addEventListener\('input'/);
   assert.doesNotMatch(script, /compositionend',function\(event\).*event\.data.*kind:'text'/);
   assert.match(script, /insertLineBreak/);

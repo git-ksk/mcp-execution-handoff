@@ -10,6 +10,40 @@ export interface BrowserTextReplacementDelta {
   readonly insert: string;
 }
 
+export type BrowserImeCompositionPhase = "idle" | "composing" | "settling";
+export type BrowserImeCompositionEvent = "composition_start" | "composition_end" | "settled";
+
+/** Keep Safari/iOS IME confirmation events inside one explicit composition lifecycle. */
+export function browserImeNextCompositionPhase(
+  phase: BrowserImeCompositionPhase,
+  event: BrowserImeCompositionEvent
+): BrowserImeCompositionPhase {
+  if (event === "composition_start") return "composing";
+  if (event === "composition_end") return "settling";
+  return phase === "settling" ? "idle" : phase;
+}
+
+/**
+ * Safari can report the key that confirms an IME candidate after compositionend with
+ * `isComposing === false`. Treat the settling phase and legacy IME keyCode 229 as
+ * composition-controlled so that confirmation is never forwarded as a remote Enter.
+ */
+export function browserImeKeyboardEventIsCompositionControlled(
+  phase: BrowserImeCompositionPhase,
+  eventIsComposing: boolean,
+  keyCode: number
+): boolean {
+  return phase !== "idle" || eventIsComposing || keyCode === 229;
+}
+
+/** Input/beforeinput stays local until the final composition value is ready to diff once. */
+export function browserImeInputEventIsCompositionControlled(
+  phase: BrowserImeCompositionPhase,
+  eventIsComposing: boolean
+): boolean {
+  return phase !== "idle" || eventIsComposing;
+}
+
 export function browserTextReplacementDelta(previous: string, current: string): BrowserTextReplacementDelta {
   const before = Array.from(previous);
   const after = Array.from(current);
@@ -54,6 +88,9 @@ export function browserMobileKeyboardAfterRemoteTap(
 /** Emit the pure Browser Human Input helpers shared by WSS and WebRTC browser clients. */
 export function browserHumanInputClientSource(): string {
   return [
+    `const browserImeNextCompositionPhase=${browserImeNextCompositionPhase.toString()};`,
+    `const browserImeKeyboardEventIsCompositionControlled=${browserImeKeyboardEventIsCompositionControlled.toString()};`,
+    `const browserImeInputEventIsCompositionControlled=${browserImeInputEventIsCompositionControlled.toString()};`,
     `const browserTextReplacementDelta=${browserTextReplacementDelta.toString()};`,
     `const browserScrollDelta=${browserScrollDelta.toString()};`,
     `const browserScrollDeltaY=${browserScrollDeltaY.toString()};`,

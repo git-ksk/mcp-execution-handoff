@@ -4,6 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Fix managed mobile Browser IME commit sequencing (#232): WebRTC and WSS now share an explicit `idle -> composing -> settling` lifecycle, keep Safari/WebKit confirmation keys local through the post-`compositionend` settling boundary (including keyCode 229), and diff the final textarea value once without logging or replaying Human text.
 - Preserve bodyless authorized managed-WSS `HEAD` takeover probes while keeping client patching GET-only (#235), and add a committed-`dist` public Linux/Cloud Run-equivalent WSS-only end-to-end gate covering gateway auth, HEAD/GET, bootstrap, WSS upgrade, first frame, bounded Human input, Done, exactly-once completion, and stale-capability fencing (#240).
 
 ## [0.4.2] - 2026-09-04
