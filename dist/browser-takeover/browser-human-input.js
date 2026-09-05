@@ -14,7 +14,7 @@ export function browserImeNextCompositionPhase(phase, event) {
 export function browserImeKeyboardEventIsCompositionControlled(phase, eventIsComposing, keyCode) {
     return phase !== "idle" || eventIsComposing || keyCode === 229;
 }
-/** Input/beforeinput stays local until the final composition value is ready to diff once. */
+/** Input/beforeinput stays local until the finalized composition can be committed once. */
 export function browserImeInputEventIsCompositionControlled(phase, eventIsComposing) {
     return phase !== "idle" || eventIsComposing;
 }

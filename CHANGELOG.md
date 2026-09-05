@@ -4,7 +4,7 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
-- Fix managed mobile Browser IME commit sequencing (#232): WebRTC and WSS now share an explicit `idle -> composing -> settling` lifecycle, keep Safari/WebKit confirmation keys local through the post-`compositionend` settling boundary (including keyCode 229), and diff the final textarea value once without logging or replaying Human text.
+- Fix managed mobile Browser IME/text commit sequencing (#232): WebRTC and WSS now share an explicit `idle -> composing -> settling` lifecycle, keep Safari/WebKit preedit and confirmation keys local, commit ordinary `beforeinput.data` or one finalized composition exactly once, consume the trailing Safari `input` event, and clear the hidden keyboard buffer after each commit so stale cumulative textarea state cannot duplicate Latin text or partially replay Japanese preedit. Human text remains excluded from diagnostics/durable state.
 - Preserve bodyless authorized managed-WSS `HEAD` takeover probes while keeping client patching GET-only (#235), and add a committed-`dist` public Linux/Cloud Run-equivalent WSS-only end-to-end gate covering gateway auth, HEAD/GET, bootstrap, WSS upgrade, first frame, bounded Human input, Done, exactly-once completion, and stale-capability fencing (#240).
 
 ## [0.4.2] - 2026-09-04

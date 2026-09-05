@@ -19,7 +19,7 @@ export declare function browserImeNextCompositionPhase(phase: BrowserImeComposit
  * composition-controlled so that confirmation is never forwarded as a remote Enter.
  */
 export declare function browserImeKeyboardEventIsCompositionControlled(phase: BrowserImeCompositionPhase, eventIsComposing: boolean, keyCode: number): boolean;
-/** Input/beforeinput stays local until the final composition value is ready to diff once. */
+/** Input/beforeinput stays local until the finalized composition can be committed once. */
 export declare function browserImeInputEventIsCompositionControlled(phase: BrowserImeCompositionPhase, eventIsComposing: boolean): boolean;
 export declare function browserTextReplacementDelta(previous: string, current: string): BrowserTextReplacementDelta;
 /** Convert touch/pointer drag motion to wheel semantics on either axis. */
