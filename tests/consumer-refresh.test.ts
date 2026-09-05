@@ -221,3 +221,47 @@ test("npm archive refresh rejects stale lock state before mutation", (t) => {
   assert.equal(readFileSync(join(root, "package.json"), "utf8"), beforePackage);
   assert.equal(readFileSync(join(root, "package-lock.json"), "utf8"), beforeLock);
 });
+
+test("npm archive refresh rolls back package metadata when lock refresh fails", (t) => {
+  const root = tempConsumer(t);
+  const oldPackage = `${JSON.stringify({
+    name: "fixture-consumer",
+    version: "1.0.0",
+    private: true,
+    dependencies: { "mcp-execution-handoff": archive(parent) }
+  }, null, 2)}\n`;
+  const oldLock = `${JSON.stringify({
+    name: "fixture-consumer",
+    version: "1.0.0",
+    lockfileVersion: 3,
+    packages: {
+      "": { dependencies: { "mcp-execution-handoff": archive(parent) } },
+      "node_modules/mcp-execution-handoff": { version: packageVersion(parent), resolved: archive(parent) }
+    }
+  }, null, 2)}\n`;
+  writeFileSync(join(root, "package.json"), oldPackage);
+  writeFileSync(join(root, "package-lock.json"), oldLock);
+  writeFileSync(join(root, "consumer-refresh.json"), `${JSON.stringify({
+    schemaVersion: 1,
+    dependency: {
+      kind: "npm-github-archive",
+      packageName: "mcp-execution-handoff",
+      packageJson: "package.json",
+      packageLock: "package-lock.json"
+    },
+    pinPolicies: [],
+    nativeHelpers: { mode: "none" }
+  }, null, 2)}\n`);
+  const failingNpm = join(root, "failing-npm.mjs");
+  writeFileSync(failingNpm, "process.stderr.write('fixture lock failure\\n'); process.exit(3);\n");
+  chmodSync(failingNpm, 0o755);
+
+  const result = run(
+    ["apply", "--consumer", root, "--config", "consumer-refresh.json", "--revision", head],
+    { env: { npm_execpath: failingNpm } }
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /npm lockfile refresh failed \(3\): fixture lock failure/);
+  assert.equal(readFileSync(join(root, "package.json"), "utf8"), oldPackage);
+  assert.equal(readFileSync(join(root, "package-lock.json"), "utf8"), oldLock);
+});
