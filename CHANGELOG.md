@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-05
+
 - Fix managed mobile Browser IME/text commit sequencing (#232): WebRTC and WSS now let Safari own the hidden textarea for the lifetime of an explicit keyboard session, keep composition preedit local, and mirror only committed DOM deltas to the remote target. `insertCompositionText` / `deleteCompositionText` are never forwarded; `insertFromComposition` commits the finalized replacement once, while ordinary non-composing `input` mirrors Latin text, Backspace, and Enter without clearing Safari's keyboard buffer between edits. Physical iPhone Safari acceptance is scoped to the iOS system keyboard; third-party keyboard replacement streams are tracked separately in #244. Enter/Backspace keydown is kept only as a 250 ms pending-key fallback and is cancelled by the corresponding DOM input mutation, preventing duplicate newline/delete delivery on iOS Safari. Human text remains excluded from diagnostics/durable state.
 - Preserve bodyless authorized managed-WSS `HEAD` takeover probes while keeping client patching GET-only (#235), and add a committed-`dist` public Linux/Cloud Run-equivalent WSS-only end-to-end gate covering gateway auth, HEAD/GET, bootstrap, WSS upgrade, first frame, bounded Human input, Done, exactly-once completion, and stale-capability fencing (#240).
 
