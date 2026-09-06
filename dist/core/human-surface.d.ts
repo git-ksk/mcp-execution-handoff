@@ -33,8 +33,8 @@ export interface ActiveExternalHumanSurface extends ExternalHumanSurfaceRequest 
     expiresAt?: number;
 }
 export declare class ExternalHumanSurfaceError extends Error {
-    readonly code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_EXPIRED" | "EXTERNAL_SURFACE_PROVIDER_INVALID";
-    constructor(code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_EXPIRED" | "EXTERNAL_SURFACE_PROVIDER_INVALID", message: string);
+    readonly code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_EXPIRED" | "EXTERNAL_SURFACE_PROVIDER_INVALID" | "EXTERNAL_SURFACE_REVOKE_FAILED";
+    constructor(code: "EXTERNAL_SURFACE_STATE_CHANGED" | "EXTERNAL_SURFACE_ACTIVE" | "EXTERNAL_SURFACE_EXPIRED" | "EXTERNAL_SURFACE_PROVIDER_INVALID" | "EXTERNAL_SURFACE_REVOKE_FAILED", message: string);
 }
 export declare function selectHumanInteractionPolicy<TReason extends string>(reason: TReason, credentialSafeReasons: ReadonlySet<TReason> | readonly TReason[]): HumanInteractionPolicyKind;
 /**
@@ -46,18 +46,26 @@ export declare class CredentialSafeHumanSurfaceRuntime {
     private readonly provider;
     private readonly now;
     private readonly providerKind;
-    private active;
+    private state;
     constructor(provider: ExternalHumanSurfaceProvider, now?: () => number);
     getActive(): ActiveExternalHumanSurface | undefined;
     assertInactive(): void;
     begin(intervention: HumanSurfaceInterventionRef, principalBinding: string): Promise<ActiveExternalHumanSurface>;
     revoke(interventionId: string, epoch: number, principalBinding: string): Promise<void>;
+    private startProviderSurface;
+    private retryCleanupForBegin;
+    private performCleanup;
+    private makeCleanup;
+    private requestFor;
+    private stateChangedError;
+    private revokeFailedError;
     private assertCredentialSafeEntryState;
     private assertPrincipalBinding;
     private normalizeGrant;
     private isExpired;
     private matches;
     private matchesIdentity;
+    private matchesRequest;
     private same;
 }
 //# sourceMappingURL=human-surface.d.ts.map

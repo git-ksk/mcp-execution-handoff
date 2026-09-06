@@ -30,7 +30,7 @@ export class CredentialSafeHumanSurfaceRuntime {
     provider;
     now;
     providerKind;
-    active;
+    state = { kind: "idle" };
     constructor(provider, now = Date.now) {
         this.provider = provider;
         this.now = now;
@@ -41,56 +41,201 @@ export class CredentialSafeHumanSurfaceRuntime {
         this.providerKind = normalized;
     }
     getActive() {
-        const active = this.active;
-        if (!active || this.isExpired(active))
+        const state = this.state;
+        if (state.kind !== "active" || this.isExpired(state.surface))
             return undefined;
-        return { ...active };
+        return { ...state.surface };
     }
     assertInactive() {
-        if (!this.active || this.isExpired(this.active))
+        if (this.state.kind === "idle")
             return;
-        throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_ACTIVE", `External Human surface ${this.active.sessionId} is still active; revoke it before restoring automation authority`);
+        throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_ACTIVE", "External Human surface authority is not confirmed inactive; complete provider cleanup before restoring automation authority");
     }
     async begin(intervention, principalBinding) {
         this.assertCredentialSafeEntryState(intervention);
         this.assertPrincipalBinding(principalBinding);
-        if (this.active) {
-            const cached = this.active;
+        const request = this.requestFor(intervention, principalBinding);
+        const state = this.state;
+        if (state.kind === "starting") {
+            if (!this.matchesRequest(state.request, request)) {
+                throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_ACTIVE", "Another credential-safe external Human surface is already starting");
+            }
+            const active = await state.promise;
+            return { ...active };
+        }
+        if (state.kind === "cleanup_required") {
+            const matches = this.matchesRequest(state.request, request);
+            const reason = state.reason;
+            await this.retryCleanupForBegin(state);
+            throw new ExternalHumanSurfaceError(matches && reason === "expired" ? "EXTERNAL_SURFACE_EXPIRED" : "EXTERNAL_SURFACE_STATE_CHANGED", matches && reason === "expired"
+                ? "The cached credential-safe external Human surface expired; begin a fresh Human surface explicitly"
+                : "The previous credential-safe external Human surface requires cleanup before a fresh surface can begin");
+        }
+        if (state.kind === "active") {
+            const cached = state.surface;
             if (this.isExpired(cached)) {
-                this.active = undefined;
-                await this.provider.revoke(cached.sessionId).catch(() => undefined);
-                if (this.matches(cached, intervention, principalBinding)) {
-                    throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_EXPIRED", "The cached credential-safe external Human surface expired; begin a fresh Human surface explicitly");
-                }
-                throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_STATE_CHANGED", "The expired credential-safe external Human surface belonged to another intervention, epoch, or principal");
+                const matches = this.matches(cached, intervention, principalBinding);
+                const cleanup = this.makeCleanup(cached, "expired");
+                this.state = cleanup;
+                await this.retryCleanupForBegin(cleanup);
+                throw new ExternalHumanSurfaceError(matches ? "EXTERNAL_SURFACE_EXPIRED" : "EXTERNAL_SURFACE_STATE_CHANGED", matches
+                    ? "The cached credential-safe external Human surface expired; begin a fresh Human surface explicitly"
+                    : "The expired credential-safe external Human surface belonged to another intervention, epoch, or principal");
             }
             if (this.matches(cached, intervention, principalBinding))
                 return { ...cached };
             throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_ACTIVE", "Another credential-safe external Human surface is already active");
         }
-        const grant = await this.provider.begin({
-            interventionId: intervention.id,
-            epoch: intervention.epoch,
-            principalBinding
-        });
+        const starting = {
+            kind: "starting",
+            request
+        };
+        this.state = starting;
+        const promise = this.startProviderSurface(starting, intervention, principalBinding);
+        starting.promise = promise;
+        const active = await promise;
+        return { ...active };
+    }
+    async revoke(interventionId, epoch, principalBinding) {
+        const request = { interventionId, epoch, principalBinding };
+        const state = this.state;
+        if (state.kind === "starting") {
+            if (!this.matchesRequest(state.request, request)) {
+                throw this.stateChangedError();
+            }
+            try {
+                await state.promise;
+            }
+            catch {
+                if (this.state.kind === "idle")
+                    return;
+            }
+            return this.revoke(interventionId, epoch, principalBinding);
+        }
+        if (state.kind === "active") {
+            if (!this.matchesIdentity(state.surface, interventionId, epoch, principalBinding)) {
+                throw this.stateChangedError();
+            }
+            const cleanup = this.makeCleanup(state.surface, this.isExpired(state.surface) ? "expired" : "revocation");
+            this.state = cleanup;
+            await this.performCleanup(cleanup);
+            return;
+        }
+        if (state.kind === "cleanup_required") {
+            if (!this.matchesRequest(state.request, request)) {
+                throw this.stateChangedError();
+            }
+            await this.performCleanup(state);
+            return;
+        }
+        throw this.stateChangedError();
+    }
+    async startProviderSurface(starting, intervention, principalBinding) {
+        let grant;
+        try {
+            grant = await this.provider.begin(starting.request);
+        }
+        catch (error) {
+            if (this.state === starting)
+                this.state = { kind: "idle" };
+            throw error;
+        }
         let active;
         try {
             active = this.normalizeGrant(grant, intervention, principalBinding);
         }
         catch (error) {
-            await this.provider.revoke(grant.sessionId).catch(() => undefined);
+            const cleanup = {
+                kind: "cleanup_required",
+                request: starting.request,
+                sessionId: grant.sessionId,
+                reason: error instanceof ExternalHumanSurfaceError && error.code === "EXTERNAL_SURFACE_EXPIRED"
+                    ? "expired"
+                    : "invalid_grant"
+            };
+            this.state = cleanup;
+            try {
+                await this.performCleanup(cleanup);
+            }
+            catch {
+                // Keep cleanup ownership and report the original grant error to the caller.
+            }
             throw error;
         }
-        this.active = active;
-        return { ...active };
-    }
-    async revoke(interventionId, epoch, principalBinding) {
-        const active = this.active;
-        if (!active || !this.matchesIdentity(active, interventionId, epoch, principalBinding)) {
-            throw new ExternalHumanSurfaceError("EXTERNAL_SURFACE_STATE_CHANGED", "The credential-safe external Human surface no longer matches this intervention, epoch, and principal");
+        if (this.state !== starting) {
+            const cleanup = {
+                kind: "cleanup_required",
+                request: starting.request,
+                sessionId: active.sessionId,
+                reason: "invalid_grant"
+            };
+            this.state = cleanup;
+            try {
+                await this.performCleanup(cleanup);
+            }
+            catch {
+                // The runtime remains fail-closed in cleanup_required on revoke failure.
+            }
+            throw this.stateChangedError();
         }
-        await this.provider.revoke(active.sessionId);
-        this.active = undefined;
+        this.state = { kind: "active", surface: active };
+        return active;
+    }
+    async retryCleanupForBegin(cleanup) {
+        try {
+            await this.performCleanup(cleanup);
+        }
+        catch {
+            // begin() preserves expiry/state-change semantics while cleanup_required keeps authority busy.
+        }
+    }
+    async performCleanup(cleanup) {
+        if (cleanup.revokePromise) {
+            try {
+                await cleanup.revokePromise;
+            }
+            catch {
+                throw this.revokeFailedError();
+            }
+            return;
+        }
+        const revokePromise = Promise.resolve().then(() => this.provider.revoke(cleanup.sessionId));
+        cleanup.revokePromise = revokePromise;
+        try {
+            await revokePromise;
+            if (this.state === cleanup)
+                this.state = { kind: "idle" };
+        }
+        catch {
+            if (this.state === cleanup)
+                delete cleanup.revokePromise;
+            throw this.revokeFailedError();
+        }
+    }
+    makeCleanup(active, reason) {
+        return {
+            kind: "cleanup_required",
+            request: {
+                interventionId: active.interventionId,
+                epoch: active.epoch,
+                principalBinding: active.principalBinding
+            },
+            sessionId: active.sessionId,
+            reason
+        };
+    }
+    requestFor(intervention, principalBinding) {
+        return {
+            interventionId: intervention.id,
+            epoch: intervention.epoch,
+            principalBinding
+        };
+    }
+    stateChangedError() {
+        return new ExternalHumanSurfaceError("EXTERNAL_SURFACE_STATE_CHANGED", "The credential-safe external Human surface no longer matches this intervention, epoch, and principal");
+    }
+    revokeFailedError() {
+        return new ExternalHumanSurfaceError("EXTERNAL_SURFACE_REVOKE_FAILED", "External Human surface provider revocation was not confirmed; cleanup must succeed before automation authority can resume");
     }
     assertCredentialSafeEntryState(intervention) {
         if (intervention.status !== "human_active" || intervention.authority !== "human") {
@@ -137,6 +282,11 @@ export class CredentialSafeHumanSurfaceRuntime {
         return active.interventionId === interventionId
             && active.epoch === epoch
             && this.same(active.principalBinding, principalBinding);
+    }
+    matchesRequest(left, right) {
+        return left.interventionId === right.interventionId
+            && left.epoch === right.epoch
+            && this.same(left.principalBinding, right.principalBinding);
     }
     same(left, right) {
         const expected = Buffer.from(left, "utf8");
