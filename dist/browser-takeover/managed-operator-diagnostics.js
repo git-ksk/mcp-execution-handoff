@@ -18,7 +18,7 @@ const FALLBACK = new Set(["none", "transport_unavailable"]);
 const CHANNEL_STATE = new Set(["none", "open", "closing", "closed", "revoked", "failed"]);
 const CHANNEL_FAILURE = new Set([
     "none", "invalid_message", "input_not_allowed", "stale_generation", "frame_too_large",
-    "transport_failure", "authority_release_failed"
+    "inbound_queue_overflow", "transport_failure", "authority_release_failed"
 ]);
 const DISCONNECT = new Set(["none", "peer_close", "peer_error", "policy_close", "channel_failure"]);
 const SURFACE_FAILURE = new Set([

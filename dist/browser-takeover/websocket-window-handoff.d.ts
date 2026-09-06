@@ -35,6 +35,8 @@ export interface ExperimentalWebSocketWindowHandoffConfig {
     surface: ExperimentalWebSocketWindowSurface;
     frameIntervalMs?: number;
     maxInboundBytes?: number;
+    maxQueuedInboundMessages?: number;
+    maxQueuedInboundBytes?: number;
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     /** Optional shared tracker used by managed composition to include exact-surface stages. */
     latencyTracker?: WebSocketLatencyTracker;

@@ -24,6 +24,12 @@ export class ExperimentalWebSocketBrowserHandoff {
             surface: config.surface,
             ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
             ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+            ...(config.maxQueuedInboundMessages === undefined
+                ? {}
+                : { maxQueuedInboundMessages: config.maxQueuedInboundMessages }),
+            ...(config.maxQueuedInboundBytes === undefined
+                ? {}
+                : { maxQueuedInboundBytes: config.maxQueuedInboundBytes }),
             ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
             ...(config.latencyTracker ? { latencyTracker: config.latencyTracker } : {}),
             ...(config.onAuthorityReleased ? { onAuthorityReleased: config.onAuthorityReleased } : {}),

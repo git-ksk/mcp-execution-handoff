@@ -45,6 +45,8 @@ export interface WindowWebSocketHandoffAdapterConfig {
   host: WindowWebSocketHostConfig;
   frameIntervalMs?: number;
   maxInboundBytes?: number;
+  maxQueuedInboundMessages?: number;
+  maxQueuedInboundBytes?: number;
   successorWindowPolicy?: { mode: "same_process"; transitionWindowMs?: number };
   onOperatorDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
   /** Human Done only: the consumer must perform fresh semantic verification afterwards. */
@@ -88,6 +90,12 @@ export class WindowWebSocketHandoffAdapter {
       surface: this.#surface,
       ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
       ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+      ...(config.maxQueuedInboundMessages === undefined
+        ? {}
+        : { maxQueuedInboundMessages: config.maxQueuedInboundMessages }),
+      ...(config.maxQueuedInboundBytes === undefined
+        ? {}
+        : { maxQueuedInboundBytes: config.maxQueuedInboundBytes }),
       ...(config.onOperatorDiagnosticEvent
         ? { onDiagnosticEvent: config.onOperatorDiagnosticEvent }
         : {}),

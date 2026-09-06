@@ -14,9 +14,13 @@ export class WebSocketTakeoverError extends Error {
     }
 }
 const DEFAULT_MAX_INBOUND_BYTES = 8 * 1024;
+const DEFAULT_MAX_QUEUED_INBOUND_MESSAGES = 32;
+const DEFAULT_MAX_QUEUED_INBOUND_BYTES = 128 * 1024;
 const DEFAULT_MAX_FRAME_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAX_BUFFERED_BYTES = 512 * 1024;
 const ABSOLUTE_MAX_INBOUND_BYTES = 64 * 1024;
+const ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES = 256;
+const ABSOLUTE_MAX_QUEUED_INBOUND_BYTES = 1024 * 1024;
 const ABSOLUTE_MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const ABSOLUTE_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 const MAX_SCROLL_DELTA = 2_000;
@@ -171,6 +175,8 @@ export class ExperimentalWebSocketTakeoverChannel {
     onClientDiagnostic;
     latencyTracker;
     maxInboundBytes;
+    maxQueuedInboundMessages;
+    maxQueuedInboundBytes;
     maxFrameBytes;
     maxBufferedBytes;
     stateValue = "open";
@@ -186,6 +192,10 @@ export class ExperimentalWebSocketTakeoverChannel {
     backpressureEventsValue = 0;
     currentBufferedBytesValue = 0;
     maxBufferedBytesObservedValue = 0;
+    queuedInboundMessagesValue = 0;
+    queuedInboundBytesValue = 0;
+    maxQueuedInboundMessagesObservedValue = 0;
+    maxQueuedInboundBytesObservedValue = 0;
     lastFailureValue;
     lastInputStageValue = "none";
     lastFrameSentAt;
@@ -199,6 +209,8 @@ export class ExperimentalWebSocketTakeoverChannel {
         this.onClientDiagnostic = options.onClientDiagnostic;
         this.latencyTracker = options.latencyTracker ?? new WebSocketLatencyTracker();
         this.maxInboundBytes = boundedLimit(options.maxInboundBytes, DEFAULT_MAX_INBOUND_BYTES, ABSOLUTE_MAX_INBOUND_BYTES, "maxInboundBytes");
+        this.maxQueuedInboundMessages = boundedLimit(options.maxQueuedInboundMessages, DEFAULT_MAX_QUEUED_INBOUND_MESSAGES, ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES, "maxQueuedInboundMessages");
+        this.maxQueuedInboundBytes = boundedLimit(options.maxQueuedInboundBytes, DEFAULT_MAX_QUEUED_INBOUND_BYTES, ABSOLUTE_MAX_QUEUED_INBOUND_BYTES, "maxQueuedInboundBytes");
         this.maxFrameBytes = boundedLimit(options.maxFrameBytes, DEFAULT_MAX_FRAME_BYTES, ABSOLUTE_MAX_FRAME_BYTES, "maxFrameBytes");
         this.maxBufferedBytes = boundedLimit(options.maxBufferedBytes, DEFAULT_MAX_BUFFERED_BYTES, ABSOLUTE_MAX_BUFFERED_BYTES, "maxBufferedBytes");
     }
@@ -213,6 +225,10 @@ export class ExperimentalWebSocketTakeoverChannel {
             backpressureEvents: this.backpressureEventsValue,
             currentBufferedBytes: this.currentBufferedBytesValue,
             maxBufferedBytesObserved: this.maxBufferedBytesObservedValue,
+            queuedInboundMessages: this.queuedInboundMessagesValue,
+            queuedInboundBytes: this.queuedInboundBytesValue,
+            maxQueuedInboundMessagesObserved: this.maxQueuedInboundMessagesObservedValue,
+            maxQueuedInboundBytesObserved: this.maxQueuedInboundBytesObservedValue,
             ...(this.lastFailureValue ? { lastFailure: this.lastFailureValue } : {}),
             lastInputStage: this.lastInputStageValue
         };
@@ -227,7 +243,25 @@ export class ExperimentalWebSocketTakeoverChannel {
     receiveText(raw) {
         if (!this.inputAdmissionOpen)
             return Promise.resolve();
+        const inboundBytes = utf8Length(raw);
+        if (inboundBytes > this.maxInboundBytes) {
+            const error = new WebSocketTakeoverError("invalid_message", "WebSocket takeover message is too large");
+            this.inputAdmissionOpen = false;
+            return this.enqueue(async () => {
+                await this.failClosed(error);
+                throw error;
+            });
+        }
+        if (!this.reserveQueuedInbound(inboundBytes)) {
+            const error = new WebSocketTakeoverError("inbound_queue_overflow", "WebSocket takeover inbound queue limit exceeded");
+            this.inputAdmissionOpen = false;
+            return this.enqueue(async () => {
+                await this.failClosed(error);
+                throw error;
+            });
+        }
         return this.enqueue(async () => {
+            this.releaseQueuedInbound(inboundBytes);
             if (this.stateValue !== "open" || !this.inputAdmissionOpen)
                 return;
             let message;
@@ -342,6 +376,23 @@ export class ExperimentalWebSocketTakeoverChannel {
             }
             await this.safeClose(NORMAL_CLOSE, "revoked");
         });
+    }
+    reserveQueuedInbound(bytes) {
+        const nextMessages = this.queuedInboundMessagesValue + 1;
+        const nextBytes = this.queuedInboundBytesValue + bytes;
+        if (nextMessages > this.maxQueuedInboundMessages
+            || nextBytes > this.maxQueuedInboundBytes) {
+            return false;
+        }
+        this.queuedInboundMessagesValue = nextMessages;
+        this.queuedInboundBytesValue = nextBytes;
+        this.maxQueuedInboundMessagesObservedValue = Math.max(this.maxQueuedInboundMessagesObservedValue, nextMessages);
+        this.maxQueuedInboundBytesObservedValue = Math.max(this.maxQueuedInboundBytesObservedValue, nextBytes);
+        return true;
+    }
+    releaseQueuedInbound(bytes) {
+        this.queuedInboundMessagesValue -= 1;
+        this.queuedInboundBytesValue -= bytes;
     }
     enqueue(operation) {
         const run = this.operationTail.then(operation, operation);

@@ -38,6 +38,7 @@ export type OperatorManagedWssChannelFailure =
   | "input_not_allowed"
   | "stale_generation"
   | "frame_too_large"
+  | "inbound_queue_overflow"
   | "transport_failure"
   | "authority_release_failed";
 export type OperatorManagedWssInputStage =
@@ -157,7 +158,7 @@ const MANAGED_WSS_SURFACE_FAILURE = new Set<OperatorManagedWssSurfaceFailure>([
 ]);
 const MANAGED_WSS_CHANNEL_FAILURE = new Set<OperatorManagedWssChannelFailure>([
   "none", "invalid_message", "input_not_allowed", "stale_generation", "frame_too_large",
-  "transport_failure", "authority_release_failed"
+  "inbound_queue_overflow", "transport_failure", "authority_release_failed"
 ]);
 const MANAGED_WSS_INPUT_STAGE = new Set<OperatorManagedWssInputStage>([
   "none", "focus_ready", "pointer_move_ready", "pointer_authority_ready", "pointer_down_sent",

@@ -25,6 +25,8 @@ export interface WindowWebSocketHandoffAdapterConfig {
     host: WindowWebSocketHostConfig;
     frameIntervalMs?: number;
     maxInboundBytes?: number;
+    maxQueuedInboundMessages?: number;
+    maxQueuedInboundBytes?: number;
     successorWindowPolicy?: {
         mode: "same_process";
         transitionWindowMs?: number;
