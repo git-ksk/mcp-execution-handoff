@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Make Browser Human takeover startup and failure states visible instead of presenting an unexplained blank surface (#263): WebRTC and managed WSS now share a prominent content-free operator status card before the first remote frame, hide it while live media is visible, restore it during reconnect/teardown, and provide bounded next-action guidance for unavailable, verifying, and closed states. Authority, transport selection, Human input, credentials, target identity, and semantic verification behavior are unchanged.
+
 ## [0.4.5] - 2026-09-06
 
 - Harden credential-safe external Human-surface authority lifecycle (#255): concurrent matching `begin()` calls are single-flight, a racing different binding fails closed, locator expiry no longer proves provider-side shutdown, and failed revoke/invalid-grant cleanup retains bounded retryable ownership so Agent authority cannot resume until external mutation authority is confirmed inactive.
