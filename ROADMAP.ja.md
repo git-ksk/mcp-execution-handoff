@@ -10,9 +10,11 @@
 
 `v0.4.4` が現在のGitHub/source-release baselineです。v0.4.3のpublic-WSS correctness boundaryを維持しつつ、Immediate Hardeningを完了しました。deterministic immutable consumer refresh/staging (#237)、first-valid-frame startupの分離計測とpresentation改善 (#233)、bounded backpressure diagnosticsを伴うhealthy-path 50 ms WSS frame pump (#234)、純正キーボードとSimejiのphysical acceptanceを含むthird-party iOS keyboard replacement-stream互換 (#244)、cadence acceptance中に見つかったstatic-window reconnect blocker (#250) を完了しています。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
 
+直近のpre-v0.5 release gateは `v0.4.5 — Authority & Queue Hardening` (#255/#256/#257) です。新たに再現したauthority exclusivity、revoke admission、aggregate inbound queueのgapをprovider-neutral connectivityへ進む前に閉じます。
+
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
-### 現在の作業状態 — 2026-09-04
+### 現在の作業状態 — 2026-09-06
 
 v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Handoff componentが3本まで揃いました。semantic-domain / Target Surface admission contractは #46でdocument済みで、v0.2 terminology convergenceでは `TargetSurfaceKind` enumをfreezeせずHuman Interaction Policyへcanonical aliasを追加します。
 
@@ -29,7 +31,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、完了したv0.4.2 expiry maintenance (#226)、完了したv0.4.3 public-WSS correctness line (#232/#235/#240)、v0.4.4 Immediate Hardening release line (#233/#234/#237/#244)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、完了したv0.4.2 expiry maintenance (#226)、完了したv0.4.3 public-WSS correctness line (#232/#235/#240)、完了したv0.4.4 Immediate Hardening release line (#233/#234/#237/#244/#250)、v0.4.5 Authority & Queue Hardening line (#255/#256/#257)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 #94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。現在は#211をnarrow bounded secure-flow researchとして先行し、bounded authority不足がphysical evidenceで証明された場合だけ#125 broader Desktop authorityを検討します。hidden fallbackにはしません。
 
@@ -66,8 +68,12 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #237 | v0.4.4 Immediate Hardening | **完了 / v0.4.4 operational contract。** source-checkout / npm-archive consumerをdeterministicにrefresh/stageし、pin/lock不一致はfail closed、失敗時rollback、native-helper rebuild signalを提供。deploy/trafficはconsumer-ownedのまま。 |
 | #244 | v0.4.4 Immediate Hardening | **完了 / v0.4.4。** shared WebRTC/WSS Browser input normalizationでthird-party `insertText` replacementを扱い、`keyCode=229`単独では正しさを推定しない。純正キーボード＋Simejiをphysical acceptance済み。 |
 | #250 | v0.4.4 reconnect blocker | **完了 / v0.4.4。** fresh WSS generationではauthority-bound helperのlatest exact-window frameを即時再利用し、旧generationのnext-frame waitをcancel。静止画面でもcontent change待ちせずreconnect復帰する。 |
+| #255 | v0.4.5 P1 Human-surface authority | **OPEN / release gate。** external `begin()`をserialize/single-flight化し、starting/cleanup中もauthority-busyとする。locator expiryとprovider revoke確認を分離し、`assertInactive()`はprovider-side停止確認後だけ成功させる。 |
+| #256 | v0.4.5 P1 WSS terminal fencing | **OPEN / release gate。** disconnect/revoke要求時点で未dispatch Human inputを即時fenceし、既にdispatch済みの処理だけ既存drain contractに従わせる。 |
+| #257 | v0.4.5 P2 WSS inbound queue | **OPEN / P1後のrelease gate。** pending inbound message件数/総bytesをbounded化し、overflow時は古いdiscrete Human inputを後から実行せずfail closedする。 |
 | #227 | Host Parity Backlog — Windows Browser | **OPEN / version未確定。** bounded Windows Browser Handoff parityの将来work。support claim前に専用Windows + mobile physical acceptanceを必須とする。 |
 | #228 | Host Parity Backlog — Linux successor lineage | **OPEN / version未確定。** Linux-native successor-window lineage parityの将来work。現行Linux exact-window supportはblockしない。 |
+| #254 | Recovery Integration Backlog — version未確定 | **OPEN / non-blockingとして分類。** stale authority/action replayなしで、consumer-owned target/session reconstruction-required hookをprovider-neutralに追加する。process/profile/deploy ownershipはconsumer側のまま。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.5.0 provider-neutral connectivity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
 | #12 | v0.6.0 hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
@@ -85,7 +91,7 @@ Linux deploymentはpin済みOS/runtime dependency baselineと対応するexact-w
 binaryを配布する場合はsigning/notarizationまたはdistro/ABI/provenance/rollbackをproduct-ready claim前のgateにします。
 
 upgrade/rollbackでstale locator/capability/generation/media/input authorityを復元しません。durable recoveryは
-`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。#237は完了し、immutable consumer refresh/stagingをdeterministicに標準化しました。deploy、readiness、traffic switch、credential、consumer semanticsはHandoffへ移していません。次のplanned release workは #19 のprovider-neutral connectivity boundaryです。Human-visible lifecycle品質も
+`reissue_and_revalidate` のままで、semantic verification/replay policyはconsumer-ownedです。#237は完了し、immutable consumer refresh/stagingをdeterministicに標準化しました。deploy、readiness、traffic switch、credential、consumer semanticsはHandoffへ移していません。直近のplanned release workはv0.4.5 authority/queue gate (#255/#256/#257)で、その完了後に#19のprovider-neutral connectivity boundaryへ進みます。Human-visible lifecycle品質も
 このtrackに含め、#150は完了済みです。physical OK / Cancel evidenceでexact target消失時にstale LocalAuthentication presentationを消去し、semantic successはconsumer-ownedのまま維持することを確認しました。
 
 詳細は [Product Readiness / consumer compatibility](docs/product-readiness.ja.md) を参照してください。
@@ -218,7 +224,7 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-05時点で `v0.3.x — Maintenance & Durability`、`v0.4.2 — Maintenance`、`v0.4.3 — Public WSS Reliability`、`v0.4.4 — Immediate Hardening` のrelease lineは完了済みです。OPENは6件で、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228) に明示分類済みです。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-06時点で `v0.3.x — Maintenance & Durability`、`v0.4.2 — Maintenance`、`v0.4.3 — Public WSS Reliability`、`v0.4.4 — Immediate Hardening` のrelease lineは完了済みです。OPENは10件で、`v0.4.5 — Authority & Queue Hardening` 3件 (#255/#256/#257)、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228)、version未確定Recovery Integration 1件 (#254) に明示分類しました。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
 ## v0.4.2 — Maintenance
 
@@ -267,7 +273,7 @@ release結果として #235 / #240 / #232 はすべて完了しました。physi
 
 ## v0.4.4 — Immediate Hardening
 
-`v0.4.4` は `v0.4.3` の次、`v0.5.0` の前に置く完了済みbounded hardening source-release lineです。milestone `v0.4.4 — Immediate Hardening` はplanned 4件に加え、physical cadence acceptance中に見つかったreconnect correctness blocker 1件も完了しました。upgrade運用、WSS startup/steady-state品質、third-party iOS keyboard互換を改善しつつ、Target Surface、authority、transport provider、npm publicationのscopeは広げていません。
+`v0.4.4` は `v0.4.3` の次に完了したbounded hardening source-release lineで、現在は新設したv0.4.5 correctness gateを挟んでから `v0.5.0` へ進みます。milestone `v0.4.4 — Immediate Hardening` はplanned 4件に加え、physical cadence acceptance中に見つかったreconnect correctness blocker 1件も完了しました。upgrade運用、WSS startup/steady-state品質、third-party iOS keyboard互換を改善しつつ、Target Surface、authority、transport provider、npm publicationのscopeは広げていません。
 
 release結果:
 
@@ -279,13 +285,37 @@ release結果:
 
 releaseは `private: true` のsource-onlyを維持し、npm publication、consumer deploy/readiness/traffic switchは別decisionのままです。
 
+## v0.4.5 — Authority & Queue Hardening
+
+`v0.4.5` は `v0.4.4` の直後、`v0.5.0` の前に置くbounded correctness release gateです。milestone `v0.4.5 — Authority & Queue Hardening` は、exclusive Human/Agent authorityやWSS stale Human inputに影響するcode review起点の3件だけへ意図的に限定します。新しいTarget Surface、transport provider、OS support claim、Desktop authority、consumer semantic responsibility、npm publication要件は追加しません。
+
+優先順・実装順:
+
+1. #255 — **P1:** credential-safe external Human surface作成をsingle-flight/serializeし、locator expiryとprovider-side revoke確認を分離する。starting、active、expired-but-unconfirmed、revoke-failed cleanupはいずれもexternal mutation authority停止確認までauthority-busyとする。
+2. #256 — **P1:** WSS disconnect/revokeのterminal intent時点でqueued / 未dispatch Human inputを即時fenceする。既dispatchのbound workだけ既存drain contractに従わせ、disconnectはDoneと区別する。
+3. #257 — **P2、#255/#256後:** pending WSS inbound message件数/総bytesをbounded化し、overflow時はfail closedする。discrete Human inputをsilent coalesce/dropしたままsession継続はしない。
+
+完了条件:
+
+- #255 / #256のdeterministic race regressionをgreenにしてから#257をrelease-complete扱いする;
+- locator expiryまたはcleanup failureだけでexternal Human authorityを `inactive` 扱いできない;
+- disconnect/revoke terminal intentまたはoverflow fence後に新しいHuman inputがtarget mutationを開始しない;
+- WSS retained inbound workにhard boundがあり、diagnosticsはcontent-freeなcounter/reasonだけ;
+- intervention / epoch / principal / generation fencing、one-client ownership、no replay、Done/verification semantics、exact Target Surface authorityを維持する;
+- exact candidate revisionでfull `npm run check`、影響するcommitted `dist` / consumer artifact gate、relevant conformanceがgreen;
+- npm publicationは別gateで明示承認されない限りsource-onlyを維持する。
+
 ## Host Parity Backlog — version未確定
 
-#227 / #228はroadmap上で分類済みworkとして維持しますが、具体的consumer needと必要なphysical acceptanceが揃ってreleaseへ載せる根拠ができるまでversion未確定とします。`v0.4.4` / `v0.5.0` / `v0.6.0` はblockしません。
+#227 / #228はroadmap上で分類済みworkとして維持しますが、具体的consumer needと必要なphysical acceptanceが揃ってreleaseへ載せる根拠ができるまでversion未確定とします。`v0.4.5` / `v0.5.0` / `v0.6.0` はblockしません。
+
+## Recovery Integration Backlog — version未確定
+
+#254はnon-blockingなrecovery integration follow-upとして分類します。v0.6.0 hosted worker recoveryで必要になる可能性はありますが、具体的なconsumer/topology requirementが出るまではv0.6.0へ強制的に含めません。Handoffがconsumer-owned target/session reconstruction requiredを通知することは許容しますが、stale authority復活、action argument/Human input replay、browser/profile/process/deployment lifecycleのHandoff所有化は禁止します。
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` はboundedな `v0.4.4` hardening releaseの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
+`v0.5.0` はboundedな `v0.4.5` authority/queue hardening gateの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
 
 目的は、WebRTC discovery / relay connectivityを **Handoff-ownedかつprovider-neutralなdeployment boundary** として確立することです。consumer-facing Browser / Window lifecycleは変えず、Human-control authorityも広げません。
 

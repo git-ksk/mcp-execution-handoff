@@ -8,9 +8,11 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 `v0.4.4` is the current GitHub/source-release baseline. It keeps the v0.4.3 public-WSS correctness boundary and completes Immediate Hardening: deterministic immutable consumer refresh/staging (#237), measured first-valid-frame startup presentation (#233), a 50 ms healthy-path WSS frame pump with bounded backpressure diagnostics (#234), third-party iOS keyboard replacement-stream compatibility including physical system-keyboard + Simeji acceptance (#244), and the static-window reconnect correctness blocker discovered during cadence acceptance (#250). No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
 
+The immediate pre-v0.5 release gate is `v0.4.5 — Authority & Queue Hardening` (#255/#256/#257). It closes newly reproduced authority-exclusivity, revoke-admission, and aggregate inbound-queue gaps before provider-neutral connectivity work begins.
+
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
-### Current working state — 2026-09-05
+### Current working state — 2026-09-06
 
 The post-v0.1.0 validation now has three first-class consumer-facing Handoff components backed by real consumer evidence. #46 documents the semantic-domain/Target Surface admission contract, and the v0.2 terminology convergence adds canonical Human Interaction Policy aliases without freezing a `TargetSurfaceKind` enum:
 
@@ -27,7 +29,7 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the completed v0.4.2 expiry maintenance (#226), the completed v0.4.3 public-WSS correctness line (#232/#235/#240), the v0.4.4 Immediate Hardening release line (#233/#234/#237/#244), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the completed v0.4.2 expiry maintenance (#226), the completed v0.4.3 public-WSS correctness line (#232/#235/#240), the completed v0.4.4 Immediate Hardening release line (#233/#234/#237/#244/#250), the v0.4.5 Authority & Queue Hardening line (#255/#256/#257), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. #211 is now the narrow bounded secure-flow research step; broader Desktop authority remains a separate #125 research escalation only if bounded authority is physically proven insufficient, and never a hidden fallback.
 
@@ -64,8 +66,12 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #237 | v0.4.4 Immediate Hardening | **Complete / v0.4.4 operational contract.** Deterministic immutable consumer refresh/staging supports source-checkout and npm-archive consumers with fail-closed pin/lock verification, rollback, and native-helper rebuild signaling; deploy/traffic remain consumer-owned. |
 | #244 | v0.4.4 Immediate Hardening | **Complete / v0.4.4.** Shared WebRTC/WSS Browser input normalization handles third-party ordinary `insertText` replacement streams without relying on `keyCode=229`; physical iPhone system-keyboard + Simeji acceptance passed. |
 | #250 | v0.4.4 reconnect blocker | **Complete / v0.4.4.** Fresh WSS generations receive the latest still-authoritative exact-window frame and cancel stale next-frame waits, so static windows recover after reconnect without waiting for content mutation. |
+| #255 | v0.4.5 P1 Human-surface authority | **Open / release gate.** Serialize external `begin()`, treat starting/cleanup as authority-busy, and require confirmed provider revocation before `assertInactive()` can permit Agent restoration. Expiry fences locator/input reuse but is not proof of shutdown. |
+| #256 | v0.4.5 P1 WSS terminal fencing | **Open / release gate.** Disconnect/revoke terminal intent must immediately fence not-yet-dispatched Human input while preserving the existing drain contract only for already-dispatched work. |
+| #257 | v0.4.5 P2 WSS inbound queue | **Open / release gate after P1 items.** Bound aggregate pending inbound message count/bytes and fail closed on overflow instead of retaining or later applying an unbounded stale Human-input backlog. |
 | #227 | Host Parity Backlog — Windows Browser | **Open / version uncommitted.** Future bounded Windows Browser Handoff parity; requires dedicated Windows + mobile physical acceptance before support claim. |
 | #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
+| #254 | Recovery Integration Backlog — version uncommitted | **Open / classified non-blocking.** Add a provider-neutral consumer-owned target/session reconstruction-required hook without restoring stale authority, replaying actions, or moving process/profile/deployment ownership into Handoff. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
 | #19 | v0.5.0 provider-neutral connectivity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
 | #12 | v0.6.0 hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
@@ -86,7 +92,7 @@ explicit signing/notarization or distro/ABI/provenance/rollback gates before pro
 
 Upgrade/rollback never restores stale locator/capability/generation/media/input authority. Durable
 recovery remains `reissue_and_revalidate`, and consumer semantic verification/replay policy remains
-consumer-owned. #237 is complete: deterministic immutable consumer refresh/staging now standardizes source-pinned upgrades without moving deployment, readiness, traffic switching, credentials, or consumer semantics into Handoff. The next planned release work is the provider-neutral connectivity boundary in #19. Human-visible lifecycle quality is also part of this track: #150 is complete, with physical OK/Cancel evidence that stale LocalAuthentication presentation is cleared as soon as the exact target disappears while semantic success remains consumer-owned.
+consumer-owned. #237 is complete: deterministic immutable consumer refresh/staging now standardizes source-pinned upgrades without moving deployment, readiness, traffic switching, credentials, or consumer semantics into Handoff. The immediate planned release work is the bounded v0.4.5 authority/queue gate (#255/#256/#257); provider-neutral connectivity in #19 follows after that gate. Human-visible lifecycle quality is also part of this track: #150 is complete, with physical OK/Cancel evidence that stale LocalAuthentication presentation is cleared as soon as the exact target disappears while semantic success remains consumer-owned.
 
 See [Product readiness and consumer compatibility](docs/product-readiness.md).
 
@@ -218,7 +224,7 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-05, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, `v0.4.3 — Public WSS Reliability`, and `v0.4.4 — Immediate Hardening` release lines are complete. Six Issues remain open and explicitly classified: `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), and two version-uncommitted host-parity issues (#227/#228). New work must be classified when created rather than left outside roadmap accounting.
+As of 2026-09-06, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, `v0.4.3 — Public WSS Reliability`, and `v0.4.4 — Immediate Hardening` release lines are complete. Ten Issues remain open and explicitly classified: three `v0.4.5 — Authority & Queue Hardening` issues (#255/#256/#257), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), two version-uncommitted host-parity issues (#227/#228), and one version-uncommitted Recovery Integration follow-up (#254). New work must be classified when created rather than left outside roadmap accounting.
 
 ## v0.4.2 — Maintenance
 
@@ -267,7 +273,7 @@ Exit criteria:
 
 ## v0.4.4 — Immediate Hardening
 
-`v0.4.4` is the completed bounded hardening source-release line after `v0.4.3` and before `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` completed its four planned issues plus one reconnect correctness blocker discovered during physical cadence acceptance. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
+`v0.4.4` is the completed bounded hardening source-release line after `v0.4.3`; the newly inserted v0.4.5 correctness gate now sits between it and `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` completed its four planned issues plus one reconnect correctness blocker discovered during physical cadence acceptance. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
 
 Release result:
 
@@ -279,13 +285,37 @@ Release result:
 
 The release remains source-only with `private: true`; npm publication, consumer deployment, readiness, and traffic switching remain separate decisions.
 
+## v0.4.5 — Authority & Queue Hardening
+
+`v0.4.5` is the bounded correctness release gate immediately after `v0.4.4` and before `v0.5.0`. Milestone `v0.4.5 — Authority & Queue Hardening` is intentionally limited to three post-review defects that can undermine exclusive Human/Agent authority or retain stale WSS Human input. It does not add a new Target Surface, transport provider, OS-support claim, Desktop authority, consumer semantic responsibility, or npm-publication requirement.
+
+Priority and implementation order:
+
+1. #255 — **P1:** make credential-safe external Human-surface creation single-flight/serialized and separate locator expiry from confirmed provider-side revoke. Starting, active, expired-but-unconfirmed, and revoke-failed cleanup states all remain authority-busy until external mutation authority is confirmed inactive.
+2. #256 — **P1:** make WSS disconnect/revoke terminal intent fence queued/not-yet-dispatched Human input immediately. Already-dispatched bound work may finish only under the existing drain contract; disconnect remains distinct from Done.
+3. #257 — **P2 after #255/#256:** bound aggregate pending WSS inbound messages/bytes and fail closed on overflow. Discrete Human input is not silently coalesced or dropped while the session continues.
+
+Exit criteria:
+
+- #255 and #256 deterministic race regressions are green before #257 is treated as release-complete;
+- external Human authority cannot become `inactive` merely because a locator expired or cleanup failed;
+- no Human input begins target mutation after disconnect/revoke terminal intent or overflow fencing;
+- inbound WSS retained work has explicit hard bounds with content-free counters/reasons only;
+- existing intervention/epoch/principal/generation fencing, one-client ownership, no-replay, Done/verification semantics, and exact Target Surface authority remain unchanged;
+- full `npm run check`, committed `dist`/consumer-artifact gates where affected, and relevant conformance tests are green on the exact candidate revision;
+- release remains source-only unless the separate npm-publication gate is independently approved.
+
 ## Host Parity Backlog — version uncommitted
 
-#227 and #228 are classified roadmap work but remain version-uncommitted until concrete consumer need and the required physical acceptance justify scheduling them. They do not block `v0.4.4`, `v0.5.0`, or `v0.6.0`.
+#227 and #228 are classified roadmap work but remain version-uncommitted until concrete consumer need and the required physical acceptance justify scheduling them. They do not block `v0.4.5`, `v0.5.0`, or `v0.6.0`.
+
+## Recovery Integration Backlog — version uncommitted
+
+#254 is classified as a non-blocking recovery-integration follow-up. It may become relevant to hosted worker recovery in v0.6.0, but it is not forced into that release until a concrete consumer/topology requirement exists. The invariant is fixed now: Handoff may signal that consumer-owned target/session reconstruction is required, but it cannot restore stale authority, replay action arguments/Human input, or take ownership of browser/profile/process/deployment lifecycle.
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
-`v0.5.0` remains the next planned feature source-release line after the bounded `v0.4.4` hardening release. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
+`v0.5.0` remains the next planned feature source-release line after the bounded `v0.4.5` authority/queue hardening gate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
