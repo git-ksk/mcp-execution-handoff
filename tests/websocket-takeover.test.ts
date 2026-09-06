@@ -417,6 +417,51 @@ test("WebSocket release failure stays failed and explicit revoke can retry clean
   assert.deepEqual(h.closes.at(-1), { code: 1000, reason: "revoked" });
 });
 
+test("WebSocket disconnect intent fences queued and later Human input before authority release", async () => {
+  const h = createHarness();
+  const inputGate = h.blockInput();
+  const first = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.1, y: 0.1 }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.inputs.length, 1);
+
+  const queued = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 }));
+  const disconnect = h.channel.disconnect();
+  const afterIntent = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.3, y: 0.3 }));
+  await afterIntent;
+  assert.equal(h.inputs.length, 1);
+  assert.equal(h.calls.release, 0, "already-dispatched input drains before release");
+
+  inputGate.resolve();
+  await Promise.all([first, queued, disconnect]);
+  assert.equal(h.inputs.length, 1, "queued input never dispatches after disconnect intent");
+  assert.equal(h.calls.release, 1);
+  assert.equal(h.calls.complete, 0, "disconnect is not Human Done");
+  assert.equal(h.channel.state, "closed");
+});
+
+test("WebSocket revoke intent fences queued input and duplicate terminal requests release once", async () => {
+  const h = createHarness();
+  const inputGate = h.blockInput();
+  const first = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.1, y: 0.1 }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.inputs.length, 1);
+
+  const queued = h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 }));
+  const firstRevoke = h.channel.revoke();
+  const duplicateRevoke = h.channel.revoke();
+  const duplicateDisconnect = h.channel.disconnect();
+  await h.channel.receiveText(JSON.stringify({ kind: "tap", x: 0.3, y: 0.3 }));
+  assert.equal(h.inputs.length, 1);
+  assert.equal(h.calls.release, 0);
+
+  inputGate.resolve();
+  await Promise.all([first, queued, firstRevoke, duplicateRevoke, duplicateDisconnect]);
+  assert.equal(h.inputs.length, 1, "queued input never dispatches after revoke intent");
+  assert.equal(h.calls.release, 1, "duplicate terminal requests share one authority cleanup");
+  assert.equal(h.calls.complete, 0);
+  assert.equal(h.channel.state, "revoked");
+});
+
 test("WebSocket disconnect releases transport but never means Done", async () => {
   const h = createHarness();
   await h.channel.disconnect();

@@ -174,6 +174,7 @@ export class ExperimentalWebSocketTakeoverChannel {
     maxFrameBytes;
     maxBufferedBytes;
     stateValue = "open";
+    inputAdmissionOpen = true;
     operationTail = Promise.resolve();
     frameSending = false;
     pendingFrame;
@@ -224,8 +225,10 @@ export class ExperimentalWebSocketTakeoverChannel {
         });
     }
     receiveText(raw) {
+        if (!this.inputAdmissionOpen)
+            return Promise.resolve();
         return this.enqueue(async () => {
-            if (this.stateValue !== "open")
+            if (this.stateValue !== "open" || !this.inputAdmissionOpen)
                 return;
             let message;
             try {
@@ -259,8 +262,12 @@ export class ExperimentalWebSocketTakeoverChannel {
                 return;
             }
             const inputStartedAt = performance.now();
+            let dispatched = false;
             this.lastInputStageValue = "received";
             await this.runBoundUse(async () => {
+                if (this.stateValue !== "open" || !this.inputAdmissionOpen)
+                    return;
+                dispatched = true;
                 this.lastInputStageValue = "dispatch_started";
                 await this.onInput(message);
                 this.lastInputStageValue = "dispatch_completed";
@@ -268,6 +275,8 @@ export class ExperimentalWebSocketTakeoverChannel {
                 onBeginReady: () => { this.lastInputStageValue = "authority_begin_ready"; },
                 onEndReady: () => { this.lastInputStageValue = "authority_end_ready"; }
             });
+            if (!dispatched)
+                return;
             this.lastInputStageValue = "applied";
             this.latencyTracker.record("input_apply", performance.now() - inputStartedAt);
         });
@@ -294,6 +303,7 @@ export class ExperimentalWebSocketTakeoverChannel {
         await this.sendFrameLoop(frame);
     }
     disconnect() {
+        this.inputAdmissionOpen = false;
         return this.enqueue(async () => {
             if ((this.stateValue === "closed" || this.stateValue === "revoked") && this.released) {
                 return;
@@ -312,6 +322,7 @@ export class ExperimentalWebSocketTakeoverChannel {
         });
     }
     revoke() {
+        this.inputAdmissionOpen = false;
         return this.enqueue(async () => {
             if ((this.stateValue === "revoked" || this.stateValue === "closed") && this.released) {
                 return;
@@ -412,6 +423,7 @@ export class ExperimentalWebSocketTakeoverChannel {
         if (this.doneStarted || this.stateValue !== "open")
             return;
         this.doneStarted = true;
+        this.inputAdmissionOpen = false;
         this.stateValue = "closing";
         this.clearDrainTimer();
         this.pendingFrame = undefined;
@@ -441,6 +453,7 @@ export class ExperimentalWebSocketTakeoverChannel {
             return;
         }
         this.lastFailureValue = failure.code;
+        this.inputAdmissionOpen = false;
         this.stateValue = "failed";
         this.clearDrainTimer();
         this.pendingFrame = undefined;

@@ -166,6 +166,48 @@ for (const boundary of ["reconnect", "epoch"] as const) {
   }
 }
 
+test("WSS conformance: disconnect intent fences queued Human input before release", { timeout: 5_000 }, async () => {
+  const h = harness();
+  const entered = deferred();
+  const finish = deferred();
+  const client = h.connect(undefined, async () => { entered.resolve(); await finish.promise; });
+  await client.channel.start();
+
+  const first = client.channel.receiveText(TAP);
+  await entered.promise;
+  const queued = client.channel.receiveText(TAP);
+  const disconnect = client.channel.disconnect();
+  await client.channel.receiveText(TAP);
+  assert.equal(client.inputs.length, 1, "post-intent input cannot dispatch");
+
+  finish.resolve();
+  await Promise.all([first, queued, disconnect]);
+  assert.equal(client.inputs.length, 1, "queued input cannot dispatch after disconnect intent");
+  assert.equal(client.channel.state, "closed");
+  assert.deepEqual(h.completions, [], "disconnect remains distinct from Human Done");
+});
+
+test("WSS conformance: revoke intent fences queued Human input before release", { timeout: 5_000 }, async () => {
+  const h = harness();
+  const entered = deferred();
+  const finish = deferred();
+  const client = h.connect(undefined, async () => { entered.resolve(); await finish.promise; });
+  await client.channel.start();
+
+  const first = client.channel.receiveText(TAP);
+  await entered.promise;
+  const queued = client.channel.receiveText(TAP);
+  const revoke = client.channel.revoke();
+  await client.channel.receiveText(TAP);
+  assert.equal(client.inputs.length, 1, "post-intent input cannot dispatch");
+
+  finish.resolve();
+  await Promise.all([first, queued, revoke]);
+  assert.equal(client.inputs.length, 1, "queued input cannot dispatch after revoke intent");
+  assert.equal(client.channel.state, "revoked");
+  assert.deepEqual(h.completions, []);
+});
+
 test("WSS conformance: in-flight input blocks idle reconnect and is not replayed after disconnect", { timeout: 5_000 }, async () => {
   const h = harness();
   const entered = deferred();

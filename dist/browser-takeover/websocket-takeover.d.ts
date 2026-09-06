@@ -104,6 +104,7 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private readonly maxFrameBytes;
     private readonly maxBufferedBytes;
     private stateValue;
+    private inputAdmissionOpen;
     private operationTail;
     private frameSending;
     private pendingFrame;
