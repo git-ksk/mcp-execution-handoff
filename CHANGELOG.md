@@ -4,6 +4,8 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+- Keep revoked/exhausted managed Browser Handoff locators user-readable without reviving authority (#265): the already-issued top-level locator is retained only as a bounded principal-bound terminal tombstone that renders a content-free ended-session page, while stale APIs, WebSocket/input/fallback routes, wrong principals, and unknown locators remain fail-closed.
+
 - Make Browser Human takeover startup and failure states visible instead of presenting an unexplained blank surface (#263): WebRTC and managed WSS now share a prominent content-free operator status card before the first remote frame, hide it while live media is visible, restore it during reconnect/teardown, and provide bounded next-action guidance for unavailable, verifying, and closed states. Authority, transport selection, Human input, credentials, target identity, and semantic verification behavior are unchanged.
 
 ## [0.4.5] - 2026-09-06

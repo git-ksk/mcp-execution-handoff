@@ -12,6 +12,7 @@ import { ManagedOperatorDiagnosticEvents, emptyManagedOperatorDiagnosticsSnapsho
 const FALLBACK_CAPABILITY_BYTES = 32;
 const FALLBACK_HEADER = "x-mcp-handoff-fallback";
 const FALLBACK_ROUTE = /^\/takeover\/api\/transport-fallback\/([A-Za-z0-9-]{8,100})$/;
+const MAX_TERMINAL_TOMBSTONES = 64;
 /**
  * Internal first-class Browser/Window transport composition.
  *
@@ -26,6 +27,7 @@ export class ManagedWindowHandoffRuntime {
     #transportOrder;
     #sessionsByIntervention = new Map();
     #sessionsByTransportSession = new Map();
+    #terminalTombstones = new Map();
     #emptyLatency = new WebRtcLatencyTracker();
     #lastSession;
     constructor(config) {
@@ -66,6 +68,9 @@ export class ManagedWindowHandoffRuntime {
     isEnabled() { return this.#config.takeover.enabled; }
     isPath(pathname) { return pathname.startsWith("/takeover/"); }
     ownsPath(pathname) {
+        const pageSessionId = takeoverPageSessionIdFromPath(pathname);
+        if (pageSessionId && this.#terminalTombstone(pageSessionId))
+            return true;
         if (FALLBACK_ROUTE.test(pathname)) {
             return this.#sessionsByTransportSession.has(FALLBACK_ROUTE.exec(pathname)?.[1] ?? "");
         }
@@ -458,8 +463,15 @@ export class ManagedWindowHandoffRuntime {
         }
         const sessionId = takeoverSessionIdFromPath(pathname);
         const session = sessionId ? this.#sessionsByTransportSession.get(sessionId) : undefined;
-        if (!session)
+        if (!session) {
+            const tombstone = sessionId && takeoverPageSessionIdFromPath(pathname) === sessionId
+                ? this.#terminalTombstone(sessionId)
+                : undefined;
+            if (tombstone && boundPrincipal === tombstone.principalBinding && (request.method === "GET" || request.method === "HEAD")) {
+                return managedTerminalPageResponse(request.method);
+            }
             return json(404, { error: "not_found" });
+        }
         const current = session.state.current;
         if (!current)
             return json(404, { error: "takeover_unavailable" });
@@ -652,6 +664,7 @@ export class ManagedWindowHandoffRuntime {
         }
         session.fallbackCapability = freshFallbackCapability();
         if (!next) {
+            this.#rememberTerminalTombstone(sessionId, session);
             session.activeSessionId = undefined;
             return json(503, { error: "transport_fallback_exhausted" });
         }
@@ -727,6 +740,8 @@ export class ManagedWindowHandoffRuntime {
     }
     #forgetSession(session) {
         clearTimeout(session.cleanupTimer);
+        if (session.activeSessionId)
+            this.#rememberTerminalTombstone(session.activeSessionId, session);
         if (this.#sessionsByIntervention.get(session.intervention.id) === session) {
             this.#sessionsByIntervention.delete(session.intervention.id);
         }
@@ -735,6 +750,46 @@ export class ManagedWindowHandoffRuntime {
             this.#sessionsByTransportSession.delete(session.activeSessionId);
         }
     }
+    #rememberTerminalTombstone(sessionId, session) {
+        this.#pruneTerminalTombstones();
+        const graceMs = this.#config.takeover.completionGraceMs ?? this.#config.takeover.ttlMs;
+        this.#terminalTombstones.delete(sessionId);
+        this.#terminalTombstones.set(sessionId, {
+            principalBinding: session.principalBinding,
+            expiresAt: Date.now() + graceMs
+        });
+        while (this.#terminalTombstones.size > MAX_TERMINAL_TOMBSTONES) {
+            const oldest = this.#terminalTombstones.keys().next().value;
+            if (!oldest)
+                break;
+            this.#terminalTombstones.delete(oldest);
+        }
+    }
+    #terminalTombstone(sessionId) {
+        this.#pruneTerminalTombstones();
+        return this.#terminalTombstones.get(sessionId);
+    }
+    #pruneTerminalTombstones() {
+        const now = Date.now();
+        for (const [sessionId, tombstone] of this.#terminalTombstones) {
+            if (tombstone.expiresAt <= now)
+                this.#terminalTombstones.delete(sessionId);
+        }
+    }
+}
+function managedTerminalPageResponse(method) {
+    const nonce = randomBytes(16).toString("base64");
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Human takeover ended</title><style nonce="${nonce}">:root{font-family:system-ui,-apple-system,sans-serif;color-scheme:dark}html,body{margin:0;min-height:100%;background:#000;color:#fff}main{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center;box-sizing:border-box}.card{max-width:34rem;padding:24px;border:1px solid rgba(255,255,255,.18);border-radius:18px;background:rgba(24,24,24,.96)}h1{font-size:20px;margin:0 0 10px}p{margin:0;line-height:1.55;color:rgba(255,255,255,.78)}</style></head><body><main><section class="card" role="status" aria-live="polite"><h1>This Human takeover has ended.</h1><p>Remote input is disabled. Return to the requesting workflow and start a fresh Human takeover if it is still needed.</p></section></main></body></html>`;
+    return new Response(method === "HEAD" ? null : html, {
+        status: 200,
+        headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store, max-age=0",
+            "content-security-policy": `default-src 'none'; style-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+            "referrer-policy": "no-referrer",
+            "x-content-type-options": "nosniff"
+        }
+    });
 }
 function localAuthenticationInputPolicy(policy) {
     return policy.tap === true && policy.scroll === false && policy.text === true && policy.key === true;
@@ -762,10 +817,13 @@ function takeoverSessionIdFromLocator(locator) {
         return undefined;
     }
 }
+function takeoverPageSessionIdFromPath(pathname) {
+    return /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(pathname)?.[1];
+}
 function takeoverSessionIdFromPath(pathname) {
-    const page = /^\/takeover\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
+    const page = takeoverPageSessionIdFromPath(pathname);
     if (page)
-        return page[1];
+        return page;
     const api = /^\/takeover\/api\/[a-z0-9-]+\/([A-Za-z0-9-]{8,100})$/.exec(pathname);
     if (api)
         return api[1];

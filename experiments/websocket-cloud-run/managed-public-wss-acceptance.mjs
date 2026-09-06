@@ -182,7 +182,9 @@ try {
     const snapshot = await status(cookie);
     return snapshot.teardownCompleted === true && snapshot.staleWebSocketLocatorRejected === true;
   }, 10_000);
-  assert.equal((await request(locatorPath, { cookie })).status, 404);
+  const terminalPage = await request(locatorPath, { cookie });
+  assert.equal(terminalPage.status, 200);
+  assert.match(await terminalPage.text(), /This Human takeover has ended/);
   assert.equal((await request(`/takeover/api/websocket-bootstrap/${sessionId}`, {
     method: "POST",
     cookie,
