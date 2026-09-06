@@ -7,7 +7,11 @@ const HANDSHAKE_PROTOCOL_PREFIX = "mcp-handoff-auth.";
 const SESSION_PATH = /^\/takeover\/ws\/([A-Za-z0-9-]{8,100})$/;
 const BOOTSTRAP_PATH = /^\/takeover\/api\/websocket-bootstrap\/([A-Za-z0-9-]{8,100})$/;
 const DEFAULT_MAX_INBOUND_BYTES = 8 * 1024;
+const DEFAULT_MAX_QUEUED_INBOUND_MESSAGES = 32;
+const DEFAULT_MAX_QUEUED_INBOUND_BYTES = 128 * 1024;
 const ABSOLUTE_MAX_INBOUND_BYTES = 64 * 1024;
+const ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES = 256;
+const ABSOLUTE_MAX_QUEUED_INBOUND_BYTES = 1024 * 1024;
 const FRAME_HEADER_BYTES = 16;
 const FRAME_MAGIC = 0x484f4631; // HOF1
 const POLICY_CLOSE = 1008;
@@ -179,6 +183,8 @@ export class ExperimentalWebSocketTakeoverIngress {
     #origins;
     #server;
     #maxInboundBytes;
+    #maxQueuedInboundMessages;
+    #maxQueuedInboundBytes;
     #active = new Map();
     #lastDiagnostics = {
         disconnectKind: "none",
@@ -188,6 +194,10 @@ export class ExperimentalWebSocketTakeoverIngress {
         backpressureEvents: 0,
         currentBufferedBytes: 0,
         maxBufferedBytesObserved: 0,
+        queuedInboundMessages: 0,
+        queuedInboundBytes: 0,
+        maxQueuedInboundMessagesObserved: 0,
+        maxQueuedInboundBytesObserved: 0,
         lastFailure: "none",
         lastInputStage: "none",
         failureDisconnectKind: "none",
@@ -200,6 +210,8 @@ export class ExperimentalWebSocketTakeoverIngress {
         this.options = options;
         this.#origins = normalizeAllowedOrigins(options.allowedOrigins);
         this.#maxInboundBytes = boundedInboundLimit(options.maxInboundBytes);
+        this.#maxQueuedInboundMessages = boundedQueueLimit(options.maxQueuedInboundMessages, DEFAULT_MAX_QUEUED_INBOUND_MESSAGES, ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES, "maxQueuedInboundMessages");
+        this.#maxQueuedInboundBytes = boundedQueueLimit(options.maxQueuedInboundBytes, DEFAULT_MAX_QUEUED_INBOUND_BYTES, ABSOLUTE_MAX_QUEUED_INBOUND_BYTES, "maxQueuedInboundBytes");
         this.#server = new WebSocketServer({
             noServer: true,
             maxPayload: this.#maxInboundBytes,
@@ -279,7 +291,9 @@ export class ExperimentalWebSocketTakeoverIngress {
                         onInput: (input) => this.options.onInput(accepted.binding, input),
                         onClientDiagnostic: (kind) => this.options.onDiagnosticEvent?.(kind),
                         ...(this.options.latencyTracker ? { latencyTracker: this.options.latencyTracker } : {}),
-                        maxInboundBytes: this.#maxInboundBytes
+                        maxInboundBytes: this.#maxInboundBytes,
+                        maxQueuedInboundMessages: this.#maxQueuedInboundMessages,
+                        maxQueuedInboundBytes: this.#maxQueuedInboundBytes
                     });
                     const previous = this.#active.get(parsed.sessionId);
                     const active = {
@@ -340,6 +354,10 @@ export class ExperimentalWebSocketTakeoverIngress {
             backpressureEvents: Math.min(channel.backpressureEvents, 1_000_000),
             currentBufferedBytes: Math.min(channel.currentBufferedBytes, 4 * 1024 * 1024),
             maxBufferedBytesObserved: Math.min(channel.maxBufferedBytesObserved, 4 * 1024 * 1024),
+            queuedInboundMessages: Math.min(channel.queuedInboundMessages, ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES),
+            queuedInboundBytes: Math.min(channel.queuedInboundBytes, ABSOLUTE_MAX_QUEUED_INBOUND_BYTES),
+            maxQueuedInboundMessagesObserved: Math.min(channel.maxQueuedInboundMessagesObserved, ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES),
+            maxQueuedInboundBytesObserved: Math.min(channel.maxQueuedInboundBytesObserved, ABSOLUTE_MAX_QUEUED_INBOUND_BYTES),
             lastFailure: channel.lastFailure ?? "none",
             lastInputStage: channel.lastInputStage
         };
@@ -418,6 +436,10 @@ export class ExperimentalWebSocketTakeoverIngress {
             backpressureEvents: Math.min(channel.backpressureEvents, 1_000_000),
             currentBufferedBytes: Math.min(channel.currentBufferedBytes, 4 * 1024 * 1024),
             maxBufferedBytesObserved: Math.min(channel.maxBufferedBytesObserved, 4 * 1024 * 1024),
+            queuedInboundMessages: Math.min(channel.queuedInboundMessages, ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES),
+            queuedInboundBytes: Math.min(channel.queuedInboundBytes, ABSOLUTE_MAX_QUEUED_INBOUND_BYTES),
+            maxQueuedInboundMessagesObserved: Math.min(channel.maxQueuedInboundMessagesObserved, ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES),
+            maxQueuedInboundBytesObserved: Math.min(channel.maxQueuedInboundBytesObserved, ABSOLUTE_MAX_QUEUED_INBOUND_BYTES),
             lastFailure: channel.lastFailure ?? "none",
             lastInputStage: channel.lastInputStage,
             failureDisconnectKind: captureFailure
@@ -577,6 +599,13 @@ function normalizeAllowedOrigins(values) {
         origins.add(url.origin);
     }
     return origins;
+}
+function boundedQueueLimit(value, fallback, maximum, name) {
+    const resolved = value ?? fallback;
+    if (!Number.isInteger(resolved) || resolved < 1 || resolved > maximum) {
+        throw new Error(`${name} must be an integer between 1 and ${maximum}`);
+    }
+    return resolved;
 }
 function boundedInboundLimit(value) {
     const resolved = value ?? DEFAULT_MAX_INBOUND_BYTES;

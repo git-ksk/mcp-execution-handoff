@@ -26,6 +26,12 @@ export class WindowWebSocketHandoffAdapter {
             surface: this.#surface,
             ...(config.frameIntervalMs === undefined ? {} : { frameIntervalMs: config.frameIntervalMs }),
             ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+            ...(config.maxQueuedInboundMessages === undefined
+                ? {}
+                : { maxQueuedInboundMessages: config.maxQueuedInboundMessages }),
+            ...(config.maxQueuedInboundBytes === undefined
+                ? {}
+                : { maxQueuedInboundBytes: config.maxQueuedInboundBytes }),
             ...(config.onOperatorDiagnosticEvent
                 ? { onDiagnosticEvent: config.onOperatorDiagnosticEvent }
                 : {}),

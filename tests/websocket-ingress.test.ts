@@ -34,6 +34,12 @@ function makeSession(now: () => number = Date.now) {
   return { sessions, locator, authority };
 }
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 function onceOpen(socket: WebSocket): Promise<void> {
   return new Promise((resolve, reject) => {
     socket.once("open", resolve);
@@ -62,16 +68,22 @@ async function startIngress(
   ticket: string,
   authority: ExperimentalWebSocketTakeoverSessionAuthority,
   failInput = false,
-  diagnosticEvents?: string[]
+  diagnosticEvents?: string[],
+  queueLimits?: { maxQueuedInboundMessages?: number; maxQueuedInboundBytes?: number },
+  inputGate?: { entered: ReturnType<typeof deferred>; finish: ReturnType<typeof deferred> }
 ) {
   const inputs: Array<{ generation: number; input: object }> = [];
   const ingress = new ExperimentalWebSocketTakeoverIngress({
     authority,
     allowedOrigins: [ORIGIN],
-    onInput(binding, input) {
+    async onInput(binding, input) {
       inputs.push({ generation: binding.clientGeneration, input });
+      inputGate?.entered.resolve();
+      if (inputGate) await inputGate.finish.promise;
       if (failInput) throw new Error("input failed");
     },
+    ...(queueLimits?.maxQueuedInboundMessages === undefined ? {} : { maxQueuedInboundMessages: queueLimits.maxQueuedInboundMessages }),
+    ...(queueLimits?.maxQueuedInboundBytes === undefined ? {} : { maxQueuedInboundBytes: queueLimits.maxQueuedInboundBytes }),
     ...(diagnosticEvents ? { onDiagnosticEvent: (kind: string) => diagnosticEvents.push(kind) } : {})
   });
   const server = createServer((_request, response) => {
@@ -270,6 +282,10 @@ test("WSS clean disconnect reconnects with a fresh server-derived generation", a
       backpressureEvents: 0,
       currentBufferedBytes: 0,
       maxBufferedBytesObserved: 0,
+      queuedInboundMessages: 0,
+      queuedInboundBytes: 0,
+      maxQueuedInboundMessagesObserved: 0,
+      maxQueuedInboundBytesObserved: 0,
       lastFailure: "none",
       lastInputStage: "none",
       failureDisconnectKind: "none",
@@ -474,6 +490,58 @@ test("WSS explicit revoke fences the session before a later reconnect", async ()
   }
 });
 
+test("WSS ingress bounds aggregate queued Human input and reports content-free overflow", async () => {
+  const { locator, authority } = makeSession();
+  const ticket = authority.issueHandshakeTicket(locator.id, PRINCIPAL, POLICY);
+  const entered = deferred();
+  const finish = deferred();
+  const { ingress, server, inputs, connect } = await startIngress(
+    ticket,
+    authority,
+    false,
+    undefined,
+    { maxQueuedInboundMessages: 1, maxQueuedInboundBytes: 64 * 1024 },
+    { entered, finish }
+  );
+  try {
+    const socket = connect();
+    await openAndFirstMessage(socket);
+    const raw = JSON.stringify({ kind: "tap", x: 0.25, y: 0.75 });
+    socket.send(raw);
+    await entered.promise;
+    socket.send(raw);
+    socket.send(raw);
+
+    for (let attempt = 0; attempt < 20 && ingress.diagnosticsSnapshot().queuedInboundMessages !== 1; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const pending = ingress.diagnosticsSnapshot();
+    assert.equal(pending.queuedInboundMessages, 1);
+    assert.equal(pending.maxQueuedInboundMessagesObserved, 1);
+    assert.equal(inputs.length, 1, "only the already-dispatched Human input may run");
+
+    const closed = onceClose(socket);
+    finish.resolve();
+    await closed;
+    for (let attempt = 0; attempt < 20 && ingress.diagnosticsSnapshot().channelState !== "closed"; attempt += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const failed = ingress.diagnosticsSnapshot();
+    assert.equal(failed.channelState, "closed");
+    assert.equal(failed.failureChannelState, "failed");
+    assert.equal(failed.lastFailure, "inbound_queue_overflow");
+    assert.equal(failed.failureCode, "inbound_queue_overflow");
+    assert.equal(failed.queuedInboundMessages, 0);
+    assert.equal(failed.queuedInboundBytes, 0);
+    assert.equal(failed.maxQueuedInboundMessagesObserved, 1);
+    assert.equal(inputs.length, 1, "queued stale input is fenced instead of delayed and replayed");
+    assert.doesNotMatch(JSON.stringify(failed), /0\.25|0\.75|tap/);
+  } finally {
+    finish.resolve();
+    await closeServer(server);
+  }
+});
+
 test("WSS ingress requires exact HTTPS origins and bounded parser configuration", () => {
   const { authority } = makeSession();
   assert.throws(
@@ -500,5 +568,23 @@ test("WSS ingress requires exact HTTPS origins and bounded parser configuration"
       onInput() {}
     }),
     /maxInboundBytes/
+  );
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverIngress({
+      authority,
+      allowedOrigins: [ORIGIN],
+      maxQueuedInboundMessages: 257,
+      onInput() {}
+    }),
+    /maxQueuedInboundMessages/
+  );
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverIngress({
+      authority,
+      allowedOrigins: [ORIGIN],
+      maxQueuedInboundBytes: 1024 * 1024 + 1,
+      onInput() {}
+    }),
+    /maxQueuedInboundBytes/
   );
 });

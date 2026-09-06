@@ -25,6 +25,8 @@ export interface ExperimentalWebSocketBrokerBindingOptions {
     input: WebSocketTakeoverHumanInput
   ): void | Promise<void>;
   maxInboundBytes?: number;
+  maxQueuedInboundMessages?: number;
+  maxQueuedInboundBytes?: number;
   onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
   latencyTracker?: WebSocketLatencyTracker;
 }
@@ -64,6 +66,12 @@ export class ExperimentalWebSocketBrokerBinding {
       allowedOrigins: options.allowedOrigins,
       onInput: options.onInput,
       ...(options.maxInboundBytes === undefined ? {} : { maxInboundBytes: options.maxInboundBytes }),
+      ...(options.maxQueuedInboundMessages === undefined
+        ? {}
+        : { maxQueuedInboundMessages: options.maxQueuedInboundMessages }),
+      ...(options.maxQueuedInboundBytes === undefined
+        ? {}
+        : { maxQueuedInboundBytes: options.maxQueuedInboundBytes }),
       ...(options.onDiagnosticEvent ? { onDiagnosticEvent: options.onDiagnosticEvent } : {}),
       ...(options.latencyTracker ? { latencyTracker: options.latencyTracker } : {})
     });

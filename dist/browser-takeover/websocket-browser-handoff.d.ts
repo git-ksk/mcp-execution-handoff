@@ -11,6 +11,8 @@ export interface ExperimentalWebSocketBrowserHandoffConfig {
     surface: ExperimentalWebSocketWindowSurface;
     frameIntervalMs?: number;
     maxInboundBytes?: number;
+    maxQueuedInboundMessages?: number;
+    maxQueuedInboundBytes?: number;
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     latencyTracker?: WebSocketLatencyTracker;
     onComplete?: (event: TakeoverCompletionEvent) => void | Promise<void>;

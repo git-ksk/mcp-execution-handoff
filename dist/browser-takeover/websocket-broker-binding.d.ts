@@ -9,6 +9,8 @@ export interface ExperimentalWebSocketBrokerBindingOptions {
     allowedOrigins: readonly string[];
     onInput(binding: Readonly<WebSocketTakeoverBinding>, input: WebSocketTakeoverHumanInput): void | Promise<void>;
     maxInboundBytes?: number;
+    maxQueuedInboundMessages?: number;
+    maxQueuedInboundBytes?: number;
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     latencyTracker?: WebSocketLatencyTracker;
 }

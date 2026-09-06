@@ -94,6 +94,8 @@ export interface ExperimentalWebSocketTakeoverOptions {
   /** Shared content-free latency tracker for managed WSS acceptance. */
   latencyTracker?: WebSocketLatencyTracker;
   maxInboundBytes?: number;
+  maxQueuedInboundMessages?: number;
+  maxQueuedInboundBytes?: number;
   maxFrameBytes?: number;
   maxBufferedBytes?: number;
 }
@@ -103,6 +105,7 @@ export type WebSocketTakeoverFailureCode =
   | "input_not_allowed"
   | "stale_generation"
   | "frame_too_large"
+  | "inbound_queue_overflow"
   | "transport_failure"
   | "authority_release_failed";
 
@@ -124,9 +127,13 @@ export class WebSocketTakeoverError extends Error {
 }
 
 const DEFAULT_MAX_INBOUND_BYTES = 8 * 1024;
+const DEFAULT_MAX_QUEUED_INBOUND_MESSAGES = 32;
+const DEFAULT_MAX_QUEUED_INBOUND_BYTES = 128 * 1024;
 const DEFAULT_MAX_FRAME_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAX_BUFFERED_BYTES = 512 * 1024;
 const ABSOLUTE_MAX_INBOUND_BYTES = 64 * 1024;
+const ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES = 256;
+const ABSOLUTE_MAX_QUEUED_INBOUND_BYTES = 1024 * 1024;
 const ABSOLUTE_MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const ABSOLUTE_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 const MAX_SCROLL_DELTA = 2_000;
@@ -312,6 +319,8 @@ export class ExperimentalWebSocketTakeoverChannel {
   private readonly onClientDiagnostic: ExperimentalWebSocketTakeoverOptions["onClientDiagnostic"];
   private readonly latencyTracker: WebSocketLatencyTracker;
   private readonly maxInboundBytes: number;
+  private readonly maxQueuedInboundMessages: number;
+  private readonly maxQueuedInboundBytes: number;
   private readonly maxFrameBytes: number;
   private readonly maxBufferedBytes: number;
   private stateValue: WebSocketTakeoverState = "open";
@@ -327,6 +336,10 @@ export class ExperimentalWebSocketTakeoverChannel {
   private backpressureEventsValue = 0;
   private currentBufferedBytesValue = 0;
   private maxBufferedBytesObservedValue = 0;
+  private queuedInboundMessagesValue = 0;
+  private queuedInboundBytesValue = 0;
+  private maxQueuedInboundMessagesObservedValue = 0;
+  private maxQueuedInboundBytesObservedValue = 0;
   private lastFailureValue?: WebSocketTakeoverFailureCode;
   private lastInputStageValue: WebSocketTakeoverInputStage = "none";
   private lastFrameSentAt: number | undefined;
@@ -345,6 +358,18 @@ export class ExperimentalWebSocketTakeoverChannel {
       DEFAULT_MAX_INBOUND_BYTES,
       ABSOLUTE_MAX_INBOUND_BYTES,
       "maxInboundBytes"
+    );
+    this.maxQueuedInboundMessages = boundedLimit(
+      options.maxQueuedInboundMessages,
+      DEFAULT_MAX_QUEUED_INBOUND_MESSAGES,
+      ABSOLUTE_MAX_QUEUED_INBOUND_MESSAGES,
+      "maxQueuedInboundMessages"
+    );
+    this.maxQueuedInboundBytes = boundedLimit(
+      options.maxQueuedInboundBytes,
+      DEFAULT_MAX_QUEUED_INBOUND_BYTES,
+      ABSOLUTE_MAX_QUEUED_INBOUND_BYTES,
+      "maxQueuedInboundBytes"
     );
     this.maxFrameBytes = boundedLimit(
       options.maxFrameBytes,
@@ -371,6 +396,10 @@ export class ExperimentalWebSocketTakeoverChannel {
     backpressureEvents: number;
     currentBufferedBytes: number;
     maxBufferedBytesObserved: number;
+    queuedInboundMessages: number;
+    queuedInboundBytes: number;
+    maxQueuedInboundMessagesObserved: number;
+    maxQueuedInboundBytesObserved: number;
     lastFailure?: WebSocketTakeoverFailureCode;
     lastInputStage: WebSocketTakeoverInputStage;
   }> {
@@ -381,6 +410,10 @@ export class ExperimentalWebSocketTakeoverChannel {
       backpressureEvents: this.backpressureEventsValue,
       currentBufferedBytes: this.currentBufferedBytesValue,
       maxBufferedBytesObserved: this.maxBufferedBytesObservedValue,
+      queuedInboundMessages: this.queuedInboundMessagesValue,
+      queuedInboundBytes: this.queuedInboundBytesValue,
+      maxQueuedInboundMessagesObserved: this.maxQueuedInboundMessagesObservedValue,
+      maxQueuedInboundBytesObserved: this.maxQueuedInboundBytesObservedValue,
       ...(this.lastFailureValue ? { lastFailure: this.lastFailureValue } : {}),
       lastInputStage: this.lastInputStageValue
     };
@@ -395,7 +428,31 @@ export class ExperimentalWebSocketTakeoverChannel {
 
   receiveText(raw: string): Promise<void> {
     if (!this.inputAdmissionOpen) return Promise.resolve();
+    const inboundBytes = utf8Length(raw);
+    if (inboundBytes > this.maxInboundBytes) {
+      const error = new WebSocketTakeoverError(
+        "invalid_message",
+        "WebSocket takeover message is too large"
+      );
+      this.inputAdmissionOpen = false;
+      return this.enqueue(async () => {
+        await this.failClosed(error);
+        throw error;
+      });
+    }
+    if (!this.reserveQueuedInbound(inboundBytes)) {
+      const error = new WebSocketTakeoverError(
+        "inbound_queue_overflow",
+        "WebSocket takeover inbound queue limit exceeded"
+      );
+      this.inputAdmissionOpen = false;
+      return this.enqueue(async () => {
+        await this.failClosed(error);
+        throw error;
+      });
+    }
     return this.enqueue(async () => {
+      this.releaseQueuedInbound(inboundBytes);
       if (this.stateValue !== "open" || !this.inputAdmissionOpen) return;
       let message: ReturnType<typeof parseHumanMessage>;
       try {
@@ -508,6 +565,33 @@ export class ExperimentalWebSocketTakeoverChannel {
       }
       await this.safeClose(NORMAL_CLOSE, "revoked");
     });
+  }
+
+  private reserveQueuedInbound(bytes: number): boolean {
+    const nextMessages = this.queuedInboundMessagesValue + 1;
+    const nextBytes = this.queuedInboundBytesValue + bytes;
+    if (
+      nextMessages > this.maxQueuedInboundMessages
+      || nextBytes > this.maxQueuedInboundBytes
+    ) {
+      return false;
+    }
+    this.queuedInboundMessagesValue = nextMessages;
+    this.queuedInboundBytesValue = nextBytes;
+    this.maxQueuedInboundMessagesObservedValue = Math.max(
+      this.maxQueuedInboundMessagesObservedValue,
+      nextMessages
+    );
+    this.maxQueuedInboundBytesObservedValue = Math.max(
+      this.maxQueuedInboundBytesObservedValue,
+      nextBytes
+    );
+    return true;
+  }
+
+  private releaseQueuedInbound(bytes: number): void {
+    this.queuedInboundMessagesValue -= 1;
+    this.queuedInboundBytesValue -= bytes;
   }
 
   private enqueue(operation: () => Promise<void>): Promise<void> {

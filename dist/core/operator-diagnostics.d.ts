@@ -8,7 +8,7 @@ export type OperatorDiagnosticsPeerState = "new" | "connecting" | "connected" | 
 export type OperatorManagedTransportClass = "webrtc_direct" | "websocket_relay" | "webrtc_relay" | "none";
 export type OperatorManagedFallbackReason = "transport_unavailable";
 export type OperatorManagedWssSurfaceFailure = "none" | "frame_timeout" | "helper_closed" | "helper_error" | "frame_protocol" | "diagnostics_bounds" | "input_failure" | "input_timeout" | "input_revalidation_failure" | "revalidation_failure" | "capture_x11" | "capture_encoder" | "capture_option" | "capture_other";
-export type OperatorManagedWssChannelFailure = "none" | "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "transport_failure" | "authority_release_failed";
+export type OperatorManagedWssChannelFailure = "none" | "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "inbound_queue_overflow" | "transport_failure" | "authority_release_failed";
 export type OperatorManagedWssInputStage = "none" | "focus_ready" | "pointer_move_ready" | "pointer_authority_ready" | "pointer_down_sent" | "pointer_post_authority_ready" | "tap_sent" | "key_down_sent" | "key_authority_ready" | "key_up_sent" | "applied";
 export type OperatorManagedWssInputBoundaryStage = "none" | "requested" | "helper_ready" | "revalidation_ready" | "command_sent" | "acknowledged";
 export interface OperatorManagedWssDiagnostics {

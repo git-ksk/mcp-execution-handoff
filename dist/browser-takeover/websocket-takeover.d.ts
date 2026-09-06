@@ -81,10 +81,12 @@ export interface ExperimentalWebSocketTakeoverOptions {
     /** Shared content-free latency tracker for managed WSS acceptance. */
     latencyTracker?: WebSocketLatencyTracker;
     maxInboundBytes?: number;
+    maxQueuedInboundMessages?: number;
+    maxQueuedInboundBytes?: number;
     maxFrameBytes?: number;
     maxBufferedBytes?: number;
 }
-export type WebSocketTakeoverFailureCode = "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "transport_failure" | "authority_release_failed";
+export type WebSocketTakeoverFailureCode = "invalid_message" | "input_not_allowed" | "stale_generation" | "frame_too_large" | "inbound_queue_overflow" | "transport_failure" | "authority_release_failed";
 export declare class WebSocketTakeoverRecoverableInputError extends Error {
     constructor(message?: string);
 }
@@ -101,6 +103,8 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private readonly onClientDiagnostic;
     private readonly latencyTracker;
     private readonly maxInboundBytes;
+    private readonly maxQueuedInboundMessages;
+    private readonly maxQueuedInboundBytes;
     private readonly maxFrameBytes;
     private readonly maxBufferedBytes;
     private stateValue;
@@ -116,6 +120,10 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     private backpressureEventsValue;
     private currentBufferedBytesValue;
     private maxBufferedBytesObservedValue;
+    private queuedInboundMessagesValue;
+    private queuedInboundBytesValue;
+    private maxQueuedInboundMessagesObservedValue;
+    private maxQueuedInboundBytesObservedValue;
     private lastFailureValue?;
     private lastInputStageValue;
     private lastFrameSentAt;
@@ -128,6 +136,10 @@ export declare class ExperimentalWebSocketTakeoverChannel {
         backpressureEvents: number;
         currentBufferedBytes: number;
         maxBufferedBytesObserved: number;
+        queuedInboundMessages: number;
+        queuedInboundBytes: number;
+        maxQueuedInboundMessagesObserved: number;
+        maxQueuedInboundBytesObserved: number;
         lastFailure?: WebSocketTakeoverFailureCode;
         lastInputStage: WebSocketTakeoverInputStage;
     }>;
@@ -136,6 +148,8 @@ export declare class ExperimentalWebSocketTakeoverChannel {
     pushFrame(frame: WebSocketTakeoverFrame): Promise<void>;
     disconnect(): Promise<void>;
     revoke(): Promise<void>;
+    private reserveQueuedInbound;
+    private releaseQueuedInbound;
     private enqueue;
     private sendFrameLoop;
     private runBoundUse;

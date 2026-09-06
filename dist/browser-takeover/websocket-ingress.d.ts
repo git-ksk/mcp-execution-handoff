@@ -43,6 +43,8 @@ export interface ExperimentalWebSocketTakeoverIngressOptions {
     allowedOrigins: readonly string[];
     onInput(binding: Readonly<WebSocketTakeoverBinding>, input: WebSocketTakeoverHumanInput): void | Promise<void>;
     maxInboundBytes?: number;
+    maxQueuedInboundMessages?: number;
+    maxQueuedInboundBytes?: number;
     /** Content-free bounded event hook for first-class managed operator diagnostics. */
     onDiagnosticEvent?: (kind: ManagedOperatorDiagnosticEventKind) => void;
     latencyTracker?: WebSocketLatencyTracker;
@@ -56,6 +58,10 @@ export interface ExperimentalWebSocketIngressDiagnostics {
     backpressureEvents: number;
     currentBufferedBytes: number;
     maxBufferedBytesObserved: number;
+    queuedInboundMessages: number;
+    queuedInboundBytes: number;
+    maxQueuedInboundMessagesObserved: number;
+    maxQueuedInboundBytesObserved: number;
     lastFailure: WebSocketTakeoverFailureCode | "none";
     lastInputStage: WebSocketTakeoverInputStage;
     failureDisconnectKind: ExperimentalWebSocketIngressDisconnectKind;

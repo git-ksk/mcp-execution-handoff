@@ -52,6 +52,12 @@ export class ExperimentalWebSocketWindowHandoff {
             allowedOrigins: config.allowedOrigins,
             onInput: (binding, input) => this.#dispatchInput(binding.interventionId, binding.epoch, input),
             ...(config.maxInboundBytes === undefined ? {} : { maxInboundBytes: config.maxInboundBytes }),
+            ...(config.maxQueuedInboundMessages === undefined
+                ? {}
+                : { maxQueuedInboundMessages: config.maxQueuedInboundMessages }),
+            ...(config.maxQueuedInboundBytes === undefined
+                ? {}
+                : { maxQueuedInboundBytes: config.maxQueuedInboundBytes }),
             ...(config.onDiagnosticEvent ? { onDiagnosticEvent: config.onDiagnosticEvent } : {}),
             latencyTracker: this.#latencyTracker
         });

@@ -15,6 +15,8 @@ interface HarnessOverrides {
   failFrame?: boolean;
   failBuffered?: boolean;
   failReleaseAttempts?: number;
+  maxQueuedInboundMessages?: number;
+  maxQueuedInboundBytes?: number;
 }
 
 function deferred(): {
@@ -97,6 +99,8 @@ function createHarness(overrides: HarnessOverrides = {}) {
       }
     },
     maxBufferedBytes: 8,
+    ...(overrides.maxQueuedInboundMessages === undefined ? {} : { maxQueuedInboundMessages: overrides.maxQueuedInboundMessages }),
+    ...(overrides.maxQueuedInboundBytes === undefined ? {} : { maxQueuedInboundBytes: overrides.maxQueuedInboundBytes }),
     async onInput(input) {
       inputs.push(input);
       if (inputGate) await inputGate.promise;
@@ -375,6 +379,20 @@ test("WebSocket configured limits have non-overridable hard ceilings", () => {
   assert.throws(
     () => new ExperimentalWebSocketTakeoverChannel({
       ...options,
+      maxQueuedInboundMessages: 257
+    }),
+    /maxQueuedInboundMessages/
+  );
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverChannel({
+      ...options,
+      maxQueuedInboundBytes: 1024 * 1024 + 1
+    }),
+    /maxQueuedInboundBytes/
+  );
+  assert.throws(
+    () => new ExperimentalWebSocketTakeoverChannel({
+      ...options,
       maxFrameBytes: 8 * 1024 * 1024 + 1
     }),
     /maxFrameBytes/
@@ -386,6 +404,65 @@ test("WebSocket configured limits have non-overridable hard ceilings", () => {
     }),
     /maxBufferedBytes/
   );
+});
+
+test("WebSocket inbound message-count overflow fences queued Human mutation with bounded accounting", async () => {
+  const h = createHarness({ maxQueuedInboundMessages: 2, maxQueuedInboundBytes: 64 * 1024 });
+  const inputGate = h.blockInput();
+  const raw = JSON.stringify({ kind: "tap", x: 0.1, y: 0.1 });
+  const first = h.channel.receiveText(raw);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.inputs.length, 1);
+  assert.equal(h.channel.diagnostics.queuedInboundMessages, 0, "currently dispatching input is not queued");
+
+  const queuedOne = h.channel.receiveText(raw);
+  const queuedTwo = h.channel.receiveText(raw);
+  assert.equal(h.channel.diagnostics.queuedInboundMessages, 2);
+  assert.equal(h.channel.diagnostics.maxQueuedInboundMessagesObserved, 2);
+  const overflow = assert.rejects(
+    h.channel.receiveText(raw),
+    (error: unknown) => error instanceof WebSocketTakeoverError && error.code === "inbound_queue_overflow"
+  );
+  await h.channel.receiveText(raw);
+  assert.equal(h.channel.diagnostics.queuedInboundMessages, 2, "post-overflow input is not retained");
+  assert.equal(h.inputs.length, 1);
+
+  inputGate.resolve();
+  await Promise.all([first, queuedOne, queuedTwo, overflow]);
+  assert.equal(h.inputs.length, 1, "queued Human input cannot mutate after overflow fencing");
+  assert.equal(h.channel.state, "failed");
+  assert.equal(h.channel.diagnostics.lastFailure, "inbound_queue_overflow");
+  assert.equal(h.channel.diagnostics.queuedInboundMessages, 0);
+  assert.equal(h.channel.diagnostics.queuedInboundBytes, 0);
+  assert.equal(h.calls.release, 1);
+  assert.deepEqual(h.closes.at(-1), { code: 1008, reason: "inbound_queue_overflow" });
+});
+
+test("WebSocket inbound byte overflow is bounded independently of queued message count", async () => {
+  const raw = JSON.stringify({ kind: "tap", x: 0.2, y: 0.2 });
+  const bytes = Buffer.byteLength(raw, "utf8");
+  const h = createHarness({ maxQueuedInboundMessages: 8, maxQueuedInboundBytes: bytes });
+  const inputGate = h.blockInput();
+  const first = h.channel.receiveText(raw);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const queued = h.channel.receiveText(raw);
+  assert.equal(h.channel.diagnostics.queuedInboundMessages, 1);
+  assert.equal(h.channel.diagnostics.queuedInboundBytes, bytes);
+  assert.equal(h.channel.diagnostics.maxQueuedInboundBytesObserved, bytes);
+  const overflow = assert.rejects(
+    h.channel.receiveText(raw),
+    (error: unknown) => error instanceof WebSocketTakeoverError && error.code === "inbound_queue_overflow"
+  );
+
+  inputGate.resolve();
+  await Promise.all([first, queued, overflow]);
+  assert.equal(h.inputs.length, 1);
+  assert.equal(h.channel.diagnostics.queuedInboundMessages, 0);
+  assert.equal(h.channel.diagnostics.queuedInboundBytes, 0);
+  assert.equal(h.channel.diagnostics.maxQueuedInboundMessagesObserved, 1);
+  assert.equal(h.channel.diagnostics.maxQueuedInboundBytesObserved, bytes);
+  assert.equal(h.channel.diagnostics.lastFailure, "inbound_queue_overflow");
 });
 
 test("WebSocket bufferedAmount failure fences the active generation", async () => {
