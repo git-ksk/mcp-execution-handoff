@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-**v0.4.2** is the current GitHub/source-release baseline, tracked through milestone `v0.4.2 — Maintenance` (#13). It preserves the v0.4.1 Target Surface/authority and Desktop Session boundaries while fixing #226 so expired credential-safe external Human surfaces are never reused as active. The patch does not add Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, or npm-publication scope. #227/#228 remain version-uncommitted host-parity backlog; #19/#12 remain the next connectivity/hosted lines.
+**v0.4.5** is the current GitHub/source-release baseline, tracked through milestone `v0.4.5 — Authority & Queue Hardening` (#16). It preserves the v0.4.4 Target Surface/transport boundary while completing #255/#256/#257: external Human-surface authority remains busy until provider cleanup is confirmed, WSS terminal intent fences queued Human input immediately, and retained inbound WSS Human-input work is bounded by message count/aggregate bytes with fail-closed overflow. The patch adds no Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, or npm-publication scope. #254/#227/#228 remain version-uncommitted non-blocking backlog; #19/#12 remain the next connectivity/hosted lines.
 
 ## Versioning policy
 
@@ -50,7 +50,7 @@ The final release PR should contain only release bookkeeping unless a blocker re
 4. Keep `private: true` for source-only releases.
 5. Run the complete release validation below from a clean install.
 
-For v0.4.4, the authoritative release gate is milestone #15 (`v0.4.4 — Immediate Hardening`): #237, #233, #234, and #244 are the exact release scope. #227/#228 remain explicitly non-blocking version-uncommitted host-parity work. Historical v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
+For v0.4.5, the authoritative release gate is milestone #16 (`v0.4.5 — Authority & Queue Hardening`): #255, #256, and #257 are the exact release scope. #254/#227/#228 remain explicitly non-blocking version-uncommitted backlog. Historical v0.4.4 used milestone #15, v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
 
 ## Release validation
 

@@ -4,11 +4,11 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.4.4
+## Current baseline: v0.4.5
 
-`v0.4.4` is the current GitHub/source-release baseline. It keeps the v0.4.3 public-WSS correctness boundary and completes Immediate Hardening: deterministic immutable consumer refresh/staging (#237), measured first-valid-frame startup presentation (#233), a 50 ms healthy-path WSS frame pump with bounded backpressure diagnostics (#234), third-party iOS keyboard replacement-stream compatibility including physical system-keyboard + Simeji acceptance (#244), and the static-window reconnect correctness blocker discovered during cadence acceptance (#250). No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
+`v0.4.5` is the current GitHub/source-release baseline. It preserves the v0.4.4 Target Surface and transport boundary while closing three bounded correctness gaps: external Human-surface creation/revocation is authority-exclusive and expiry is not treated as revoke proof (#255), WSS disconnect/revoke terminal intent immediately fences queued Human input (#256), and retained inbound WSS Human-input work is bounded by message count and aggregate bytes with fail-closed overflow (#257). No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
 
-The immediate pre-v0.5 release gate is `v0.4.5 — Authority & Queue Hardening` (#255/#256/#257). It closes newly reproduced authority-exclusivity, revoke-admission, and aggregate inbound-queue gaps before provider-neutral connectivity work begins.
+The `v0.4.5 — Authority & Queue Hardening` gate (#255/#256/#257) is complete. The next planned feature release is `v0.5.0 — Provider-Neutral Connectivity` (#19).
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -29,7 +29,7 @@ The post-v0.1.0 validation now has three first-class consumer-facing Handoff com
 
 The three proven **surface shapes** are Browser, bounded OS Window, and bounded Terminal/PTY. This does **not** imply a frozen public `TargetSurfaceKind` enum. #46 remains the semantic-domain/admission baseline; the v0.2 terminology gate is complete with compatibility aliases for the policy axis and documentation-first Target Surface labels.
 
-Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the completed v0.4.2 expiry maintenance (#226), the completed v0.4.3 public-WSS correctness line (#232/#235/#240), the completed v0.4.4 Immediate Hardening release line (#233/#234/#237/#244/#250), the v0.4.5 Authority & Queue Hardening line (#255/#256/#257), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
+Documentation/design closeout is complete for #42 (positioning), #46 (semantic domains/Target Surface admission), and #5 (MCP-principal vs target-service identity separation). Historical umbrella issues #11 and #13 are also closed as superseded: supported work now lives in first-class bounded Window/WebRTC/WSS evidence, v0.2.x bounded hardening (#124/#56/#34 completed), v0.3 recovery/observability (#127–#130), post-release v0.3.x maintenance, the completed v0.4.1 Desktop Session boundary (#161), the completed v0.4.2 expiry maintenance (#226), the completed v0.4.3 public-WSS correctness line (#232/#235/#240), the completed v0.4.4 Immediate Hardening release line (#233/#234/#237/#244/#250), the completed v0.4.5 Authority & Queue Hardening line (#255/#256/#257), the concrete v0.5.0 connectivity line (#19), the sequenced v0.6.0 hosted line (#12), and separate authority research (#211/#125). Whole-desktop and mandatory custom Native-client directions are not retained as default product scope.
 
 Issues #94 and #124 are complete. #94 proved the existing exact-window stateful macOS pointer backend can operate the tested System Settings secure control without a privileged Screen Sharing/Remote Management fallback. #124 then added explicit opt-in successor-window lineage: a Human session may rotate from one exact window to one uniquely proven newly observed same-process successor, with the old mutable target fenced and ambiguity failing closed. Physical iPhone acceptance rotated `Accessibility -> Add (+) -> Open` within the same WebRTC session; the chooser was a same-PID focused `AXDialog`/modal at WindowServer layer 8, admitted only through the lineage-only rule. Ordinary exact-one-window behavior remains unchanged and layer-zero bounded. #211 is now the narrow bounded secure-flow research step; broader Desktop authority remains a separate #125 research escalation only if bounded authority is physically proven insufficient, and never a hidden fallback.
 
@@ -66,9 +66,9 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #237 | v0.4.4 Immediate Hardening | **Complete / v0.4.4 operational contract.** Deterministic immutable consumer refresh/staging supports source-checkout and npm-archive consumers with fail-closed pin/lock verification, rollback, and native-helper rebuild signaling; deploy/traffic remain consumer-owned. |
 | #244 | v0.4.4 Immediate Hardening | **Complete / v0.4.4.** Shared WebRTC/WSS Browser input normalization handles third-party ordinary `insertText` replacement streams without relying on `keyCode=229`; physical iPhone system-keyboard + Simeji acceptance passed. |
 | #250 | v0.4.4 reconnect blocker | **Complete / v0.4.4.** Fresh WSS generations receive the latest still-authoritative exact-window frame and cancel stale next-frame waits, so static windows recover after reconnect without waiting for content mutation. |
-| #255 | v0.4.5 P1 Human-surface authority | **Open / release gate.** Serialize external `begin()`, treat starting/cleanup as authority-busy, and require confirmed provider revocation before `assertInactive()` can permit Agent restoration. Expiry fences locator/input reuse but is not proof of shutdown. |
-| #256 | v0.4.5 P1 WSS terminal fencing | **Open / release gate.** Disconnect/revoke terminal intent must immediately fence not-yet-dispatched Human input while preserving the existing drain contract only for already-dispatched work. |
-| #257 | v0.4.5 P2 WSS inbound queue | **Open / release gate after P1 items.** Bound aggregate pending inbound message count/bytes and fail closed on overflow instead of retaining or later applying an unbounded stale Human-input backlog. |
+| #255 | v0.4.5 P1 Human-surface authority | **Complete / v0.4.5.** External `begin()` is single-flight/serialized, starting/cleanup remain authority-busy, and `assertInactive()` requires confirmed provider cleanup; locator expiry alone is never revoke proof. |
+| #256 | v0.4.5 P1 WSS terminal fencing | **Complete / v0.4.5.** Disconnect/revoke terminal intent closes input admission synchronously; already-dispatched work may drain, while queued/not-yet-dispatched Human input cannot mutate afterwards. |
+| #257 | v0.4.5 P2 WSS inbound queue | **Complete / v0.4.5.** Retained inbound work is bounded by queued message count/aggregate bytes, overflow fails closed, and queued stale Human input is fenced rather than delayed/replayed. |
 | #227 | Host Parity Backlog — Windows Browser | **Open / version uncommitted.** Future bounded Windows Browser Handoff parity; requires dedicated Windows + mobile physical acceptance before support claim. |
 | #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
 | #254 | Recovery Integration Backlog — version uncommitted | **Open / classified non-blocking.** Add a provider-neutral consumer-owned target/session reconstruction-required hook without restoring stale authority, replaying actions, or moving process/profile/deployment ownership into Handoff. |
@@ -92,7 +92,7 @@ explicit signing/notarization or distro/ABI/provenance/rollback gates before pro
 
 Upgrade/rollback never restores stale locator/capability/generation/media/input authority. Durable
 recovery remains `reissue_and_revalidate`, and consumer semantic verification/replay policy remains
-consumer-owned. #237 is complete: deterministic immutable consumer refresh/staging now standardizes source-pinned upgrades without moving deployment, readiness, traffic switching, credentials, or consumer semantics into Handoff. The immediate planned release work is the bounded v0.4.5 authority/queue gate (#255/#256/#257); provider-neutral connectivity in #19 follows after that gate. Human-visible lifecycle quality is also part of this track: #150 is complete, with physical OK/Cancel evidence that stale LocalAuthentication presentation is cleared as soon as the exact target disappears while semantic success remains consumer-owned.
+consumer-owned. #237 is complete: deterministic immutable consumer refresh/staging now standardizes source-pinned upgrades without moving deployment, readiness, traffic switching, credentials, or consumer semantics into Handoff. The bounded v0.4.5 authority/queue gate (#255/#256/#257) is complete; provider-neutral connectivity in #19 is the next planned feature release work. Human-visible lifecycle quality is also part of this track: #150 is complete, with physical OK/Cancel evidence that stale LocalAuthentication presentation is cleared as soon as the exact target disappears while semantic success remains consumer-owned.
 
 See [Product readiness and consumer compatibility](docs/product-readiness.md).
 
@@ -121,7 +121,7 @@ Exit condition: each patch must preserve the documented security invariants and 
 
 ## v0.4.2 source release
 
-`v0.4.2` is the current **GitHub source release**. It is a bounded v0.4.x maintenance patch owned by #226: credential-safe external Human surfaces now treat declared expiry as a hard cached-surface cutoff, never return stale locators as active, reject already-expired provider grants, and require a separate explicit `begin()` for fresh provider issuance. Best-effort stale-provider cleanup cannot complete the Human intervention, restore Agent authority, replay Human input, or attest target-service authentication.
+`v0.4.2` is an earlier **GitHub source release**. It is a bounded v0.4.x maintenance patch owned by #226: credential-safe external Human surfaces now treat declared expiry as a hard cached-surface cutoff, never return stale locators as active, reject already-expired provider grants, and require a separate explicit `begin()` for fresh provider issuance. Best-effort stale-provider cleanup cannot complete the Human intervention, restore Agent authority, replay Human input, or attest target-service authentication.
 
 The release is tracked by milestone `v0.4.2 — Maintenance` (#13). #227 (Windows Browser Handoff parity) and #228 (Linux successor-window lineage parity) remain version-uncommitted and non-blocking. No new Target Surface, OS-support claim, Desktop authority, transport-provider claim, public package subpath, or npm publication is introduced.
 
@@ -224,7 +224,7 @@ Exit discipline for this line:
 - deterministic and relevant physical acceptance stays attached to the exact revision being claimed;
 - source release/tagging and npm publication remain separate decisions.
 
-As of 2026-09-06, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, `v0.4.3 — Public WSS Reliability`, and `v0.4.4 — Immediate Hardening` release lines are complete. Ten Issues remain open and explicitly classified: three `v0.4.5 — Authority & Queue Hardening` issues (#255/#256/#257), `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), two version-uncommitted host-parity issues (#227/#228), and one version-uncommitted Recovery Integration follow-up (#254). New work must be classified when created rather than left outside roadmap accounting.
+As of 2026-09-06, the `v0.3.x — Maintenance & Durability`, `v0.4.2 — Maintenance`, `v0.4.3 — Public WSS Reliability`, `v0.4.4 — Immediate Hardening`, and `v0.4.5 — Authority & Queue Hardening` release lines are complete. Seven Issues remain open and explicitly classified: `v0.5.0 — Provider-Neutral Connectivity` (#19), `v0.6.0 — Hosted Worker Topology` (#12), two authority-research issues (#211/#125), two version-uncommitted host-parity issues (#227/#228), and one version-uncommitted Recovery Integration follow-up (#254). New work must be classified when created rather than left outside roadmap accounting.
 
 ## v0.4.2 — Maintenance
 
@@ -273,7 +273,7 @@ Exit criteria:
 
 ## v0.4.4 — Immediate Hardening
 
-`v0.4.4` is the completed bounded hardening source-release line after `v0.4.3`; the newly inserted v0.4.5 correctness gate now sits between it and `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` completed its four planned issues plus one reconnect correctness blocker discovered during physical cadence acceptance. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
+`v0.4.4` is the completed bounded hardening source-release line after `v0.4.3`; the completed v0.4.5 correctness release now sits between it and `v0.5.0`. Milestone `v0.4.4 — Immediate Hardening` completed its four planned issues plus one reconnect correctness blocker discovered during physical cadence acceptance. It improves upgrade operations, WSS startup/steady-state quality, and third-party iOS keyboard compatibility without widening Target Surface, authority, transport-provider, or npm-publication scope.
 
 Release result:
 
@@ -287,13 +287,13 @@ The release remains source-only with `private: true`; npm publication, consumer 
 
 ## v0.4.5 — Authority & Queue Hardening
 
-`v0.4.5` is the bounded correctness release gate immediately after `v0.4.4` and before `v0.5.0`. Milestone `v0.4.5 — Authority & Queue Hardening` is intentionally limited to three post-review defects that can undermine exclusive Human/Agent authority or retain stale WSS Human input. It does not add a new Target Surface, transport provider, OS-support claim, Desktop authority, consumer semantic responsibility, or npm-publication requirement.
+`v0.4.5` is the completed bounded correctness source release immediately after `v0.4.4` and before `v0.5.0`. Milestone `v0.4.5 — Authority & Queue Hardening` is intentionally limited to three post-review defects that can undermine exclusive Human/Agent authority or retain stale WSS Human input. It does not add a new Target Surface, transport provider, OS-support claim, Desktop authority, consumer semantic responsibility, or npm-publication requirement.
 
-Priority and implementation order:
+Release result:
 
-1. #255 — **P1:** make credential-safe external Human-surface creation single-flight/serialized and separate locator expiry from confirmed provider-side revoke. Starting, active, expired-but-unconfirmed, and revoke-failed cleanup states all remain authority-busy until external mutation authority is confirmed inactive.
-2. #256 — **P1:** make WSS disconnect/revoke terminal intent fence queued/not-yet-dispatched Human input immediately. Already-dispatched bound work may finish only under the existing drain contract; disconnect remains distinct from Done.
-3. #257 — **P2 after #255/#256:** bound aggregate pending WSS inbound messages/bytes and fail closed on overflow. Discrete Human input is not silently coalesced or dropped while the session continues.
+1. #255 — **complete:** credential-safe external Human-surface creation is single-flight/serialized; starting, active, expired-but-unconfirmed, and revoke-failed cleanup remain authority-busy until provider cleanup is confirmed. Locator expiry fences reuse but is not authority termination.
+2. #256 — **complete:** WSS disconnect/revoke terminal intent closes Human-input admission synchronously. Already-dispatched bound work may drain, queued/not-yet-dispatched input is fenced, and disconnect remains distinct from Done.
+3. #257 — **complete:** queued WSS inbound work is bounded by configurable message/byte budgets (defaults 32 / 128 KiB; hard ceilings 256 / 1 MiB). Overflow fences admission and fails closed with content-free counters/reason; discrete Human input is never silently replayed.
 
 Exit criteria:
 

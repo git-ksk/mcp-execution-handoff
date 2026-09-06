@@ -4,6 +4,14 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-09-06
+
+- Harden credential-safe external Human-surface authority lifecycle (#255): concurrent matching `begin()` calls are single-flight, a racing different binding fails closed, locator expiry no longer proves provider-side shutdown, and failed revoke/invalid-grant cleanup retains bounded retryable ownership so Agent authority cannot resume until external mutation authority is confirmed inactive.
+
+- Fence managed WSS Human input at terminal intent (#256): `disconnect()` / `revoke()` close input admission synchronously, already-dispatched bound work may drain, and queued/not-yet-dispatched Human input cannot mutate the target after teardown is requested. Disconnect remains distinct from Human `Done`, and authority cleanup remains one-shot.
+
+- Bound aggregate managed-WSS inbound Human-input backlog (#257) by queued message count and UTF-8 bytes (defaults 32 / 128 KiB; hard ceilings 256 / 1 MiB). Overflow immediately fences admission and fails closed with content-free `inbound_queue_overflow` diagnostics; already-dispatched work may drain, queued stale input is never replayed, and current/peak queue counters remain bounded.
+
 ## [0.4.4] - 2026-09-05
 
 - Normalize third-party iOS keyboard ordinary `insertText` replacement streams (#244): when a bounded InputEvent payload is a strict extension of the hidden textarea DOM insertion, complete only the missing suffix and normalize the hidden mirror before subsequent edits. System `insertFromComposition` remains DOM-authoritative, `keyCode=229` does not establish correctness, WSS/WebRTC continue to share one Browser Human Input helper, and no Human payload is added to diagnostics or durable state.

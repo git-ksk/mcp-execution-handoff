@@ -6,11 +6,11 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.4.4
+## 現在のbaseline: v0.4.5
 
-`v0.4.4` が現在のGitHub/source-release baselineです。v0.4.3のpublic-WSS correctness boundaryを維持しつつ、Immediate Hardeningを完了しました。deterministic immutable consumer refresh/staging (#237)、first-valid-frame startupの分離計測とpresentation改善 (#233)、bounded backpressure diagnosticsを伴うhealthy-path 50 ms WSS frame pump (#234)、純正キーボードとSimejiのphysical acceptanceを含むthird-party iOS keyboard replacement-stream互換 (#244)、cadence acceptance中に見つかったstatic-window reconnect blocker (#250) を完了しています。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
+`v0.4.5` が現在のGitHub/source-release baselineです。v0.4.4のTarget Surface / transport boundaryを維持したまま、3つのbounded correctness gapを閉じました。external Human surfaceの作成/revokeをauthority-exclusiveにしexpiryをrevoke確認として扱わず (#255)、WSS disconnect/revokeのterminal intent時点でqueued Human inputを即時fenceし (#256)、WSS inbound Human-input backlogをmessage件数/aggregate bytesでbounded化してoverflowをfail closedにします (#257)。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
 
-直近のpre-v0.5 release gateは `v0.4.5 — Authority & Queue Hardening` (#255/#256/#257) です。新たに再現したauthority exclusivity、revoke admission、aggregate inbound queueのgapをprovider-neutral connectivityへ進む前に閉じます。
+`v0.4.5 — Authority & Queue Hardening` gate (#255/#256/#257) は完了しました。次のplanned feature releaseは `v0.5.0 — Provider-Neutral Connectivity` (#19) です。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -31,7 +31,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 
 したがって、実証済みの **surface shape** は Browser、bounded OS Window、bounded Terminal/PTY の3つです。ただしこれはpublic `TargetSurfaceKind` enumをfreezeしたという意味ではありません。#46をsemantic-domain / admission baselineとして維持し、v0.2 terminology gateはpolicy軸のcompatibility aliasとdocumentation-firstなTarget Surface labelで完了します。
 
-#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、完了したv0.4.2 expiry maintenance (#226)、完了したv0.4.3 public-WSS correctness line (#232/#235/#240)、完了したv0.4.4 Immediate Hardening release line (#233/#234/#237/#244/#250)、v0.4.5 Authority & Queue Hardening line (#255/#256/#257)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
+#42（positioning）、#46（semantic domain / Target Surface admission）、#5（MCP principalとtarget-service identity分離）のdocumentation/design closeoutは完了しました。historical umbrellaの #11 / #13 もsupersededとしてclose済みです。supportするworkはfirst-class bounded Window / WebRTC / WSS evidence、v0.2.x bounded hardening（#124 / #56 / #34完了）、v0.3 recovery / observability（#127〜#130）、post-release v0.3.x maintenance、完了したv0.4.1 Desktop Session boundary (#161)、完了したv0.4.2 expiry maintenance (#226)、完了したv0.4.3 public-WSS correctness line (#232/#235/#240)、完了したv0.4.4 Immediate Hardening release line (#233/#234/#237/#244/#250)、完了したv0.4.5 Authority & Queue Hardening line (#255/#256/#257)、具体化したv0.5.0 connectivity line (#19)、その後のv0.6.0 hosted line (#12)、version未確定のauthority research (#211/#125)へ分離しました。whole-desktopやmandatoryなcustom Native-clientをdefault product scopeには残しません。
 
 #94と#124は完了です。#94では既存のexact-window stateful macOS pointer backendでテスト対象のSystem Settings secure controlを操作でき、privilegedなScreen Sharing / Remote Management fallbackが不要だと確認しました。#124では続いて、明示opt-inのsuccessor-window lineageを追加しました。Human sessionは1つのexact windowから、新規観測された同一processのsuccessorをuniqueに証明できた場合だけauthorityをrotateでき、旧mutable targetはfence、ambiguityはfail closedです。physical iPhone acceptanceでは同じWebRTC sessionのまま `Accessibility -> 追加 (+) -> 開く` へrotateし、chooserがsame-PID focused `AXDialog` / modalかつWindowServer layer 8であることをlineage-only ruleでadmitしました。ordinary exact-one-windowはlayer 0 boundedのままです。現在は#211をnarrow bounded secure-flow researchとして先行し、bounded authority不足がphysical evidenceで証明された場合だけ#125 broader Desktop authorityを検討します。hidden fallbackにはしません。
 
@@ -68,9 +68,9 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #237 | v0.4.4 Immediate Hardening | **完了 / v0.4.4 operational contract。** source-checkout / npm-archive consumerをdeterministicにrefresh/stageし、pin/lock不一致はfail closed、失敗時rollback、native-helper rebuild signalを提供。deploy/trafficはconsumer-ownedのまま。 |
 | #244 | v0.4.4 Immediate Hardening | **完了 / v0.4.4。** shared WebRTC/WSS Browser input normalizationでthird-party `insertText` replacementを扱い、`keyCode=229`単独では正しさを推定しない。純正キーボード＋Simejiをphysical acceptance済み。 |
 | #250 | v0.4.4 reconnect blocker | **完了 / v0.4.4。** fresh WSS generationではauthority-bound helperのlatest exact-window frameを即時再利用し、旧generationのnext-frame waitをcancel。静止画面でもcontent change待ちせずreconnect復帰する。 |
-| #255 | v0.4.5 P1 Human-surface authority | **OPEN / release gate。** external `begin()`をserialize/single-flight化し、starting/cleanup中もauthority-busyとする。locator expiryとprovider revoke確認を分離し、`assertInactive()`はprovider-side停止確認後だけ成功させる。 |
-| #256 | v0.4.5 P1 WSS terminal fencing | **OPEN / release gate。** disconnect/revoke要求時点で未dispatch Human inputを即時fenceし、既にdispatch済みの処理だけ既存drain contractに従わせる。 |
-| #257 | v0.4.5 P2 WSS inbound queue | **OPEN / P1後のrelease gate。** pending inbound message件数/総bytesをbounded化し、overflow時は古いdiscrete Human inputを後から実行せずfail closedする。 |
+| #255 | v0.4.5 P1 Human-surface authority | **完了 / v0.4.5。** external `begin()`をsingle-flight/serialize化し、starting/cleanup中もauthority-busyを維持。`assertInactive()`はprovider cleanup確認後だけ成功し、locator expiryだけをrevoke根拠にしない。 |
+| #256 | v0.4.5 P1 WSS terminal fencing | **完了 / v0.4.5。** disconnect/revoke terminal intent時点でinput admissionを同期的に閉じ、既dispatch workだけdrainを許可。queued/未dispatch Human inputは以後target mutationできない。 |
+| #257 | v0.4.5 P2 WSS inbound queue | **完了 / v0.4.5。** retained inbound workをqueued message件数/aggregate bytesでbounded化し、overflowをfail closedにしてqueued stale Human inputを遅延実行/replayしない。 |
 | #227 | Host Parity Backlog — Windows Browser | **OPEN / version未確定。** bounded Windows Browser Handoff parityの将来work。support claim前に専用Windows + mobile physical acceptanceを必須とする。 |
 | #228 | Host Parity Backlog — Linux successor lineage | **OPEN / version未確定。** Linux-native successor-window lineage parityの将来work。現行Linux exact-window supportはblockしない。 |
 | #254 | Recovery Integration Backlog — version未確定 | **OPEN / non-blockingとして分類。** stale authority/action replayなしで、consumer-owned target/session reconstruction-required hookをprovider-neutralに追加する。process/profile/deploy ownershipはconsumer側のまま。 |
@@ -121,7 +121,7 @@ upgrade/rollbackでstale locator/capability/generation/media/input authorityを�
 
 ## v0.4.2 source release
 
-`v0.4.2` が現在の **GitHub source release** です。#226だけをrelease-significant scopeとするboundedなv0.4.x maintenance patchです。credential-safe external Human surfaceのdeclared expiryをcached surfaceのhard cutoffとして扱い、stale locatorをactiveとして返さず、already-expired provider grantもrejectし、fresh provider issuanceには別の明示 `begin()` を要求します。stale providerへのbest-effort cleanupでHuman intervention完了、Agent authority復帰、Human input replay、target-service authentication attestationは行いません。
+`v0.4.2` は以前の **GitHub source release** です。#226だけをrelease-significant scopeとするboundedなv0.4.x maintenance patchです。credential-safe external Human surfaceのdeclared expiryをcached surfaceのhard cutoffとして扱い、stale locatorをactiveとして返さず、already-expired provider grantもrejectし、fresh provider issuanceには別の明示 `begin()` を要求します。stale providerへのbest-effort cleanupでHuman intervention完了、Agent authority復帰、Human input replay、target-service authentication attestationは行いません。
 
 releaseはmilestone `v0.4.2 — Maintenance` (#13) で追跡します。#227（Windows Browser Handoff parity）/ #228（Linux successor-window lineage parity）はversion未確定かつnon-blockingのままです。新しいTarget Surface、OS support claim、Desktop authority、transport provider claim、public package subpath、npm publicationは追加しません。
 
@@ -224,7 +224,7 @@ v0.4.0へcarryしたrelease-significant maintenanceはすべて完了しまし�
 - deterministic testと必要なphysical acceptanceをclaim対象exact revisionへ紐づける;
 - source release/taggingとnpm publicationは別decisionのまま維持する。
 
-2026-09-06時点で `v0.3.x — Maintenance & Durability`、`v0.4.2 — Maintenance`、`v0.4.3 — Public WSS Reliability`、`v0.4.4 — Immediate Hardening` のrelease lineは完了済みです。OPENは10件で、`v0.4.5 — Authority & Queue Hardening` 3件 (#255/#256/#257)、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228)、version未確定Recovery Integration 1件 (#254) に明示分類しました。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
+2026-09-06時点で `v0.3.x — Maintenance & Durability`、`v0.4.2 — Maintenance`、`v0.4.3 — Public WSS Reliability`、`v0.4.4 — Immediate Hardening`、`v0.4.5 — Authority & Queue Hardening` のrelease lineは完了済みです。OPENは7件で、`v0.5.0 — Provider-Neutral Connectivity` (#19)、`v0.6.0 — Hosted Worker Topology` (#12)、authority research 2件 (#211/#125)、version未確定host parity 2件 (#227/#228)、version未確定Recovery Integration 1件 (#254) に明示分類しています。今後もIssue作成時にroadmap分類し、未所属のまま実装を進めない運用とします。
 
 ## v0.4.2 — Maintenance
 
@@ -273,7 +273,7 @@ release結果として #235 / #240 / #232 はすべて完了しました。physi
 
 ## v0.4.4 — Immediate Hardening
 
-`v0.4.4` は `v0.4.3` の次に完了したbounded hardening source-release lineで、現在は新設したv0.4.5 correctness gateを挟んでから `v0.5.0` へ進みます。milestone `v0.4.4 — Immediate Hardening` はplanned 4件に加え、physical cadence acceptance中に見つかったreconnect correctness blocker 1件も完了しました。upgrade運用、WSS startup/steady-state品質、third-party iOS keyboard互換を改善しつつ、Target Surface、authority、transport provider、npm publicationのscopeは広げていません。
+`v0.4.4` は `v0.4.3` の次に完了したbounded hardening source-release lineで、その後に完了したv0.4.5 correctness releaseを挟んで `v0.5.0` へ進みます。milestone `v0.4.4 — Immediate Hardening` はplanned 4件に加え、physical cadence acceptance中に見つかったreconnect correctness blocker 1件も完了しました。upgrade運用、WSS startup/steady-state品質、third-party iOS keyboard互換を改善しつつ、Target Surface、authority、transport provider、npm publicationのscopeは広げていません。
 
 release結果:
 
@@ -287,13 +287,13 @@ releaseは `private: true` のsource-onlyを維持し、npm publication、consum
 
 ## v0.4.5 — Authority & Queue Hardening
 
-`v0.4.5` は `v0.4.4` の直後、`v0.5.0` の前に置くbounded correctness release gateです。milestone `v0.4.5 — Authority & Queue Hardening` は、exclusive Human/Agent authorityやWSS stale Human inputに影響するcode review起点の3件だけへ意図的に限定します。新しいTarget Surface、transport provider、OS support claim、Desktop authority、consumer semantic responsibility、npm publication要件は追加しません。
+`v0.4.5` は `v0.4.4` の直後、`v0.5.0` の前に完了したbounded correctness source releaseです。milestone `v0.4.5 — Authority & Queue Hardening` は、exclusive Human/Agent authorityやWSS stale Human inputに影響するcode review起点の3件だけへ意図的に限定します。新しいTarget Surface、transport provider、OS support claim、Desktop authority、consumer semantic responsibility、npm publication要件は追加しません。
 
-優先順・実装順:
+release結果:
 
-1. #255 — **P1:** credential-safe external Human surface作成をsingle-flight/serializeし、locator expiryとprovider-side revoke確認を分離する。starting、active、expired-but-unconfirmed、revoke-failed cleanupはいずれもexternal mutation authority停止確認までauthority-busyとする。
-2. #256 — **P1:** WSS disconnect/revokeのterminal intent時点でqueued / 未dispatch Human inputを即時fenceする。既dispatchのbound workだけ既存drain contractに従わせ、disconnectはDoneと区別する。
-3. #257 — **P2、#255/#256後:** pending WSS inbound message件数/総bytesをbounded化し、overflow時はfail closedする。discrete Human inputをsilent coalesce/dropしたままsession継続はしない。
+1. #255 — **完了:** credential-safe external Human surface作成をsingle-flight/serialize化し、starting / active / expired-but-unconfirmed / revoke-failed cleanupをprovider cleanup確認までauthority-busyに維持。locator expiryはreuseをfenceするがauthority停止の証明にはしない。
+2. #256 — **完了:** WSS disconnect/revoke terminal intent時点でHuman-input admissionを同期的に閉じる。既dispatchのbound workだけdrainを許し、queued/未dispatch inputはfenceし、disconnectとDoneを区別する。
+3. #257 — **完了:** queued WSS inbound workを設定可能なmessage/byte budget（default 32 / 128 KiB、hard ceiling 256 / 1 MiB）でbounded化。overflowはadmissionをfenceしてcontent-free counter/reasonだけでfail closedし、discrete Human inputをreplayしない。
 
 完了条件:
 
