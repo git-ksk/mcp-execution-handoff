@@ -236,7 +236,12 @@ test("managed transport fallback exhausts cleanly instead of replaying or cyclin
     const exhausted = await runtime.handle(fallbackRequest(sessionId(wssLocator), wssCap), PRINCIPAL);
     assert.equal(exhausted.status, 503);
     assert.deepEqual(await exhausted.json(), { error: "transport_fallback_exhausted" });
-    assert.equal((await runtime.handle(new Request(wssLocator), PRINCIPAL)).status, 404);
+    const endedPage = await runtime.handle(new Request(wssLocator), PRINCIPAL);
+    assert.equal(endedPage.status, 200);
+    assert.match(await endedPage.text(), /This Human takeover has ended/);
+    assert.match(await (await runtime.handle(new Request(wssLocator), PRINCIPAL)).text(), /Remote input is disabled/);
+    assert.equal((await runtime.handle(new Request(wssLocator), "different-principal")).status, 404);
+    assert.equal((await runtime.handle(fallbackRequest(sessionId(wssLocator), wssCap), PRINCIPAL)).status, 404);
     assert.deepEqual(runtime.operatorDiagnosticsSnapshot("browser_handoff").transport, {
       namespace: "managed_handoff",
       currentTransport: "none",
@@ -249,6 +254,34 @@ test("managed transport fallback exhausts cleanly instead of replaying or cyclin
   } finally {
     restoreRelayEnv(saved);
   }
+});
+
+
+
+test("managed revoke retains only a bounded principal-bound terminal page while stale control APIs stay closed", async () => {
+  const runtime = fixture();
+  const locator = runtime.start(request());
+  const id = sessionId(locator);
+  assert.equal((await runtime.handle(new Request(locator), PRINCIPAL)).status, 200);
+
+  await runtime.revoke("managed-int");
+
+  assert.equal(runtime.ownsPath(new URL(locator).pathname), true);
+  const page = await runtime.handle(new Request(locator), PRINCIPAL);
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get("cache-control"), "no-store, max-age=0");
+  assert.match(page.headers.get("content-security-policy") ?? "", /default-src 'none'/);
+  const body = await page.text();
+  assert.match(body, /This Human takeover has ended/);
+  assert.match(body, /Return to the requesting workflow/);
+  assert.doesNotMatch(body, /managed-principal|managed-int|4242|7331/);
+
+  const head = await runtime.handle(new Request(locator, { method: "HEAD" }), PRINCIPAL);
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+  assert.equal((await runtime.handle(new Request(locator), "different-principal")).status, 404);
+  assert.equal((await runtime.handle(new Request(`${ORIGIN}/takeover/api/webrtc-state/${id}`), PRINCIPAL)).status, 404);
+  assert.equal((await runtime.handle(new Request(locator, { method: "POST" }), PRINCIPAL)).status, 404);
 });
 
 test("racing fallback requests cannot both claim a later Human transport", async () => {

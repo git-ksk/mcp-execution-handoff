@@ -340,8 +340,12 @@ async function probeStaleLocators() {
         staleDirectLocatorRejected = stale.status === 404;
     }
     if (teardownCompleted && observedWebSocketPath && !staleWebSocketLocatorRejected) {
-        const stale = await handoff.handle(new Request(new URL(observedWebSocketPath, publicBaseUrl)), principal);
-        staleWebSocketLocatorRejected = stale.status === 404;
+        const sessionId = observedWebSocketPath.split("/").filter(Boolean).at(-1);
+        if (sessionId) {
+            const stale = await handoff.handle(new Request(new URL(`/takeover/api/websocket-bootstrap/${sessionId}`, publicBaseUrl), { method: "POST" }), principal);
+            // The top-level locator may retain a bounded terminal page, but stale mutable control stays closed.
+            staleWebSocketLocatorRejected = stale.status === 404;
+        }
     }
 }
 async function finalizeManagedTeardown() {
