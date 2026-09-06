@@ -698,7 +698,7 @@ export class ManagedWindowHandoffRuntime {
     async #patchWebSocketPage(response, session) {
         let html = await response.text();
         const appMarker = '<main id="app" ';
-        const helperMarker = "function setStatus(value){status.textContent=value}";
+        const helperMarker = "function setStatus(value){status.textContent=value;setBrowserOperatorStatus(value)}";
         const disconnectHookMarker = "function onWebSocketDisconnected(ws,event){if(stopped||terminalPending)return;if(browserWssCloseIsReconnectable(event.code)){scheduleReconnect();return}stopped=true;resetViewTransform();setStatus('Connection closed')}";
         const initialFailureHookMarker = "function onInitialWebSocketConnectFailure(){scheduleReconnect()}";
         const errorMarker = "ws.onerror=()=>{if(socket!==ws||stopped||terminalPending)return;ready=false;setStatus('Connection unavailable')}";
