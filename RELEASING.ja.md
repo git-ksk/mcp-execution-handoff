@@ -9,7 +9,7 @@
 1. **GitHub source release** — reviewedな`main` commitにversion tagを付け、GitHub Releaseを公開する。
 2. **npm publication** — 将来の別gate。packageは `private: true` のままで、source releaseを出しても `npm publish` を意味しません。
 
-**v0.4.2** が現在のGitHub/source-release baselineで、milestone `v0.4.2 — Maintenance` (#13) で追跡します。v0.4.1のTarget Surface / authority / Desktop Session boundaryを維持しながら、#226でexpired credential-safe external Human surfaceをactiveとして再利用しないよう修正します。このpatchでTarget Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、npm publicationのscopeは広げません。#227 / #228はversion未確定のhost parity backlog、#19 / #12は次のconnectivity / hosted lineとして分離します。
+**v0.4.5** が現在のGitHub/source-release baselineで、milestone `v0.4.5 — Authority & Queue Hardening` (#16) で追跡します。v0.4.4のTarget Surface / transport boundaryを維持しながら、#255 / #256 / #257を完了します。external Human surfaceはprovider cleanup確認までauthority-busyを維持し、WSS terminal intentでqueued Human inputを即時fenceし、retained inbound WSS Human-input workをmessage件数/aggregate bytesでbounded化してoverflowをfail closedにします。このpatchでTarget Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、npm publicationのscopeは広げません。#254 / #227 / #228はversion未確定のnon-blocking backlog、#19 / #12は次のconnectivity / hosted lineとして分離します。
 
 ## Versioning policy
 
@@ -52,7 +52,7 @@ final release PRは、blocker修正が必要な場合を除きrelease bookkeepin
 4. source-only releaseでは `private: true` を維持する。
 5. clean installから後述のrelease validationを全部通す。
 
-v0.4.4ではmilestone #15 (`v0.4.4 — Immediate Hardening`) をauthoritative release gateとし、#237 / #233 / #234 / #244をexact release scopeとします。#227 / #228は明示的にnon-blockingなversion未確定host parity workです。historicalなv0.4.3はmilestone #14、v0.4.2はmilestone #13、v0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
+v0.4.5ではmilestone #16 (`v0.4.5 — Authority & Queue Hardening`) をauthoritative release gateとし、#255 / #256 / #257をexact release scopeとします。#254 / #227 / #228は明示的にnon-blockingなversion未確定backlogです。historicalなv0.4.4はmilestone #15、v0.4.3はmilestone #14、v0.4.2はmilestone #13、v0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
 
 ## Release validation
 
