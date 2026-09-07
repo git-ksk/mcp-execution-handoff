@@ -478,6 +478,18 @@ export class ManagedWindowHandoffRuntime {
         const response = current.kind === "websocket_relay"
             ? await current.handoff.handle(request, boundPrincipal)
             : await current.core.handle(request, boundPrincipal);
+        // The managed session intentionally outlives the mutable transport lease so bounded Human
+        // completion/verification can finish after media/input authority expires. During that grace
+        // period the child transport correctly returns 404 for an expired locator. Preserve that
+        // fail-closed behavior everywhere except the principal-bound top-level GET/HEAD page, where a
+        // content-free terminal surface is safe and prevents a blank browser state. This does not
+        // recreate transport state, rotate generations, or extend Human authority.
+        if (response.status === 404
+            && (request.method === "GET" || request.method === "HEAD")
+            && pathname === `/takeover/${sessionId}`
+            && boundPrincipal === session.principalBinding) {
+            return managedTerminalPageResponse(request.method);
+        }
         if (request.method !== "GET"
             || pathname !== `/takeover/${sessionId}`
             || response.status !== 200
