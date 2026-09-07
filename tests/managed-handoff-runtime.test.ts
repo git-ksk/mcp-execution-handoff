@@ -284,6 +284,63 @@ test("managed revoke retains only a bounded principal-bound terminal page while 
   assert.equal((await runtime.handle(new Request(locator, { method: "POST" }), PRINCIPAL)).status, 404);
 });
 
+test("managed WSS natural TTL expiry keeps only the principal-bound top-level terminal surface visible", async () => {
+  const saved = saveRelayEnv();
+  const originalDateNow = Date.now;
+  let now = originalDateNow();
+  try {
+    clearRelayEnv();
+    Date.now = () => now;
+    const runtime = new ManagedWindowHandoffRuntime({
+      takeover: {
+        enabled: true,
+        publicBaseUrl: ORIGIN,
+        ttlMs: 30_000,
+        reconnectIdleMs: 500,
+        completionGraceMs: 30_000
+      },
+      runtime: { hostExecutable: process.execPath },
+      managedFallback: { platform: "linux", linuxHostScript: process.execPath, displayName: ":99" },
+      transportPolicy: { order: ["websocket_relay"] }
+    });
+    const locator = runtime.start(request());
+    const id = sessionId(locator);
+
+    const live = await runtime.handle(new Request(locator), PRINCIPAL);
+    assert.equal(live.status, 200);
+    assert.doesNotMatch(await live.text(), /This Human takeover has ended/);
+    const before = runtime.managedOperatorDiagnosticsSnapshot("browser_handoff");
+
+    now += 30_001;
+
+    const expiredGet = await runtime.handle(new Request(locator), PRINCIPAL);
+    assert.equal(expiredGet.status, 200);
+    assert.equal(expiredGet.headers.get("cache-control"), "no-store, max-age=0");
+    assert.match(await expiredGet.text(), /This Human takeover has ended/);
+
+    const expiredHead = await runtime.handle(new Request(locator, { method: "HEAD" }), PRINCIPAL);
+    assert.equal(expiredHead.status, 200);
+    assert.equal(await expiredHead.text(), "");
+
+    assert.equal((await runtime.handle(new Request(locator), "different-principal")).status, 404);
+    const staleBootstrap = await runtime.handle(new Request(
+      `${ORIGIN}/takeover/api/websocket-bootstrap/${id}`,
+      { method: "POST", headers: { origin: ORIGIN } }
+    ), PRINCIPAL);
+    assert.equal(staleBootstrap.status, 404);
+
+    const after = runtime.managedOperatorDiagnosticsSnapshot("browser_handoff");
+    assert.equal(after.currentTransport, before.currentTransport);
+    assert.equal(after.generation, before.generation);
+    assert.equal(after.transitionCount, before.transitionCount);
+
+    await runtime.revoke("managed-int");
+  } finally {
+    Date.now = originalDateNow;
+    restoreRelayEnv(saved);
+  }
+});
+
 test("racing fallback requests cannot both claim a later Human transport", async () => {
   const saved = saveRelayEnv();
   try {
