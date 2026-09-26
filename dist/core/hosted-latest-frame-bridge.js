@@ -18,15 +18,29 @@ function boundedLimit(value, fallback, maximum, name) {
     }
     return resolved;
 }
-function validateFrame(frame, maxFrameBytes) {
-    if (!(frame?.data instanceof Uint8Array)
+export function parseHostedEphemeralFrame(value, maxFrameBytes = DEFAULT_MAX_FRAME_BYTES) {
+    const boundedMax = boundedLimit(maxFrameBytes, DEFAULT_MAX_FRAME_BYTES, ABSOLUTE_MAX_FRAME_BYTES, "maxFrameBytes");
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new HostedLatestFrameBridgeError("HOSTED_FRAME_INVALID", "Hosted frame is invalid");
+    }
+    const frame = value;
+    const keys = Object.keys(frame);
+    if (keys.length !== 4
+        || !keys.every((key) => ["data", "width", "height", "mimeType"].includes(key))
+        || !(frame.data instanceof Uint8Array)
         || frame.data.byteLength < 1
-        || frame.data.byteLength > maxFrameBytes
-        || !Number.isInteger(frame.width) || frame.width < 1 || frame.width > 16_384
-        || !Number.isInteger(frame.height) || frame.height < 1 || frame.height > 16_384
+        || frame.data.byteLength > boundedMax
+        || !Number.isInteger(frame.width) || Number(frame.width) < 1 || Number(frame.width) > 16_384
+        || !Number.isInteger(frame.height) || Number(frame.height) < 1 || Number(frame.height) > 16_384
         || (frame.mimeType !== "image/jpeg" && frame.mimeType !== "image/png")) {
         throw new HostedLatestFrameBridgeError("HOSTED_FRAME_INVALID", "Hosted frame is invalid");
     }
+    return {
+        data: frame.data,
+        width: frame.width,
+        height: frame.height,
+        mimeType: frame.mimeType
+    };
 }
 /**
  * Process-memory latest-only bridge for hosted frame delivery.
@@ -74,13 +88,13 @@ export class HostedLatestFrameBridge {
     }
     async publish(frame) {
         this.#assertOpen();
-        validateFrame(frame, this.#maxFrameBytes);
+        const parsedFrame = parseHostedEphemeralFrame(frame, this.#maxFrameBytes);
         this.#assertCurrent();
         if (this.#sending || this.#isBackpressured()) {
-            this.#replacePending(frame);
+            this.#replacePending(parsedFrame);
             return;
         }
-        await this.#sendLoop(frame);
+        await this.#sendLoop(parsedFrame);
     }
     /** Call when the transport reports writable/drained state. */
     async drain() {

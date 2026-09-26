@@ -128,6 +128,12 @@ worker identity / generation、authenticated channel binding、operator session 
 
 worker/principal identityはpeer messageから受け取らず、authenticated channel contextのままです。
 
+## Worker-origin frame provenance
+
+worker-origin frameはgeneration-scopedな `HostedWorkerFrameEnvelope` を使います。worker側route gateはauthenticated worker generation上のcurrent intervention / epochにだけenvelopeを作れます。control-plane側 `HostedWorkerFrameIngress` でもcurrent operator/worker bindingと独立照合してからlatest-only frame bridgeへ渡します。
+
+peer dataからworker identity、channel binding、provider identity、credential material、target identityを受け取りません。そのためtransport messageが遅延到着してもstale/revoked worker routeやstale viewer generationからframeをdeliverできません。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。

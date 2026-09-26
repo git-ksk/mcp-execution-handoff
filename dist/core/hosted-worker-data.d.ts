@@ -1,6 +1,7 @@
 import { type HostedOperatorRouteBinding } from "./hosted-operator-binding.js";
 import type { HostedWorkerControlMessage } from "./hosted-worker-channel.js";
 import type { HostedWorkerRegistry } from "./hosted-worker.js";
+import { HostedLatestFrameBridge, type HostedEphemeralFrame } from "./hosted-latest-frame-bridge.js";
 export declare const HOSTED_WORKER_DATA_PROTOCOL_VERSION: 1;
 export type HostedHumanInput = {
     kind: "tap";
@@ -23,6 +24,18 @@ export interface HostedWorkerInputEnvelope {
     epoch: number;
     workerGeneration: number;
     input: HostedHumanInput;
+}
+export interface HostedWorkerFrameEnvelope {
+    version: typeof HOSTED_WORKER_DATA_PROTOCOL_VERSION;
+    type: "frame";
+    interventionId: string;
+    epoch: number;
+    workerGeneration: number;
+    frame: HostedEphemeralFrame;
+}
+export declare class HostedWorkerFrameError extends Error {
+    readonly code: "HOSTED_WORKER_FRAME_INVALID" | "HOSTED_WORKER_FRAME_STALE_ROUTE";
+    constructor(code: "HOSTED_WORKER_FRAME_INVALID" | "HOSTED_WORKER_FRAME_STALE_ROUTE", message: string);
 }
 export interface HostedHumanInputPeer {
     /** Resolve only after the worker generation gate accepted and applied this exact input. */
@@ -54,9 +67,25 @@ export declare class HostedHumanInputBridge {
  * Control `bind`/`revoke` messages create only exact generation-scoped route admission. Human input
  * envelopes are applied exactly once by the caller and are never queued/replayed by this gate.
  */
+/**
+ * Control-plane ingress for worker-originated frames.
+ *
+ * The worker cannot assert its identity in a frame message. The envelope carries only the
+ * generation-scoped route tuple; the control plane compares it with the already-authenticated
+ * HostedOperatorRouteBinding before forwarding the frame to the latest-only operator bridge.
+ */
+export declare class HostedWorkerFrameIngress {
+    #private;
+    private readonly registry;
+    private readonly currentOperator;
+    private readonly bridge;
+    constructor(binding: HostedOperatorRouteBinding, registry: HostedWorkerRegistry, currentOperator: () => unknown, bridge: HostedLatestFrameBridge);
+    accept(value: unknown): Promise<void>;
+}
 export declare class HostedWorkerRouteGate {
     #private;
     applyControl(message: Readonly<HostedWorkerControlMessage>): void;
+    frameEnvelope(interventionId: string, epoch: number, frameValue: unknown): HostedWorkerFrameEnvelope;
     applyHumanInput(envelope: Readonly<HostedWorkerInputEnvelope>, onInput: (input: HostedHumanInput) => void | Promise<void>): Promise<void>;
 }
 //# sourceMappingURL=hosted-worker-data.d.ts.map
