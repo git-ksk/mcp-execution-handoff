@@ -19,6 +19,20 @@ channel bindingはbearer credentialではありません。process-localのま�
 
 worker identityはregistry lifetime中principalへ固定します。同じworkerへの2本目のconcurrent channelは拒否します。明示disconnect後のreconnectではworker generationを進め、旧channelのstale disconnectがsuccessorをfenceできないようにします。
 
+## Authenticated outbound control channel
+
+`HostedWorkerControlChannel` は、deployment transportが認証済みのchannelとworker registryを合成します。trusted worker id / principal binding / opaque channel bindingはtransportから渡し、peer messageからidentityを指定・上書きできません。
+
+v1 control messageはcontent-freeに限定します。
+
+- `registered`: Handoff-owned worker generationだけを返す
+- `bind`: intervention id / epoch / worker generationだけを通知
+- `revoke`: intervention id / epoch / worker generationだけを通知
+
+frame、Human input、credential、target metadata、cookie、provider detailはcontrol protocolへ入れません。
+
+registration通知に失敗した場合は作成直後のworker generationをfenceします。bind通知に失敗した場合はworkerをdisconnectし、そのgenerationが所有する全routeをinvalidにします。revokeはremote通知より**先に**local routeをfenceするため、通知失敗からcontrol-plane routing authorityが復活することはありません。後続でprovider-specificなWSS / HTTP/2 / overlay / message-bus等をtransport adapterとして追加しても、このauthority semanticsは変更しません。
+
 ## Intervention routing
 
 hosted routeは次の全要素へbindingします。

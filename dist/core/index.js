@@ -8,4 +8,5 @@ export * from "./checkpoint.js";
 export * from "./runtime.js";
 export * from "./human-surface.js";
 export * from "./hosted-worker.js";
+export * from "./hosted-worker-channel.js";
 //# sourceMappingURL=index.js.map
