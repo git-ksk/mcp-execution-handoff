@@ -153,13 +153,23 @@ peer dataからworker identity、channel binding、provider identity、credentia
 
 `experiments/hosted-worker-topology/acceptance.mjs` はreal WebSocket上でoutbound worker形状、registration、generation fencing、frame/input、disconnect/reconnect、revocationをdeterministicに検証します。これはphysical Cloud Run / Mac / remote browser acceptanceの代替ではありません。
 
-## 次のv0.6.0 slice
+## v0.6.0 implementation / acceptance status
 
-残る#12 workはこのboundary上に積み上げます。
+provider-neutral core implementationはcurrent candidate lineで完了しています。
 
-- authenticated outbound worker channel protocol
-- worker connection lifetimeと独立したoperator-session TTL
-- stale frameをqueueしないlatest-frame / backpressure semantics
-- real hosted channel上のdisconnect/reconnect / revocation propagation
-- 既存recovery ruleを使うbounded durable hosted metadata
-- local worker / remote stateful workerのdeployment referenceとacceptance
+- authenticated outbound worker registration/channel: `HostedWorkerRegistry` + `HostedWorkerControlChannel`
+- intervention / principal / worker generation fencingとduplicate ownership拒否
+- operator-session TTL / viewer generation / worker connection generationの独立性
+- stale frameをqueueしないlatest-only frame / backpressure
+- explicit revoke / disconnect / delivery failure時のfail-closed route revocation propagation
+- stale authorityを復元せず `reissue_and_revalidate` hintだけを返すrecovery
+- automatic replayなしのgeneration-fenced Human input
+- intervention / epoch / worker generationへbindingしたworker-origin frame provenance
+- `npm run accept:hosted-topology:loopback` によるdeterministic real-WebSocket topology acceptance
+
+deterministic acceptanceは必要なevidenceですが、physical deployment gateの代替ではありません。Issue #12で残るのはexact revisionを記録した次のphysical acceptanceだけです。
+
+1. inbound public worker listener不要の hosted control plane + private/local Mac/browser worker
+2. 同じauthority/recovery semanticsを使う hosted control plane + remote/stateful browser worker
+
+各runでexact Handoff/worker revisionを記録し、disconnect/reconnect、Done/Cancel/expiry revocation、stale generation拒否、Agent resume前のfresh consumer revalidationを証明します。

@@ -153,13 +153,23 @@ The same core contract supports three deployment shapes without changing authori
 
 `experiments/hosted-worker-topology/acceptance.mjs` deterministically exercises the outbound-worker shape over a real WebSocket, including registration, generation fencing, frame/input delivery, disconnect/reconnect, and revocation. It is not a substitute for physical Cloud Run / Mac / remote-browser acceptance.
 
-## Next v0.6.0 slices
+## v0.6.0 implementation / acceptance status
 
-The remaining #12 work builds on this boundary:
+The provider-neutral core implementation is complete on the current candidate line:
 
-- authenticated outbound worker channel protocol;
-- operator-session TTL independent from worker connection lifetime;
-- latest-frame/backpressure semantics with no stale-frame queue;
-- disconnect/reconnect and revocation propagation through the real hosted channel;
-- bounded durable hosted metadata using existing recovery rules;
-- local-worker and remote/stateful-worker deployment references and acceptance.
+- authenticated outbound worker registration/channel: `HostedWorkerRegistry` + `HostedWorkerControlChannel`;
+- intervention/principal/worker generation fencing and duplicate ownership rejection;
+- independent operator-session TTL, viewer generation, and worker connection generation;
+- latest-only frame/backpressure semantics with no stale-frame queue;
+- fail-closed route revocation propagation on explicit revoke, disconnect, and delivery failure;
+- recovery projected only as `reissue_and_revalidate` hints with no stale authority restoration;
+- generation-fenced Human input with no automatic replay;
+- worker-origin frame provenance bound to intervention/epoch/worker generation;
+- deterministic real-WebSocket topology acceptance via `npm run accept:hosted-topology:loopback`.
+
+The deterministic acceptance is necessary evidence but is not the physical deployment gate. Issue #12 remains open only for exact-revision physical acceptance of:
+
+1. hosted control plane + private/local Mac/browser worker with no inbound public worker listener;
+2. hosted control plane + remote/stateful browser worker with the same authority/recovery semantics.
+
+Those runs must record the exact Handoff/worker revisions and prove disconnect/reconnect, Done/Cancel/expiry revocation, stale generation rejection, and fresh consumer revalidation before Agent resume.

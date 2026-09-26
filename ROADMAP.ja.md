@@ -76,7 +76,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #254 | Recovery Integration Backlog — version未確定 | **OPEN / non-blockingとして分類。** stale authority/action replayなしで、consumer-owned target/session reconstruction-required hookをprovider-neutralに追加する。process/profile/deploy ownershipはconsumer側のまま。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.5.0 provider-neutral connectivity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
-| #12 | v0.6.0 hosted topology | **実装中。** coreはauthenticated outbound worker registration、principal / worker-generation fencing、intervention routing、operator/viewerとworkerの独立lifetime、latest-only frame、fail-closed revocation、reissue-only restart recovery、no-replay Human input、worker-origin frame provenanceまで実装済み。real WebSocket loopback acceptanceでtopologyをdeterministicに検証し、physical hosted/local-worker・remote/stateful-worker acceptanceはrelease gateとして残す。詳細は [hosted worker topology](docs/hosted-worker-topology.ja.md)。 |
+| #12 | v0.6.0 hosted topology | **core実装完了・physical acceptance待ち。** coreはauthenticated outbound worker registration、principal / worker-generation fencing、intervention routing、operator/viewerとworkerの独立lifetime、latest-only frame、fail-closed revocation、reissue-only restart recovery、no-replay Human input、worker-origin frame provenanceまで実装済み。real WebSocket loopback acceptanceでtopologyをdeterministicに検証済みで、physical hosted/local-worker・remote/stateful-worker acceptanceだけを#12 release gateとして残す。詳細は [hosted worker topology](docs/hosted-worker-topology.ja.md)。 |
 
 ## Product Readiness — 独立したcross-cutting track
 
