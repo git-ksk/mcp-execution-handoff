@@ -1,5 +1,14 @@
 import { assertHostedOperatorBindingCurrent } from "./hosted-operator-binding.js";
+import { parseHostedEphemeralFrame } from "./hosted-latest-frame-bridge.js";
 export const HOSTED_WORKER_DATA_PROTOCOL_VERSION = 1;
+export class HostedWorkerFrameError extends Error {
+    code;
+    constructor(code, message) {
+        super(message);
+        this.code = code;
+        this.name = "HostedWorkerFrameError";
+    }
+}
 export class HostedHumanInputError extends Error {
     code;
     constructor(code, message) {
@@ -121,6 +130,54 @@ export class HostedHumanInputBridge {
  * Control `bind`/`revoke` messages create only exact generation-scoped route admission. Human input
  * envelopes are applied exactly once by the caller and are never queued/replayed by this gate.
  */
+/**
+ * Control-plane ingress for worker-originated frames.
+ *
+ * The worker cannot assert its identity in a frame message. The envelope carries only the
+ * generation-scoped route tuple; the control plane compares it with the already-authenticated
+ * HostedOperatorRouteBinding before forwarding the frame to the latest-only operator bridge.
+ */
+export class HostedWorkerFrameIngress {
+    registry;
+    currentOperator;
+    bridge;
+    #binding;
+    constructor(binding, registry, currentOperator, bridge) {
+        this.registry = registry;
+        this.currentOperator = currentOperator;
+        this.bridge = bridge;
+        this.#binding = {
+            operator: { ...binding.operator },
+            worker: { ...binding.worker }
+        };
+    }
+    async accept(value) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+            throw new HostedWorkerFrameError("HOSTED_WORKER_FRAME_INVALID", "Invalid hosted worker frame");
+        }
+        const envelope = value;
+        const keys = Object.keys(envelope);
+        if (keys.length !== 6
+            || !keys.every((key) => [
+                "version", "type", "interventionId", "epoch", "workerGeneration", "frame"
+            ].includes(key))
+            || envelope.version !== HOSTED_WORKER_DATA_PROTOCOL_VERSION
+            || envelope.type !== "frame"
+            || typeof envelope.interventionId !== "string"
+            || !Number.isSafeInteger(envelope.epoch)
+            || !Number.isSafeInteger(envelope.workerGeneration)) {
+            throw new HostedWorkerFrameError("HOSTED_WORKER_FRAME_INVALID", "Invalid hosted worker frame");
+        }
+        assertHostedOperatorBindingCurrent(this.#binding, this.currentOperator(), this.registry);
+        if (envelope.interventionId !== this.#binding.worker.interventionId
+            || envelope.epoch !== this.#binding.worker.epoch
+            || envelope.workerGeneration !== this.#binding.worker.workerGeneration) {
+            throw new HostedWorkerFrameError("HOSTED_WORKER_FRAME_STALE_ROUTE", "Hosted worker frame route is stale");
+        }
+        const frame = parseHostedEphemeralFrame(envelope.frame);
+        await this.bridge.publish(frame);
+    }
+}
 export class HostedWorkerRouteGate {
     #workerGeneration;
     #routes = new Map();
@@ -159,6 +216,25 @@ export class HostedWorkerRouteGate {
             throw new HostedHumanInputError("HOSTED_INPUT_STALE_ROUTE", "Hosted worker revoke route is stale");
         }
         this.#routes.delete(message.interventionId);
+    }
+    frameEnvelope(interventionId, epoch, frameValue) {
+        if (this.#workerGeneration === undefined) {
+            throw new HostedWorkerFrameError("HOSTED_WORKER_FRAME_STALE_ROUTE", "Hosted worker frame generation is unavailable");
+        }
+        const route = this.#routes.get(interventionId);
+        if (!route
+            || route.epoch !== epoch
+            || route.workerGeneration !== this.#workerGeneration) {
+            throw new HostedWorkerFrameError("HOSTED_WORKER_FRAME_STALE_ROUTE", "Hosted worker frame route is stale");
+        }
+        return {
+            version: HOSTED_WORKER_DATA_PROTOCOL_VERSION,
+            type: "frame",
+            interventionId,
+            epoch,
+            workerGeneration: this.#workerGeneration,
+            frame: parseHostedEphemeralFrame(frameValue)
+        };
     }
     async applyHumanInput(envelope, onInput) {
         if (envelope.version !== HOSTED_WORKER_DATA_PROTOCOL_VERSION

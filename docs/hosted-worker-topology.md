@@ -128,6 +128,12 @@ Worker identity/generation, authenticated channel binding, operator session id/v
 
 Worker/principal identity remains authenticated-channel context rather than peer-supplied message data.
 
+## Worker-origin frame provenance
+
+Worker-originated frames use a generation-scoped `HostedWorkerFrameEnvelope`. The worker-side route gate may create an envelope only for a currently bound intervention/epoch on its authenticated worker generation. The control-plane `HostedWorkerFrameIngress` then independently compares the envelope with the current operator/worker binding before forwarding it to the latest-only frame bridge.
+
+The envelope never accepts worker identity, channel binding, provider identity, credential material, or target identity from peer data. A stale/revoked worker route or stale viewer generation therefore cannot deliver a frame even if a transport message arrives late.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:

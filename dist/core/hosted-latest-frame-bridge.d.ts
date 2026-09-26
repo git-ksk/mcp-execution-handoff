@@ -23,6 +23,7 @@ export interface HostedLatestFrameBridgeOptions {
     maxFrameBytes?: number;
     maxBufferedBytes?: number;
 }
+export declare function parseHostedEphemeralFrame(value: unknown, maxFrameBytes?: number): HostedEphemeralFrame;
 /**
  * Process-memory latest-only bridge for hosted frame delivery.
  *
