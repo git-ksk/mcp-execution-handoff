@@ -9,4 +9,5 @@ export * from "./runtime.js";
 export * from "./human-surface.js";
 export * from "./hosted-worker.js";
 export * from "./hosted-worker-channel.js";
+export * from "./hosted-operator-binding.js";
 //# sourceMappingURL=index.d.ts.map

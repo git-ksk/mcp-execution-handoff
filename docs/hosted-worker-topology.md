@@ -65,6 +65,20 @@ Hosted worker routing is an additional delivery fence:
 4. Recovery never reconstructs stale Human or Agent authority from route metadata.
 5. Agent execution resumes only through the existing consumer-owned semantic verification / reissue rules.
 
+## Operator session / worker lifetime composition
+
+`HostedOperatorRouteBinding` composes an already-authoritative operator/viewer session with one current worker route. It intentionally does not create a second operator-session state machine.
+
+The lifetimes are independent:
+
+- operator session TTL remains owned by the existing Handoff surface/session manager;
+- viewer/client generation remains owned by that operator session;
+- worker connection lifetime and worker generation remain owned by `HostedWorkerRegistry`.
+
+A worker reconnect may rotate only worker generation; it cannot extend operator TTL or revive a stale viewer generation. A viewer reconnect may rotate only viewer generation; it cannot validate a stale worker route. The composed binding must be recreated after either generation changes and is revalidated against both current authoritative states.
+
+The binding is process-local coordination state, not durable recovery state. It admits no frame, Human input, credential, cookie, target identity, provider detail, channel binding, or arbitrary content.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:

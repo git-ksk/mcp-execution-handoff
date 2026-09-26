@@ -65,6 +65,20 @@ hosted worker routingは追加のdelivery fenceとして働きます。
 4. recovery metadataからstale Human / Agent authorityを復元しない。
 5. Agent resumeは既存のconsumer-owned semantic verification / reissue rule経由だけで行う。
 
+## Operator session / worker lifetime composition
+
+`HostedOperatorRouteBinding` は、既存のauthoritativeなoperator/viewer sessionとcurrent worker routeを合成します。別のoperator-session FSMは作りません。
+
+lifetimeは独立です。
+
+- operator session TTLは既存Handoff surface/session managerが所有
+- viewer/client generationはoperator sessionが所有
+- worker connection lifetime / worker generationは `HostedWorkerRegistry` が所有
+
+worker reconnectでrotateできるのはworker generationだけで、operator TTLを延長したりstale viewer generationを復活させたりできません。viewer reconnectでrotateできるのはviewer generationだけで、stale worker routeを正当化できません。どちらかのgenerationが変わった場合はfresh bindingを明示的に作り、両方のauthoritative current stateへ再validationします。
+
+bindingはprocess-local coordination stateでありdurable recovery stateではありません。frame、Human input、credential、cookie、target identity、provider detail、channel binding、任意contentを保持しません。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。
