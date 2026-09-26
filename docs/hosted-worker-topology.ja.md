@@ -115,6 +115,19 @@ hosted restart recoveryは既存v0.3 checkpoint contractを再利用します。
 
 worker identity / generation、authenticated channel binding、operator session id / viewer generation、locator / capability、frame / input state、target identity、credential / cookie、application / browser contentはdurable stateから復元しません。restart後のworker registryは空から始まり、fresh authenticated worker connectionなしではhosted routeを発行できません。
 
+## Generation-fenced hosted Human input
+
+`HostedHumanInputBridge` とworker側 `HostedWorkerRouteGate` で、自動replay queueを持たないhosted Human-input pathを定義します。
+
+- control planeはdispatch直前にoperator/viewer generationとworker routeを再validation
+- 各input envelopeはintervention id / epoch / worker generationを保持
+- worker gate側でもstale generation / stale epoch / revoked routeを独立して拒否
+- bridge内のin-flight inputは最大1件で、concurrent inputはqueueせずfail closed
+- transport failureでbridgeを閉じ、Human inputを自動retryしない
+- input shapeはdelivery前にclosed-worldかつboundedにvalidation
+
+worker/principal identityはpeer messageから受け取らず、authenticated channel contextのままです。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。

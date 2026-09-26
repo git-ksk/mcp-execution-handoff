@@ -115,6 +115,19 @@ Hosted restart recovery reuses the existing v0.3 checkpoint contract. `recoverHo
 
 Worker identity/generation, authenticated channel binding, operator session id/viewer generation, locator/capability, frame/input state, target identity, credential/cookie data, and application/browser content are never restored from durable state. The restarted worker registry therefore begins empty and must accept a freshly authenticated worker connection before any hosted route can be issued.
 
+## Generation-fenced hosted Human input
+
+`HostedHumanInputBridge` and worker-side `HostedWorkerRouteGate` provide the hosted Human-input path without an automatic replay queue.
+
+- the control plane revalidates operator/viewer generation and worker route immediately before dispatch;
+- every input envelope carries intervention id, epoch, and worker generation;
+- the worker gate independently rejects stale generation, stale epoch, or revoked routes;
+- at most one input is in flight through the bridge; concurrent input fails closed instead of queuing;
+- transport failure closes the bridge and the Human input is never retried automatically;
+- input shapes are closed-world and bounded before delivery.
+
+Worker/principal identity remains authenticated-channel context rather than peer-supplied message data.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:
