@@ -19,6 +19,20 @@ The channel binding is not a bearer credential. It stays process-local and is no
 
 A worker identity is principal-pinned for the registry lifetime. A second concurrent channel for the same worker is rejected. After an explicit disconnect, reconnect increments the worker generation; a stale disconnect from an earlier channel cannot fence the successor.
 
+## Authenticated outbound control channel
+
+`HostedWorkerControlChannel` composes an already-authenticated deployment transport with the worker registry. The transport supplies the trusted worker id, principal binding, and opaque channel binding; peer messages are not allowed to assert or replace those identities.
+
+The v1 control messages are deliberately content-free:
+
+- `registered` returns only the Handoff-owned worker generation;
+- `bind` names the intervention id, epoch, and worker generation;
+- `revoke` names the intervention id, epoch, and worker generation.
+
+Frames, Human input, credentials, target metadata, cookies, and provider details are not part of this control protocol.
+
+Registration delivery failure fences the just-created worker generation. Bind delivery failure disconnects the worker and invalidates every route owned by that generation. Revoke fences the local route **before** remote notification, so a failed notification cannot restore control-plane routing authority. Provider-specific WSS, HTTP/2, overlay, message-bus, or other transport adapters may carry this protocol later without changing these authority semantics.
+
 ## Intervention routing
 
 Every hosted route is bound to all of:
