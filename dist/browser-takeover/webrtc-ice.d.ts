@@ -52,6 +52,19 @@ export interface CoturnRestTurnCredentialProviderConfig {
     now?: () => number;
     randomId?: () => string;
 }
+export declare const WEBRTC_RELAY_ENV_NAMES: readonly ["MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID", "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN", "MCP_HANDOFF_COTURN_SHARED_SECRET", "MCP_HANDOFF_COTURN_TURN_URLS", "MCP_HANDOFF_COTURN_STUN_URLS"];
+/**
+ * Deployment-owned relay configuration is resolved only inside Handoff. Browser/Window/Terminal
+ * consumers never select a provider or receive the long-lived relay credential material.
+ */
+export declare function webRtcIceCredentialProviderFromEnvironment(env: NodeJS.ProcessEnv): WebRtcIceCredentialProvider | undefined;
+export declare function webRtcRelayEnvironmentConfigured(env?: NodeJS.ProcessEnv): boolean;
+/**
+ * Resolve the server-side direct discovery policy inside Handoff. The compatibility default keeps
+ * the already-reviewed Cloudflare STUN endpoint, while deployments can explicitly replace it with
+ * provider-neutral STUN/STUNS endpoints without changing any consumer API or relay provider.
+ */
+export declare function webRtcDirectDiscoveryIceServersFromEnvironment(env: NodeJS.ProcessEnv): WebRtcIceServer[];
 /**
  * Cloudflare Realtime TURN adapter for the Handoff WebRTC transport.
  *
@@ -83,6 +96,6 @@ export declare class CoturnRestTurnCredentialProvider implements WebRtcIceCreden
     private issuePeerCredential;
     private peerIceServers;
 }
-export declare function directOnlyIceSession(relay?: WebRtcRelayAvailability): WebRtcPreparedIceSession;
+export declare function directOnlyIceSession(relay?: WebRtcRelayAvailability, serverIceServers?: readonly WebRtcIceServer[]): WebRtcPreparedIceSession;
 export declare function cloneIceServers(servers: readonly WebRtcIceServer[]): WebRtcIceServer[];
 //# sourceMappingURL=webrtc-ice.d.ts.map

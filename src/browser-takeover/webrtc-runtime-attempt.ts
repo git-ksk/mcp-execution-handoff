@@ -1,15 +1,11 @@
 import {
+  WEBRTC_RELAY_ENV_NAMES,
+  webRtcRelayEnvironmentConfigured as relayEnvironmentConfigured
+} from "./webrtc-ice.js";
+import {
   SpawnedWebRtcRuntimeProvider,
   type SpawnedWebRtcRuntimeProviderConfig
 } from "./webrtc-runtime.js";
-
-const RELAY_ENV_NAMES = [
-  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
-  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
-  "MCP_HANDOFF_COTURN_SHARED_SECRET",
-  "MCP_HANDOFF_COTURN_TURN_URLS",
-  "MCP_HANDOFF_COTURN_STUN_URLS"
-] as const;
 
 /**
  * Run one synchronous construction boundary without exposing configured relay environment to it.
@@ -18,13 +14,13 @@ const RELAY_ENV_NAMES = [
  */
 export function withDirectOnlyWebRtcEnvironment<T>(factory: () => T): T {
   const saved = new Map<string, string | undefined>(
-    RELAY_ENV_NAMES.map((name) => [name, process.env[name]])
+    WEBRTC_RELAY_ENV_NAMES.map((name) => [name, process.env[name]])
   );
   try {
-    for (const name of RELAY_ENV_NAMES) delete process.env[name];
+    for (const name of WEBRTC_RELAY_ENV_NAMES) delete process.env[name];
     return factory();
   } finally {
-    for (const name of RELAY_ENV_NAMES) {
+    for (const name of WEBRTC_RELAY_ENV_NAMES) {
       const value = saved.get(name);
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
@@ -34,7 +30,7 @@ export function withDirectOnlyWebRtcEnvironment<T>(factory: () => T): T {
 
 /** Returns whether relay-related deployment configuration is present at all. */
 export function webRtcRelayEnvironmentConfigured(): boolean {
-  return RELAY_ENV_NAMES.some((name) => Boolean(process.env[name]?.trim()));
+  return relayEnvironmentConfigured(process.env);
 }
 
 /**

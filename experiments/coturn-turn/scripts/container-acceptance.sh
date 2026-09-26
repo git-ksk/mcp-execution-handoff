@@ -38,6 +38,6 @@ done
 
 docker run --rm --network "$NETWORK" \
   -v "$ROOT:/work" -w /work \
-  -e HANDOFF_COTURN_TURN_URL="turn:$TURN_CONTAINER:3478?transport=udp" \
+  -e MCP_HANDOFF_COTURN_TURN_URLS="turn:$TURN_CONTAINER:3478?transport=udp" \
   -e MCP_HANDOFF_COTURN_SHARED_SECRET="$SECRET" \
   "$NODE_IMAGE" node experiments/coturn-turn/scripts/relay-acceptance.mjs

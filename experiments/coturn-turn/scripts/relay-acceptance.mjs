@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { RTCPeerConnection } from "werift";
-import { CoturnRestTurnCredentialProvider } from "../../../dist/browser-takeover/webrtc-ice.js";
+import { webRtcIceCredentialProviderFromEnvironment } from "../../../dist/browser-takeover/webrtc-ice.js";
 
-const turnUrl = process.env.HANDOFF_COTURN_TURN_URL?.trim();
-const sharedSecret = process.env.MCP_HANDOFF_COTURN_SHARED_SECRET?.trim();
-if (!turnUrl) throw new Error("HANDOFF_COTURN_TURN_URL is required");
-if (!sharedSecret) throw new Error("MCP_HANDOFF_COTURN_SHARED_SECRET is required");
+const provider = webRtcIceCredentialProviderFromEnvironment(process.env);
+if (!provider) throw new Error("Handoff relay provider configuration is required");
 
 function stage(name) {
   process.stdout.write(`COTURN_ACCEPT_STAGE ${name}\n`);
@@ -30,10 +28,6 @@ function candidateTypes(sdp) {
   return values;
 }
 
-const provider = new CoturnRestTurnCredentialProvider({
-  turnUrls: [turnUrl],
-  sharedSecret
-});
 const binding = {
   takeoverSessionId: "coturn-relay-acceptance",
   interventionId: "coturn-relay-acceptance",

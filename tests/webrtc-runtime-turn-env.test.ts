@@ -6,6 +6,7 @@ import {
 } from "../src/browser-takeover/webrtc-runtime-attempt.js";
 import { SpawnedWebRtcRuntimeProvider } from "../src/browser-takeover/webrtc-runtime.js";
 
+const DIRECT_STUN_NAME = "MCP_HANDOFF_WEBRTC_DIRECT_STUN_URLS" as const;
 const NAMES = [
   "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
   "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
@@ -14,7 +15,10 @@ const NAMES = [
   "MCP_HANDOFF_COTURN_STUN_URLS"
 ] as const;
 
-function clear(): void { for (const name of NAMES) delete process.env[name]; }
+function clear(): void {
+  for (const name of NAMES) delete process.env[name];
+  delete process.env[DIRECT_STUN_NAME];
+}
 function runtime(): SpawnedWebRtcRuntimeProvider {
   return new SpawnedWebRtcRuntimeProvider({ hostExecutable: process.execPath });
 }
@@ -27,13 +31,14 @@ function binding() {
 }
 
 test("direct-only runtime construction never observes or issues configured TURN credentials", async () => {
-  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  const original = new Map([...NAMES, DIRECT_STUN_NAME].map((name) => [name, process.env[name]]));
   const originalFetch = globalThis.fetch;
   let fetchCalls = 0;
   try {
     clear();
     process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID = "configured-cloudflare-key";
     process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN = "server-only-test-token";
+    process.env.MCP_HANDOFF_WEBRTC_DIRECT_STUN_URLS = "stun:selfhosted.example.test:3478";
     globalThis.fetch = async () => {
       fetchCalls += 1;
       throw new Error("direct-only must not call the relay provider");
@@ -42,6 +47,7 @@ test("direct-only runtime construction never observes or issues configured TURN 
     const provider = createDirectOnlyWebRtcRuntime({ hostExecutable: process.execPath });
     assert.equal(process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID, "configured-cloudflare-key");
     assert.equal(process.env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN, "server-only-test-token");
+    assert.equal(process.env.MCP_HANDOFF_WEBRTC_DIRECT_STUN_URLS, "stun:selfhosted.example.test:3478");
 
     const ice = await provider.prepare(binding());
     assert.equal(fetchCalls, 0);
@@ -57,7 +63,7 @@ test("direct-only runtime construction never observes or issues configured TURN 
 });
 
 test("relay-enabled runtime construction can still issue configured TURN credentials", async () => {
-  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  const original = new Map([...NAMES, DIRECT_STUN_NAME].map((name) => [name, process.env[name]]));
   try {
     clear();
     process.env.MCP_HANDOFF_COTURN_SHARED_SECRET = "0123456789abcdef0123456789abcdef";
@@ -77,7 +83,7 @@ test("relay-enabled runtime construction can still issue configured TURN credent
 });
 
 test("runtime selects coturn from complete env and fails closed on partial or conflicting TURN providers", async () => {
-  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  const original = new Map([...NAMES, DIRECT_STUN_NAME].map((name) => [name, process.env[name]]));
   try {
     clear();
     process.env.MCP_HANDOFF_COTURN_SHARED_SECRET = "0123456789abcdef0123456789abcdef";
@@ -107,7 +113,7 @@ test("runtime selects coturn from complete env and fails closed on partial or co
 
 
 test("runtime preserves direct fallback while recording a bounded Cloudflare credential failure reason", async () => {
-  const original = new Map(NAMES.map((name) => [name, process.env[name]]));
+  const original = new Map([...NAMES, DIRECT_STUN_NAME].map((name) => [name, process.env[name]]));
   const originalFetch = globalThis.fetch;
   try {
     clear();
