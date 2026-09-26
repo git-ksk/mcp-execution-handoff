@@ -21,9 +21,13 @@ export interface HostedWorkerControlPeer {
     send(message: Readonly<HostedWorkerControlMessage>): void | Promise<void>;
     close?(): void | Promise<void>;
 }
+export type HostedWorkerRouteInvalidationReason = "bind_delivery_failure" | "explicit_revoke" | "revoke_delivery_failure" | "worker_disconnect";
+export interface HostedWorkerControlChannelHooks {
+    routesInvalidated?(routes: readonly Readonly<HostedWorkerRouteLease>[], reason: HostedWorkerRouteInvalidationReason): void | Promise<void>;
+}
 export declare class HostedWorkerControlChannelError extends Error {
-    readonly code: "HOSTED_WORKER_CHANNEL_UNAVAILABLE" | "HOSTED_WORKER_CHANNEL_CLOSED";
-    constructor(code: "HOSTED_WORKER_CHANNEL_UNAVAILABLE" | "HOSTED_WORKER_CHANNEL_CLOSED", message: string);
+    readonly code: "HOSTED_WORKER_CHANNEL_UNAVAILABLE" | "HOSTED_WORKER_CHANNEL_CLOSED" | "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED";
+    constructor(code: "HOSTED_WORKER_CHANNEL_UNAVAILABLE" | "HOSTED_WORKER_CHANNEL_CLOSED" | "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED", message: string);
 }
 /**
  * Provider-neutral control-plane side of an authenticated outbound worker channel.
@@ -37,8 +41,9 @@ export declare class HostedWorkerControlChannel {
     #private;
     private readonly registry;
     private readonly peer;
+    private readonly hooks;
     private constructor();
-    static open(registry: HostedWorkerRegistry, authenticated: HostedWorkerRegistrationRequest, peer: HostedWorkerControlPeer): Promise<HostedWorkerControlChannel>;
+    static open(registry: HostedWorkerRegistry, authenticated: HostedWorkerRegistrationRequest, peer: HostedWorkerControlPeer, hooks?: HostedWorkerControlChannelHooks): Promise<HostedWorkerControlChannel>;
     registration(): HostedWorkerRegistration;
     bindIntervention(request: Omit<HostedWorkerRouteRequest, "workerId" | "workerGeneration">): Promise<HostedWorkerRouteLease>;
     assertCurrent(route: HostedWorkerRouteLease): void;

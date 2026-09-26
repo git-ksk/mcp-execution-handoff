@@ -193,3 +193,135 @@ test("registration delivery failure does not leave an authenticated worker activ
   assert.equal(registry.get("worker-a"), undefined);
   assert.equal(fixture.closes(), 1);
 });
+
+test("worker disconnect propagates bounded route invalidation after local fencing", async () => {
+  const registry = new HostedWorkerRegistry();
+  const fixture = peerFixture();
+  const invalidations: Array<{ ids: string[]; reason: string; current: boolean[] }> = [];
+  const channel = await HostedWorkerControlChannel.open(registry, {
+    workerId: "worker-a",
+    principalBinding: PRINCIPAL,
+    channelBinding: CHANNEL_A
+  }, fixture.peer, {
+    routesInvalidated(routes, reason) {
+      invalidations.push({
+        ids: routes.map((route) => route.interventionId),
+        reason,
+        current: routes.map((route) => {
+          try {
+            registry.assertCurrent(route);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+      });
+    }
+  });
+  await channel.bindIntervention({
+    interventionId: "intervention-1",
+    epoch: 3,
+    principalBinding: PRINCIPAL
+  });
+
+  await channel.disconnect();
+  assert.deepEqual(invalidations, [{
+    ids: ["intervention-1"],
+    reason: "worker_disconnect",
+    current: [false]
+  }]);
+});
+
+test("explicit revoke propagates after local route fencing but before success is reported", async () => {
+  const registry = new HostedWorkerRegistry();
+  const fixture = peerFixture();
+  let observedStale = false;
+  let observedReason = "";
+  const channel = await HostedWorkerControlChannel.open(registry, {
+    workerId: "worker-a",
+    principalBinding: PRINCIPAL,
+    channelBinding: CHANNEL_A
+  }, fixture.peer, {
+    routesInvalidated(routes, reason) {
+      observedReason = reason;
+      assert.equal(routes.length, 1);
+      assert.throws(() => registry.assertCurrent(routes[0]!));
+      observedStale = true;
+    }
+  });
+  const route = await channel.bindIntervention({
+    interventionId: "intervention-1",
+    epoch: 4,
+    principalBinding: PRINCIPAL
+  });
+
+  await channel.revokeIntervention(route);
+  assert.equal(observedStale, true);
+  assert.equal(observedReason, "explicit_revoke");
+  assert.deepEqual(fixture.messages.at(-1), {
+    version: 1,
+    type: "revoke",
+    interventionId: "intervention-1",
+    epoch: 4,
+    workerGeneration: 1
+  });
+});
+
+test("revocation propagation failure is explicit and cannot restore the fenced route", async () => {
+  const registry = new HostedWorkerRegistry();
+  const fixture = peerFixture();
+  const channel = await HostedWorkerControlChannel.open(registry, {
+    workerId: "worker-a",
+    principalBinding: PRINCIPAL,
+    channelBinding: CHANNEL_A
+  }, fixture.peer, {
+    routesInvalidated() {
+      throw new Error("synthetic operator revocation failure");
+    }
+  });
+  const route = await channel.bindIntervention({
+    interventionId: "intervention-1",
+    epoch: 5,
+    principalBinding: PRINCIPAL
+  });
+
+  await assert.rejects(
+    channel.revokeIntervention(route),
+    (error: unknown) => error instanceof HostedWorkerControlChannelError
+      && error.code === "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED"
+  );
+  assert.throws(() => registry.assertCurrent(route));
+});
+
+test("bind delivery failure propagates every route invalidated by channel fencing", async () => {
+  const registry = new HostedWorkerRegistry();
+  const fixture = peerFixture(3);
+  const invalidated: string[][] = [];
+  const channel = await HostedWorkerControlChannel.open(registry, {
+    workerId: "worker-a",
+    principalBinding: PRINCIPAL,
+    channelBinding: CHANNEL_A
+  }, fixture.peer, {
+    routesInvalidated(routes, reason) {
+      if (reason === "bind_delivery_failure") {
+        invalidated.push(routes.map((route) => route.interventionId).sort());
+      }
+    }
+  });
+  await channel.bindIntervention({
+    interventionId: "intervention-a",
+    epoch: 1,
+    principalBinding: PRINCIPAL
+  });
+
+  await assert.rejects(
+    channel.bindIntervention({
+      interventionId: "intervention-b",
+      epoch: 2,
+      principalBinding: PRINCIPAL
+    }),
+    (error: unknown) => error instanceof HostedWorkerControlChannelError
+      && error.code === "HOSTED_WORKER_CHANNEL_UNAVAILABLE"
+  );
+  assert.deepEqual(invalidated, [["intervention-a", "intervention-b"]]);
+});
