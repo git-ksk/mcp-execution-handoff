@@ -74,7 +74,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #254 | Recovery Integration Backlog — version uncommitted | **Open / classified non-blocking.** Add a provider-neutral consumer-owned target/session reconstruction-required hook without restoring stale authority, replaying actions, or moving process/profile/deployment ownership into Handoff. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
 | #19 | v0.5.0 provider-neutral connectivity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
-| #12 | v0.6.0 hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
+| #12 | v0.6.0 hosted topology | **In progress.** Define a provider-neutral hosted control plane + stateful execution worker. First slice adds `HostedWorkerRegistry` for authenticated channel binding, principal pinning, worker-generation fencing, and intervention routing. See [hosted worker topology](docs/hosted-worker-topology.md). |
 
 ## Product Readiness — independent cross-cutting track
 
