@@ -1,0 +1,63 @@
+# Hosted control plane / execution-worker topology
+
+Status: v0.6.0 / Issue #12 contract in progress.
+
+This contract separates a replaceable hosted Handoff control plane from a stateful execution worker without widening Browser, Window, Terminal, or Desktop authority.
+
+## Worker registration boundary
+
+The transport authenticates an outbound-capable worker channel first. Handoff core receives only:
+
+- a bounded worker identity;
+- the principal binding authorized for that worker;
+- an opaque authenticated-channel binding;
+- a Handoff-owned worker generation.
+
+The channel binding is not a bearer credential. It stays process-local and is not returned by the registry or admitted into durable routing metadata.
+
+`HostedWorkerRegistry` is the transport-neutral reference boundary. It does not implement HTTP, WSS, Cloud Run, a message bus, or another hosting vendor.
+
+A worker identity is principal-pinned for the registry lifetime. A second concurrent channel for the same worker is rejected. After an explicit disconnect, reconnect increments the worker generation; a stale disconnect from an earlier channel cannot fence the successor.
+
+## Intervention routing
+
+Every hosted route is bound to all of:
+
+- intervention id;
+- intervention epoch;
+- principal binding;
+- worker identity;
+- current worker generation.
+
+A stale worker generation fails closed. Worker disconnect immediately invalidates all routes owned by that generation.
+
+The same intervention may explicitly reconnect to the same worker identity after transport loss, including at the same intervention epoch, but it cannot migrate to another worker identity. Worker replacement requires consumer-owned reissue/revalidation that creates a fresh intervention. This avoids treating a newer transport or lifecycle epoch as proof that a different execution session is equivalent.
+
+## Data boundary
+
+The worker registry admits bounded control-plane metadata only. It rejects extra fields so frame data, Human input, credential/token material, cookies, browser/application content, target identity, and arbitrary provider data cannot become route state.
+
+Persistent browser profile, application session, OS session, framebuffer, and target content remain execution-worker concerns. They do not live in a disposable hosted control-plane instance.
+
+## Relationship to existing Handoff state
+
+The registry does not create a second mutation-authority FSM. Existing Handoff intervention / authority / checkpoint / recovery semantics remain authoritative.
+
+Hosted worker routing is an additional delivery fence:
+
+1. Handoff authority admits the Human operation.
+2. The hosted route must still match principal, intervention, epoch, worker identity, and worker generation.
+3. Worker/channel loss invalidates delivery.
+4. Recovery never reconstructs stale Human or Agent authority from route metadata.
+5. Agent execution resumes only through the existing consumer-owned semantic verification / reissue rules.
+
+## Next v0.6.0 slices
+
+The remaining #12 work builds on this boundary:
+
+- authenticated outbound worker channel protocol;
+- operator-session TTL independent from worker connection lifetime;
+- latest-frame/backpressure semantics with no stale-frame queue;
+- disconnect/reconnect and revocation propagation through the real hosted channel;
+- bounded durable hosted metadata using existing recovery rules;
+- local-worker and remote/stateful-worker deployment references and acceptance.

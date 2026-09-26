@@ -7,4 +7,5 @@ export * from "./operator-diagnostics.js";
 export * from "./checkpoint.js";
 export * from "./runtime.js";
 export * from "./human-surface.js";
+export * from "./hosted-worker.js";
 //# sourceMappingURL=index.d.ts.map
