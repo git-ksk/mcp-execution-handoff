@@ -79,6 +79,19 @@ A worker reconnect may rotate only worker generation; it cannot extend operator 
 
 The binding is process-local coordination state, not durable recovery state. It admits no frame, Human input, credential, cookie, target identity, provider detail, channel binding, or arbitrary content.
 
+## Latest-only hosted frame delivery
+
+`HostedLatestFrameBridge` provides process-memory-only frame delivery for hosted paths. It matches the existing WSS backpressure principle rather than building an unbounded relay queue.
+
+- at most one frame send may be in flight;
+- at most one pending frame is retained;
+- a newer pending frame replaces the older one;
+- explicit transport drain retries only the newest pending frame;
+- operator/viewer and worker generations are revalidated immediately before every send;
+- transport failure closes the bridge and discards pending frame data.
+
+Frames are ephemeral and are never durable recovery/control state. Diagnostics expose only bounded counters/state and no session, intervention, principal, worker, credential, or frame content.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:

@@ -79,6 +79,19 @@ worker reconnectでrotateできるのはworker generationだけで、operator TT
 
 bindingはprocess-local coordination stateでありdurable recovery stateではありません。frame、Human input、credential、cookie、target identity、provider detail、channel binding、任意contentを保持しません。
 
+## Latest-only hosted frame delivery
+
+`HostedLatestFrameBridge` はhosted path向けにprocess-memory-onlyなframe deliveryを提供します。既存WSSと同じbackpressure原則を使い、unboundedなrelay queueは作りません。
+
+- in-flight frame送信は最大1件
+- pending frame保持も最大1件
+- 新しいpending frameが古いものを置換
+- transport drain時も最新pending frameだけを再送
+- 送信直前にoperator/viewer generationとworker generationを両方再validation
+- transport failureではbridgeを閉じ、pending frame dataを破棄
+
+frameはephemeralでdurable recovery/control stateにはしません。diagnosticsはbounded counter/stateのみで、session / intervention / principal / worker / credential / frame contentを出しません。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。
