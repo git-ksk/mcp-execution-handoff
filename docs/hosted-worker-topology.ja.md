@@ -134,6 +134,25 @@ worker-origin frameはgeneration-scopedな `HostedWorkerFrameEnvelope` を使い
 
 peer dataからworker identity、channel binding、provider identity、credential material、target identityを受け取りません。そのためtransport messageが遅延到着してもstale/revoked worker routeやstale viewer generationからframeをdeliverできません。
 
+## Deployment reference
+
+同じcore contractを次の3形態で使います。形態ごとにauthority semanticsを変えません。
+
+1. **Local-only**
+   - control planeとexecution workerは同一machineでもよい。
+   - worker channelはloopback / local IPC adapterを利用可能。
+   - browser/profile/application sessionはworker側に残す。
+2. **Hosted control plane + local worker**
+   - public operator ingress / hosted control planeと、private/local Mac等のworkerを分離。
+   - workerはauthenticated outbound channelだけを開始し、inbound public listenerを要求しない。
+   - operator session TTL、viewer generation、worker generationは独立。
+3. **Hosted control plane + remote/stateful browser worker**
+   - workerはpersistent browser/profile/application sessionを所有するstateful VM/container等。
+   - disposable control planeへprofile/session/frame/inputを永続化しない。
+   - worker差し替えを同一interventionへsilent reassignmentせず、fresh reissue/revalidationを要求する。
+
+`experiments/hosted-worker-topology/acceptance.mjs` はreal WebSocket上でoutbound worker形状、registration、generation fencing、frame/input、disconnect/reconnect、revocationをdeterministicに検証します。これはphysical Cloud Run / Mac / remote browser acceptanceの代替ではありません。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。

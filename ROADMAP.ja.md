@@ -76,7 +76,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #254 | Recovery Integration Backlog — version未確定 | **OPEN / non-blockingとして分類。** stale authority/action replayなしで、consumer-owned target/session reconstruction-required hookをprovider-neutralに追加する。process/profile/deploy ownershipはconsumer側のまま。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
 | #19 | v0.5.0 provider-neutral connectivity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
-| #12 | v0.6.0 hosted topology | **実装中。** provider-neutral hosted control plane + stateful execution workerを定義。初期sliceとして `HostedWorkerRegistry` + `HostedWorkerControlChannel` + `HostedOperatorRouteBinding` でauthenticated channel binding、principal pin、worker generation fencing、intervention route binding、fail-closedなoutbound control delivery、operator/viewerとworkerの独立lifetime、latest-only hosted frame backpressure、fail-closedなroute revocation propagation、worker reconnect + operator reissueを必須にするhosted restart hint、generation-fencedでno-replayなhosted Human input、generation-boundなworker-origin frame provenanceを追加。詳細は [hosted worker topology](docs/hosted-worker-topology.ja.md)。 |
+| #12 | v0.6.0 hosted topology | **実装中。** coreはauthenticated outbound worker registration、principal / worker-generation fencing、intervention routing、operator/viewerとworkerの独立lifetime、latest-only frame、fail-closed revocation、reissue-only restart recovery、no-replay Human input、worker-origin frame provenanceまで実装済み。real WebSocket loopback acceptanceでtopologyをdeterministicに検証し、physical hosted/local-worker・remote/stateful-worker acceptanceはrelease gateとして残す。詳細は [hosted worker topology](docs/hosted-worker-topology.ja.md)。 |
 
 ## Product Readiness — 独立したcross-cutting track
 
@@ -358,6 +358,8 @@ scope:
 - duplicate ownership、stale reconnect、worker liveness、reassignment、revocation propagation、latest-frame/backpressureをfail closedで定義する;
 - persistent browser/profile/session storageをdisposable control-plane instanceから分離する;
 - local-only、hosted-control-plane + local worker、hosted-control-plane + remote/stateful workerのreference shapeを文書化する。
+
+real WebSocketを使うdeterministic loopback acceptanceでは共通outbound-worker protocolとfailure fencingを検証済みです。ただしこれはconformance gateであり、下記2形態のphysical hosted deployment acceptanceの代替にはしません。
 
 完了条件:
 

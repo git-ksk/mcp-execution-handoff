@@ -74,7 +74,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #254 | Recovery Integration Backlog — version uncommitted | **Open / classified non-blocking.** Add a provider-neutral consumer-owned target/session reconstruction-required hook without restoring stale authority, replaying actions, or moving process/profile/deployment ownership into Handoff. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
 | #19 | v0.5.0 provider-neutral connectivity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
-| #12 | v0.6.0 hosted topology | **In progress.** Define a provider-neutral hosted control plane + stateful execution worker. Initial slices add `HostedWorkerRegistry`, `HostedWorkerControlChannel`, and `HostedOperatorRouteBinding` for authenticated channel binding, principal pinning, worker-generation fencing, intervention routing, fail-closed outbound control delivery, independent operator/viewer vs worker lifetimes, and latest-only hosted frame backpressure, and fail-closed route revocation propagation, and hosted restart hints that require worker reconnect plus operator reissue, and generation-fenced no-replay hosted Human input, and generation-bound worker-origin frame provenance. See [hosted worker topology](docs/hosted-worker-topology.md). |
+| #12 | v0.6.0 hosted topology | **In progress.** Core now covers authenticated outbound worker registration, principal/worker-generation fencing, intervention routing, independent operator/viewer vs worker lifetimes, latest-only frames, fail-closed revocation, reissue-only restart recovery, no-replay Human input, and worker-origin frame provenance. A real-WebSocket loopback acceptance exercises the topology deterministically; physical hosted/local-worker and remote/stateful-worker acceptance remain release gates. See [hosted worker topology](docs/hosted-worker-topology.md). |
 
 ## Product Readiness — independent cross-cutting track
 
@@ -358,6 +358,8 @@ Scope:
 - define duplicate ownership, stale reconnect, worker liveness, reassignment, revocation propagation, and latest-frame/backpressure semantics fail closed;
 - keep persistent browser/profile/session storage outside disposable control-plane instances;
 - document reference shapes for local-only, hosted-control-plane + local worker, and hosted-control-plane + remote/stateful worker deployment.
+
+Deterministic real-WebSocket loopback acceptance now covers the common outbound-worker protocol and failure fencing. It is a conformance gate, not a substitute for the two physical hosted deployment acceptances required below.
 
 Exit criteria:
 
