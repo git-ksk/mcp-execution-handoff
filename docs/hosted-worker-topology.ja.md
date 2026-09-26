@@ -105,6 +105,16 @@ frameはephemeralでdurable recovery/control stateにはしません。diagnosti
 
 explicit revoke、worker disconnect、bind delivery failure、revoke delivery failureを対象にします。callbackへframe、Human input、credential、cookie、target content、provider secretは入れません。
 
+## Hosted recovery boundary
+
+hosted restart recoveryは既存v0.3 checkpoint contractを再利用します。`recoverHostedControlPlane()` はvalidation済みcheckpointからboundedなorchestration hintだけを作ります。
+
+- recoveryは `reissue_and_revalidate` のまま
+- worker routeは `reconnect_required`
+- operator sessionは `reissue_required`
+
+worker identity / generation、authenticated channel binding、operator session id / viewer generation、locator / capability、frame / input state、target identity、credential / cookie、application / browser contentはdurable stateから復元しません。restart後のworker registryは空から始まり、fresh authenticated worker connectionなしではhosted routeを発行できません。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。

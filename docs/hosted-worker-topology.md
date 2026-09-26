@@ -105,6 +105,16 @@ The ordering is fail-closed:
 
 This covers explicit revoke, worker disconnect, bind-delivery failure, and revoke-delivery failure. The callback carries no frame, Human input, credential, cookie, target content, or provider secret.
 
+## Hosted recovery boundary
+
+Hosted restart recovery reuses the existing v0.3 checkpoint contract. `recoverHostedControlPlane()` projects a validated checkpoint into a bounded orchestration hint only:
+
+- recovery remains `reissue_and_revalidate`;
+- worker route is `reconnect_required`;
+- operator session is `reissue_required`.
+
+Worker identity/generation, authenticated channel binding, operator session id/viewer generation, locator/capability, frame/input state, target identity, credential/cookie data, and application/browser content are never restored from durable state. The restarted worker registry therefore begins empty and must accept a freshly authenticated worker connection before any hosted route can be issued.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:
