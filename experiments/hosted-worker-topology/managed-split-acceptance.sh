@@ -8,7 +8,9 @@ REVISION="$(git rev-parse HEAD)"
 PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${HANDOFF_MANAGED_SPLIT_REGION:-us-central1}"
 REPOSITORY="${HANDOFF_MANAGED_SPLIT_REPOSITORY:-cloud-run-source-deploy}"
-SERVICE="${HANDOFF_MANAGED_SPLIT_SERVICE:-handoff-hosted-split-${REVISION:0:8}}"
+RUN_SUFFIX="${HANDOFF_MANAGED_SPLIT_RUN_SUFFIX:-$$}"
+[[ "$RUN_SUFFIX" =~ ^[a-z0-9-]{1,24}$ ]] || { echo "invalid managed split run suffix" >&2; exit 1; }
+SERVICE="${HANDOFF_MANAGED_SPLIT_SERVICE:-handoff-hosted-split-${REVISION:0:8}-${RUN_SUFFIX}}"
 [[ -n "$PROJECT" && "$PROJECT" != "(unset)" ]] || { echo "configured Google Cloud project required" >&2; exit 1; }
 
 gcloud artifacts repositories describe "$REPOSITORY" --project "$PROJECT" --location "$REGION" >/dev/null
@@ -21,7 +23,7 @@ TMP="$(mktemp -d)"
 PRIVATE_KEY="$TMP/worker-private.pem"
 PUBLIC_KEY_FILE="$TMP/worker-public.txt"
 CONTEXT="$TMP/context"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/mcp-execution-handoff-hosted-split:${REVISION}"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/mcp-execution-handoff-hosted-split:${REVISION}-${RUN_SUFFIX}"
 URL=""
 
 cleanup() {
