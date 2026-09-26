@@ -6,6 +6,9 @@ import {
   CoturnRestTurnCredentialProvider,
   directOnlyIceSession,
   relayCredentialFailureReason,
+  webRtcDirectDiscoveryIceServersFromEnvironment,
+  webRtcIceCredentialProviderFromEnvironment,
+  webRtcRelayEnvironmentConfigured,
   type WebRtcTakeoverRuntimeBinding
 } from "../src/browser-takeover/webrtc-ice.js";
 
@@ -21,13 +24,54 @@ function binding(): WebRtcTakeoverRuntimeBinding {
   };
 }
 
-test("direct-only keeps the browser host-only and makes the server STUN trust boundary explicit", async () => {
-  const session = directOnlyIceSession();
-  assert.equal(session.browser.relay, "disabled");
-  assert.deepEqual(session.browser.iceServers, []);
-  assert.deepEqual(session.serverIceServers, [{ urls: "stun:stun.cloudflare.com:3478" }]);
-  assert.doesNotMatch(JSON.stringify(session.serverIceServers), /stun\.l\.google\.com/i);
-  await session.revoke();
+test("direct-only preserves reviewed discovery by default and accepts Handoff-owned provider-neutral STUN", async () => {
+  const compatibility = directOnlyIceSession();
+  assert.equal(compatibility.browser.relay, "disabled");
+  assert.deepEqual(compatibility.browser.iceServers, []);
+  assert.deepEqual(compatibility.serverIceServers, [{ urls: "stun:stun.cloudflare.com:3478" }]);
+
+  const selfHostedDiscovery = webRtcDirectDiscoveryIceServersFromEnvironment({
+    MCP_HANDOFF_WEBRTC_DIRECT_STUN_URLS: "stun:turn.example.test:3478, stuns:turn.example.test:5349"
+  });
+  const selfHosted = directOnlyIceSession("disabled", selfHostedDiscovery);
+  assert.deepEqual(selfHosted.serverIceServers, [{
+    urls: ["stun:turn.example.test:3478", "stuns:turn.example.test:5349"]
+  }]);
+  assert.doesNotMatch(JSON.stringify(selfHosted), /cloudflare|google/i);
+
+  assert.throws(() => webRtcDirectDiscoveryIceServersFromEnvironment({
+    MCP_HANDOFF_WEBRTC_DIRECT_STUN_URLS: "turn:turn.example.test:3478"
+  }), /coturn stun URLs are invalid/);
+
+  await compatibility.revoke();
+  await selfHosted.revoke();
+});
+
+test("Handoff-owned relay environment selects exactly one provider and rejects ambiguous configuration", () => {
+  assert.equal(webRtcRelayEnvironmentConfigured({}), false);
+  assert.equal(webRtcRelayEnvironmentConfigured({ MCP_HANDOFF_COTURN_TURN_URLS: "turn:turn.example.test:3478" }), true);
+
+  const cloudflare = webRtcIceCredentialProviderFromEnvironment({
+    MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID: "turn_key_unit_123456",
+    MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN: "server-only-test-token"
+  });
+  assert.ok(cloudflare instanceof CloudflareRealtimeTurnCredentialProvider);
+
+  const coturn = webRtcIceCredentialProviderFromEnvironment({
+    MCP_HANDOFF_COTURN_SHARED_SECRET: "0123456789abcdef0123456789abcdef",
+    MCP_HANDOFF_COTURN_TURN_URLS: "turn:turn.example.test:3478?transport=udp, turns:turn.example.test:5349?transport=tcp",
+    MCP_HANDOFF_COTURN_STUN_URLS: "stun:turn.example.test:3478"
+  });
+  assert.ok(coturn instanceof CoturnRestTurnCredentialProvider);
+
+  assert.throws(() => webRtcIceCredentialProviderFromEnvironment({
+    MCP_HANDOFF_COTURN_SHARED_SECRET: "0123456789abcdef0123456789abcdef"
+  }), /coturn TURN configuration is incomplete/);
+  assert.throws(() => webRtcIceCredentialProviderFromEnvironment({
+    MCP_HANDOFF_COTURN_SHARED_SECRET: "0123456789abcdef0123456789abcdef",
+    MCP_HANDOFF_COTURN_TURN_URLS: "turn:turn.example.test:3478",
+    MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID: "turn_key_unit_123456"
+  }), /Multiple TURN providers are configured/);
 });
 
 test("Cloudflare TURN adapter issues separate short-lived peer credentials and revokes both without identity tags", async () => {

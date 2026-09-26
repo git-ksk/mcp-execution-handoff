@@ -315,6 +315,9 @@ Exit criteria:
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
+Canonical connectivity contract: [`docs/provider-neutral-connectivity.md`](docs/provider-neutral-connectivity.md)
+
+
 `v0.5.0` remains the next planned feature source-release line after the bounded `v0.4.5` authority/queue hardening gate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.

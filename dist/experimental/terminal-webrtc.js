@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { RTCPeerConnection } from "werift";
 import { TakeoverSessionError, TakeoverSessionManager } from "../browser-takeover/session.js";
-import { CloudflareRealtimeTurnCredentialProvider, CoturnRestTurnCredentialProvider, cloneIceServers, directOnlyIceSession } from "../browser-takeover/webrtc-ice.js";
+import { cloneIceServers, directOnlyIceSession, webRtcDirectDiscoveryIceServersFromEnvironment, webRtcIceCredentialProviderFromEnvironment } from "../browser-takeover/webrtc-ice.js";
 import { parseWebRtcOffer, webRtcBindingFromGrant } from "../browser-takeover/webrtc-runtime.js";
 const MAX_SIGNALING_SDP_BYTES = 128 * 1024;
 const MAX_CHANNEL_MESSAGE_BYTES = 8 * 1024;
@@ -14,14 +14,16 @@ class TerminalDataChannelRuntime {
     #prepared = new Map();
     #active = new Map();
     #iceProvider;
+    #directServerIceServers;
     constructor(env) {
-        this.#iceProvider = iceCredentialProviderFromEnvironment(env);
+        this.#directServerIceServers = webRtcDirectDiscoveryIceServersFromEnvironment(env);
+        this.#iceProvider = webRtcIceCredentialProviderFromEnvironment(env);
     }
     async prepare(binding) {
         await this.revokePrepared(binding.takeoverSessionId);
         const ice = this.#iceProvider
-            ? await this.#iceProvider.issue(binding).catch(() => directOnlyIceSession("unavailable"))
-            : directOnlyIceSession();
+            ? await this.#iceProvider.issue(binding).catch(() => directOnlyIceSession("unavailable", this.#directServerIceServers))
+            : directOnlyIceSession("disabled", this.#directServerIceServers);
         const expiry = setTimeout(() => {
             void this.revoke(binding.takeoverSessionId);
         }, Math.max(0, binding.expiresAt - Date.now()));
@@ -533,40 +535,6 @@ function privateHeaders(contentType) {
         "x-content-type-options": "nosniff",
         "permissions-policy": "camera=(), microphone=(), geolocation=()"
     };
-}
-function iceCredentialProviderFromEnvironment(env) {
-    const turnKeyId = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID?.trim();
-    const turnKeyApiToken = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN?.trim();
-    const coturnSharedSecret = env.MCP_HANDOFF_COTURN_SHARED_SECRET?.trim();
-    const coturnTurnUrls = env.MCP_HANDOFF_COTURN_TURN_URLS?.trim();
-    const coturnStunUrls = env.MCP_HANDOFF_COTURN_STUN_URLS?.trim();
-    const hasCloudflare = Boolean(turnKeyId || turnKeyApiToken);
-    const hasCoturn = Boolean(coturnSharedSecret || coturnTurnUrls || coturnStunUrls);
-    if (hasCloudflare && hasCoturn)
-        throw new Error("Multiple TURN providers are configured");
-    if (hasCloudflare) {
-        if (!turnKeyId || !turnKeyApiToken)
-            throw new Error("Cloudflare TURN configuration is incomplete");
-        return new CloudflareRealtimeTurnCredentialProvider({ turnKeyId, turnKeyApiToken });
-    }
-    if (hasCoturn) {
-        if (!coturnSharedSecret || !coturnTurnUrls)
-            throw new Error("coturn TURN configuration is incomplete");
-        const turnUrls = parseCommaSeparatedIceUrls(coturnTurnUrls);
-        const stunUrls = coturnStunUrls ? parseCommaSeparatedIceUrls(coturnStunUrls) : undefined;
-        return new CoturnRestTurnCredentialProvider({
-            turnUrls,
-            ...(stunUrls ? { stunUrls } : {}),
-            sharedSecret: coturnSharedSecret
-        });
-    }
-    return undefined;
-}
-function parseCommaSeparatedIceUrls(value) {
-    const values = value.split(",").map((entry) => entry.trim());
-    if (values.length < 1 || values.some((entry) => entry.length === 0))
-        throw new Error("TURN URL configuration is invalid");
-    return values;
 }
 function sameBinding(left, right) {
     return left.takeoverSessionId === right.takeoverSessionId

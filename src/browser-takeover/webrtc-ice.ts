@@ -76,6 +76,71 @@ export interface CoturnRestTurnCredentialProviderConfig {
   randomId?: () => string;
 }
 
+export const WEBRTC_RELAY_ENV_NAMES = [
+  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID",
+  "MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN",
+  "MCP_HANDOFF_COTURN_SHARED_SECRET",
+  "MCP_HANDOFF_COTURN_TURN_URLS",
+  "MCP_HANDOFF_COTURN_STUN_URLS"
+] as const;
+
+/**
+ * Deployment-owned relay configuration is resolved only inside Handoff. Browser/Window/Terminal
+ * consumers never select a provider or receive the long-lived relay credential material.
+ */
+export function webRtcIceCredentialProviderFromEnvironment(
+  env: NodeJS.ProcessEnv
+): WebRtcIceCredentialProvider | undefined {
+  const turnKeyId = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID?.trim();
+  const turnKeyApiToken = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN?.trim();
+  const coturnSharedSecret = env.MCP_HANDOFF_COTURN_SHARED_SECRET?.trim();
+  const coturnTurnUrls = env.MCP_HANDOFF_COTURN_TURN_URLS?.trim();
+  const coturnStunUrls = env.MCP_HANDOFF_COTURN_STUN_URLS?.trim();
+  const hasCloudflare = Boolean(turnKeyId || turnKeyApiToken);
+  const hasCoturn = Boolean(coturnSharedSecret || coturnTurnUrls || coturnStunUrls);
+
+  if (hasCloudflare && hasCoturn) {
+    throw new Error("Multiple TURN providers are configured");
+  }
+  if (hasCloudflare) {
+    if (!turnKeyId || !turnKeyApiToken) {
+      throw new Error("Cloudflare TURN configuration is incomplete");
+    }
+    return new CloudflareRealtimeTurnCredentialProvider({ turnKeyId, turnKeyApiToken });
+  }
+  if (hasCoturn) {
+    if (!coturnSharedSecret || !coturnTurnUrls) {
+      throw new Error("coturn TURN configuration is incomplete");
+    }
+    const turnUrls = parseCommaSeparatedIceUrls(coturnTurnUrls);
+    const stunUrls = coturnStunUrls ? parseCommaSeparatedIceUrls(coturnStunUrls) : undefined;
+    return new CoturnRestTurnCredentialProvider({
+      turnUrls,
+      ...(stunUrls ? { stunUrls } : {}),
+      sharedSecret: coturnSharedSecret
+    });
+  }
+  return undefined;
+}
+
+export function webRtcRelayEnvironmentConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  return WEBRTC_RELAY_ENV_NAMES.some((name) => Boolean(env[name]?.trim()));
+}
+
+/**
+ * Resolve the server-side direct discovery policy inside Handoff. The compatibility default keeps
+ * the already-reviewed Cloudflare STUN endpoint, while deployments can explicitly replace it with
+ * provider-neutral STUN/STUNS endpoints without changing any consumer API or relay provider.
+ */
+export function webRtcDirectDiscoveryIceServersFromEnvironment(
+  env: NodeJS.ProcessEnv
+): WebRtcIceServer[] {
+  const configured = env.MCP_HANDOFF_WEBRTC_DIRECT_STUN_URLS?.trim();
+  if (!configured) return [{ urls: CLOUDFLARE_STUN_URL }];
+  const urls = parseConfiguredIceUrls(parseCommaSeparatedIceUrls(configured), "stun");
+  return [{ urls: urls.length === 1 ? urls[0]! : urls }];
+}
+
 const CLOUDFLARE_TURN_ORIGIN = "https://rtc.live.cloudflare.com";
 const CLOUDFLARE_STUN_URL = "stun:stun.cloudflare.com:3478";
 const MAX_TURN_CREDENTIAL_TTL_SECONDS = 48 * 60 * 60;
@@ -300,14 +365,16 @@ export class CoturnRestTurnCredentialProvider implements WebRtcIceCredentialProv
   }
 }
 
-export function directOnlyIceSession(relay: WebRtcRelayAvailability = "disabled"): WebRtcPreparedIceSession {
+export function directOnlyIceSession(
+  relay: WebRtcRelayAvailability = "disabled",
+  serverIceServers: readonly WebRtcIceServer[] = [{ urls: CLOUDFLARE_STUN_URL }]
+): WebRtcPreparedIceSession {
   return {
-    // Keep the browser host-only: this client waits for ICE gathering rather than trickling, so a
-    // browser-side STUN timeout would directly delay takeover startup. The server gets one explicit
-    // STUN server to override werift's hidden third-party fallback while preserving direct-first
-    // ICE and the same Cloudflare trust boundary used by the optional TURN fallback.
+    // Keep the browser host-only. Server discovery is explicitly supplied by the Handoff-owned
+    // connectivity policy, so dependency defaults cannot silently choose a third party. The
+    // Cloudflare default above preserves the previously reviewed deployment behavior.
     browser: { iceServers: [], relay },
-    serverIceServers: [{ urls: CLOUDFLARE_STUN_URL }],
+    serverIceServers: cloneIceServers(serverIceServers),
     async revoke() {}
   };
 }
@@ -396,6 +463,14 @@ function parseCloudflareIceServers(value: unknown): IssuedCloudflareIceServers {
   }
   if (!hasTurn || turnUsernames.size === 0) throw new Error("TURN credential response is invalid");
   return { iceServers, turnUsernames: [...turnUsernames] };
+}
+
+function parseCommaSeparatedIceUrls(value: string): string[] {
+  const values = value.split(",").map((entry) => entry.trim());
+  if (values.length < 1 || values.some((entry) => entry.length === 0)) {
+    throw new Error("TURN URL configuration is invalid");
+  }
+  return values;
 }
 
 function parseConfiguredIceUrls(values: readonly string[], kind: "turn" | "stun", allowEmpty = false): string[] {

@@ -14,11 +14,11 @@ import {
 } from "werift";
 import type { TakeoverGrant } from "./session.js";
 import {
-  CloudflareRealtimeTurnCredentialProvider,
-  CoturnRestTurnCredentialProvider,
   cloneIceServers,
   directOnlyIceSession,
   relayCredentialFailureReason,
+  webRtcDirectDiscoveryIceServersFromEnvironment,
+  webRtcIceCredentialProviderFromEnvironment,
   type WebRtcBrowserIceConfiguration,
   type WebRtcIceCredentialProvider,
   type WebRtcPreparedIceSession,
@@ -261,6 +261,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
   private readonly diagnostics = new WebRtcDiagnosticsTracker();
   private readonly spawnProcess: typeof spawn;
   #iceCredentialProvider: WebRtcIceCredentialProvider | undefined;
+  readonly #directServerIceServers: ReturnType<typeof webRtcDirectDiscoveryIceServersFromEnvironment>;
 
   constructor(private readonly config: SpawnedWebRtcRuntimeProviderConfig) {
     if (!config.hostExecutable.trim() || !isAbsolute(config.hostExecutable)) {
@@ -270,7 +271,8 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
       throw new Error("WebRTC Linux display name must be a local X11 display such as :99");
     }
     this.spawnProcess = config.spawnProcess ?? spawn;
-    this.#iceCredentialProvider = iceCredentialProviderFromEnvironment(process.env);
+    this.#directServerIceServers = webRtcDirectDiscoveryIceServersFromEnvironment(process.env);
+    this.#iceCredentialProvider = webRtcIceCredentialProviderFromEnvironment(process.env);
   }
 
   async prepare(binding: WebRtcTakeoverRuntimeBinding): Promise<WebRtcBrowserIceConfiguration> {
@@ -299,7 +301,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
 
     let iceSession: WebRtcPreparedIceSession;
     if (!this.#iceCredentialProvider) {
-      iceSession = directOnlyIceSession("disabled");
+      iceSession = directOnlyIceSession("disabled", this.#directServerIceServers);
     } else {
       try {
         iceSession = await this.#iceCredentialProvider.issue(binding);
@@ -311,7 +313,7 @@ export class SpawnedWebRtcRuntimeProvider implements WebRtcTakeoverRuntimeProvid
           stage: "relay.credential.unavailable",
           reason: relayCredentialFailureReason(error)
         });
-        iceSession = directOnlyIceSession("unavailable");
+        iceSession = directOnlyIceSession("unavailable", this.#directServerIceServers);
       }
     }
     const delay = Math.max(0, binding.expiresAt - Date.now());
@@ -1058,46 +1060,6 @@ function runtimeSignalingState(value: string): WebRtcRuntimeSignalingState | und
     default:
       return undefined;
   }
-}
-
-function iceCredentialProviderFromEnvironment(env: NodeJS.ProcessEnv): WebRtcIceCredentialProvider | undefined {
-  const turnKeyId = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_ID?.trim();
-  const turnKeyApiToken = env.MCP_HANDOFF_CLOUDFLARE_TURN_KEY_API_TOKEN?.trim();
-  const coturnSharedSecret = env.MCP_HANDOFF_COTURN_SHARED_SECRET?.trim();
-  const coturnTurnUrls = env.MCP_HANDOFF_COTURN_TURN_URLS?.trim();
-  const coturnStunUrls = env.MCP_HANDOFF_COTURN_STUN_URLS?.trim();
-  const hasCloudflare = Boolean(turnKeyId || turnKeyApiToken);
-  const hasCoturn = Boolean(coturnSharedSecret || coturnTurnUrls || coturnStunUrls);
-  if (hasCloudflare && hasCoturn) {
-    throw new Error("Multiple TURN providers are configured");
-  }
-  if (hasCloudflare) {
-    if (!turnKeyId || !turnKeyApiToken) {
-      throw new Error("Cloudflare TURN configuration is incomplete");
-    }
-    return new CloudflareRealtimeTurnCredentialProvider({ turnKeyId, turnKeyApiToken });
-  }
-  if (hasCoturn) {
-    if (!coturnSharedSecret || !coturnTurnUrls) {
-      throw new Error("coturn TURN configuration is incomplete");
-    }
-    const turnUrls = parseCommaSeparatedIceUrls(coturnTurnUrls);
-    const stunUrls = coturnStunUrls ? parseCommaSeparatedIceUrls(coturnStunUrls) : undefined;
-    return new CoturnRestTurnCredentialProvider({
-      turnUrls,
-      ...(stunUrls ? { stunUrls } : {}),
-      sharedSecret: coturnSharedSecret
-    });
-  }
-  return undefined;
-}
-
-function parseCommaSeparatedIceUrls(value: string): string[] {
-  const values = value.split(",").map((entry) => entry.trim());
-  if (values.length < 1 || values.some((entry) => entry.length === 0)) {
-    throw new Error("TURN URL configuration is invalid");
-  }
-  return values;
 }
 
 function addBoundedLinuxAccessibilityEnvironment(target: NodeJS.ProcessEnv, source: NodeJS.ProcessEnv): void {

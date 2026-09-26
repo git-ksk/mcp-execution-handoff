@@ -315,6 +315,9 @@ release結果:
 
 ## v0.5.0 — Provider-Neutral Connectivity
 
+Canonical connectivity contract: [`docs/provider-neutral-connectivity.ja.md`](docs/provider-neutral-connectivity.ja.md)
+
+
 `v0.5.0` はboundedな `v0.4.5` authority/queue hardening gateの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
 
 目的は、WebRTC discovery / relay connectivityを **Handoff-ownedかつprovider-neutralなdeployment boundary** として確立することです。consumer-facing Browser / Window lifecycleは変えず、Human-control authorityも広げません。
