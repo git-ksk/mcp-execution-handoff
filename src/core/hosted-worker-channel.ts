@@ -35,9 +35,25 @@ export interface HostedWorkerControlPeer {
   close?(): void | Promise<void>;
 }
 
+export type HostedWorkerRouteInvalidationReason =
+  | "bind_delivery_failure"
+  | "explicit_revoke"
+  | "revoke_delivery_failure"
+  | "worker_disconnect";
+
+export interface HostedWorkerControlChannelHooks {
+  routesInvalidated?(
+    routes: readonly Readonly<HostedWorkerRouteLease>[],
+    reason: HostedWorkerRouteInvalidationReason
+  ): void | Promise<void>;
+}
+
 export class HostedWorkerControlChannelError extends Error {
   constructor(
-    public readonly code: "HOSTED_WORKER_CHANNEL_UNAVAILABLE" | "HOSTED_WORKER_CHANNEL_CLOSED",
+    public readonly code:
+      | "HOSTED_WORKER_CHANNEL_UNAVAILABLE"
+      | "HOSTED_WORKER_CHANNEL_CLOSED"
+      | "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED",
     message: string
   ) {
     super(message);
@@ -61,7 +77,8 @@ export class HostedWorkerControlChannel {
   private constructor(
     private readonly registry: HostedWorkerRegistry,
     authenticated: HostedWorkerRegistrationRequest,
-    private readonly peer: HostedWorkerControlPeer
+    private readonly peer: HostedWorkerControlPeer,
+    private readonly hooks: HostedWorkerControlChannelHooks = {}
   ) {
     this.#channelBinding = authenticated.channelBinding;
     this.#registration = this.registry.register(authenticated);
@@ -70,9 +87,10 @@ export class HostedWorkerControlChannel {
   static async open(
     registry: HostedWorkerRegistry,
     authenticated: HostedWorkerRegistrationRequest,
-    peer: HostedWorkerControlPeer
+    peer: HostedWorkerControlPeer,
+    hooks: HostedWorkerControlChannelHooks = {}
   ): Promise<HostedWorkerControlChannel> {
-    const channel = new HostedWorkerControlChannel(registry, authenticated, peer);
+    const channel = new HostedWorkerControlChannel(registry, authenticated, peer, hooks);
     try {
       await peer.send({
         version: HOSTED_WORKER_CONTROL_PROTOCOL_VERSION,
@@ -112,8 +130,18 @@ export class HostedWorkerControlChannel {
         workerGeneration: route.workerGeneration
       });
     } catch {
-      this.#fenceLocal();
+      const revoked = this.#fenceLocal();
+      const propagationFailed = !(await this.#notifyInvalidated(
+        revoked,
+        "bind_delivery_failure"
+      ));
       await this.#closePeerBestEffort();
+      if (propagationFailed) {
+        throw new HostedWorkerControlChannelError(
+          "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED",
+          "Hosted worker route invalidation propagation failed"
+        );
+      }
       throw new HostedWorkerControlChannelError(
         "HOSTED_WORKER_CHANNEL_UNAVAILABLE",
         "Hosted worker control bind delivery failed"
@@ -137,9 +165,12 @@ export class HostedWorkerControlChannel {
   async revokeIntervention(route: HostedWorkerRouteLease): Promise<void> {
     this.#assertOpen();
     this.assertCurrent(route);
-    // Fence local delivery before attempting remote notification. A failed notification can never
-    // leave the control plane believing that mutable routing authority still exists.
+    // Fence local delivery before attempting either propagation path. Neither an operator-surface
+    // callback failure nor a remote worker notification failure may restore routing authority.
     this.registry.releaseIntervention(route);
+    const propagationOk = await this.#notifyInvalidated([route], "explicit_revoke");
+
+    let deliveryFailed = false;
     try {
       await this.peer.send({
         version: HOSTED_WORKER_CONTROL_PROTOCOL_VERSION,
@@ -149,8 +180,19 @@ export class HostedWorkerControlChannel {
         workerGeneration: route.workerGeneration
       });
     } catch {
-      this.#fenceLocal();
+      deliveryFailed = true;
+      const additionallyRevoked = this.#fenceLocal();
+      await this.#notifyInvalidated(additionallyRevoked, "revoke_delivery_failure");
       await this.#closePeerBestEffort();
+    }
+
+    if (!propagationOk) {
+      throw new HostedWorkerControlChannelError(
+        "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED",
+        "Hosted worker route invalidation propagation failed"
+      );
+    }
+    if (deliveryFailed) {
       throw new HostedWorkerControlChannelError(
         "HOSTED_WORKER_CHANNEL_UNAVAILABLE",
         "Hosted worker control revoke delivery failed"
@@ -161,7 +203,14 @@ export class HostedWorkerControlChannel {
   async disconnect(): Promise<HostedWorkerRouteLease[]> {
     if (this.#closed) return [];
     const revoked = this.#fenceLocal();
+    const propagationOk = await this.#notifyInvalidated(revoked, "worker_disconnect");
     await this.#closePeerBestEffort();
+    if (!propagationOk) {
+      throw new HostedWorkerControlChannelError(
+        "HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED",
+        "Hosted worker route invalidation propagation failed"
+      );
+    }
     return revoked;
   }
 
@@ -173,6 +222,22 @@ export class HostedWorkerControlChannel {
       this.#registration.generation,
       this.#channelBinding
     );
+  }
+
+  async #notifyInvalidated(
+    routes: readonly HostedWorkerRouteLease[],
+    reason: HostedWorkerRouteInvalidationReason
+  ): Promise<boolean> {
+    if (routes.length === 0 || !this.hooks.routesInvalidated) return true;
+    try {
+      await this.hooks.routesInvalidated(
+        routes.map((route) => ({ ...route })),
+        reason
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async #closePeerBestEffort(): Promise<void> {

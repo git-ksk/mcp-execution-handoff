@@ -92,6 +92,19 @@ The binding is process-local coordination state, not durable recovery state. It 
 
 Frames are ephemeral and are never durable recovery/control state. Diagnostics expose only bounded counters/state and no session, intervention, principal, worker, credential, or frame content.
 
+## Revocation propagation
+
+`HostedWorkerControlChannel` may receive a bounded `routesInvalidated` hook that bridges hosted routing loss back into the existing operator/surface lifecycle without creating a second authority FSM.
+
+The ordering is fail-closed:
+
+1. local hosted route state is fenced first;
+2. the bounded invalidation callback is invoked with route identity/generation metadata and an enum reason;
+3. remote worker revoke/close notification proceeds independently;
+4. callback or transport failure is surfaced explicitly and never restores the fenced route.
+
+This covers explicit revoke, worker disconnect, bind-delivery failure, and revoke-delivery failure. The callback carries no frame, Human input, credential, cookie, target content, or provider secret.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:

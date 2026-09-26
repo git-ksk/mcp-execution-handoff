@@ -19,17 +19,19 @@ export class HostedWorkerControlChannelError extends Error {
 export class HostedWorkerControlChannel {
     registry;
     peer;
+    hooks;
     #registration;
     #channelBinding;
     #closed = false;
-    constructor(registry, authenticated, peer) {
+    constructor(registry, authenticated, peer, hooks = {}) {
         this.registry = registry;
         this.peer = peer;
+        this.hooks = hooks;
         this.#channelBinding = authenticated.channelBinding;
         this.#registration = this.registry.register(authenticated);
     }
-    static async open(registry, authenticated, peer) {
-        const channel = new HostedWorkerControlChannel(registry, authenticated, peer);
+    static async open(registry, authenticated, peer, hooks = {}) {
+        const channel = new HostedWorkerControlChannel(registry, authenticated, peer, hooks);
         try {
             await peer.send({
                 version: HOSTED_WORKER_CONTROL_PROTOCOL_VERSION,
@@ -64,8 +66,12 @@ export class HostedWorkerControlChannel {
             });
         }
         catch {
-            this.#fenceLocal();
+            const revoked = this.#fenceLocal();
+            const propagationFailed = !(await this.#notifyInvalidated(revoked, "bind_delivery_failure"));
             await this.#closePeerBestEffort();
+            if (propagationFailed) {
+                throw new HostedWorkerControlChannelError("HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED", "Hosted worker route invalidation propagation failed");
+            }
             throw new HostedWorkerControlChannelError("HOSTED_WORKER_CHANNEL_UNAVAILABLE", "Hosted worker control bind delivery failed");
         }
         return route;
@@ -81,9 +87,11 @@ export class HostedWorkerControlChannel {
     async revokeIntervention(route) {
         this.#assertOpen();
         this.assertCurrent(route);
-        // Fence local delivery before attempting remote notification. A failed notification can never
-        // leave the control plane believing that mutable routing authority still exists.
+        // Fence local delivery before attempting either propagation path. Neither an operator-surface
+        // callback failure nor a remote worker notification failure may restore routing authority.
         this.registry.releaseIntervention(route);
+        const propagationOk = await this.#notifyInvalidated([route], "explicit_revoke");
+        let deliveryFailed = false;
         try {
             await this.peer.send({
                 version: HOSTED_WORKER_CONTROL_PROTOCOL_VERSION,
@@ -94,8 +102,15 @@ export class HostedWorkerControlChannel {
             });
         }
         catch {
-            this.#fenceLocal();
+            deliveryFailed = true;
+            const additionallyRevoked = this.#fenceLocal();
+            await this.#notifyInvalidated(additionallyRevoked, "revoke_delivery_failure");
             await this.#closePeerBestEffort();
+        }
+        if (!propagationOk) {
+            throw new HostedWorkerControlChannelError("HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED", "Hosted worker route invalidation propagation failed");
+        }
+        if (deliveryFailed) {
             throw new HostedWorkerControlChannelError("HOSTED_WORKER_CHANNEL_UNAVAILABLE", "Hosted worker control revoke delivery failed");
         }
     }
@@ -103,7 +118,11 @@ export class HostedWorkerControlChannel {
         if (this.#closed)
             return [];
         const revoked = this.#fenceLocal();
+        const propagationOk = await this.#notifyInvalidated(revoked, "worker_disconnect");
         await this.#closePeerBestEffort();
+        if (!propagationOk) {
+            throw new HostedWorkerControlChannelError("HOSTED_WORKER_REVOCATION_PROPAGATION_FAILED", "Hosted worker route invalidation propagation failed");
+        }
         return revoked;
     }
     #fenceLocal() {
@@ -111,6 +130,17 @@ export class HostedWorkerControlChannel {
             return [];
         this.#closed = true;
         return this.registry.disconnect(this.#registration.workerId, this.#registration.generation, this.#channelBinding);
+    }
+    async #notifyInvalidated(routes, reason) {
+        if (routes.length === 0 || !this.hooks.routesInvalidated)
+            return true;
+        try {
+            await this.hooks.routesInvalidated(routes.map((route) => ({ ...route })), reason);
+            return true;
+        }
+        catch {
+            return false;
+        }
     }
     async #closePeerBestEffort() {
         try {

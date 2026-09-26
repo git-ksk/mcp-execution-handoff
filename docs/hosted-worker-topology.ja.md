@@ -92,6 +92,19 @@ bindingはprocess-local coordination stateでありdurable recovery stateでは�
 
 frameはephemeralでdurable recovery/control stateにはしません。diagnosticsはbounded counter/stateのみで、session / intervention / principal / worker / credential / frame contentを出しません。
 
+## Revocation propagation
+
+`HostedWorkerControlChannel` はboundedな `routesInvalidated` hookを受け取り、2つ目のauthority FSMを作らずにhosted routing lossを既存operator/surface lifecycleへ伝播できます。
+
+順序はfail-closedです。
+
+1. hosted routeのlocal stateを先にfence
+2. route identity / generation metadataとenum reasonだけを持つbounded callbackを呼ぶ
+3. remote workerへのrevoke / close通知は独立して進める
+4. callback / transport失敗は明示エラーとしてsurfacingし、fence済みrouteは復元しない
+
+explicit revoke、worker disconnect、bind delivery failure、revoke delivery failureを対象にします。callbackへframe、Human input、credential、cookie、target content、provider secretは入れません。
+
 ## 次のv0.6.0 slice
 
 残る#12 workはこのboundary上に積み上げます。
