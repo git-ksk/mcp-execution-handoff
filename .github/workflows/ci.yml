@@ -212,6 +212,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-audit
+      - name: Run outbound hosted worker topology acceptance
+        run: npm run accept:hosted-topology:loopback
       - name: Build Cloud Run-equivalent WSS acceptance image
         run: docker build -f experiments/websocket-cloud-run/Dockerfile -t handoff-wss-acceptance:local .
       - name: Run bounded WSS container acceptance

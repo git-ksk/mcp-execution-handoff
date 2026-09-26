@@ -134,6 +134,25 @@ Worker-originated frames use a generation-scoped `HostedWorkerFrameEnvelope`. Th
 
 The envelope never accepts worker identity, channel binding, provider identity, credential material, or target identity from peer data. A stale/revoked worker route or stale viewer generation therefore cannot deliver a frame even if a transport message arrives late.
 
+## Deployment references
+
+The same core contract supports three deployment shapes without changing authority semantics.
+
+1. **Local-only**
+   - control plane and execution worker may share one machine;
+   - the worker channel may use loopback or a local IPC adapter;
+   - browser/profile/application session state remains worker-owned.
+2. **Hosted control plane + local worker**
+   - public operator ingress / hosted control plane is separated from a private/local worker such as a Mac;
+   - the worker initiates an authenticated outbound channel and requires no inbound public listener;
+   - operator TTL, viewer generation, and worker generation remain independent.
+3. **Hosted control plane + remote/stateful browser worker**
+   - a stateful VM/container or equivalent worker owns the persistent browser/profile/application session;
+   - disposable control-plane instances do not persist profile/session/frame/input content;
+   - replacing a worker is never silent reassignment of a live intervention and requires fresh reissue/revalidation.
+
+`experiments/hosted-worker-topology/acceptance.mjs` deterministically exercises the outbound-worker shape over a real WebSocket, including registration, generation fencing, frame/input delivery, disconnect/reconnect, and revocation. It is not a substitute for physical Cloud Run / Mac / remote-browser acceptance.
+
 ## Next v0.6.0 slices
 
 The remaining #12 work builds on this boundary:
