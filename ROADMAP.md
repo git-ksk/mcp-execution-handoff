@@ -4,11 +4,11 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.4.5
+## Current baseline: v0.6.0
 
-`v0.4.5` is the current GitHub/source-release baseline. It preserves the v0.4.4 Target Surface and transport boundary while closing three bounded correctness gaps: external Human-surface creation/revocation is authority-exclusive and expiry is not treated as revoke proof (#255), WSS disconnect/revoke terminal intent immediately fences queued Human input (#256), and retained inbound WSS Human-input work is bounded by message count and aggregate bytes with fail-closed overflow (#257). No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
+v0.6.0 is the current GitHub/source-release baseline. It preserves the established Browser / bounded Window / bounded Terminal authority model while completing the Handoff-owned provider-neutral connectivity boundary (#19) and hosted control-plane / execution-worker topology (#12). Hosted worker registration/routing is principal-, epoch-, viewer-generation-, and worker-generation-fenced; Human input and frames remain ephemeral; recovery stays reissue/revalidate-only; and local macOS plus remote/stateful Linux Chromium reference deployments are physically accepted.
 
-The `v0.4.5 — Authority & Queue Hardening` gate (#255/#256/#257) is complete. The next planned feature release is `v0.5.0 — Provider-Neutral Connectivity` (#19).
+The v0.5.0 connectivity milestone is complete but has no standalone historical source tag because hosted-topology changes landed on main before release bookkeeping. The completed v0.5.0 contract is included in v0.6.0 rather than backfilling a misleading tag.
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -318,7 +318,7 @@ Exit criteria:
 Canonical connectivity contract: [`docs/provider-neutral-connectivity.md`](docs/provider-neutral-connectivity.md)
 
 
-`v0.5.0` remains the next planned feature source-release line after the bounded `v0.4.5` authority/queue hardening gate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
+Milestone v0.5.0 — Provider-Neutral Connectivity is complete and defines the provider-neutral connectivity contract consumed by v0.6.0. No standalone v0.5.0 source tag was backfilled after hosted-topology work had already landed; v0.6.0 is the next published source boundary.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
@@ -345,7 +345,7 @@ Exit criteria:
 
 ## v0.6.0 — Hosted Worker Topology
 
-`v0.6.0` is the planned hosted-architecture line after the v0.5.0 connectivity boundary. Milestone `v0.6.0 — Hosted Worker Topology` is owned by #12 and must consume, rather than redefine, the provider-neutral connectivity contract established by #19.
+v0.6.0 is the completed hosted-architecture source-release line after the v0.5.0 connectivity contract. Milestone v0.6.0 — Hosted Worker Topology is owned by #12 and consumes, rather than redefines, the provider-neutral connectivity contract established by #19.
 
 Goal: separate a hosted Handoff/MCP control plane from a stateful browser/desktop execution worker while preserving the same intervention, authority, reconnect, revoke, and semantic-verification contract.
 

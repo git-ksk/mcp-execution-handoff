@@ -4,9 +4,13 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
-- Keep revoked/exhausted managed Browser Handoff locators user-readable without reviving authority (#265): the already-issued top-level locator is retained only as a bounded principal-bound terminal tombstone that renders a content-free ended-session page, while stale APIs, WebSocket/input/fallback routes, wrong principals, and unknown locators remain fail-closed.
+## [0.6.0] - 2026-09-27
 
-- Make Browser Human takeover startup and failure states visible instead of presenting an unexplained blank surface (#263): WebRTC and managed WSS now share a prominent content-free operator status card before the first remote frame, hide it while live media is visible, restore it during reconnect/teardown, and provide bounded next-action guidance for unavailable, verifying, and closed states. Authority, transport selection, Human input, credentials, target identity, and semantic verification behavior are unchanged.
+- Make Browser Human takeover startup, failure, and terminal states explicit without widening authority (#263/#264/#265/#266/#268): WebRTC and managed WSS share bounded content-free status presentation, revoked/exhausted locators retain only a principal-bound terminal tombstone, and natural TTL expiry renders the same terminal surface without reviving stale input, fallback, or transport authority.
+
+- Complete the provider-neutral connectivity contract from milestone v0.5.0 / #19 (#277): Handoff owns direct-first STUN/TURN discovery and relay-provider selection, Cloudflare TURN and coturn use the same internal seam, conflicting or partial provider configuration fails closed, relay credentials/provider choice stay out of consumer APIs, model context, and durable state, and provider changes remain explicit deployment decisions. No standalone v0.5.0 source tag is backfilled because hosted-topology work landed on main before source-release bookkeeping; v0.6.0 includes the completed v0.5.0 contract without rewriting history.
+
+- Complete the v0.6.0 hosted worker topology (#12, #278-#291): authenticated outbound worker registration is principal/epoch/generation fenced; operator/viewer and worker lifetimes stay independent; latest-only frame delivery, no-replay Human input, route revocation, restart recovery, worker-origin frame provenance, and Done/Cancel/expiry lifecycle ordering fail closed. Deterministic real-WebSocket acceptance plus exact-revision hosted-control-plane + physical macOS worker and hosted-control-plane + remote/stateful Linux Chromium worker deployments passed; the remote worker had no external IP or inbound listener and retained worker-owned Chromium process/profile continuity across generation rotation. Physical Human UI remains separate product/consumer evidence.
 
 ## [0.4.5] - 2026-09-06
 

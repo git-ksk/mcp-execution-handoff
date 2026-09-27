@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-**v0.4.5** is the current GitHub/source-release baseline, tracked through milestone `v0.4.5 — Authority & Queue Hardening` (#16). It preserves the v0.4.4 Target Surface/transport boundary while completing #255/#256/#257: external Human-surface authority remains busy until provider cleanup is confirmed, WSS terminal intent fences queued Human input immediately, and retained inbound WSS Human-input work is bounded by message count/aggregate bytes with fail-closed overflow. The patch adds no Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, or npm-publication scope. #254/#227/#228 remain version-uncommitted non-blocking backlog; #19/#12 remain the next connectivity/hosted lines.
+**v0.6.0** is the current GitHub/source-release baseline. It incorporates the completed provider-neutral connectivity contract from milestone v0.5.0 — Provider-Neutral Connectivity (#19) and the completed hosted topology contract from milestone v0.6.0 — Hosted Worker Topology (#12). A standalone v0.5.0 source tag is intentionally not backfilled: hosted-topology changes had already landed on main before source-release bookkeeping, and creating a later v0.5.0 tag from that tree would misrepresent the release boundary. v0.6.0 preserves private: true; npm publication remains separate.
 
 ## Versioning policy
 
@@ -50,7 +50,7 @@ The final release PR should contain only release bookkeeping unless a blocker re
 4. Keep `private: true` for source-only releases.
 5. Run the complete release validation below from a clean install.
 
-For v0.4.5, the authoritative release gate is milestone #16 (`v0.4.5 — Authority & Queue Hardening`): #255, #256, and #257 are the exact release scope. #254/#227/#228 remain explicitly non-blocking version-uncommitted backlog. Historical v0.4.4 used milestone #15, v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
+For v0.6.0, the authoritative release gates are the completed v0.5.0 Provider-Neutral Connectivity milestone (#19) and v0.6.0 Hosted Worker Topology milestone (#12), including the exact-revision local-macOS-worker and remote/stateful-Linux-Chromium deployment acceptances. A standalone v0.5.0 source tag is intentionally skipped rather than backfilled after the hosted line landed. #254/#227/#228 remain explicitly non-blocking version-uncommitted backlog. Historical v0.4.5 used milestone #16, v0.4.4 used milestone #15, v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
 
 ## Release validation
 
