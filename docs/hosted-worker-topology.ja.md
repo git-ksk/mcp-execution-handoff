@@ -180,9 +180,9 @@ provider-neutral core implementationはcurrent candidate lineで完了してい�
 - intervention / epoch / worker generationへbindingしたworker-origin frame provenance
 - `npm run accept:hosted-topology:loopback` によるdeterministic real-WebSocket topology acceptance
 
-deterministic acceptanceは必要なevidenceですが、physical deployment gateの代替ではありません。Issue #12で残るのはexact revisionを記録した次のphysical acceptanceだけです。
+physical deployment gateはcurrent main 5ea155ddb50aa66dc01b70ba7888175327a25b5d で完了しています。
 
-1. inbound public worker listener不要の hosted control plane + private/local Mac/browser worker
-2. 同じauthority/recovery semanticsを使う hosted control plane + remote/stateful browser worker
+1. hosted control plane + private/local macOS worker: outbound-only authenticated WSSかつinbound public worker listenerなしでPASS
+2. hosted control plane + remote/stateful Linux Chromium worker: external IPなし、inbound firewall/listenerなし、worker-owned dedicated profile/process continuityをworker generation rotation越しに維持してPASS
 
-各runでexact Handoff/worker revisionを記録し、disconnect/reconnect、Done/Cancel/expiry revocation、stale generation拒否、Agent resume前のfresh consumer revalidationを証明します。
+両方のexact-revision runでdisconnect/reconnect generation fencing、hosted input/frame routing、stale worker/viewer rejection、fail-closed lifecycle-route revocation、Agent resume前のreconnect/reissue-only recoveryを確認済みです。physical Human UI interactionは別のproduct/consumer evidenceであり、hosted topology deployment gateから推定しません。

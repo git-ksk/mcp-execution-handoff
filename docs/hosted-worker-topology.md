@@ -180,9 +180,9 @@ The provider-neutral core implementation is complete on the current candidate li
 - worker-origin frame provenance bound to intervention/epoch/worker generation;
 - deterministic real-WebSocket topology acceptance via `npm run accept:hosted-topology:loopback`.
 
-The deterministic acceptance is necessary evidence but is not the physical deployment gate. Issue #12 remains open only for exact-revision physical acceptance of:
+The physical deployment gate is complete on current main 5ea155ddb50aa66dc01b70ba7888175327a25b5d.
 
-1. hosted control plane + private/local Mac/browser worker with no inbound public worker listener;
-2. hosted control plane + remote/stateful browser worker with the same authority/recovery semantics.
+1. hosted control plane + private/local macOS worker: PASS with outbound-only authenticated WSS and no inbound public worker listener;
+2. hosted control plane + remote/stateful Linux Chromium worker: PASS with no external IP, no inbound firewall/listener, dedicated worker-owned profile/process continuity across worker generation rotation, and bounded temporary infrastructure.
 
-Those runs must record the exact Handoff/worker revisions and prove disconnect/reconnect, Done/Cancel/expiry revocation, stale generation rejection, and fresh consumer revalidation before Agent resume.
+Both exact-revision runs cover disconnect/reconnect generation fencing, hosted input/frame routing, stale worker/viewer rejection, fail-closed lifecycle-route revocation, and reconnect/reissue-only recovery before Agent resume. Physical Human UI interaction remains separate product/consumer evidence and is not inferred from the hosted topology deployment gate.
