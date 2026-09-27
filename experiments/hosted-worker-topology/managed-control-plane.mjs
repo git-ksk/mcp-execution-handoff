@@ -22,7 +22,7 @@ const PORT = Number(process.env.PORT || "8080");
 const PRINCIPAL = "a".repeat(64);
 const INTERVENTION_ID = "managed-split-intervention";
 const EPOCH = 11;
-const WORKER_ID = "managed-split-mac-worker";
+const WORKER_ID = "managed-split-worker";
 const OPERATOR_CLIENT_A = "v".repeat(24);
 const OPERATOR_CLIENT_B = "w".repeat(24);
 
@@ -66,7 +66,11 @@ const result = {
   explicitRevokeObserved: false,
   revokedWorkerRouteRejected: false,
   recoveryRequiresReissue: false,
-  workerReconnectObserved: false
+  workerReconnectObserved: false,
+  remoteBrowserProcessPersistent: false,
+  remoteProfilePersistent: false,
+  remoteChromiumReady: false,
+  remoteWorkerLinux: false
 };
 
 function delay(ms) {
@@ -198,6 +202,33 @@ function createContext(ws) {
       pending.delete(message.id);
       if (message.kind === "ack") waiter.resolve(message.data);
       else waiter.reject();
+      return;
+    }
+
+    if (message.kind === "worker_evidence") {
+      const evidence = message.evidence;
+      const valid = evidence
+        && typeof evidence === "object"
+        && !Array.isArray(evidence)
+        && Object.keys(evidence).every((key) => [
+          "browserProcessPersistent",
+          "profilePersistent",
+          "chromiumReady",
+          "platform"
+        ].includes(key))
+        && typeof evidence.browserProcessPersistent === "boolean"
+        && typeof evidence.profilePersistent === "boolean"
+        && typeof evidence.chromiumReady === "boolean"
+        && evidence.platform === "linux";
+      if (!valid) {
+        sendJson(ws, { kind: "nack", id: message.id, code: "invalid_evidence" });
+        return;
+      }
+      result.remoteBrowserProcessPersistent = evidence.browserProcessPersistent;
+      result.remoteProfilePersistent = evidence.profilePersistent;
+      result.remoteChromiumReady = evidence.chromiumReady;
+      result.remoteWorkerLinux = true;
+      sendJson(ws, { kind: "ack", id: message.id });
       return;
     }
 
