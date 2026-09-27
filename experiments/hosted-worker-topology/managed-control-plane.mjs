@@ -3,7 +3,9 @@ import { createPublicKey, randomBytes, verify } from "node:crypto";
 import http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
+  ExecutionHandoffState,
   HostedHumanInputBridge,
+  HostedInterventionRouteLifecycle,
   HostedLatestFrameBridge,
   HostedOperatorBindingError,
   HostedWorkerControlChannel,
@@ -36,6 +38,25 @@ const expectedKey = createPublicKey({
   type: "spki"
 });
 const registry = new HostedWorkerRegistry();
+const lifecycleIds = [
+  INTERVENTION_ID,
+  "managed-cancel-intervention",
+  "managed-expiry-intervention"
+];
+let lifecycleIdIndex = 0;
+const lifecycleState = new ExecutionHandoffState(
+  Date.now,
+  () => lifecycleIds[lifecycleIdIndex++] || "managed-unexpected-intervention"
+);
+for (let index = 0; index < EPOCH - 1; index += 1) lifecycleState.advanceResourceEpoch();
+const initialLifecycle = lifecycleState.begin({
+  reason: "managed_hosted_acceptance",
+  resumePolicy: "revalidate"
+});
+assert.equal(initialLifecycle.id, INTERVENTION_ID);
+assert.equal(initialLifecycle.epoch, EPOCH);
+lifecycleState.claimHuman(initialLifecycle.id);
+
 const operatorSessions = new TakeoverSessionManager(
   120_000,
   Date.now,
@@ -67,6 +88,11 @@ const result = {
   revokedWorkerRouteRejected: false,
   recoveryRequiresReissue: false,
   workerReconnectObserved: false,
+  doneRouteRevoked: false,
+  cancelRouteRevoked: false,
+  expiryRouteRevoked: false,
+  freshAgentRevalidationRequired: false,
+  expiryFreshAgentRevalidationRequired: false,
   remoteBrowserProcessPersistent: false,
   remoteProfilePersistent: false,
   remoteChromiumReady: false,
@@ -427,10 +453,105 @@ async function runGenerationTwo(context) {
   await context.sendRequest("request_frame", { interventionId: INTERVENTION_ID, epoch: EPOCH, marker: 2 });
   await waitFor("second frame", () => result.framesDelivered >= 2);
 
-  await channel.revokeIntervention(route);
+  const doneLifecycle = new HostedInterventionRouteLifecycle(
+    lifecycleState,
+    channel,
+    freshBinding
+  );
+  const verifyingDone = await doneLifecycle.markHumanDone();
+  result.doneRouteRevoked =
+    verifyingDone.status === "verifying" &&
+    lifecycleState.getAuthority() === "none";
+  assert.equal(result.doneRouteRevoked, true);
+
   const probe = await context.sendRequest("probe_revoked", { interventionId: INTERVENTION_ID, epoch: EPOCH });
   result.revokedWorkerRouteRejected = probe?.rejected === true;
   assert.equal(result.revokedWorkerRouteRejected, true);
+
+  try {
+    lifecycleState.resumeAgent(verifyingDone.id);
+  } catch {
+    result.freshAgentRevalidationRequired = true;
+  }
+  assert.equal(result.freshAgentRevalidationRequired, true);
+  const readyAfterDone = lifecycleState.markVerified(verifyingDone.id);
+  lifecycleState.resumeAgent(readyAfterDone.id);
+
+  const cancelStarted = lifecycleState.begin({
+    reason: "managed_hosted_acceptance",
+    resumePolicy: "never_replay"
+  });
+  const cancelHuman = lifecycleState.claimHuman(cancelStarted.id);
+  const cancelRoute = await channel.bindIntervention({
+    interventionId: cancelHuman.id,
+    epoch: cancelHuman.epoch,
+    principalBinding: PRINCIPAL
+  });
+  const cancelBinding = bindHostedOperatorSession({
+    sessionId: "managed-cancel-operator",
+    interventionId: cancelHuman.id,
+    epoch: cancelHuman.epoch,
+    principalBinding: PRINCIPAL,
+    expiresAt: Date.now() + 60_000,
+    viewerGeneration: 1
+  }, cancelRoute, registry);
+  await new HostedInterventionRouteLifecycle(
+    lifecycleState,
+    channel,
+    cancelBinding
+  ).cancelHuman();
+  const cancelProbe = await context.sendRequest("probe_revoked", {
+    interventionId: cancelHuman.id,
+    epoch: cancelHuman.epoch
+  });
+  result.cancelRouteRevoked =
+    cancelProbe?.rejected === true &&
+    lifecycleState.getAuthority() === "agent";
+  assert.equal(result.cancelRouteRevoked, true);
+
+  const expiryStarted = lifecycleState.begin({
+    reason: "managed_hosted_acceptance",
+    resumePolicy: "revalidate"
+  });
+  const expiryHuman = lifecycleState.claimHuman(expiryStarted.id);
+  const expiryRoute = await channel.bindIntervention({
+    interventionId: expiryHuman.id,
+    epoch: expiryHuman.epoch,
+    principalBinding: PRINCIPAL
+  });
+  const expiryAt = Date.now() + 60_000;
+  const expiryBinding = bindHostedOperatorSession({
+    sessionId: "managed-expiry-operator",
+    interventionId: expiryHuman.id,
+    epoch: expiryHuman.epoch,
+    principalBinding: PRINCIPAL,
+    expiresAt: expiryAt,
+    viewerGeneration: 1
+  }, expiryRoute, registry);
+  const verifyingExpiry = await new HostedInterventionRouteLifecycle(
+    lifecycleState,
+    channel,
+    expiryBinding,
+    () => expiryAt
+  ).expireOperatorSession();
+  const expiryProbe = await context.sendRequest("probe_revoked", {
+    interventionId: expiryHuman.id,
+    epoch: expiryHuman.epoch
+  });
+  result.expiryRouteRevoked =
+    expiryProbe?.rejected === true &&
+    verifyingExpiry.status === "verifying" &&
+    lifecycleState.getAuthority() === "none";
+  assert.equal(result.expiryRouteRevoked, true);
+
+  try {
+    lifecycleState.resumeAgent(verifyingExpiry.id);
+  } catch {
+    result.expiryFreshAgentRevalidationRequired = true;
+  }
+  assert.equal(result.expiryFreshAgentRevalidationRequired, true);
+  const readyAfterExpiry = lifecycleState.markVerified(verifyingExpiry.id);
+  lifecycleState.resumeAgent(readyAfterExpiry.id);
 
   const recovery = recoverHostedControlPlane({
     version: 1,

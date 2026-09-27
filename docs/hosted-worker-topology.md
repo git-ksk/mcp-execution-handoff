@@ -128,6 +128,18 @@ Worker identity/generation, authenticated channel binding, operator session id/v
 
 Worker/principal identity remains authenticated-channel context rather than peer-supplied message data.
 
+## Lifecycle termination ordering
+
+`HostedInterventionRouteLifecycle` composes the canonical `ExecutionHandoffState` with one hosted operator/worker binding. It is an ordering helper, not another authority FSM.
+
+For every terminal Human-control path, hosted mutation routing is revoked **before** the canonical lifecycle may advance:
+
+- **Done:** revoke the hosted route, then enter `verifying`; Human Done is not semantic success and Agent authority remains unavailable until explicit consumer verification.
+- **Cancel:** revoke the hosted route, then cancel the canonical intervention; Agent authority is restored only after successful hosted revocation.
+- **Operator-session expiry:** revoke the hosted route, then enter `verifying`; expiry never attests semantic success and still requires fresh verification before Agent resume.
+
+If worker revoke delivery or invalidation propagation fails, the lifecycle transition is not performed. The canonical state therefore remains Human-active and Agent authority stays suspended even though local hosted route state has already been fenced. This is deliberately fail-closed.
+
 ## Worker-origin frame provenance
 
 Worker-originated frames use a generation-scoped `HostedWorkerFrameEnvelope`. The worker-side route gate may create an envelope only for a currently bound intervention/epoch on its authenticated worker generation. The control-plane `HostedWorkerFrameIngress` then independently compares the envelope with the current operator/worker binding before forwarding it to the latest-only frame bridge.
@@ -162,6 +174,7 @@ The provider-neutral core implementation is complete on the current candidate li
 - independent operator-session TTL, viewer generation, and worker connection generation;
 - latest-only frame/backpressure semantics with no stale-frame queue;
 - fail-closed route revocation propagation on explicit revoke, disconnect, and delivery failure;
+- Done / Cancel / operator-session expiry ordering that revokes hosted routing before canonical lifecycle advancement;
 - recovery projected only as `reissue_and_revalidate` hints with no stale authority restoration;
 - generation-fenced Human input with no automatic replay;
 - worker-origin frame provenance bound to intervention/epoch/worker generation;

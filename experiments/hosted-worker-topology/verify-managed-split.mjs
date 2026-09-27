@@ -19,6 +19,11 @@ const required = [
   "revokedWorkerRouteRejected",
   "recoveryRequiresReissue",
   "workerReconnectObserved",
+  "doneRouteRevoked",
+  "cancelRouteRevoked",
+  "expiryRouteRevoked",
+  "freshAgentRevalidationRequired",
+  "expiryFreshAgentRevalidationRequired",
   "acceptanceDone"
 ];
 const failures = [];

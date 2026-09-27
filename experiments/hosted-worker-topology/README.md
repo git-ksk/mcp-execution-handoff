@@ -45,7 +45,7 @@ Run:
 
     npm run accept:hosted-topology:managed-local-worker
 
-The harness builds the exact Git revision, deploys a one-instance acceptance-only Cloud Run service, runs the macOS worker, verifies worker generation rotation, Human input, worker-origin frame delivery, stale worker/viewer rejection, explicit revoke and reissue-only recovery, then deletes the temporary Cloud Run service and exact acceptance image.
+The harness builds the exact Git revision, deploys a one-instance acceptance-only Cloud Run service, runs the macOS worker, verifies worker generation rotation, Human input, worker-origin frame delivery, stale worker/viewer rejection, Done/Cancel/operator-session-expiry route fencing, mandatory fresh verification before Agent resume after Done/expiry, and reissue-only recovery, then deletes the temporary Cloud Run service and exact acceptance image.
 
 Success ends with:
 
@@ -58,7 +58,7 @@ This is real hosted-control-plane + physical-Mac outbound-worker evidence. It st
 
 The remote/stateful gate places the Handoff control plane on a temporary Cloud Run service and a Chromium-owning worker on a temporary GCE VM with **no external IP**. A temporary Cloud NAT supplies outbound-only Internet access; the worker publishes no container port and initiates only the authenticated WSS channel to the control plane.
 
-The worker owns a dedicated Chromium profile on VM-local storage and keeps the same Chromium process/profile alive while the hosted worker channel disconnects and reconnects from generation 1 to generation 2. The worker reports only content-free booleans proving browser-process continuity, profile-marker continuity, Chromium readiness, and Linux worker shape.
+The worker owns a dedicated Chromium profile on VM-local storage and keeps the same Chromium process/profile alive while the hosted worker channel disconnects and reconnects from generation 1 to generation 2. The same managed control-plane harness also verifies Done/Cancel/operator-session-expiry route fencing and mandatory fresh verification before Agent resume after Done/expiry. The worker reports only content-free booleans proving browser-process continuity, profile-marker continuity, Chromium readiness, and Linux worker shape.
 
 Run:
 
