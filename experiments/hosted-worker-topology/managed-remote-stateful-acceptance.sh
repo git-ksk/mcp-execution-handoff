@@ -15,8 +15,12 @@ RUN_SUFFIX="${HANDOFF_MANAGED_REMOTE_RUN_SUFFIX:-$$}"
 
 SERVICE="handoff-remote-cp-${REVISION:0:8}-${RUN_SUFFIX}"
 VM="handoff-remote-worker-${REVISION:0:8}-${RUN_SUFFIX}"
+NETWORK="handoff-remote-net-${REVISION:0:8}-${RUN_SUFFIX}"
+SUBNET="handoff-remote-subnet-${REVISION:0:8}-${RUN_SUFFIX}"
 ROUTER="handoff-remote-router-${REVISION:0:8}-${RUN_SUFFIX}"
 NAT="handoff-remote-nat-${REVISION:0:8}-${RUN_SUFFIX}"
+SA_NAME="handoff-rw-${REVISION:0:8}-${RUN_SUFFIX:0:8}"
+SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
 CONTROL_IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/mcp-execution-handoff-remote-control:${REVISION}-${RUN_SUFFIX}"
 WORKER_IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/mcp-execution-handoff-remote-worker:${REVISION}-${RUN_SUFFIX}"
 
@@ -27,8 +31,12 @@ PUBLIC_KEY_FILE="$TMP/worker-public.txt"
 CONTEXT="$TMP/context"
 URL=""
 VM_CREATED=0
+NETWORK_CREATED=0
+SUBNET_CREATED=0
 ROUTER_CREATED=0
 NAT_CREATED=0
+SA_CREATED=0
+AR_BINDING_CREATED=0
 
 cleanup() {
   set +e
@@ -44,6 +52,18 @@ cleanup() {
   if [[ "$ROUTER_CREATED" == "1" ]]; then
     gcloud compute routers delete "$ROUTER" --project "$PROJECT" --region "$REGION" --quiet >/dev/null 2>&1
   fi
+  if [[ "$SUBNET_CREATED" == "1" ]]; then
+    gcloud compute networks subnets delete "$SUBNET" --project "$PROJECT" --region "$REGION" --quiet >/dev/null 2>&1
+  fi
+  if [[ "$NETWORK_CREATED" == "1" ]]; then
+    gcloud compute networks delete "$NETWORK" --project "$PROJECT" --quiet >/dev/null 2>&1
+  fi
+  if [[ "$AR_BINDING_CREATED" == "1" ]]; then
+    gcloud artifacts repositories remove-iam-policy-binding "$REPOSITORY" --project "$PROJECT" --location "$REGION" --member "serviceAccount:$SA_EMAIL" --role roles/artifactregistry.reader --quiet >/dev/null 2>&1
+  fi
+  if [[ "$SA_CREATED" == "1" ]]; then
+    gcloud iam service-accounts delete "$SA_EMAIL" --project "$PROJECT" --quiet >/dev/null 2>&1
+  fi
   gcloud artifacts docker images delete "$CONTROL_IMAGE" --project "$PROJECT" --quiet >/dev/null 2>&1
   gcloud artifacts docker images delete "$WORKER_IMAGE" --project "$PROJECT" --quiet >/dev/null 2>&1
   rm -rf "$TMP"
@@ -51,7 +71,7 @@ cleanup() {
 trap cleanup EXIT
 
 gcloud artifacts repositories describe "$REPOSITORY" --project "$PROJECT" --location "$REGION" >/dev/null
-for resource in "$SERVICE" "$VM" "$ROUTER"; do
+for resource in "$SERVICE" "$VM" "$NETWORK" "$ROUTER"; do
   case "$resource" in
     "$SERVICE")
       if gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" >/dev/null 2>&1; then
@@ -61,6 +81,11 @@ for resource in "$SERVICE" "$VM" "$ROUTER"; do
     "$VM")
       if gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" >/dev/null 2>&1; then
         echo "refusing to overwrite existing acceptance VM" >&2; exit 1
+      fi
+      ;;
+    "$NETWORK")
+      if gcloud compute networks describe "$NETWORK" --project "$PROJECT" >/dev/null 2>&1; then
+        echo "refusing to overwrite existing acceptance network" >&2; exit 1
       fi
       ;;
     "$ROUTER")
@@ -109,13 +134,25 @@ for _ in $(seq 1 90); do
 done
 [[ "$READY" == "1" ]] || { echo "managed remote control plane did not become ready" >&2; exit 1; }
 
-gcloud compute routers create "$ROUTER"   --project "$PROJECT"   --region "$REGION"   --network default   --quiet >/dev/null
+gcloud iam service-accounts create "$SA_NAME" --project "$PROJECT" --display-name "Ephemeral Handoff remote acceptance worker" --quiet >/dev/null
+SA_CREATED=1
+
+gcloud artifacts repositories add-iam-policy-binding "$REPOSITORY" --project "$PROJECT" --location "$REGION" --member "serviceAccount:$SA_EMAIL" --role roles/artifactregistry.reader --quiet >/dev/null
+AR_BINDING_CREATED=1
+
+gcloud compute networks create "$NETWORK" --project "$PROJECT" --subnet-mode custom --quiet >/dev/null
+NETWORK_CREATED=1
+
+gcloud compute networks subnets create "$SUBNET" --project "$PROJECT" --network "$NETWORK" --region "$REGION" --range 10.240.0.0/28 --quiet >/dev/null
+SUBNET_CREATED=1
+
+gcloud compute routers create "$ROUTER" --project "$PROJECT" --region "$REGION" --network "$NETWORK" --quiet >/dev/null
 ROUTER_CREATED=1
 
-gcloud compute routers nats create "$NAT"   --project "$PROJECT"   --router "$ROUTER"   --region "$REGION"   --nat-all-subnet-ip-ranges   --auto-allocate-nat-external-ips   --quiet >/dev/null
+gcloud compute routers nats create "$NAT" --project "$PROJECT" --router "$ROUTER" --region "$REGION" --nat-custom-subnet-ip-ranges "$SUBNET" --auto-allocate-nat-external-ips --quiet >/dev/null
 NAT_CREATED=1
 
-gcloud compute instances create "$VM"   --project "$PROJECT"   --zone "$ZONE"   --machine-type e2-small   --network default   --no-address   --image-family debian-12   --image-project debian-cloud   --boot-disk-size 20GB   --scopes cloud-platform   --metadata "handoff-control-url=$URL,handoff-revision=$REVISION,handoff-worker-image=$WORKER_IMAGE"   --metadata-from-file "startup-script=$CONTEXT/experiments/hosted-worker-topology/gce-remote-worker-startup.sh,handoff-private-key-b64=$PRIVATE_KEY_B64_FILE"   --quiet >/dev/null
+gcloud compute instances create "$VM"   --project "$PROJECT"   --zone "$ZONE"   --machine-type e2-small   --network "$NETWORK"   --subnet "$SUBNET"   --no-address   --image-family debian-12   --image-project debian-cloud   --boot-disk-size 20GB   --service-account "$SA_EMAIL"   --scopes cloud-platform   --metadata "handoff-control-url=$URL,handoff-revision=$REVISION,handoff-worker-image=$WORKER_IMAGE"   --metadata-from-file "startup-script=$CONTEXT/experiments/hosted-worker-topology/gce-remote-worker-startup.sh,handoff-private-key-b64=$PRIVATE_KEY_B64_FILE"   --quiet >/dev/null
 VM_CREATED=1
 
 EXTERNAL_IP="$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || true)"
