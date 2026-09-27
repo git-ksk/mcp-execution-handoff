@@ -6,11 +6,11 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.4.5
+## 現在のbaseline: v0.5.0
 
-`v0.4.5` が現在のGitHub/source-release baselineです。v0.4.4のTarget Surface / transport boundaryを維持したまま、3つのbounded correctness gapを閉じました。external Human surfaceの作成/revokeをauthority-exclusiveにしexpiryをrevoke確認として扱わず (#255)、WSS disconnect/revokeのterminal intent時点でqueued Human inputを即時fenceし (#256)、WSS inbound Human-input backlogをmessage件数/aggregate bytesでbounded化してoverflowをfail closedにします (#257)。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
+`v0.5.0` が現在のGitHub/source-release baselineです。v0.4.5 authority/queue hardeningを維持し、#19のprovider-neutral connectivity contractを完了しました。direct discovery、relay provider resolution、short-lived relay credential、bounded diagnostics、fail-closed provider configurationはHandoffが所有し、consumerはprovider-blindのままです。Cloudflare Realtime TURNとcoturnは同じinternal seamの実装です。Target Surface、Desktop authority、virtual/remote backend、consumer semantic responsibility、npm publicationのscopeは広げません。
 
-`v0.4.5 — Authority & Queue Hardening` gate (#255/#256/#257) は完了しました。次のplanned feature releaseは `v0.5.0 — Provider-Neutral Connectivity` (#19) です。
+`v0.5.0 — Provider-Neutral Connectivity` gate (#19) は完了しました。次のplanned feature releaseは `v0.6.0 — Hosted Worker Topology` (#12) です。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
@@ -75,7 +75,7 @@ v0.1.0以降の検証では、実consumer evidenceに基づくconsumer-facing Ha
 | #228 | Host Parity Backlog — Linux successor lineage | **OPEN / version未確定。** Linux-native successor-window lineage parityの将来work。現行Linux exact-window supportはblockしない。 |
 | #254 | Recovery Integration Backlog — version未確定 | **OPEN / non-blockingとして分類。** stale authority/action replayなしで、consumer-owned target/session reconstruction-required hookをprovider-neutralに追加する。process/profile/deploy ownershipはconsumer側のまま。 |
 | #125 | Authority Research — Desktop Escalation | #211または別physical workflowでbounded Window/successor authority不足が証明された場合だけbroader explicit Human-only Desktop Handoffを設計。Windowからのsilent fallbackは禁止。 |
-| #19 | v0.5.0 provider-neutral connectivity | 既存Cloudflare/coturn seamを土台に、Handoff-owned provider-neutral relay/connectivity設定を仕上げる。 |
+| #19 | v0.5.0 provider-neutral connectivity | **完了 / v0.5.0 contract。** direct STUN policy、relay provider選択、credential、failure handling、bounded diagnosticsをHandoffが一元所有し、Cloudflare/coturnを同じinternal seamで扱いconsumerをprovider-blindに維持。 |
 | #12 | v0.6.0 hosted topology | bounded durable stateとoutbound worker connectivityを持つprovider-neutral hosted control plane + stateful worker topologyを定義。 |
 
 ## Product Readiness — 独立したcross-cutting track
@@ -318,7 +318,7 @@ release結果:
 Canonical connectivity contract: [`docs/provider-neutral-connectivity.ja.md`](docs/provider-neutral-connectivity.ja.md)
 
 
-`v0.5.0` はboundedな `v0.4.5` authority/queue hardening gateの次に予定するfeature source release lineです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
+`v0.5.0` はboundedな `v0.4.5` authority/queue hardening gateの次に置く完了済みfeature source releaseです。milestone `v0.5.0 — Provider-Neutral Connectivity` は意図的にscopeを絞り、#19が所有します。
 
 目的は、WebRTC discovery / relay connectivityを **Handoff-ownedかつprovider-neutralなdeployment boundary** として確立することです。consumer-facing Browser / Window lifecycleは変えず、Human-control authorityも広げません。
 

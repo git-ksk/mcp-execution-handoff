@@ -6,7 +6,7 @@
 
 MCPで動く処理の途中でHumanによる手動操作が必要になったとき、Agentの実行を安全に止めて一時的にHumanへ権限を移し、明示的な検証とpolicy確認を通過した場合だけ処理を再開するための、小さなTypeScript runtimeです。
 
-**Status:** 再利用可能なupstreamとして検証済みです。`v0.4.2` が現在のGitHub/source release baselineで、v0.4.1のDesktop Session / Display Backend boundaryを維持しつつ、credential-safe external Human surfaceのexpiry処理を修正し、staleなcached locatorをactiveとして再利用しないようにします。このpatchでTarget Surface、Desktop authority、OS support、transport provider、Browser/Terminal semanticsは広げません。`v0.1.0` は最初のsource releaseです。npm packageは引き続き `private: true` で、npmには公開していません。
+**Status:** 再利用可能なupstreamとして検証済みです。`v0.5.0` が現在のGitHub/source release baselineです。#19のprovider-neutral WebRTC connectivity boundaryを完了し、direct discovery / relay policy / relay credentialはHandoffが所有します。Cloudflare TURNとcoturnは同じinternal provider seamのdeployment実装で、consumerはprovider選択やrelay credentialを扱いません。Browser / bounded Window / Terminal-PTYのauthority、generation、revoke、no-replay contractは維持します。npm packageは引き続き `private: true` で、npmには公開していません。
 
 ## このプロジェクトが必要な理由
 
@@ -280,7 +280,7 @@ npm audit --audit-level=moderate
 - authority / epoch / ownership / checkpoint / takeover lease / capability / CSP / replay invariantをdeterministic testで維持
 - 両consumerがこのrepositoryのimmutable commitをpinし、clean-install CIを通過
 
-このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.4.2` が現在の **GitHub/source release only** baselineです。first-class Browser / bounded OS Window / bounded Terminal-PTYとv0.4.1のDesktop Session / Display Backend boundaryを維持し、credential-safe external Human surfaceのexpiry処理を修正します。expired cached locatorはactiveとして返さず、matching retryは明示的に失敗して別のfresh `begin()` を要求し、cleanupでHuman/Agent authorityを復活させたりHuman inputをreplayしたりしません。新しいTarget Surface、Desktop authority、OS support、transport provider、virtual/remote backend、public package subpath、Browser/Terminal semantic claimは追加しません。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
+このrepositoryをExecution Handoffのupstream source of truthとして扱います。`v0.5.0` が現在の **GitHub/source release only** baselineです。first-class Browser / bounded OS Window / bounded Terminal-PTYを維持しつつ、#19のprovider-neutral WebRTC connectivity contractを追加します。direct discovery / relay policy / provider credentialはHandoff-ownedで、Cloudflare TURNとcoturnは同じbounded internal seamのdeployment実装です。consumer/model/durable stateへprovider選択やrelay credentialを露出せず、conflicting provider設定はfail closedです。新しいTarget Surface、Desktop authority、virtual/remote backend、consumer semantic responsibilityは追加しません。npm publishは別判断のままで、`private: true` を維持しています。詳細は [リリース手順](RELEASING.ja.md) を参照してください。
 
 ## License
 
