@@ -6,11 +6,11 @@
 
 このロードマップはリリース日程ではなく、プロダクトと公開contractの方向性、および各milestoneの完了条件を示します。必要に応じてpre-1.0 versionを追加します。`0.9` の次が必ず `1.0` である必要もありません。
 
-## 現在のbaseline: v0.4.5
+## 現在のbaseline: v0.6.0
 
-`v0.4.5` が現在のGitHub/source-release baselineです。v0.4.4のTarget Surface / transport boundaryを維持したまま、3つのbounded correctness gapを閉じました。external Human surfaceの作成/revokeをauthority-exclusiveにしexpiryをrevoke確認として扱わず (#255)、WSS disconnect/revokeのterminal intent時点でqueued Human inputを即時fenceし (#256)、WSS inbound Human-input backlogをmessage件数/aggregate bytesでbounded化してoverflowをfail closedにします (#257)。Target Surface、Desktop authority、OS support、transport provider、Browser/Terminal semantics、virtual/remote backend、physical dynamic resizeのscopeは広げません。
+v0.6.0 が現在のGitHub/source-release baselineです。既存Browser / bounded Window / bounded Terminalのauthority modelを維持しつつ、Handoff-owned provider-neutral connectivity boundary (#19) とhosted control-plane / execution-worker topology (#12) を完了しました。hosted worker registration/routingはprincipal / epoch / viewer generation / worker generationへfenceされ、Human input / frameはephemeralのまま、recoveryはreissue/revalidate-onlyです。local macOSとremote/stateful Linux Chromiumのreference deploymentもphysical acceptance済みです。
 
-`v0.4.5 — Authority & Queue Hardening` gate (#255/#256/#257) は完了しました。次のplanned feature releaseは `v0.5.0 — Provider-Neutral Connectivity` (#19) です。
+v0.5.0 connectivity milestoneはcompleteですが、standalone historical source tagは作りません。hosted topology変更がrelease bookkeepingより先に main へ入ったため、誤ったrelease boundaryをbackfillせず、completedなv0.5.0 contractをv0.6.0へ含めます。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 
