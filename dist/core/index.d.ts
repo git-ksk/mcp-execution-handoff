@@ -13,4 +13,5 @@ export * from "./hosted-operator-binding.js";
 export * from "./hosted-latest-frame-bridge.js";
 export * from "./hosted-recovery.js";
 export * from "./hosted-worker-data.js";
+export * from "./hosted-lifecycle-route.js";
 //# sourceMappingURL=index.d.ts.map

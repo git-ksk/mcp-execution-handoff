@@ -128,6 +128,18 @@ worker identity / generation、authenticated channel binding、operator session 
 
 worker/principal identityはpeer messageから受け取らず、authenticated channel contextのままです。
 
+## Lifecycle termination ordering
+
+`HostedInterventionRouteLifecycle` はcanonical `ExecutionHandoffState` と1つのhosted operator/worker bindingを合成します。別のauthority FSMではなく、順序保証だけを追加するhelperです。
+
+Human-controlを終端する各pathでは、canonical lifecycleを進める**前に**hosted mutation routeをrevokeします。
+
+- **Done:** hosted routeをrevokeしてから `verifying` へ移る。Human Doneはsemantic successではなく、明示的なconsumer verificationなしにAgent authorityは戻らない。
+- **Cancel:** hosted routeをrevokeしてからcanonical interventionをcancelする。hosted revoke成功前にはAgent authorityを復元しない。
+- **Operator-session expiry:** hosted routeをrevokeしてから `verifying` へ移る。expiryはsemantic successを証明せず、Agent resume前にfresh verificationが必要。
+
+worker revoke deliveryまたはinvalidation propagationに失敗した場合、lifecycle transitionは実行しません。local hosted routeがすでにfenceされていてもcanonical stateはHuman-activeのまま残り、Agent authorityをsuspendし続けます。意図したfail-closed動作です。
+
 ## Worker-origin frame provenance
 
 worker-origin frameはgeneration-scopedな `HostedWorkerFrameEnvelope` を使います。worker側route gateはauthenticated worker generation上のcurrent intervention / epochにだけenvelopeを作れます。control-plane側 `HostedWorkerFrameIngress` でもcurrent operator/worker bindingと独立照合してからlatest-only frame bridgeへ渡します。
@@ -162,6 +174,7 @@ provider-neutral core implementationはcurrent candidate lineで完了してい�
 - operator-session TTL / viewer generation / worker connection generationの独立性
 - stale frameをqueueしないlatest-only frame / backpressure
 - explicit revoke / disconnect / delivery failure時のfail-closed route revocation propagation
+- Done / Cancel / operator-session expiryでcanonical lifecycleより先にhosted routeをrevokeするordering
 - stale authorityを復元せず `reissue_and_revalidate` hintだけを返すrecovery
 - automatic replayなしのgeneration-fenced Human input
 - intervention / epoch / worker generationへbindingしたworker-origin frame provenance
