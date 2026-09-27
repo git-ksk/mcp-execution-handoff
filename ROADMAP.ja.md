@@ -10,7 +10,7 @@
 
 v0.6.0 が現在のGitHub/source-release baselineです。既存Browser / bounded Window / bounded Terminalのauthority modelを維持しつつ、Handoff-owned provider-neutral connectivity boundary (#19) とhosted control-plane / execution-worker topology (#12) を完了しました。hosted worker registration/routingはprincipal / epoch / viewer generation / worker generationへfenceされ、Human input / frameはephemeralのまま、recoveryはreissue/revalidate-onlyです。local macOSとremote/stateful Linux Chromiumのreference deploymentもphysical acceptance済みです。
 
-v0.5.0 connectivity milestoneはcompleteですが、standalone historical source tagは作りません。hosted topology変更がrelease bookkeepingより先に main へ入ったため、誤ったrelease boundaryをbackfillせず、completedなv0.5.0 contractをv0.6.0へ含めます。
+v0.5.0 connectivity milestoneはcompleteで、pre-hosted exact boundary（implementation 364a396、release bookkeeping 0130df5）からhistorical source releaseをbackfill済みです。v0.6.0公開後の補正releaseですが、既存v0.6.0 tagは移動・rewriteしていません。
 
 npm packageは引き続き `private: true` です。npmへの公開はroadmap上の必須条件ではなく、後述のpublication gateで独立して判断します。
 

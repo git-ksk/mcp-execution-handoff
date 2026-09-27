@@ -7,7 +7,7 @@ This project currently has two deliberately separate delivery decisions:
 1. **GitHub source release** — versioned tag + GitHub Release from a reviewed `main` commit.
 2. **npm publication** — a separate future gate. The package remains `private: true`; a source release does not imply `npm publish`.
 
-**v0.6.0** is the current GitHub/source-release baseline. It incorporates the completed provider-neutral connectivity contract from milestone v0.5.0 — Provider-Neutral Connectivity (#19) and the completed hosted topology contract from milestone v0.6.0 — Hosted Worker Topology (#12). A standalone v0.5.0 source tag is intentionally not backfilled: hosted-topology changes had already landed on main before source-release bookkeeping, and creating a later v0.5.0 tag from that tree would misrepresent the release boundary. v0.6.0 preserves private: true; npm publication remains separate.
+**v0.6.0** is the current GitHub/source-release baseline. It incorporates the completed provider-neutral connectivity contract from milestone v0.5.0 — Provider-Neutral Connectivity (#19) and the completed hosted topology contract from milestone v0.6.0 — Hosted Worker Topology (#12). A historical v0.5.0 source release was later backfilled from the exact pre-hosted boundary rather than from the v0.6.0 tree: implementation boundary 364a3961bfeab662146f7dd1b78662090548d490, release-bookkeeping commit 0130df5c1ca563c7cfe833987766d3ab1258ae48. The existing v0.6.0 tag remains immutable. v0.6.0 preserves private: true; npm publication remains separate.
 
 ## Versioning policy
 
@@ -50,7 +50,7 @@ The final release PR should contain only release bookkeeping unless a blocker re
 4. Keep `private: true` for source-only releases.
 5. Run the complete release validation below from a clean install.
 
-For v0.6.0, the authoritative release gates are the completed v0.5.0 Provider-Neutral Connectivity milestone (#19) and v0.6.0 Hosted Worker Topology milestone (#12), including the exact-revision local-macOS-worker and remote/stateful-Linux-Chromium deployment acceptances. A standalone v0.5.0 source tag is intentionally skipped rather than backfilled after the hosted line landed. #254/#227/#228 remain explicitly non-blocking version-uncommitted backlog. Historical v0.4.5 used milestone #16, v0.4.4 used milestone #15, v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
+For v0.6.0, the authoritative release gates are the completed v0.5.0 Provider-Neutral Connectivity milestone (#19) and v0.6.0 Hosted Worker Topology milestone (#12), including the exact-revision local-macOS-worker and remote/stateful-Linux-Chromium deployment acceptances. The historical v0.5.0 source release is tagged from its isolated pre-hosted release branch; v0.6.0 remains the later current source baseline and is not retagged. #254/#227/#228 remain explicitly non-blocking version-uncommitted backlog. Historical v0.4.5 used milestone #16, v0.4.4 used milestone #15, v0.4.3 used milestone #14, v0.4.2 used milestone #13, v0.4.1 used milestone #8, v0.4.0 used Issue #213, v0.3.0 used Issue #145, and v0.2.0 used Issue #119.
 
 ## Release validation
 

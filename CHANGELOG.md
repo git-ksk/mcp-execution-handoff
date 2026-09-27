@@ -8,9 +8,16 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 - Make Browser Human takeover startup, failure, and terminal states explicit without widening authority (#263/#264/#265/#266/#268): WebRTC and managed WSS share bounded content-free status presentation, revoked/exhausted locators retain only a principal-bound terminal tombstone, and natural TTL expiry renders the same terminal surface without reviving stale input, fallback, or transport authority.
 
-- Complete the provider-neutral connectivity contract from milestone v0.5.0 / #19 (#277): Handoff owns direct-first STUN/TURN discovery and relay-provider selection, Cloudflare TURN and coturn use the same internal seam, conflicting or partial provider configuration fails closed, relay credentials/provider choice stay out of consumer APIs, model context, and durable state, and provider changes remain explicit deployment decisions. No standalone v0.5.0 source tag is backfilled because hosted-topology work landed on main before source-release bookkeeping; v0.6.0 includes the completed v0.5.0 contract without rewriting history.
+- Complete the provider-neutral connectivity contract from milestone v0.5.0 / #19 (#277): Handoff owns direct-first STUN/TURN discovery and relay-provider selection, Cloudflare TURN and coturn use the same internal seam, conflicting or partial provider configuration fails closed, relay credentials/provider choice stay out of consumer APIs, model context, and durable state, and provider changes remain explicit deployment decisions. The provider-neutral connectivity contract was later published as historical source release v0.5.0 from the exact pre-hosted boundary; v0.6.0 carries that contract forward without moving either release tag.
 
 - Complete the v0.6.0 hosted worker topology (#12, #278-#291): authenticated outbound worker registration is principal/epoch/generation fenced; operator/viewer and worker lifetimes stay independent; latest-only frame delivery, no-replay Human input, route revocation, restart recovery, worker-origin frame provenance, and Done/Cancel/expiry lifecycle ordering fail closed. Deterministic real-WebSocket acceptance plus exact-revision hosted-control-plane + physical macOS worker and hosted-control-plane + remote/stateful Linux Chromium worker deployments passed; the remote worker had no external IP or inbound listener and retained worker-owned Chromium process/profile continuity across generation rotation. Physical Human UI remains separate product/consumer evidence.
+
+## [0.5.0] - 2026-09-27
+
+- Historical source release for the exact provider-neutral connectivity boundary before hosted-topology implementation. The implementation boundary is `364a3961bfeab662146f7dd1b78662090548d490` and the release-bookkeeping commit is `0130df5c1ca563c7cfe833987766d3ab1258ae48`.
+- Complete #19 provider-neutral connectivity with Handoff-owned direct STUN policy, relay-provider resolution, Cloudflare TURN/coturn behind one internal seam, fail-closed provider conflicts, and no relay credential/provider exposure to consumers, model context, generic logs, or durable state.
+- Include the Browser operator-status/terminal-surface hardening present at the boundary (#263/#265/#268).
+- Published after v0.6.0 to repair the skipped release step; existing v0.6.0 tag/history remains unchanged.
 
 ## [0.4.5] - 2026-09-06
 

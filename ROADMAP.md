@@ -8,7 +8,7 @@ This roadmap describes product and contract direction, not a release schedule. V
 
 v0.6.0 is the current GitHub/source-release baseline. It preserves the established Browser / bounded Window / bounded Terminal authority model while completing the Handoff-owned provider-neutral connectivity boundary (#19) and hosted control-plane / execution-worker topology (#12). Hosted worker registration/routing is principal-, epoch-, viewer-generation-, and worker-generation-fenced; Human input and frames remain ephemeral; recovery stays reissue/revalidate-only; and local macOS plus remote/stateful Linux Chromium reference deployments are physically accepted.
 
-The v0.5.0 connectivity milestone is complete but has no standalone historical source tag because hosted-topology changes landed on main before release bookkeeping. The completed v0.5.0 contract is included in v0.6.0 rather than backfilling a misleading tag.
+The v0.5.0 connectivity milestone is complete and now has a historical source release cut from the exact pre-hosted boundary (implementation 364a396, release bookkeeping 0130df5). It was published after v0.6.0 to repair the missed release step without moving or rewriting the existing v0.6.0 tag.
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -318,7 +318,7 @@ Exit criteria:
 Canonical connectivity contract: [`docs/provider-neutral-connectivity.md`](docs/provider-neutral-connectivity.md)
 
 
-Milestone v0.5.0 — Provider-Neutral Connectivity is complete and defines the provider-neutral connectivity contract consumed by v0.6.0. No standalone v0.5.0 source tag was backfilled after hosted-topology work had already landed; v0.6.0 is the next published source boundary.
+Milestone v0.5.0 — Provider-Neutral Connectivity is complete and defines the provider-neutral connectivity contract consumed by v0.6.0. A historical v0.5.0 source release is tagged from the exact pre-hosted release branch; v0.6.0 remains the later current source boundary.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
