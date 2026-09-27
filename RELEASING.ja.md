@@ -52,7 +52,7 @@ final release PRは、blocker修正が必要な場合を除きrelease bookkeepin
 4. source-only releaseでは `private: true` を維持する。
 5. clean installから後述のrelease validationを全部通す。
 
-v0.6.0ではcompleteしたv0.5.0 Provider-Neutral Connectivity milestone (#19) とv0.6.0 Hosted Worker Topology milestone (#12) をauthoritative release gateとし、exact-revisionのlocal macOS worker / remote-stateful Linux Chromium deployment acceptanceもrelease evidenceに含めます。hosted lineが先にmainへ入ったためstandalone v0.5.0 source tagはbackfillせずskipします。#254 / #227 / #228は明示的にnon-blockingなversion未確定backlogです。historicalなv0.4.5はmilestone #16、v0.4.4はmilestone #15、v0.4.3はmilestone #14、v0.4.2はmilestone #13、v0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
+v0.6.0ではcompleteしたv0.5.0 Provider-Neutral Connectivity milestone (#19) とv0.6.0 Hosted Worker Topology milestone (#12) をauthoritative release gateとし、exact-revisionのlocal macOS worker / remote-stateful Linux Chromium deployment acceptanceもrelease evidenceに含めます。historical v0.5.0 source releaseはpre-hosted exact boundary 364a3961bfeab662146f7dd1b78662090548d490 からisolated release branchでbackfill済みで、release bookkeeping commitは0130df5c1ca563c7cfe833987766d3ab1258ae48です。既存v0.6.0 tagは動かしません。#254 / #227 / #228は明示的にnon-blockingなversion未確定backlogです。historicalなv0.4.5はmilestone #16、v0.4.4はmilestone #15、v0.4.3はmilestone #14、v0.4.2はmilestone #13、v0.4.1はmilestone #8、v0.4.0はIssue #213、v0.3.0はIssue #145、v0.2.0はIssue #119でした。
 
 ## Release validation
 
