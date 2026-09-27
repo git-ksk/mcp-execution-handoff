@@ -4,9 +4,15 @@ All notable source releases are recorded here. npm publication, if introduced la
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-27
+
+- Complete the provider-neutral WebRTC connectivity contract (#19): Handoff centrally owns direct STUN configuration, relay-provider resolution, short-lived relay credentials, provider failure classification, and bounded connectivity diagnostics while consumers remain provider-blind. Cloudflare Realtime TURN and coturn use the same internal provider seam; conflicting providers fail closed, direct-only paths do not observe relay credentials, and provider choice/credentials never enter MCP arguments/results, model context, locator URLs, generic logs, or durable checkpoints.
+
 - Keep revoked/exhausted managed Browser Handoff locators user-readable without reviving authority (#265): the already-issued top-level locator is retained only as a bounded principal-bound terminal tombstone that renders a content-free ended-session page, while stale APIs, WebSocket/input/fallback routes, wrong principals, and unknown locators remain fail-closed.
 
 - Make Browser Human takeover startup and failure states visible instead of presenting an unexplained blank surface (#263): WebRTC and managed WSS now share a prominent content-free operator status card before the first remote frame, hide it while live media is visible, restore it during reconnect/teardown, and provide bounded next-action guidance for unavailable, verifying, and closed states. Authority, transport selection, Human input, credentials, target identity, and semantic verification behavior are unchanged.
+
+- Preserve a bounded terminal page after managed Browser Handoff TTL expiry (#268) without extending mutable authority, reviving transport/input, or treating timeout as Human completion.
 
 ## [0.4.5] - 2026-09-06
 

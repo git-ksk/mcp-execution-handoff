@@ -4,11 +4,11 @@
 
 This roadmap describes product and contract direction, not a release schedule. Version numbers are milestones with exit criteria; the project may insert additional pre-1.0 versions when needed. There is no requirement that `0.9` be followed by `1.0`.
 
-## Current baseline: v0.4.5
+## Current baseline: v0.5.0
 
-`v0.4.5` is the current GitHub/source-release baseline. It preserves the v0.4.4 Target Surface and transport boundary while closing three bounded correctness gaps: external Human-surface creation/revocation is authority-exclusive and expiry is not treated as revoke proof (#255), WSS disconnect/revoke terminal intent immediately fences queued Human input (#256), and retained inbound WSS Human-input work is bounded by message count and aggregate bytes with fail-closed overflow (#257). No Target Surface, Desktop authority, OS-support, transport-provider, Browser/Terminal semantic, virtual/remote backend, or physical dynamic-resize scope is added.
+`v0.5.0` is the current GitHub/source-release baseline. It carries forward v0.4.5 authority/queue hardening and completes #19 provider-neutral connectivity: Handoff owns direct discovery, relay-provider resolution, short-lived relay credentials, bounded diagnostics, and fail-closed provider configuration while consumers remain provider-blind. Cloudflare Realtime TURN and coturn are implementations behind the same internal seam. No Target Surface, Desktop authority, virtual/remote backend, consumer semantic responsibility, or npm-publication scope is added.
 
-The `v0.4.5 — Authority & Queue Hardening` gate (#255/#256/#257) is complete. The next planned feature release is `v0.5.0 — Provider-Neutral Connectivity` (#19).
+The `v0.5.0 — Provider-Neutral Connectivity` gate (#19) is complete. The next planned feature release is `v0.6.0 — Hosted Worker Topology` (#12).
 
 The npm package remains `private: true`. npm publication is not required for the roadmap and is governed by a separate publication gate below.
 
@@ -73,7 +73,7 @@ The release gate #119 closed after the v0.2.0 tag and GitHub Release were verifi
 | #228 | Host Parity Backlog — Linux successor lineage | **Open / version uncommitted.** Future Linux-native successor-window lineage parity; does not block current Linux exact-window support. |
 | #254 | Recovery Integration Backlog — version uncommitted | **Open / classified non-blocking.** Add a provider-neutral consumer-owned target/session reconstruction-required hook without restoring stale authority, replaying actions, or moving process/profile/deployment ownership into Handoff. |
 | #125 | Authority Research — Desktop Escalation | Design broader explicit Human-only Desktop Handoff only if #211 or another physical workflow proves bounded Window/successor authority insufficient; no silent Window-to-Desktop fallback. |
-| #19 | v0.5.0 provider-neutral connectivity | Finish provider-neutral Handoff-owned relay/connectivity configuration around the existing Cloudflare/coturn seams. |
+| #19 | v0.5.0 provider-neutral connectivity | **Complete / v0.5.0 contract.** Handoff centrally owns direct STUN policy, relay-provider selection, credentials, failure handling, and bounded diagnostics; Cloudflare/coturn share one internal seam and consumers remain provider-blind. |
 | #12 | v0.6.0 hosted topology | Define provider-neutral hosted control plane + stateful execution-worker topology with bounded durable state and outbound worker connectivity. |
 
 ## Product Readiness — independent cross-cutting track
@@ -318,7 +318,7 @@ Exit criteria:
 Canonical connectivity contract: [`docs/provider-neutral-connectivity.md`](docs/provider-neutral-connectivity.md)
 
 
-`v0.5.0` remains the next planned feature source-release line after the bounded `v0.4.5` authority/queue hardening gate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
+`v0.5.0` is the completed feature source release after the bounded `v0.4.5` authority/queue hardening gate. Milestone `v0.5.0 — Provider-Neutral Connectivity` is intentionally narrow and is owned by #19.
 
 Goal: make WebRTC discovery/relay connectivity an explicit **Handoff-owned, provider-neutral deployment boundary** without changing the consumer-facing Browser / Window lifecycle or widening Human-control authority.
 
