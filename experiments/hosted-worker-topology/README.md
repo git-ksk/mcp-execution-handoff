@@ -52,3 +52,20 @@ Success ends with:
     MANAGED_SPLIT_TOPOLOGY_ACCEPTANCE_OK
 
 This is real hosted-control-plane + physical-Mac outbound-worker evidence. It still does not prove a real browser/profile worker, a remote/stateful browser VM, physical Human UI interaction, production IAM/secret rotation, or the complete consumer semantic verification lifecycle. Those remain separate physical acceptance gates.
+
+
+## Managed remote/stateful browser-worker acceptance
+
+The remote/stateful gate places the Handoff control plane on a temporary Cloud Run service and a Chromium-owning worker on a temporary GCE VM with **no external IP**. A temporary Cloud NAT supplies outbound-only Internet access; the worker publishes no container port and initiates only the authenticated WSS channel to the control plane.
+
+The worker owns a dedicated Chromium profile on VM-local storage and keeps the same Chromium process/profile alive while the hosted worker channel disconnects and reconnects from generation 1 to generation 2. The worker reports only content-free booleans proving browser-process continuity, profile-marker continuity, Chromium readiness, and Linux worker shape.
+
+Run:
+
+    npm run accept:hosted-topology:managed-remote-stateful
+
+Success ends with:
+
+    MANAGED_REMOTE_STATEFUL_TOPOLOGY_ACCEPTANCE_OK
+
+The harness deletes the temporary VM, Cloud Run service, Cloud NAT/router, exact acceptance images, and ephemeral authentication material during cleanup. It proves the #12 remote/stateful topology boundary; it does not turn Handoff into a browser-profile lifecycle owner or claim a new virtual/remote Desktop display backend.
