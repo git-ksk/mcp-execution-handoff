@@ -64,7 +64,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
-    "werift": "^0.24.4",
+    "werift": "^0.25.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {
